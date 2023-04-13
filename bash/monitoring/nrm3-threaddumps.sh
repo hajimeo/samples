@@ -8,7 +8,7 @@ EXAMPLE:
     cd /nexus-data
     curl -O https://raw.githubusercontent.com/sonatype-nexus-community/nexus-monitoring/main/scripts/nrm3-threaddumps.sh
     # Taking thread dumps whenever the log line contains "QuartzTaskInfo"
-    bash ./nxrm3-threaddumps.sh -p ./etc/fabric/nexus-store.properties -f ./log/nexus.log -r "QuartzTaskInfo"
+    bash ./nrm3-threaddumps.sh -p ./etc/fabric/nexus-store.properties -f ./log/nexus.log -r "QuartzTaskInfo"
 
 USAGE:
     -c  How many dumps (default 5)
@@ -32,6 +32,7 @@ _PID=""
 
 
 function genDbConnTest() {
+    local __doc__="Generate a DB connection script file"
     local _dbConnFile="${1:-"${_DB_CONN_TEST_FILE}"}"
     cat << EOF > "${_dbConnFile}"
 import org.postgresql.*
@@ -59,6 +60,7 @@ EOF
 }
 
 function detectDirs() {    # Best effort. may not return accurate dir path
+    local __doc__="Populate PID and directory path global variables"
     local _pid="${1:-"${_PID}"}"
     if [ -z "${_pid}" ]; then
         _pid="$(ps auxwww | grep -F 'org.sonatype.nexus.karaf.NexusMain' | grep -vw grep | awk '{print $2}' | tail -n1)"
@@ -75,6 +77,7 @@ function detectDirs() {    # Best effort. may not return accurate dir path
 }
 
 function runDbQuery() {
+    local __doc__="Run a query against DB connection specified in the _storeProp"
     local _query="$1"
     local _storeProp="${2:-"${_PROP_FILE}"}"
     local _timeout="${3:-"30"}"
@@ -88,11 +91,14 @@ function runDbQuery() {
     if [ ! -s "${_dbConnFile}" ]; then
         genDbConnTest "${_dbConnFile}" || return $?
     fi
-    timeout ${_timeout}s java -Dgroovy.classpath="$(find "${_installDir%/}/system/org/postgresql/postgresql" -type f -name 'postgresql-42.*.jar' | tail -n1)" -jar "${_installDir%/}/system/org/codehaus/groovy/groovy-all/${_groovyAllVer}/groovy-all-${_groovyAllVer}.jar" \
+    local _java="java"
+    [ -d "${JAVA_HOME%/}" ] && _java="${JAVA_HOME%/}/bin/java"
+    timeout ${_timeout}s ${_java} -Dgroovy.classpath="$(find "${_installDir%/}/system/org/postgresql/postgresql" -type f -name 'postgresql-42.*.jar' | tail -n1)" -jar "${_installDir%/}/system/org/codehaus/groovy/groovy-all/${_groovyAllVer}/groovy-all-${_groovyAllVer}.jar" \
     "${_dbConnFile}" "${_storeProp}" "${_query}"
 }
 
 function tailStdout() {
+    local __doc__="Tail stdout file or XX:LogFile file"
     local _pid="$1"
     local _timeout="${2:-"30"}"
     local _outputFile="${3}"
@@ -117,6 +123,7 @@ function tailStdout() {
 }
 
 function takeDumps() {
+    local __doc__="Take multiple thread dumps for _pid"
     local _pid=${1:-${_PID}}
     local _count=${2:-${_COUNT:-5}}
     local _interval=${3:-${_INTERVAL:-2}}
@@ -128,19 +135,19 @@ function takeDumps() {
     tailStdout "${_pid}" "$(((${_count} + 1) * ${_interval}))" "${_outPfx}000.log" "${_installDir}" &
     sleep 1
 
-    local _wpid=""
     for _i in $(seq 1 ${_count}); do
         echo "[$(date +'%Y-%m-%d %H:%M:%S')] taking dump ${_i}/${_count} ..." >&2
+        local _wpid=""
         if [ -s "${_storeProp}" ]; then
             (date +'%Y-%m-%d %H:%M:%S'; runDbQuery "select * from pg_stat_activity where state <> 'idle' and query not like '% pg_stat_activity %' order by query_start limit 100" "${_storeProp}" "${_interval}") >> "${_outPfx}101.log" &
             _wpid="$!"
         fi
-        kill -3 "${_PID}"
+        kill -3 "${_pid}"
         (date +"%Y-%m-%d %H:%M:%S"; top -H -b -n1 2>/dev/null | head -n60) >> "${_outPfx}001.log"
         (date +"%Y-%m-%d %H:%M:%S"; netstat -topen 2>/dev/null || cat /proc/net/tcp 2>/dev/null) >> "${_outPfx}002.log"
         [ ${_i} -lt ${_count} ] && sleep ${_interval}
+        [ -n "${_wpid}" ] && wait ${_wpid}
     done
-    [ -n "${_wpid}" ] && wait ${_wpid}
     echo ""
 }
 
@@ -164,21 +171,22 @@ main() {
     if [ -n "${_LOG_FILE}" ]; then
         [ ! -f "${_LOG_FILE}" ] && echo "${_LOG_FILE} does not exist" >&2 && return 1
         [ -z "${_REGEX}" ] && echo "'-f' is provided but no '-r'" >&2 && return 1
-        local _run="/tmp/.takeDumps.run"
+
+        echo "Monitoring ${_LOG_FILE} with '${_REGEX}' ..." >&2
         tail -n0 -F "${_LOG_FILE}" | while read -r _l; do   # while is a subshell
             local _run="$(cat /tmp/.takeDumps.run 2>/dev/null)"
-            if [ -n "${_run}" ] && jobs -l | grep -qw "${_run}"; then
+            if [ -n "${_run}" ] && jobs -l | grep -q -E "\s${_run}\s+Running"; then
                 continue
             fi
             if echo "${_l}" | grep -E "${_REGEX}"; then
-                takeDumps "${_PID}" "${_COUNT}" "${_INTERVAL}" "${_PROP_FILE}" "${_WORD_DIR%/}/log/tasks" &
+                takeDumps "${_PID}" "${_COUNT}" "${_INTERVAL}" "${_PROP_FILE}" "${_INSTALL_DIR%/}" "${_WORD_DIR%/}/log/tasks" &
                 echo "$!" > /tmp/.takeDumps.run
                 sleep 1
             fi
         done
         wait
     else
-        takeDumps "${_PID}" "${_COUNT}" "${_INTERVAL}" "${_PROP_FILE}" "${_WORD_DIR%/}/log/tasks" || return $?
+        takeDumps "${_PID}" "${_COUNT}" "${_INTERVAL}" "${_PROP_FILE}" "${_INSTALL_DIR%/}" "${_WORD_DIR%/}/log/tasks" || return $?
     fi
 }
 

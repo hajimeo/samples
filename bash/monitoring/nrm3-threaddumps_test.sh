@@ -22,7 +22,7 @@ function test_genDbConnTest() {
 }
 
 function test_detectDirs() {
-    echo "sleep 3" > /tmp/sleep.sh
+    echo "sleep 1" > /tmp/sleep.sh
     bash /tmp/sleep.sh -Dkaraf.data=/var/tmp/sonatype-work -Dexe4j.moduleName=/tmp/bin/nexus org.sonatype.nexus.karaf.NexusMain &
     local _wpid=$!
     #set -x
@@ -39,6 +39,7 @@ function test_detectDirs() {
     if [ "${_WORD_DIR%/}" != "${_INSTALL_DIR%/}/var/tmp/sonatype-work" ]; then
         _error "_WORD_DIR: ${_WORD_DIR%/} != ${_INSTALL_DIR%/}/var/tmp/sonatype-work"
     fi
+    wait
 }
 
 function test_runDbQuery() {
@@ -63,6 +64,7 @@ function test_tailStdout() {
     if [ "${_rc}" -ne 0 ] && [ "${_rc}" -ne 124 ] ; then
         _error
     fi
+    wait
 }
 
 function test_takeDumps() {
@@ -72,6 +74,7 @@ function test_takeDumps() {
     if ! takeDumps "${_pid}" "1" "1" "" "/"; then
         _error
     fi
+    wait
 }
 
 
