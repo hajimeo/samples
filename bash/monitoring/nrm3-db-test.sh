@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
 usage() {
-    cat << EOS
+    cat << EOF
 USAGE:
-    bash ./nxrm3-db-test.sh [/path/to/nexus-store.properties] [query]
-EOS
+    bash ./nrm3-db-test.sh [/path/to/nexus-store.properties] [query]
+EOF
 }
 
 _DB_CONN_TEST_FILE="/tmp/DbConnTest.groovy"
@@ -12,27 +12,43 @@ _GROOVY_ALL_VER="2.4.17"
 : "${_WORK_DIR:=""}"
 
 function _genDbConnTest() {
-    cat << EOF > "${_DB_CONN_TEST_FILE}"
+    cat << 'EOF' > "${_DB_CONN_TEST_FILE}"
 import org.postgresql.*
 import groovy.sql.Sql
-def p = new Properties()
-if (!args) p = System.getenv()
-else {
-   def pf = new File(args[0])
-   pf.withInputStream { p.load(it) }
+import java.time.Duration
+import java.time.Instant
+
+def elapse(Instant start, String word) {
+    Instant end = Instant.now()
+    Duration d = Duration.between(start, end)
+    println("# '${word}' took ${d}")
 }
-def query = (args.length > 1 && args[1]) ? args[1] : "SELECT 'ok' as test"
+
+def p = new Properties()
+if (!args) p = System.getenv()  //username, password, jdbcUrl
+else {
+    def pf = new File(args[0])
+    pf.withInputStream { p.load(it) }
+}
+def query = (args.length > 1 && !args[1].empty) ? args[1] : "SELECT 'ok' as test"
 def driver = Class.forName('org.postgresql.Driver').newInstance() as Driver
 def dbP = new Properties()
 dbP.setProperty("user", p.username)
 dbP.setProperty("password", p.password)
+def start = Instant.now()
 def conn = driver.connect(p.jdbcUrl, dbP)
+elapse(start, "connect")
 def sql = new Sql(conn)
 try {
-   sql.eachRow(query) {println(it)}
+    def queries = query.split(";")
+    queries.each { q ->
+        start = Instant.now()
+        sql.eachRow(q) { println(it) }
+        elapse(start, q)
+    }
 } finally {
-   sql.close()
-   conn.close()
+    sql.close()
+    conn.close()
 }
 EOF
 }

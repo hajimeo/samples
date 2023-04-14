@@ -1,23 +1,27 @@
 #!/usr/bin/env bash
 usage() {
-    cat << EOS
-Taking Java thread dumps with some OS / database stats.
-Designed for Nexus official docker image: https://github.com/sonatype/docker-nexus3
+    cat << EOF
+PURPOSE:
+Gather basic information to troubleshoot Java process related *performance* issues.
+Tested with Nexus official docker image: https://github.com/sonatype/docker-nexus3
+Currently this script gathers the following information:
+ - Java thread dumps with kill -3, with netstat (or equivalent) and top
+ - If nexus-store.properties is given, pg_stat_activity
 
-EXAMPLE:
+EXAMPLES:
+    # Taking thread dumps whenever the log line contains "QuartzTaskInfo"
     cd /nexus-data
     curl --compressed -O https://raw.githubusercontent.com/sonatype-nexus-community/nexus-monitoring/main/scripts/nrm3-threaddumps.sh
-    # Taking thread dumps whenever the log line contains "QuartzTaskInfo"
     bash ./nrm3-threaddumps.sh -s ./etc/fabric/nexus-store.properties -f ./log/nexus.log -r "QuartzTaskInfo"
 
-USAGE:
+OPTIONS:
     -c  How many dumps (default 5)
     -i  Interval seconds (default 2)
     -s  Path to nexus-store.properties file (default empty = no DB check)
     -f  File to monitor (-r is required)
     -r  Regex (used in 'grep -E') to monitor -f file
     -p  PID
-EOS
+EOF
 }
 
 
@@ -35,27 +39,43 @@ _PID=""
 function genDbConnTest() {
     local __doc__="Generate a DB connection script file"
     local _dbConnFile="${1:-"${_DB_CONN_TEST_FILE}"}"
-    cat << EOF > "${_dbConnFile}"
+    cat << 'EOF' > "${_dbConnFile}"
 import org.postgresql.*
 import groovy.sql.Sql
-def p = new Properties()
-if (!args) p = System.getenv()
-else {
-   def pf = new File(args[0])
-   pf.withInputStream { p.load(it) }
+import java.time.Duration
+import java.time.Instant
+
+def elapse(Instant start, String word) {
+    Instant end = Instant.now()
+    Duration d = Duration.between(start, end)
+    println("# '${word}' took ${d}")
 }
-def _query = (args.length > 1 && args[1]) ? args[1] : "SELECT 'ok' as test"
+
+def p = new Properties()
+if (!args) p = System.getenv()  //username, password, jdbcUrl
+else {
+    def pf = new File(args[0])
+    pf.withInputStream { p.load(it) }
+}
+def query = (args.length > 1 && !args[1].empty) ? args[1] : "SELECT 'ok' as test"
 def driver = Class.forName('org.postgresql.Driver').newInstance() as Driver
 def dbP = new Properties()
 dbP.setProperty("user", p.username)
 dbP.setProperty("password", p.password)
+def start = Instant.now()
 def conn = driver.connect(p.jdbcUrl, dbP)
+elapse(start, "connect")
 def sql = new Sql(conn)
 try {
-   sql.eachRow(_query) {println(it)}
+    def queries = query.split(";")
+    queries.each { q ->
+        start = Instant.now()
+        sql.eachRow(q) { println(it) }
+        elapse(start, q)
+    }
 } finally {
-   sql.close()
-   conn.close()
+    sql.close()
+    conn.close()
 }
 EOF
 }
@@ -142,17 +162,49 @@ function takeDumps() {
         echo "[$(date +'%Y-%m-%d %H:%M:%S')] taking dump ${_i}/${_count} ..." >&2
         local _wpid=""
         if [ -s "${_storeProp}" ]; then
-            (date +'%Y-%m-%d %H:%M:%S'; runDbQuery "select * from pg_stat_activity where state <> 'idle' and query not like '% pg_stat_activity %' order by query_start limit 100" "${_storeProp}" "${_interval}") >> "${_outPfx}101.log" &
+            (date +'%Y-%m-%d %H:%M:%S'; runDbQuery "select * from pg_stat_activity where state <> 'idle' and query not like '% pg_stat_activity %' order by query_start limit 100;select relation::regclass, * from pg_locks where relation::regclass::text != 'pg_locks' limit 100;" "${_storeProp}" "${_interval}") >> "${_outPfx}101.log" &
             _wpid="$!"
         fi
         kill -3 "${_pid}"
         (date +"%Y-%m-%d %H:%M:%S"; top -H -b -n1 2>/dev/null | head -n60) >> "${_outPfx}001.log"
         (date +"%Y-%m-%d %H:%M:%S"; netstat -topen 2>/dev/null || cat /proc/net/tcp 2>/dev/null) >> "${_outPfx}002.log"
+        (date +"%Y-%m-%d %H:%M:%S"; netstat -s 2>/dev/null || cat /proc/net/dev 2>/dev/null) >> "${_outPfx}003.log"
         [ ${_i} -lt ${_count} ] && sleep ${_interval}
         [ -n "${_wpid}" ] && wait ${_wpid}
     done
     ps -p ${_wpid0} &>/dev/null && wait ${_wpid0}
     return 0
+}
+
+# miscChecks &> "${_outFile}"
+function miscChecks() {
+    local __doc__="Gather Misc. information"
+    set -x
+    # OS / kernel related
+    uname -a
+    cat /etc/*-release
+    cat /proc/cmdline
+    # disk / mount (nfs options)
+    df -Th
+    cat /proc/mounts
+    # selinux / fips
+    sestatus
+    sysctl crypto.fips_enabled
+    # is this k8s?
+    cat /var/run/secrets/kubernetes.io/serviceaccount/namespace
+    # service slowness
+    systemd-analyze blame | head -n40
+    # DNS (LDAP but not for Nexus) slowness
+    nscd -g
+
+    ps auxwwwf
+    if [ -n "${_pid}" ]; then
+        cat /proc/${_pid}/limits
+        cat /proc/locks | grep -w "${_pid}"
+        ls -li /proc/${_pid}/fd/*
+        pmap -x ${_pid}
+    fi
+    set +x
 }
 
 function _stopping() {
@@ -172,7 +224,6 @@ function _stopping() {
 }
 
 main() {
-    # Preparing
     detectDirs "${_PID}"
     if [ -z "${_INSTALL_DIR}" ]; then
         echo "Could not find install directory." >&2
@@ -186,6 +237,10 @@ main() {
         _STORE_FILE="${_WORD_DIR%/}/etc/fabric/nexus-store.properties"
     fi
     genDbConnTest || return $?
+    echo "[$(date +'%Y-%m-%d %H:%M:%S')] miscChecks() started."
+    miscChecks "${_PID}" &> "${_WORD_DIR%/}/log/tasks/script-$(date +"%Y%m%d%H%M%S")"
+    echo "[$(date +'%Y-%m-%d %H:%M:%S')] miscChecks() completed."
+    # NOTE: same infor as prometheus is in support zip
 
     if [ -z "${_LOG_FILE}" ]; then
         takeDumps "${_PID}" "${_COUNT}" "${_INTERVAL}" "${_STORE_FILE}" "${_INSTALL_DIR%/}" "${_WORD_DIR%/}/log/tasks"

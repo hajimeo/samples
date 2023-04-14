@@ -5,6 +5,14 @@ java -Dgroovy.classpath="$(find ${sysPath%/}/org/postgresql/postgresql -type f -
  */
 import org.postgresql.*
 import groovy.sql.Sql
+import java.time.Duration
+import java.time.Instant
+
+def elapse(Instant start, String word) {
+    Instant end = Instant.now()
+    Duration d = Duration.between(start, end)
+    println("# '${word}' took ${d}")
+}
 
 def p = new Properties()
 if (!args) p = System.getenv()  //username, password, jdbcUrl
@@ -17,11 +25,17 @@ def driver = Class.forName('org.postgresql.Driver').newInstance() as Driver
 def dbP = new Properties()
 dbP.setProperty("user", p.username)
 dbP.setProperty("password", p.password)
-//println(dbP)
+def start = Instant.now()
 def conn = driver.connect(p.jdbcUrl, dbP)
+elapse(start, "connect")
 def sql = new Sql(conn)
 try {
-    sql.eachRow(query) {println(it)}
+    def queries = query.split(";")
+    queries.each { q ->
+        start = Instant.now()
+        sql.eachRow(q) { println(it) }
+        elapse(start, q)
+    }
 } finally {
     sql.close()
     conn.close()
