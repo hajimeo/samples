@@ -43,7 +43,7 @@ function test_detectDirs() {
 }
 
 function test_runDbQuery() {
-    if ! runDbQuery >/dev/null; then
+    if ! runDbQuery 2>/dev/null; then
         _error "Not implemented yet." "TODO"
     fi
 }
@@ -71,7 +71,7 @@ function test_takeDumps() {
     echo "sleep 1" > /tmp/sleep.sh
     bash /tmp/sleep.sh -XX:LogFile=/tmp/sleep.sh &
     local _pid=$!
-    if ! takeDumps "${_pid}" "1" "1" "" "/"; then
+    if ! takeDumps "${_pid}" "1" "1" "" "/" 2>/dev/null; then
         _error
     fi
     wait
