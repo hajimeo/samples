@@ -157,7 +157,7 @@ function takeDumps() {
     tailStdout "${_pid}" "$((${_count} * ${_interval} + 2))" "${_outPfx}000.log" "${_installDir}" &
     local _wpid0="$!"
     echo "${_wpid0}" > /tmp/.tailStdout.run
-    sleep 1
+    sleep 0.5
     for _i in $(seq 1 ${_count}); do
         echo "[$(date +'%Y-%m-%d %H:%M:%S')] taking dump ${_i}/${_count} ..." >&2
         local _wpid=""
