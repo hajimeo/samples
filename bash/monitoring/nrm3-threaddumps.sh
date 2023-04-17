@@ -238,7 +238,7 @@ main() {
     fi
     genDbConnTest || return $?
     echo "[$(date +'%Y-%m-%d %H:%M:%S')] miscChecks() started." >&2
-    miscChecks "${_PID}" &> "${_WORD_DIR%/}/log/tasks/script-$(date +"%Y%m%d%H%M%S")"
+    miscChecks "${_PID}" &> "${_WORD_DIR%/}/log/tasks/script-$(date +"%Y%m%d%H%M%S")900.log"
     echo "[$(date +'%Y-%m-%d %H:%M:%S')] miscChecks() completed." >&2
     # NOTE: same infor as prometheus is in support zip
 
