@@ -77,6 +77,17 @@ function test_takeDumps() {
     wait
 }
 
+function test_miscChecks() {
+    # This function never returns non zero though...
+    if ! miscChecks &>/tmp/test_miscChecks.out; then
+        _error
+    fi
+    if ! grep -q -F '+ set +x' /tmp/test_miscChecks.out ; then
+        _error "Unexpected output in /tmp/test_miscChecks.out"
+    fi
+    wait
+}
+
 
 
 # shellcheck disable=SC2120
