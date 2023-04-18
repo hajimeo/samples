@@ -213,7 +213,7 @@ function _stopping() {
     [ -z "${_pid}" ] && return
     for _i in $(seq 1 10); do
         sleep 1
-        if ! ps -p "$(cat /tmp/.tailStdout.run)" &>/dev/null ; then
+        if ! ps -p "${_pid}" &>/dev/null ; then
             echo "" | tee /tmp/.tailStdout.run
             exit
         fi
@@ -237,9 +237,9 @@ main() {
         _STORE_FILE="${_WORD_DIR%/}/etc/fabric/nexus-store.properties"
     fi
     genDbConnTest || return $?
-    echo "[$(date +'%Y-%m-%d %H:%M:%S')] miscChecks() started." >&2
+    local _start=$(date +%s)
     miscChecks "${_PID}" &> "${_WORD_DIR%/}/log/tasks/script-$(date +"%Y%m%d%H%M%S")900.log"
-    echo "[$(date +'%Y-%m-%d %H:%M:%S')] miscChecks() completed." >&2
+    echo "[$(date +'%Y-%m-%d %H:%M:%S')] miscChecks completed ($(( $(date +%s) - ${_start}))s)" >&2
     # NOTE: same infor as prometheus is in support zip
 
     if [ -z "${_LOG_FILE}" ]; then
