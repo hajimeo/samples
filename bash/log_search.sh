@@ -943,7 +943,7 @@ function f_splitTopNetstat() {
         mkdir -v -p $_out_dir || return $?
     fi
     local _tmpDir="$(mktemp -d)"
-    _csplit -z -f "${_tmpDir%/}/topNs_" ${_file} "/^top /" '{*}' || return $?
+    _csplit -z -f "${_tmpDir%/}/topOrNet_" ${_file} "/^top /" '{*}' || return $?
     if [ -z "${_netstat_str}" ]; then
         if rg -q "^Active Internet\s+" "${_file}"; then
             _netstat_str="Active Internet"
@@ -954,8 +954,18 @@ function f_splitTopNetstat() {
     if [ -z "${_netstat_str}" ]; then
         return 11
     fi
-    for _f in $(ls -1 ${_tmpDir%/}/topNs_*); do
+    for _f in $(ls -1 ${_tmpDir%/}/topOrNet_*); do
         _csplit -z -f "${_out_dir%/}/`basename ${_f}`_" ${_f} "/^${_netstat_str} /" '{*}' || return $?
+    done
+    ls -1 ${_out_dir%/}/topOrNet_* | while read _fpath; do
+        [[ "${_fpath}" =~ .+/topOrNet_([0-9]+)_([0-9]+)$ ]]
+        local _n1="${BASH_REMATCH[1]}"
+        local _n2="${BASH_REMATCH[2]}"
+        if [ "${_n2}" == "00" ]; then
+            mv "${_fpath}" "${_out_dir%/}/top_${_n1}.out"
+        elif [ "${_n2}" == "01" ]; then
+            mv "${_fpath}" "${_out_dir%/}/netstat_${_n1}.out"
+        fi
     done
 }
 
@@ -1023,14 +1033,14 @@ function f_threads() {
         echo " "
         # Doing below only when checking multiple thread dumps
         echo "## Thread status counts from ./f_thread_*.out"
-        rg -A10 '^## Counting thread states' ./f_thread_*.out
+        rg -A10 '^### Counting thread states' ./f_thread_*.out
         echo " "
         local __count=${_count}
         [ 3 -lt ${_count} ] && __count=$(( ${_count} - 1 ))
         echo "## Long *RUN*ning (or BLOCKED) and no-change (same hash) threads which contain '${_running_thread_search_re}' (threads:${_count})"
         _long_running "${_save_dir%/}" "${_running_thread_search_re}"
         _long_blocked "${_save_dir%/}" "${_running_thread_search_re}"
-        echo '# rg -A7 -m1 "RUNNABLE" -g <filename>'
+        echo '### rg -A7 -m1 "RUNNABLE" -g <filename>'
         # TODO: also check similar file sizes (wc -c?)
         local _times=3
         [ -n "${_count}" ] && [ ${_count} -gt 1 ] && [ 3 -gt ${_count} ] && _times=${_count}
@@ -1043,7 +1053,7 @@ function f_threads() {
             echo "$(basename "${_f}") $(rg '^\sat\s' -m1 "${_f}")"
         done | sort | uniq -c | sort -nr | rg -v '^\s*1\s' | head -n40
         echo " "
-        echo "### May also want to use f_hexTids_from_topH() and f_splitTopNetstat()"
+        echo "### May also want to use f_splitTopNetstat() and f_hexTids_from_topH()"
         echo " "
         return $?
     fi
@@ -1080,7 +1090,9 @@ function f_threads() {
     rg '^\s+\- [^<]' --no-filename `find ${_save_dir%/} -type f -size +1k` | rg -v '(- locked|- None|parking to wait for)' | sort | uniq -c | sort -nr | tee ${_tmp_dir%/}/f_threads_$$_waiting_counts.out | head -n 20
     echo " "
     echo "## Checking 'parking to wait for' qtp threads, because it may indicate the pool exhaustion issue (eg:NEXUS-17896 / NEXUS-10372) (excluding smaller than 1k threads)"
-    rg '(parking to wait for)' -l `find ${_save_dir%/} -type f -size +1k` | rg '.*/(qtp[^/]+)$' -o -r '$1' | wc -l
+    #rg '\bparking to wait for\b' -l `find ${_save_dir%/} -type f -size +1k -name 'qtp*.out'` | wc -l
+    rg '\bparking to wait for\s+<([^>]+)>.+\(([^\)]+)\)' -o -r '$1 $2' --no-filename `find ${_save_dir%/} -type f -size +1k -name 'qtp*.out'` | sort | uniq -c | sort -nr | head -n10
+    # NOTE: probably java.util.concurrent.SynchronousQueue can be ignored
     echo " "
     # At least more than 5 waiting:
     local _most_waiting="$(rg -m 1 '^\s*([5-9]|\d\d+)\s+.+(0x[0-9a-f]+)' -o -r '$2' ${_tmp_dir%/}/f_threads_$$_waiting_counts.out)"
@@ -1096,6 +1108,9 @@ function f_threads() {
         echo "## Finding top 10 'owned by' for '${_most_waiting}' (excluding smaller than 1k threads)"
         rg "waiting to lock .${_most_waiting}\b" -A1 ${_save_dir%/} | rg -o 'owned by .+' | sort | uniq -c | sort -n | head -n10
         echo " "
+        echo "## Finding (TIMED_)WAITING which contains \"${_running_thread_search_re}\""
+        rg 'State:\s*.*WAITING' -l ${_save_dir%/} | xargs -I{} rg -m1 "${_running_thread_search_re}" {} | sort | uniq -c | sort -nr | head -n10
+        echo " "
     fi
     echo "## 'locked' objects or id excluding synchronizers (top 20 and more than once)"    # | rg -v '^\s+1\s'
     rg ' locked [^ @]+' -o --no-filename ${_save_dir%/}/ | rg -vw synchronizers | sort | uniq -c | sort -nr | head -n 20
@@ -1108,6 +1123,11 @@ function f_threads() {
         echo "## Finding popular methods from *probably* running threads containing '${_running_thread_search_re}'"
         #rg -w RUNNABLE -A1 -H ${_save_dir%/} | rg '^\sat' | sort | uniq -c
         rg "${_running_thread_search_re}" -l -g '*runnable*' ${_save_dir%/} | xargs -P3 -I {} rg '^\s+at\s' -m1 "{}" | sort | uniq -c | sort -nr | head -10
+        # NOTE: RUNNABLE "sun.nio.ch.EPollArrayWrapper.epollWait" would be ignorable
+        # https://support.sonatype.com/hc/en-us/articles/360000744687-Understanding-Eclipse-Jetty-9-4-Thread-Allocation#SelectorManager-SelectorThreads
+        echo " "
+        echo "## Finding RUNNABLE which contains \"${_running_thread_search_re}\""
+        rg 'State:\s*RUNNABLE' -l ${_save_dir%/} | xargs -I{} rg -m1 "${_running_thread_search_re}" {} | sort | uniq -c | sort -nr | head -n10
         echo " "
         echo "## Finding runnable (expecting QuartzTaskJob) '${_running_thread_search_re}.+Task.execute' from ${_save_dir%/}"
         rg -m1 -s "${_running_thread_search_re}.+Task\.execute\(" -g '*runnable*' "${_save_dir%/}"
@@ -1123,7 +1143,7 @@ function f_threads() {
     echo "## Counting thread types excluding WAITING (top 20)"
     rg '^[^\s]' ${_file} | rg -v WAITING | _replace_number 1 | sort | uniq -c | sort -nr | head -n 20
     echo " "
-    echo "## Counting thread states"
+    echo "### Counting thread states"
     _thread_state_sum ${_file}
 }
 function _thread_state_sum() {
@@ -1179,6 +1199,22 @@ function f_last_tid_in_log() {
             fi
         fi
     done
+}
+
+#2023-03-09 09:26:37,551-0500 WARN  [qtp1219689879-378062]  ADUBEY19
+function f_find_requests() {
+    local _date_lvl_thread_user="$1"
+    local _rg_opts="${2-"-g \"request*log*\""}"
+    if [[ "${_date_lvl_thread_user}" =~ ([0-9]{4})-[0-9]{2}-[0-9]{2}.([^, ]+).+[[:space:]]+\[([^]]+)\][[:space:]]+([^ ]*) ]]; then
+        local _regex=""
+        if [ -n "${BASH_REMATCH[4]}" ]; then
+            _regex="${_regex}\s+${BASH_REMATCH[4]}\s+"
+        fi
+        _regex="${_regex}.+[:/-]${BASH_REMATCH[1]}:${BASH_REMATCH[2]}.+\[${BASH_REMATCH[3]}\]"
+        local _cmd="rg '${_regex}' ${_rg_opts}"
+        echo "$ ${_cmd}"
+        eval "${_cmd}"
+    fi
 }
 
 function f_request2csv() {
