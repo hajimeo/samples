@@ -205,6 +205,24 @@ function _working_dir() {
     local _result="$(echo "${_working_dir_line}" | _rg ': "([^"]+)' -o -r '$1')"
     [ -n "${_result}" ] && [ "${_result}" != "<null>" ] && export _WORKING_DIR="$(echo "${_result}")" && echo "${_WORKING_DIR}"
 }
+function _is_mount() {
+    local _path="${1:-"${_WORKING_DIR}"}"
+    local _filestores="${2:-"${_FILTERED_DATA_DIR%/}/system-filestores.json"}"
+    local _type_rx="${3:-"(nfs|cifs)"}"
+    local _crt="${_path%/}"
+    [ -z "${_path}" ] && return 2
+    [ "${_path}" == "<null>" ] && return 3
+    for i in {1..7}; do # checking 7 depth would be enough
+        # should be more strict regex?
+        if rg -m1 -A5 "\"description\"\s*:\s*\"${_crt%/}[ \"]" ${_filestores} | rg -q '"type"\s*:\s*"'${_type_rx}; then
+            rg -m1 -A6 -B1 "\"description\"\s*:\s*\"${_crt%/}[ \"]" ${_filestores}
+            return 0
+        fi
+        _crt="$(dirname "${_crt}")"
+        [ -z "${_crt%/}" ] && break
+    done
+    return 1
+}
 function _app_ver() {
     [ -n "${_APP_VER}" ] && [ "${_APP_VER}" != "<null>" ] && echo "${_APP_VER}" && return
     local _app_ver_line="$(_search_json "sysinfo.json" "nexus-status,version" || _search_json "product-version.json" "product-version,version")"
@@ -358,10 +376,10 @@ function e_app_logs() {
     fi
     local _since_last_restart="$(ls -1r _split_logs/* 2>/dev/null | head -n1)"
     if [ -n "${_since_last_restart}" ]; then
-        f_topErrors "${_since_last_restart}" "" "" "(WARN .+ high disk watermark|Attempt to access soft-deleted blob .+nexus-repository-docker)" >${_FILTERED_DATA_DIR%/}/f_topErrors.out
+        f_topErrors "${_since_last_restart}" "" "" "(WARN .+ high disk watermark|This is NOT an error|Attempt to access soft-deleted blob .+nexus-repository-docker)" >${_FILTERED_DATA_DIR%/}/f_topErrors.out
     elif _size_check "${_log_path}"; then
         # TODO: this one is slow
-        _TOP_ERROR_MAX_N=10000 f_topErrors "${_LOG_GLOB}" "" "" "(WARN .+ high disk watermark|Attempt to access soft-deleted blob .+nexus-repository-docker)" >${_FILTERED_DATA_DIR%/}/f_topErrors.out
+        _TOP_ERROR_MAX_N=10000 f_topErrors "${_LOG_GLOB}" "" "" "(WARN .+ high disk watermark|This is NOT an error|Attempt to access soft-deleted blob .+nexus-repository-docker)" >${_FILTERED_DATA_DIR%/}/f_topErrors.out
     fi
 }
 function e_requests() {
@@ -453,19 +471,20 @@ function t_system() {
 }
 function t_mounts() {
     _basic_check "" "${_FILTERED_DATA_DIR%/}/system-filestores.json" || return
-    _test_template "$(_rg '"totalSpace": [1-9]' -B2 -A3 ${_FILTERED_DATA_DIR%/}/system-filestores.json | _rg '"usableSpace": [1-7]?\d{1,9},' -B3 -A2)" "ERROR" "Storage/disk space (usableSpace) is less than 8GB" "NOTE: 'No space left on device' can be also caused by Inode, which won't be shown in above."
+    _test_template "$(rg '"usableSpace": [1-7]\d{1,9}\b' -B5 ${_FILTERED_DATA_DIR%/}/system-filestores.json)" "ERROR" "some of 'usableSpace' might be less than 8GB" "NOTE: 'No space left on device' can be also caused by Inode, which won't be shown in above."
 
     local _workingDirectory="$(_search_json "sysinfo.json" "nexus-configuration,workingDirectory" | _rg -o -r '$1' '"(/[^"]+)"')"
-    local _parent_dir="$(echo "${_workingDirectory}" | _rg -o -r '$1' '^(/[^/]+)')"
-    [ -z "${_parent_dir}" ] && _parent_dir="$(_search_json "sysinfo.json" "install-info,sonatypeWork" | _rg -o '"(/[^/]+).+sonatype-work.*"' -r '$1')"
-    local _result="$(_rg -B1 -A6 '("description": "'${_parent_dir}'\b|"description": "/[ "]|"description": "/tmp[ "])' ${_FILTERED_DATA_DIR%/}/system-filestores.json)"
     local _display_result=""
-    if echo "${_result}" | grep -qEiw '(nfs|cifs)'; then
-        _head "WARN" "workingDirectory:${_workingDirectory} might be in a mount point (${_parent_dir})"
+    local _result="$(_is_mount "${_workingDirectory%/}" "${_FILTERED_DATA_DIR%/}/system-filestores.json")"
+    if [ -n "${_result}" ]; then
+        _head "WARN" "workingDirectory:${_workingDirectory} might be nfs|cifs"
         _display_result="Y"
-    elif echo "${_result}" | grep -qwi '(overlay)'; then
-        _head "INFO" "workingDirectory:${_workingDirectory} might be in overlay (${_parent_dir})"
-        _display_result="Y"
+    else
+        _result="$(_is_mount "${_workingDirectory%/}" "${_FILTERED_DATA_DIR%/}/system-filestores.json" "(overlay)")"
+        if [ -n "${_result}" ]; then
+            _head "INFO" "workingDirectory:${_workingDirectory} might be in overlay"
+            _display_result="Y"
+        fi
     fi
     if [ -n "${_display_result}" ]; then
         echo '```'
@@ -480,6 +499,7 @@ function t_mounts() {
         echo '```'
     fi
 }
+
 # TODO: For this one, checking without size limit (not _rg)?
 function t_oome() {
     _test_template "$(_RG_MAX_FILESIZE="6G" _rg 'java.lang.OutOfMemoryError:.+' -m1 -o -g "${_LOG_GLOB}" -g '\!jvm.log' | sort | uniq -c | sort | head -n10)" "ERROR" "OutOfMemoryError detected from ${_LOG_GLOB}"
