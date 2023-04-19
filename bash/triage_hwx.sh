@@ -113,8 +113,7 @@ function f_check_system() {
 
     # Network
     ifconfig 2>/dev/null || ip address &> ${_work_dir%/}/ifconfig.out
-    netstat -s &> ${_work_dir%/}/netstat_s.out
-    cat /proc/net/dev &> ${_work_dir%/}/net_dev.out
+    (netstat -s || cat /proc/net/dev) &> ${_work_dir%/}/netstat_s.out
 
     # Misc.
     #sysctl kernel.pid_max fs.file-max fs.file-nr # max is OS limit (Too many open files)
