@@ -114,7 +114,7 @@ public class AssetDupeCheckV2 {
         System.out.println("  -DimportReuse=true                  # If 'true', reuse the component-export.gz if exists");
         System.out.println("  -DexportImport=true                 # DB Export to current (or extractDir), then import");
         System.out.println("  -DnoCheckIndex=true                 # Does not check index...");
-        System.out.println("  -DindexName=component_bucket_group_name_version_idx");
+        System.out.println("  -DindexName=component_bucket_group_name_version_idx   # or '*'");
         System.out.println("  -DtableName=component               # NOTE: be careful of repairing component");
         System.out.println("  -DdropTables=deleted_blob_index     # Only for export/import");
     }
@@ -279,6 +279,22 @@ public class AssetDupeCheckV2 {
         System.err.println("");
     }
 
+    private static void dropTables(ODatabaseDocumentTx db) {
+        if (DROP_TABLES != null && DROP_TABLES.length > 0) {
+            for (int i = 0; i < DROP_TABLES.length; i++) {
+                try {
+                    if (DROP_TABLES[i].isEmpty()) {
+                        continue;
+                    }
+                    log("[WARN] Dropping " + DROP_TABLES[i] + " ...");
+                    db.getMetadata().getSchema().dropClass(DROP_TABLES[i]);
+                } catch (Exception ex) {
+                    log("[WARN] Ignoring DROP CLASS " + DROP_TABLES[i] + " exception: " + ex.getMessage());
+                }
+            }
+        }
+    }
+
     private static void exportImportDb(ODatabaseDocumentTx db) {
         try {
             OClassImpl tbl = (OClassImpl) db.getMetadata().getSchema().getClass("browse_node");
@@ -288,20 +304,6 @@ public class AssetDupeCheckV2 {
             }
         } catch (IOException ioe) {
             log("[WARN] Ignoring TRUNCATE browse_node exception: " + ioe.getMessage());
-        }
-
-        if (DROP_TABLES != null && DROP_TABLES.length > 0) {
-            for (int i = 0; i < DROP_TABLES.length; i++) {
-                try {
-                    if (DROP_TABLES[i].isEmpty()) {
-                        continue;
-                    }
-                    log("[WARN] Dropping " + DROP_TABLES[i] + " for export/import");
-                    db.getMetadata().getSchema().dropClass(DROP_TABLES[i]);
-                } catch (Exception ex) {
-                    log("[WARN] Ignoring DROP CLASS " + DROP_TABLES[i] + " exception: " + ex.getMessage());
-                }
-            }
         }
 
         String exportName = "component-export";
@@ -693,11 +695,16 @@ public class AssetDupeCheckV2 {
                 db.open("admin", "admin");
                 log("Connected to " + connStr);
                 setIndexFields(db, INDEX_NAME);
+
+                // Doing drop tables first
+                dropTables(db);
+
                 boolean result = true;
                 if (!IS_NO_INDEX_CHECK) {
                     // Return false if dupe or error
                     result = checkIndex(db);
                 }
+
                 if (IS_REBUILDING) {
                     if (!result) {
                         log("Index rebuild is requested but not rebuilding as checkIndex returned false (maybe dupes or missing index)");
@@ -705,6 +712,7 @@ public class AssetDupeCheckV2 {
                         rebuildIndex(db, INDEX_NAME);
                     }
                 }
+
                 if (IS_REIMPORTING || IS_EXPORTING) {
                     exportImportDb(db);
                 }
