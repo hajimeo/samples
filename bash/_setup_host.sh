@@ -1113,7 +1113,7 @@ function f_microk8s() {
     "
     microk8s.start || return $?
 
-    # (a kind of) test
+    # get all from all namespace (a kind of test)
     microk8s kubectl get all --all-namespaces || return $?
     # If above test works, update firewall. at this moment, only for ufw
     if type ufw &>/dev/null; then
@@ -1209,7 +1209,7 @@ function f_microk8s() {
     microk8s ctr images list
     kubectl get node -o json | jq -r '.items[].status.images[].names'   # jq is required
     kubectl get node -o go-template --template='{{range .items}}{{range .status.images}}{{.sizeBytes}}{{"\t"}}{{.names}}{{"\n"}}{{end}}{{end}}'
-    kubectl get pods --all-namespaces -o go-template --template='{{range .items}}{{range .spec.containers}}{{.image}} {{end}}{{end}}'
+    kubectl get pods -A -o go-template --template='{{range .items}}{{range .spec.containers}}{{.image}} {{end}}{{end}}'
 ### Start a pod for troubleshooting (more: https://stackoverflow.com/questions/61803186/how-to-mount-volume-inside-pod-using-kubectl-cli)
     kubectl run -n default -it --rm --restart=Never busybox --image=gcr.io/google-containers/busybox -- sh
 ### Ingress troubleshooting: https://kubernetes.github.io/ingress-nginx/troubleshooting/
@@ -1334,9 +1334,13 @@ function f_dnsmasq() {
     local _domain_suffix="${3:-${g_DOMAIN_SUFFIX:-".localdomian"}}"
 
     # If Ubuntu 18.04 or 20.04 may want to stop systemd-resolved
-    if grep -qiP 'Ubuntu (18|20)\.' /etc/issue.net; then
-        sudo systemctl stop systemd-resolved
-        sudo systemctl disable systemd-resolved
+    if grep -qiP 'Ubuntu (18|20)\.' /etc/issue.net && [ -f /etc/systemd/resolved.conf ]; then
+        #sudo systemctl stop systemd-resolved
+        #sudo systemctl disable systemd-resolved
+        #if ! grep -qE '^DNSStubListener' /etc/systemd/resolved.conf; then
+        #    echo "DNSStubListener=no" >> /etc/systemd/resolved.conf
+        #fi
+        echo "nameserver 127.0.0.1" > /etc/resolvconf/resolv.conf.d/tail
     fi
     apt-get -y install dnsmasq || return $?
 
@@ -1356,7 +1360,8 @@ function f_dnsmasq() {
         echo 'nameserver 1.1.1.1' >/etc/resolv.dnsmasq.conf
     )
     #if [ -d "/etc/resolvconf/resolv.conf.d" ] && [ ! -f "/etc/resolvconf/resolv.conf.d/tail" ]; then
-    #    echo "nameserver 127.0.0.1" > /etc/resolvconf/resolv.conf.d/tail
+    #    grep -qE '^listen-address=127.0.0.1\b' /etc/dnsmasq.conf || echo 'listen-address=127.0.0.1' >>/etc/dnsmasq.conf
+    #    grep -qE '^listen-address=127.0.0.53\b' /etc/dnsmasq.conf || echo 'listen-address=127.0.0.53' >>/etc/dnsmasq.conf
     #fi
     _warn "You might need to edit /etc/resolv.conf to add 'nameserver 127.0.0.1'"
 
@@ -2102,6 +2107,25 @@ function f_bitbucket() {
     _info "Access http://$(hostname -f):7990/
 For trial license: https://developer.atlassian.com/platform/marketplace/timebomb-licenses-for-testing-server-apps/
 Then, '3 hour expiration for all Atlassian host products'"
+}
+
+function f_s3compatible() {
+    docker run -t -d  -p 9000:9000 -p 9001:9001 --name minio  minio/minio server /data --console-address ":9001" || return $?
+    echo "Use reverse proxy for HTTPS. For example:"
+    cat << 'EOF'
+frontend frontend_p9443
+  bind *:9443 ssl crt /var/tmp/share/cert/standalone.localdomain.certs.pem alpn h2,http/1.1
+  reqadd X-Forwarded-Proto:\ https
+  default_backend backend_p9000
+
+backend backend_p9000
+  balance first
+  hash-type consistent
+  option forwardfor
+  http-request set-header X-Forwarded-Port %[dst_port]
+  option tcp-check
+  server local_docker_9000 localhost:9000 check inter 5s init-addr none
+EOF
 }
 
 function p_basic_setup() {
