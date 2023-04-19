@@ -30,7 +30,7 @@ DOWNLOADS:
 
 REQUIREMENTS / DEPENDENCIES:
     If Mac, 'gsed' and 'ggrep' are required.
-    brew install gnu-sed ggrep
+    brew install gnu-sed grep
 
 COMMAND OPTIONS:
     -A
@@ -339,6 +339,7 @@ function f_setup_docker() {
     f_populate_docker_proxy "hello-world" "${r_DOCKER_GROUP}" "5000 4999"
 }
 
+#f_populate_docker_proxy "" "nxrm3ha-docker-k8s.standalone.localdomain"
 function f_populate_docker_proxy() {
     local _img_name="${1:-"alpine:3.7"}"
     local _host_port="${2:-"${r_DOCKER_PROXY:-"${r_DOCKER_GROUP:-"${r_NEXUS_URL:-"${_NEXUS_URL}"}"}"}"}"
@@ -360,7 +361,7 @@ function f_populate_docker_proxy() {
 #ssh -2CNnqTxfg -L18182:localhost:18182 node3250    #ps aux | grep 2CNnqTxfg
 #f_populate_docker_hosted "" "localhost:18182"
 function f_populate_docker_hosted() {
-    local _base_img="${1:-"alpine:3.7"}"    # dh1.standalone.localdomain:5000/alpine:3.7
+    local _base_img="${1:-"alpine:latest"}"    # dh1.standalone.localdomain:5000/alpine:3.7
     local _host_port="${2:-"${r_DOCKER_PROXY:-"${r_DOCKER_GROUP:-"${r_NEXUS_URL:-"${_NEXUS_URL}"}"}"}"}"
     local _backup_ports="${3-"18182 18181"}"
     local _cmd="${4-"${r_DOCKER_CMD}"}"
@@ -1996,7 +1997,7 @@ function f_export_postgresql_component() {
 }
 
 # How to verify
-#VACUUM FULL VERBOSE;
+#VACUUM(FULL, ANALYZE, VERBOSE);
 #SELECT relname, reltuples as row_count_estimate FROM pg_class WHERE relnamespace ='public'::regnamespace::oid AND relkind = 'r' AND relname NOT LIKE '%_browse_%' AND (relname like '%repository%' OR relname like '%component%' OR relname like '%asset%') ORDER BY 2 DESC LIMIT 40;
 function f_restore_postgresql_component() {
     local _workingDirectory="${1}"
