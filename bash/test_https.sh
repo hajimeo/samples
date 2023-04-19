@@ -331,16 +331,20 @@ function check_keytool_v_output() {
     "
 }
 
+#keytool -printcert -sslserver ${_host}:${_port}
 function get_cert_from_https() {
     local _host="$1"
     local _port="${2:-443}"
-    local _dest_filepath="$3"
-    local _proxy="$4"
-    local _truststore="$5"
-    [ -z "${_dest_filepath}" ] && _dest_filepath=./${_host}_${_port}.pem
+    local _import_truststore="$3"  # If provided, import the cert into this store
+    local _export_pem_path="$4"
+    local _proxy="${5:-"_PROXY_HOST_PORT"}"
+    # To DEBUG, -J-Djavax.net.debug=ssl,keymanager or -Djavax.net.debug=ssl:handshake:verbose, and without system proxy: -J-Djava.net.useSystemProxies=true
+
+    [ -z "${_export_pem_path}" ] && _export_pem_path=./${_host}_${_port}.pem
     local _keytool="$(which keytool 2>/dev/null)"
     [ -x "${JAVA_HOME%/}/bin/keytool" ] && _keytool="${JAVA_HOME%/}/bin/keytool"
 
+    local _proxy_opt=""
     if [ -n "${_proxy}" ]; then
         if [ -n "${_keytool}" ]; then
             local _proxy_host="${_proxy}"
@@ -349,30 +353,29 @@ function get_cert_from_https() {
                 _proxy_host="${BASH_REMATCH[1]}"
                 _proxy_port="${BASH_REMATCH[2]}"
             fi
-            # To DEBUG, -J-Djavax.net.debug=ssl,keymanager or -Djavax.net.debug=ssl:handshake:verbose, and without system proxy: -J-Djava.net.useSystemProxies=true
             # To pass proxyuser and proxypwd, -J-Dhttps.proxyHost=proxyuser:proxypwd@${_proxy_host}
-            keytool -J-Dhttps.proxyHost=${_proxy_host} -J-Dhttps.proxyPort=${_proxy_port} -printcert -sslserver ${_host}:${_port} # -rfc
+            _proxy_opt="-J-Dhttps.proxyHost=${_proxy_host} -J-Dhttps.proxyPort=${_proxy_port}"
         else
-            # very old openssl version may fail with -proxy (Mac and modern Linux works) TODO: username and password
-            echo -n | openssl s_client -showcerts -proxy ${_proxy} -connect ${_host}:${_port}
-        fi || echo "curl -sfv -p -x ${_proxy} --proxy-basic -U proxyuser:proxypwd -k -L https://${_host}:${_port}/ 2>&1 | grep 'Server certificate:' -A10"
-        # Curl example in case above openssl or keytool doesn't work.
-    else
-        # Trying keytool first as some https server doesn't return cert with openssl (CONNECT_CR_SRVR_HELLO:wrong version number)
-        if [ -n "${_keytool}" ]; then
-            # NOTE: It seems exporting cert with keytool may not work in Windows PowerShell
-            keytool -printcert -rfc -sslserver ${_host}:${_port}  # -rfc to get PEM format
-        else
-            # NOTE: openssl is better than keytool as it shows cert and more information
-            echo -n | openssl s_client -showcerts -connect ${_host}:${_port}
+            # NOTE: very old openssl version may fail with -proxy (Mac and modern Linux works) TODO: username and password
+            # curl -sfv -p -x ${_proxy} --proxy-basic -U proxyuser:proxypwd -k -L https://${_host}:${_port}/ 2>&1 | grep 'Server certificate:' -A10"
+            _proxy_opt="-proxy ${_proxy}"
         fi
+    fi
+    # Trying keytool first as some https server doesn't return cert with openssl (CONNECT_CR_SRVR_HELLO:wrong version number)
+    if [ -n "${_keytool}" ]; then
+        # NOTE: It seems exporting cert with keytool may not work in Windows PowerShell
+        keytool ${_proxy_opt} -printcert -rfc -sslserver ${_host}:${_port}  # -rfc to get PEM format
+    else
+        # NOTE: openssl is better than keytool as it shows cert and more information
+        echo -n | openssl s_client -showcerts ${_proxy_opt} -connect ${_host}:${_port}
     fi > /tmp/${_host}_${_port}.tmp || return $?
     #gcsplit -f cert -s /tmp/${_host}_${_port}.tmp '/BEGIN CERTIFICATE/' '{*}'
-    sed -ne '/-BEGIN CERTIFICATE-/,/-END CERTIFICATE-/p' /tmp/${_host}_${_port}.tmp > ${_dest_filepath} || return $?
-    if [ -n "${_truststore}" ]; then
-        echo "${_keytool} -import -alias \"${_host}_${_port}\" -keystore \"${_truststore}\" -file \"${_dest_filepath}\""
-        ${_keytool} -import -alias "${_host}_${_port}" -keystore "${_truststore}" -file "${_dest_filepath}"
+    if [ -z "${_import_truststore}" ]; then
+        cat /tmp/${_host}_${_port}.tmp
     fi
+    sed -ne '/-BEGIN CERTIFICATE-/,/-END CERTIFICATE-/p' /tmp/${_host}_${_port}.tmp | tee ${_export_pem_path} || return $?
+    echo "${_keytool} -import -alias \"${_host}_${_port}\" -keystore \"${_import_truststore}\" -file \"${_export_pem_path}\""
+    ${_keytool} -import -alias "${_host}_${_port}" -keystore "${_import_truststore}" -file "${_export_pem_path}"
 }
 
 # for X509Certificate. basically 'base64 -d' or 'base64 -D' (Mac)
