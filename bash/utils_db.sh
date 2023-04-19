@@ -107,12 +107,13 @@ function _postgresql_configure() {
         # @see: https://github.com/darold/pgbadger#POSTGRESQL-CONFIGURATION (brew install pgbadger)
         # To log the SQL statements. @see: https://www.eversql.com/enable-slow-query-log-postgresql/ for AWS RDS
         _upsert ${_postgresql_conf} "log_line_prefix" "'%t [%p]: db=%d,user=%u,app=%a,client=%h '" "#log_line_prefix"
-        # TODO: 'ALTER DATABASE system' might stay after restarting?
+        # NOTE: Below stays after restarting and requires superuser
         # ALTER system RESET ALL;
         # ALTER system SET log_min_duration_statement = 0;SELECT pg_reload_conf(); -- DATABASE :DBNAME
         _upsert ${_postgresql_conf} "log_min_duration_statement" "0" "#log_min_duration_statement"
         _upsert ${_postgresql_conf} "log_checkpoints" "on" "#log_checkpoints"
         _upsert ${_postgresql_conf} "log_autovacuum_min_duration" "0" "#log_autovacuum_min_duration"
+        # Also, make sure 'autovacuum' is 'on', autovacuum_analyze_scale_factor (0.1), autovacuum_analyze_threshold (50)
     else
         _upsert ${_postgresql_conf} "log_line_prefix" "'%m [%p-%l]: db=%d,user=%u,app=%a,client=%h '" "#log_line_prefix"
         # ALTER system RESET ALL;
