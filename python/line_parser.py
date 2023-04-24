@@ -25,8 +25,9 @@
 #   rg '^(\d\d\d\d-\d\d-\d\d \d\d:\d\d:\d\d.\d\d\d)[^ ]+ [^ ]+ +\[([^\]]+)\].+ org.apache.ibatis.transaction.jdbc.JdbcTransaction - (Opening JDBC Connection|Closing JDBC Connection.+)' -o -r '$1 $2 $3 $4' ./log/nexus.log | line_parser.py time_diff "Opening JDBC" 3 > time_diff_jdbc_open_close.csv
 #   rg '^(\d\d\d\d-\d\d-\d\d \d\d:\d\d:\d\d.\d\d\d)[^ ]+ [^ ]+ +\[([^\]]+)\].+ com\.sonatype\.nexus\.repository\.[^.]+\.datastore\.store\.([\S]+) - (<==|==>)\s*(Total:\s*\d+|Preparing:)' -o -r '${1} ${2} ${5}${3}' ./log/nexus.log | line_parser.py time_diff "Preparing:" 3 > time_diff_datastore_queries.csv # 'Total:' for finding gap for next query
 #   rg '^(\d\d\d\d-\d\d-\d\d \d\d:\d\d:\d\d.\d\d\d)[^ ]+ [^ ]+ +\[([^\]]+)\].+ org.sonatype.nexus.repository.yum.orient.internal.createrepo.OrientCreateRepoFacetImpl - (Rebuilding yum metadata for .+|Finished rebuilding yum metadata for repository .+)' -o -r '$1 $2 $3' --no-filename | line_parser.py time_diff "Rebuilding yum metadata for" 3 > time_diff_yumRebuild.csv
+#   rg '^(\d\d\d\d-\d\d-\d\d \d\d:\d\d:\d\d.\d\d\d)[^ ]+ DEBUG +\[([^\]]+)\].+ org.sonatype.nexus.repository.content.store.internal.AssetBlobCleanupTask - (Found \d+ unused maven2 blobs in nexus)' -o -r '$1 $2 $3' ./log/nexus.log | line_parser.py time_diff "Found \d+ unused" 3 > time_diff_AssetBlobCleanupTask.csv
 #
-#   echo -e "start_datetime,end_datetime,diff,message,thread\n$(cat time_diff.csv)" > time_diff.csv
+#   echo -e "start_datetime,end_datetime,diff,message,thread\n$(cat !$)" > !$
 #
 
 import sys, re, dateutil.parser
@@ -62,8 +63,8 @@ def lp_time_diff(line):
     """
     Read log files and print the time difference between *previous* line in Milliseconds
     Expected line format: ^YYYY-MM-DD hh:mm:ss,sss some_text (space between date and time)
-    NOTE: This method reads sys.argv[2] for starting_message = specifying starting message string
-    NOTE: This method reads sys.argv[3] for split_num = max split number = count of space character (default is 2 because one extra space between date and time)
+    NOTE: This method reads sys.argv[2] for 'starting_message' = specifying starting message string
+    NOTE: This method reads sys.argv[3] for 'split_num' = max split number = count of space character (default is 2 because one extra space between date and time)
     :param line: String - current reading line
     :return: void
     """
