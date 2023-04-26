@@ -9,12 +9,15 @@ curl -O -L "https://github.com/hajimeo/samples/raw/master/misc/h2-console.jar"
 ## Usage Examples:
 ### Start interactive console
 ```
-java -Xmx16g -jar ./h2-console.jar "/sonatype-work/data/ods.h2.db"
+java -Xmx16g -jar ./h2-console.jar <DB file path> [<H2 options>]
+
+# Default H2 options:
+    MV_STORE=FALSE;DATABASE_TO_UPPER=FALSE;LOCK_MODE=0;DEFAULT_LOCK_TIMEOUT=600000
 ```
 ### Execute SQL statement(s)
 ```
 # Batch processing
-echo "SQL SELECT statement" | java -jar h2-console.jar <DB file path> [<H2 options>]
+echo "SQL SELECT statement" | java -jar ./h2-console.jar <DB file path> [<H2 options>]
 
 # Pagenation for extreamly large result set
 echo "<*SIMPLE* SELECT statement which returns so many rows>" | java -Dpaging=10000 -jar h2-console.jar <DB file path> [<H2 options>]
@@ -25,6 +28,20 @@ Instead of `-jar`, use `-cp`
 java -Xmx4g -cp ./h2-console.jar org.h2.tools.Recover -dir ./ -db ods
 ```
 NOTE: Recover does not use large heap, but RunScript may need (depending on the size of ods.h2.sql)
+### Example steps to find a corrupted rows:
+Example error:
+```
+java.lang.IllegalStateException: Error trying to export database: IO Exception: "java.io.IOException: org.h2.jdbc.JdbcSQLException: IO Exception: ""Missing lob entry: 18389"" [90028-196]"; "lob: null table: 118 id: 18389"; SQL statement: 
+```
+```
+# Check if really missing:
+SELECT * FROM INFORMATION_SCHEMA.LOBS WHERE TABLE = 118 AND ID = 18389;
+# get the table_name to check:
+SELECT TABLE_SCHEMA, TABLE_NAME, ROW_COUNT_ESTIMATE, SQL from INFORMATION_SCHEMA.TABLES where ID = 118;
+
+# seems negative table name means orphaned:
+echo "select <PK>, <TEXT_column> from <table_name>" | java -jar ~/IdeaProjects/samples/misc/h2-console.jar ./db/ods.h2.db | grep '/* table: -' > missing_lobs.out
+```
 
 ## TODOs:
 - Add unit tests
