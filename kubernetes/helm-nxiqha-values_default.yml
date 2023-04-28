@@ -1,5 +1,3 @@
-# helm template -n sonatype-ha nxiqha -f ~/IdeaProjects/samples/kubernetes/helm-nxiqha-values.yml . >~/IdeaProjects/samples/kubernetes/helm-nxiqha-deployed.yaml
-
 # Default values for nexus-iq-server-ha.
 # This is a YAML-formatted file.
 # Declare variables to be passed into your templates.
@@ -17,18 +15,18 @@ iq_server:
   # The commented values below are the minimum recommended resources for production.
   resources:
     requests:
-      cpu: 1
-      memory: 2G
+      cpu: #8
+      memory: #8Gi
     limits:
-      cpu: 1
-      memory: 2G
+      cpu: #8
+      memory: #8Gi
 
   # Value for the JAVA_OPTS environment variable to pass custom settings to the JVM
   javaOpts:
 
   # Product license
   # One of these can be set to automatically install a product license
-  license: /var/tmp/share/sonatype/sonatype-license.lic
+  license: # Path to your product license file
   # The name of an existing Kubernetes secret containing a license_lic key with a value of the base64 encoding of your
   # product license file content
   licenseSecret:
@@ -47,12 +45,12 @@ iq_server:
 
   # Database (PostgreSQL 10.7 or newer or a PostgreSQL-compatible service)
   database:
-    hostname: "192.168.1.31"
+    hostname:
     port: 5432
-    name: "iqha"
-    username: "iqha"
+    name:
+    username: "postgres"
     # One of these can be set to hold the database password
-    password: "iqha"
+    password: # Plaintext password
     # The name of an existing Kubernetes secret containing a password key with a value of the base64 encoding of your
     # password
     passwordSecret:
@@ -74,20 +72,20 @@ iq_server:
     # Storage capacity for PV/PVC to provision/request
     size: "1Gi"
     # Storage class for PV/PVC (empty disables dynamic provisioning)
-    storageClassName: "nfs-client"
+    storageClassName: ""
     # Access mode for PV/PVC (should correspond to the volume type)
     accessModes:
       - ReadWriteMany
     # Volume type
     # Whichever one has all required parameters set will be used
     # If this applies to multiple, then one will be selected in the preference order of csi then nfs
-    #csi:
-    #  driver:
-    #  fsType:
-    #  volumeHandle:
+    csi:
+      driver:
+      fsType:
+      volumeHandle:
     nfs:
-      server: "192.168.1.31"
-      path: "/var/tmp/share/sonatype/nxiqha"
+      server:
+      path: "/"
 
   # The service account to use to run the pods/job
   serviceAccountName: "default"
@@ -100,14 +98,14 @@ iq_server:
   adminServiceAnnotations:
 
   # Number of pods to run
-  replicas: 1
-  
+  replicas: 2
+
   # One of these can be set to hold the initial admin password
   initialAdminPassword: "admin123" # Plaintext password
   # The name of an existing Kubernetes secret containing a password key with a value of the base64 encoding of your
   # password
   initialAdminPasswordSecret:
-  
+
   # Configures the readiness probe for each pod
   readinessProbe:
     initialDelaySeconds: 45
@@ -218,10 +216,10 @@ ingress:
   # Optional parameters to set the certificate/key pair either by a secretName or directly for tls
   # If not set, then nginx will use a default self-signed certificate
   tls:
-    #- secretName:
-    #  certificate:
-    #  key:
-    #  hosts:
+  #- secretName:
+  #  certificate:
+  #  key:
+  #  hosts:
 # Ingress controller for Kubernetes using nginx as a reverse-proxy and load balancer
 ingress-nginx:
   enabled: false
