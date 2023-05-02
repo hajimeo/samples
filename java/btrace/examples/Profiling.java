@@ -26,12 +26,12 @@ class Profiling {
     Profiler p = BTraceUtils.Profiling.newProfiler();
 
     // Can't use variable in 'clazz' because of static variables are not allowed (using BTrace short syntax)
-    @OnMethod(clazz = "/com\\.sonatype\\.insight\\.brain\\.api\\.v2\\.service\\.legal\\.ApiLicenseLegalService/", method = "/.*/")
+    @OnMethod(clazz="/javax\\.swing\\..*/", method="/.*/")
     void entry(@ProbeMethodName(fqn = true) String probeMethod) {
         BTraceUtils.Profiling.recordEntry(p, probeMethod);
     }
 
-    @OnMethod(clazz = "/com\\.sonatype\\.insight\\.brain\\.api\\.v2\\.service\\.legal\\.ApiLicenseLegalService/", method = "/.*/", location = @Location(value = Kind.RETURN))
+    @OnMethod(clazz="/javax\\.swing\\..*/", method="/.*/", location=@Location(value=Kind.RETURN))
     void exit(@ProbeMethodName(fqn = true) String probeMethod, @Duration long duration) {
         BTraceUtils.Profiling.recordExit(p, probeMethod, duration);
     }
