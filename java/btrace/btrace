@@ -1,11 +1,14 @@
 #!/usr/bin/env bash
 #
-# JAVA_HOME=... brace <PID> <btrace script>
+# export JAVA_HOME="`/usr/libexec/java_home -v 1.8`"
+# BTRACE_HOME="." brace <PID> <btrace script> | tee btrace.out
 #
 # To download the latest script:
 #   curl -OL https://github.com/hajimeo/samples/raw/master/java/btrace/btrace
 #
-#   curl -O -L https://github.com/btraceio/btrace/releases/download/v2.2.2/btrace-v2.2.2-bin.tar.gz
+# To download jars (after extracting, copy ./libs/*.jar)
+#   curl -O -L "https://github.com/btraceio/btrace/releases/download/v2.2.3/btrace-v2.2.3-bin.tar.gz"
+#   tar xf ./btrace-v2.2.3-bin.tar.gz
 #
 
 if [ -z "$BTRACE_HOME" -o ! -d "$BTRACE_HOME" ]; then
@@ -21,7 +24,10 @@ if [ -z "$BTRACE_HOME" -o ! -d "$BTRACE_HOME" ]; then
   BTRACE_HOME=$(cd "$BTRACE_HOME" && pwd)
 fi
 
-
+if [ -z "${BTRACE_HOME%/}" ]; then
+  echo "Please set|export BTRACE_HOME before running this script"
+  exit 1
+fi
 [ -d "${BTRACE_HOME%/}/libs" ] || mkdir -v -p "${BTRACE_HOME%/}/libs"
 [ -f "${BTRACE_HOME%/}/libs/btrace-client.jar" ] || curl -sfo ${BTRACE_HOME%/}/libs/btrace-client.jar -L https://raw.githubusercontent.com/hajimeo/samples/master/java/btrace/btrace-client.jar
 [ -f "${BTRACE_HOME%/}/libs/btrace-agent.jar" ] || curl -sfo ${BTRACE_HOME%/}/libs/btrace-agent.jar -L https://raw.githubusercontent.com/hajimeo/samples/master/java/btrace/btrace-agent.jar
