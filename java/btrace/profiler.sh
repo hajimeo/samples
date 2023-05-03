@@ -73,9 +73,9 @@ main() {
     if [ ! -d "${BTRACE_HOME%/}/libs" ]; then
         mkdir -v -p "${BTRACE_HOME%/}/libs" || return $?
     fi
-    [ -f "${BTRACE_HOME%/}/libs/btrace-client.jar" ] || curl -sfo ${BTRACE_HOME%/}/libs/btrace-client.jar -L https://raw.githubusercontent.com/hajimeo/samples/master/java/btrace/btrace-client.jar
-    [ -f "${BTRACE_HOME%/}/libs/btrace-agent.jar" ] || curl -sfo ${BTRACE_HOME%/}/libs/btrace-agent.jar -L https://raw.githubusercontent.com/hajimeo/samples/master/java/btrace/btrace-agent.jar
-    [ -f "${BTRACE_HOME%/}/libs/btrace-boot.jar" ] || curl -sfo ${BTRACE_HOME%/}/libs/btrace-boot.jar -L https://raw.githubusercontent.com/hajimeo/samples/master/java/btrace/btrace-boot.jar
+    [ -f "${BTRACE_HOME%/}/libs/btrace-client.jar" ] || curl -sfo ${BTRACE_HOME%/}/libs/btrace-client.jar -L https://github.com/hajimeo/samples/raw/master/java/btrace/libs/btrace-client.jar
+    [ -f "${BTRACE_HOME%/}/libs/btrace-agent.jar" ] || curl -sfo ${BTRACE_HOME%/}/libs/btrace-agent.jar -L https://github.com/hajimeo/samples/raw/master/java/btrace/libs/btrace-agent.jar
+    [ -f "${BTRACE_HOME%/}/libs/btrace-boot.jar" ] || curl -sfo ${BTRACE_HOME%/}/libs/btrace-boot.jar -L https://github.com/hajimeo/samples/raw/master/java/btrace/libs/btrace-boot.jar
     if [ ! -s "${BTRACE_HOME}/libs/btrace-client.jar" ]; then
         echo "Please make sure ${BTRACE_HOME}/libs/ is writable."
         return 1
