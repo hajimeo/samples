@@ -1,6 +1,9 @@
 #!/usr/bin/env bash
 usage() {
     cat <<EOF
+!WARNING!
+    DO NOT run this script against production env as this can affect to performance and it may hang the process.
+
 Purpose:
     Monitor specific class and output the metrics (nanoseconds)
 
@@ -53,9 +56,16 @@ EOF
 }
 
 main() {
-    if [ ! -d "${JAVA_HOME%/}" ]; then
-        echo "Please set|export JAVA_HOME before running this script"
+    if [ -z "${PID}" ]; then
+        echo "Please specify PID with -p"
         return 1
+    fi
+    if [ ! -d "${JAVA_HOME%/}" ]; then
+        JAVA_HOME="$(dirname "$(dirname "$(readlink -f "/proc/$PID/exe")")")" 2>/dev/null
+        if [ "${JAVA_HOME%/}" == "." ] || [ ! -d "${JAVA_HOME%/}/bin" ]; then
+            echo "Please set|export JAVA_HOME before running this script"
+            return 1
+        fi
     fi
     if [ -z "$BTRACE_HOME" ]; then
         BTRACE_HOME="$(dirname "$0")"
