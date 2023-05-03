@@ -23,7 +23,8 @@ EOF
 function genScript() {
     local _cls_ptn="${1:-"org\\.apache\\.http\\..*"}"
     local _timing_ptn="${2:-"10000"}"
-    cat <<EOF >/tmp/profiler.java
+    local _tmp_file="${3:-"/tmp/profiler_$$.java"}"
+    cat <<EOF > "${_tmp_file}"
 import org.openjdk.btrace.core.Profiler;
 import org.openjdk.btrace.core.BTraceUtils;
 import org.openjdk.btrace.core.annotations.BTrace;
@@ -53,6 +54,7 @@ class Profiling {
     }
 }
 EOF
+    chmod a+w "${_tmp_file}"
 }
 
 main() {
@@ -112,8 +114,8 @@ main() {
         return 1
     fi
 
-    genScript "$CLASS_PTN" "$INTERVAL" || return $?
-    ${JAVA_HOME}/bin/java ${_java_args} -cp ${BTRACE_HOME}/libs/btrace-client.jar:${_tools_jar}:/usr/share/lib/java/dtrace.jar org.openjdk.btrace.client.Main $PID /tmp/profiler.java
+    genScript "$CLASS_PTN" "$INTERVAL" "/tmp/profiler_$$.java" || return $?
+    ${JAVA_HOME}/bin/java ${_java_args} -cp ${BTRACE_HOME}/libs/btrace-client.jar:${_tools_jar}:/usr/share/lib/java/dtrace.jar org.openjdk.btrace.client.Main $PID /tmp/profiler_$$.java
 }
 
 if [ "$0" = "${BASH_SOURCE[0]}" ]; then
