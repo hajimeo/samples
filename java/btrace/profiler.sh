@@ -1,15 +1,15 @@
 #!/usr/bin/env bash
 usage() {
-    cat <<'EOF'
+    cat <<EOF
 Purpose:
     Monitor specific class and output the metrics (nanoseconds)
 
-Usage:
-    export JAVA_HOME="`/usr/libexec/java_home -v 1.8`"
-    ./profiler.sh -p "$PID" -c "$CLASS_PTN" -i "$INTERVAL" | tee profiler.out
+Usage example:
+    export JAVA_HOME="\$(/usr/libexec/java_home -v 1.8)"
+    $0 -p "PID" -c "CLASS_PTN" -i "INTERVAL" | tee profiler.out
 
     -p  PID of the profiling process
-    -c  Monitoring Class pattern (default: 'com\.sonatype\.nexus')
+    -c  Monitoring Class pattern (default: '/org\.apache\.http\..*/')
     -i  Interval of the result output in Milliseconds (default: 10000)
 
 Download the latest script:
@@ -18,22 +18,29 @@ EOF
 }
 
 function genScript() {
-    local _cls_ptn="${1:-"com\.sonatype\.nexus"}"
+    local _cls_ptn="${1:-"/org\\.apache\\.http\\..*/"}"
     local _timing_ptn="${2:-"10000"}"
     cat <<EOF >/tmp/profiler.java
 import org.openjdk.btrace.core.Profiler;
 import org.openjdk.btrace.core.BTraceUtils;
-import org.openjdk.btrace.core.annotations.*;
+import org.openjdk.btrace.core.annotations.BTrace;
+import org.openjdk.btrace.core.annotations.Duration;
+import org.openjdk.btrace.core.annotations.Kind;
+import org.openjdk.btrace.core.annotations.Location;
+import org.openjdk.btrace.core.annotations.OnMethod;
+import org.openjdk.btrace.core.annotations.OnTimer;
+import org.openjdk.btrace.core.annotations.ProbeMethodName;
+import org.openjdk.btrace.core.annotations.Property;
 import static org.openjdk.btrace.core.BTraceUtils.*;
 @BTrace
 class Profiling {
     @Property
     Profiler p = BTraceUtils.Profiling.newProfiler();
-    @OnMethod(clazz="${_cls_ptn}", method="/.*/")
+    @OnMethod(clazz="$(echo "${_cls_ptn}" | sed 's/\\/\\\\/g')", method="/.*/")
     void entry(@ProbeMethodName(fqn = true) String probeMethod) {
         BTraceUtils.Profiling.recordEntry(p, probeMethod);
     }
-    @OnMethod(clazz="${_cls_ptn}", method="/.*/", location=@Location(value=Kind.RETURN))
+    @OnMethod(clazz="$(echo "${_cls_ptn}" | sed 's/\\/\\\\/g')", method="/.*/", location=@Location(value=Kind.RETURN))
     void exit(@ProbeMethodName(fqn = true) String probeMethod, @Duration long duration) {
         BTraceUtils.Profiling.recordExit(p, probeMethod, duration);
     }
@@ -46,7 +53,7 @@ EOF
 }
 
 main() {
-    if [ -d "${JAVA_HOME%/}" ]; then
+    if [ ! -d "${JAVA_HOME%/}" ]; then
         echo "Please set|export JAVA_HOME before running this script"
         return 1
     fi
@@ -100,7 +107,7 @@ main() {
 }
 
 if [ "$0" = "${BASH_SOURCE[0]}" ]; then
-    if [ "$1" == "-h" ] || [ "$1" == "--help" ] || [ "$1" == "help" ]; then
+    if [ "$#" -eq 0 ] || [ "$1" == "-h" ] || [ "$1" == "--help" ] || [ "$1" == "help" ]; then
         usage
         exit 0
     fi
@@ -122,5 +129,5 @@ if [ "$0" = "${BASH_SOURCE[0]}" ]; then
         esac
     done
 
-    main "$@"
+    main #"$@"
 fi
