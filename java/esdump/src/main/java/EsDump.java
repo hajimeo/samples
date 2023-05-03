@@ -3,6 +3,9 @@
  * https://lucene.apache.org/core/5_5_2/demo/src-html/org/apache/lucene/demo/SearchFiles.html
  * https://ishanupamanyu.com/blog/get-all-documents-in-lucene/
  *
+ * long totalHits = topDocs.totalHits; // 5.5.2
+ * mvn clean package && cp -v -f ./target/esdump-1.0-SNAPSHOT-jar-with-dependencies.jar ../../misc/esdump.jar
+ * long totalHits = topDocs.totalHits.value; // 8.11.2
  * mvn clean package && cp -v -f ./target/esdump-1.0-SNAPSHOT-jar-with-dependencies.jar ../../misc/esdump8.jar
  *
  * curl -O -L https://github.com/hajimeo/samples/raw/master/misc/esdump.jar
@@ -24,6 +27,7 @@ import org.apache.lucene.store.FSDirectory;
 
 import java.io.File;
 import java.io.IOException;
+import java.nio.file.Files;
 
 
 public class EsDump {
@@ -37,6 +41,8 @@ public class EsDump {
     public static void main(String[] args) throws IOException, ParseException {
         if (args.length == 0) {
             System.err.println("EsDump './sonatype-work/nexus3/elasticsearch/nexus/nodes/0/indices' 'raw-hosted' '.+name_aka_path.+'");
+            System.err.println("# to just convert repository name to index hash:");
+            System.err.println("EsDump '' 'raw-hosted'");
             return;
         }
 
@@ -67,6 +73,9 @@ public class EsDump {
         }
 
         Directory index = openIndex(luceneIndiesPath, repoNameOrIndexHash);
+        if (index == null) {
+            return;
+        }
         IndexReader reader = DirectoryReader.open(index);
         try {
             StandardAnalyzer analyzer = new StandardAnalyzer();
@@ -89,7 +98,13 @@ public class EsDump {
     public static Directory openIndex(String luceneIndiesPath, String repoName) throws IOException {
         File probablyDir = new File(luceneIndiesPath, repoName);
         if (!probablyDir.isDirectory()) {
-            probablyDir = new File(luceneIndiesPath, repoName2IndexHash(repoName) + File.separator + "0/index");
+            String indexHash = repoName2IndexHash(repoName);
+            System.err.printf("%s = %s%n", repoName, indexHash);
+            probablyDir = new File(luceneIndiesPath, indexHash + File.separator + "0/index");
+        }
+        if (!probablyDir.isDirectory() || Files.isWritable(probablyDir.toPath())) {
+            //System.err.printf("%s does not exist or not writable.%n", probablyDir);
+            return null;
         }
         return FSDirectory.open(probablyDir.toPath());
     }
@@ -101,8 +116,8 @@ public class EsDump {
     public static long searchAndPrintResults(IndexSearcher indexSearcher, Query query) throws IOException {
         long i = 0L;
         TopDocs topDocs = indexSearcher.search(query, RETRIEVE_NUM);
-        //long totalHits = topDocs.totalHits; // 5.5.2
-        long totalHits = topDocs.totalHits.value; // 8.11.2
+        long totalHits = topDocs.totalHits; // 5.5.2
+        //long totalHits = topDocs.totalHits.value; // 8.11.2
         System.err.printf("Found %d hits.%n", totalHits);
         while (topDocs.scoreDocs.length != 0) {
             ScoreDoc[] results = topDocs.scoreDocs;
