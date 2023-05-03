@@ -67,6 +67,10 @@ func main() {
 	scanner := bufio.NewScanner(inputFile)
 	for scanner.Scan() {
 		line := scanner.Text()
+		// Ignore comment lines
+		if strings.HasPrefix(line, "#") {
+			continue
+		}
 		if positions == nil {
 			positions = nonSpacePos(line)
 		}
