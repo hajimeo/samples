@@ -12,7 +12,7 @@ Usage example:
     $0 -p "PID" -c "CLASS_PTN" -i "INTERVAL" | tee profiler.out
 
     -p  PID of the profiling process
-    -c  Monitoring Class pattern (default: '/org\.apache\.http\..*/')
+    -c  Monitoring Class pattern (default: 'org\.apache\.http\..*')
     -i  Interval of the result output in Milliseconds (default: 10000)
 
 Download the latest script:
@@ -21,7 +21,7 @@ EOF
 }
 
 function genScript() {
-    local _cls_ptn="${1:-"/org\\.apache\\.http\\..*/"}"
+    local _cls_ptn="${1:-"org\\.apache\\.http\\..*"}"
     local _timing_ptn="${2:-"10000"}"
     cat <<EOF >/tmp/profiler.java
 import org.openjdk.btrace.core.Profiler;
@@ -39,11 +39,11 @@ import static org.openjdk.btrace.core.BTraceUtils.*;
 class Profiling {
     @Property
     Profiler p = BTraceUtils.Profiling.newProfiler();
-    @OnMethod(clazz="$(echo "${_cls_ptn}" | sed 's/\\/\\\\/g')", method="/.*/")
+    @OnMethod(clazz="/$(echo "${_cls_ptn}" | sed 's/\\/\\\\/g')/", method="/.*/")
     void entry(@ProbeMethodName(fqn = true) String probeMethod) {
         BTraceUtils.Profiling.recordEntry(p, probeMethod);
     }
-    @OnMethod(clazz="$(echo "${_cls_ptn}" | sed 's/\\/\\\\/g')", method="/.*/", location=@Location(value=Kind.RETURN))
+    @OnMethod(clazz="/$(echo "${_cls_ptn}" | sed 's/\\/\\\\/g')/", method="/.*/", location=@Location(value=Kind.RETURN))
     void exit(@ProbeMethodName(fqn = true) String probeMethod, @Duration long duration) {
         BTraceUtils.Profiling.recordExit(p, probeMethod, duration);
     }
