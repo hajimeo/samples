@@ -114,8 +114,8 @@ main() {
         return 1
     fi
 
-    genScript "$CLASS_PTN" "$INTERVAL" "/tmp/profiler_$$.java" || return $?
-    ${JAVA_HOME}/bin/java ${_java_args} -cp ${BTRACE_HOME}/libs/btrace-client.jar:${_tools_jar}:/usr/share/lib/java/dtrace.jar org.openjdk.btrace.client.Main $PID /tmp/profiler_$$.java
+    genScript "$CLASS_PTN" "$INTERVAL" "/tmp/profiler.java" || return $?
+    ${JAVA_HOME}/bin/java ${_java_args} -cp ${BTRACE_HOME}/libs/btrace-client.jar:${_tools_jar}:/usr/share/lib/java/dtrace.jar org.openjdk.btrace.client.Main $PID /tmp/profiler.java
 }
 
 if [ "$0" = "${BASH_SOURCE[0]}" ]; then
