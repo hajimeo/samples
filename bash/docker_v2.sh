@@ -17,19 +17,19 @@
 #
 
 # Use 'export' to overwrite
-: ${_USER:="admin"}
-: ${_PWD:="admin123"}
+: ${_USER:=""}      # admin
+: ${_PWD:=""}       # admin123
 : ${_IMAGE:="ratelimitpreview/test"}
 : ${_TAG="latest"}
-: ${_DOCKER_REGISTRY_URL:="http://dh1.standalone.localdomain:8081/repository/docker-proxy/"}
-: ${_TOKEN_SERVER_URL:="${_DOCKER_REGISTRY_URL%/}/v2/token"}
-#: ${_DOCKER_REGISTRY_URL:="https://registry-1.docker.io"}
-#: ${_TOKEN_SERVER_URL:="https://auth.docker.io/token?service=registry.docker.io"}
+: ${_PATH="/v2/library/python/blobs/sha256:18264500740dfbb825d075853637a67404c1da0089bf54f2a5a4d37220da7be2"}
+#: ${_DOCKER_REGISTRY_URL:="http://localhost:8081/repository/docker-proxy/"}
+#: ${_TOKEN_SERVER_URL:="${_DOCKER_REGISTRY_URL%/}/v2/token"}
+: ${_DOCKER_REGISTRY_URL:="https://registry-1.docker.io"}
+: ${_TOKEN_SERVER_URL:="https://auth.docker.io/token?service=registry.docker.io"}
 
-: ${_TMP:="/tmp"}
-
-#_curl="curl -v -f -D /dev/stderr --compressed -k"
-_curl="curl -s -f -D /dev/stderr --compressed -k"
+#_CURL="curl -s -f -v --compressed -L -k"
+_CURL="curl -s -f -D /dev/stderr -L -k"
+_TMP="/tmp"
 
 function get_token() {
     local _token_server_url="${1:-"${_TOKEN_SERVER_URL}"}"
@@ -38,16 +38,16 @@ function get_token() {
     local _image="${4:-"${_IMAGE}"}"
 
     if [ -n "${_user}" ] && [ -z "${_pwd}" ]; then
-        ${_curl} -u "${_user}" "${_token_server_url}" --get --data-urlencode "scope=repository:${_image}:pull"
+        ${_CURL} -u "${_user}" "${_token_server_url}" --get --data-urlencode "scope=repository:${_image}:pull"
     elif [ -n "${_user}" ] && [ -n "${_pwd}" ]; then
-        ${_curl} -u "${_user}:${_pwd}" "${_token_server_url}" --get --data-urlencode "scope=repository:${_image}:pull"
+        ${_CURL} -u "${_user}:${_pwd}" "${_token_server_url}" --get --data-urlencode "scope=repository:${_image}:pull"
     else
-        ${_curl} "${_token_server_url}" --get --data-urlencode "scope=repository:${_image}:pull"
+        ${_CURL} "${_token_server_url}" --get --data-urlencode "scope=repository:${_image}:pull"
     fi | sed -E 's/.+"token":"([^"]+)".+/\1/'
 }
 
-# If 'jq': jq -R 'split(".") | .[1] | @base64d | fromjson' <<< "$1"
 function decode_jwt() {
+    # If 'jq': jq -R 'split(".") | .[1] | @base64d | fromjson' <<< "$1"
     local _jwt="$1"
     local _payload="$(echo -n "${_jwt}" | cut -d "." -f 2)"
     local _mod=$((${#_payload} % 4))
@@ -60,22 +60,11 @@ function decode_jwt() {
 }
 
 function upload() {
+    return
     # TODO: Implement upload (PUT?) test
     cat <<EOF
-curl -s -u admin:admin123 -H 'Accept: application/vnd.docker.distribution.manifest.v2+json' -H 'Content-Type: application/vnd.docker.distribution.manifest.v2+json' http://localhost:5000/v2/alpine/manifests/sha256:e2e16842c9b54d985bf1ef9242a313f36b856181f188de21313820e177002501 -o e2e16842c9b54d985bf1ef9242a313f36b856181f188de21313820e177002501.json
-
-# NOTE: not -d, --data (how about -T / --upload-file?)
+# TODO: not -d or --data (how about -T / --upload-file?)
 curl -v -u admin:admin123 -H 'Content-Type: application/vnd.docker.distribution.manifest.v2+json' -X PUT http://localhost:5001/v2/alpine/manifests/sha256:e2e16842c9b54d985bf1ef9242a313f36b856181f188de21313820e177002501 --data-binary @e2e16842c9b54d985bf1ef9242a313f36b856181f188de21313820e177002501.json
-
-# Authentication check
-DEBU[0000] GET https://node-nxrm-ha1.standalone.localdomain:18183/v2/
-DEBU[0000] Ping https://node-nxrm-ha1.standalone.localdomain:18183/v2/ status 401
-# Data / layers check
-#       podman inspect node-nxrm-ha1.standalone.localdomain:18183/alpine:3.13
-            "Layers": [
-                "sha256:b2d5eeeaba3a22b9b8aa97261957974a6bd65274ebd43e1d81d0a7b8b752b116"
-            ]
-DEBU[0000] HEAD https://node-nxrm-ha1.standalone.localdomain:18183/v2/alpine/blobs/sha256:b2d5eeeaba3a22b9b8aa97261957974a6bd65274ebd43e1d81d0a7b8b752b116
 
 DEBU[0000] Trying to reuse cached location sha256:d3470daaa19c14ddf4ec500a3bb4f073fa9827aa4f19145222d459016ee9193e compressed with gzip in node-nxrm-ha1.standalone.localdomain:18183/alpine
 DEBU[0000] HEAD https://node-nxrm-ha1.standalone.localdomain:18183/v2/alpine/blobs/sha256:d3470daaa19c14ddf4ec500a3bb4f073fa9827aa4f19145222d459016ee9193e
@@ -101,17 +90,26 @@ if [ "$0" = "$BASH_SOURCE" ]; then
         decode_jwt "${_TOKEN}" | python -m json.tool
 
         # NOTE: curl with -I (HEAD) does not return RateLimit-Limit or RateLimit-Remaining
-        if [ -n "${_IMAGE}" ] && [ -n "${_TAG}" ]; then
+        if [ -z "${_PATH#/}" ] && [ -n "${_IMAGE}" ] && [ -n "${_TAG}" ]; then
             echo "### Requesting '${_DOCKER_REGISTRY_URL%/}/v2/${_IMAGE}/manifests/${_TAG}'" >&2
-            ${_curl} -H "Authorization: Bearer ${_TOKEN}" -H "Accept: application/json" "${_DOCKER_REGISTRY_URL%/}/v2/${_IMAGE}/manifests/${_TAG}" | python -m json.tool
+            ${_CURL} -H "Authorization: Bearer ${_TOKEN}" -H "Accept: application/json" "${_DOCKER_REGISTRY_URL%/}/v2/${_IMAGE}/manifests/${_TAG}" | python -m json.tool
         fi
 
-        if [ -n "${_IMAGE}" ]; then
-            echo "### Testing V1 API with search for '${_IMAGE}'" >&2
-            ${_curl} -H "Authorization: Bearer ${_TOKEN}" -H "Accept: application/json" "${_DOCKER_REGISTRY_URL%/}/v1/search?n=10&q=${_IMAGE}" | python -m json.tool
-            echo "### Requesting Tags for '${_IMAGE}'" >&2
-            #${_curl} -H "Authorization: Bearer ${_TOKEN}" "${_DOCKER_REGISTRY_URL%/}/v1/repositories/${_IMAGE}/tags"
-            ${_curl} -H "Authorization: Bearer ${_TOKEN}" -H "Accept: application/json" "${_DOCKER_REGISTRY_URL%/}/v2/${_IMAGE}/tags/list" | python -m json.tool
+        #if [ -n "${_IMAGE}" ]; then
+        #    echo "### Testing V1 API with search for '${_IMAGE}'" >&2
+        #    ${_CURL} -H "Authorization: Bearer ${_TOKEN}" -H "Accept: application/json" "${_DOCKER_REGISTRY_URL%/}/v1/search?n=10&q=${_IMAGE}" | python -m json.tool
+        #    echo "### Requesting Tags for '${_IMAGE}'" >&2
+        #    #${_CURL} -H "Authorization: Bearer ${_TOKEN}" "${_DOCKER_REGISTRY_URL%/}/v1/repositories/${_IMAGE}/tags"
+        #    ${_CURL} -H "Authorization: Bearer ${_TOKEN}" -H "Accept: application/json" "${_DOCKER_REGISTRY_URL%/}/v2/${_IMAGE}/tags/list" | python -m json.tool
+        #fi
+
+        if [ -n "${_PATH#/}" ]; then
+            echo "### Requesting '${_DOCKER_REGISTRY_URL%/}/${_PATH#/}'" >&2
+            # -H "Accept-Encoding: gzip,deflate"
+            ${_CURL} -H "Authorization: Bearer ${_TOKEN}" -o ./layer_result.out "${_DOCKER_REGISTRY_URL%/}/v2/${_IMAGE}/manifests/${_TAG}"
+            if [ -s ./layer_result.out ]; then
+                sha256sum ./layer_result.out
+            fi
         fi
     fi
 fi
