@@ -69,6 +69,9 @@ Using previously saved response file and review your answers:
 Using previously saved response file and NO interviews:
     sudo ${_filename} -A -r ./my_saved_YYYYMMDDhhmmss.resp
 
+Just get the repositories setting:
+    f_api /service/rest/v1/repositorySettings
+
 NOTE:
 For fresh install with same container name:
     docker rm -f <container>
@@ -119,6 +122,7 @@ function f_setup_maven() {
     [ -n "${_ds_name}" ] && _extra_sto_opt=',"dataStoreName":"'${_ds_name}'"'
     # If no xxxx-proxy, create it
     if ! _is_repo_available "${_prefix}-proxy"; then
+        # NOTE: I prefer "maven":{...,"contentDisposition":"ATTACHMENT"...}, but using default for various testings.
         f_apiS '{"action":"coreui_Repository","method":"create","data":[{"attributes":{"maven":{"versionPolicy":"MIXED","layoutPolicy":"PERMISSIVE"},"proxy":{"remoteUrl":"https://repo1.maven.org/maven2/","contentMaxAge":-1,"metadataMaxAge":1440},"httpclient":{"blocked":false,"autoBlock":true,"connection":{"useTrustStore":false}},"storage":{"blobStoreName":"'${_bs_name}'","strictContentTypeValidation":true'${_extra_sto_opt}'},"negativeCache":{"enabled":true,"timeToLive":1440},"cleanup":{"policyName":[]}},"name":"'${_prefix}'-proxy","format":"","type":"","url":"","online":true,"routingRuleId":"","authEnabled":false,"httpRequestSettings":false,"recipe":"maven2-proxy"}],"type":"rpc"}' || return $?
         echo "NOTE: if 'IQ: Audit and Quarantine' is needed for ${_prefix}-proxy:"
         echo "      f_iq_quarantine \"${_prefix}-proxy\""
@@ -429,6 +433,10 @@ function f_setup_yum() {
     # NOTE: due to the known limitation, some version of Nexus requires anonymous for yum repo
     # https://support.sonatype.com/hc/en-us/articles/213464848-Authenticated-Access-to-Nexus-from-Yum-Doesn-t-Work
     f_get_asset "${_prefix}-proxy" "7/os/x86_64/Packages/dos2unix-6.0.3-7.el7.x86_64.rpm" "${_TMP%/}/dos2unix-6.0.3-7.el7.x86_64.rpm"
+    # NOTE: https://issues.sonatype.org/browse/NEXUS-27899
+    if ! _is_repo_available "${_prefix}-epel-proxy"; then
+        f_apiS '{"action":"coreui_Repository","method":"create","data":[{"attributes":{"proxy":{"remoteUrl":"https://dl.fedoraproject.org/pub/epel/","contentMaxAge":1440,"metadataMaxAge":1440},"httpclient":{"blocked":false,"autoBlock":true},"storage":{"blobStoreName":"'${_bs_name}'","strictContentTypeValidation":true'${_extra_sto_opt}'},"negativeCache":{"enabled":true,"timeToLive":1440},"cleanup":{"policyName":[]}},"name":"'${_prefix}'-epel-proxy","format":"","type":"","url":"","online":true,"routingRuleId":"","authEnabled":false,"httpRequestSettings":false,"recipe":"yum-proxy"}],"type":"rpc"}' || return $?
+    fi
 
     # If no xxxx-hosted, create it
     if ! _is_repo_available "${_prefix}-hosted"; then
@@ -484,20 +492,54 @@ function f_setup_rubygem() {
     if ! _is_repo_available "${_prefix}-proxy"; then
         f_apiS '{"action":"coreui_Repository","method":"create","data":[{"attributes":{"proxy":{"remoteUrl":"https://rubygems.org","contentMaxAge":1440,"metadataMaxAge":1440},"httpclient":{"blocked":false,"autoBlock":true,"connection":{"useTrustStore":false}},"storage":{"blobStoreName":"'${_bs_name}'","strictContentTypeValidation":true'${_extra_sto_opt}'},"negativeCache":{"enabled":true,"timeToLive":1440},"cleanup":{"policyName":[]}},"name":"'${_prefix}'-proxy","format":"","type":"","url":"","online":true,"routingRuleId":"","authEnabled":false,"httpRequestSettings":false,"recipe":"rubygems-proxy"}],"type":"rpc"}' || return $?
     fi
-    # TODO: add some data for xxxx-proxy
+    # add some data for xxxx-proxy
+    #local _nexus_url="${r_NEXUS_URL:-"${_NEXUS_URL}"}"
+    #_gen_gemrc "${_nexus_url%/}/repository/${_prefix}-proxy" "/tmp/gemrc" "" "${r_ADMIN_USER:-"${_ADMIN_USER}"}:${r_ADMIN_PWD:-"${_ADMIN_PWD}"}"
+    #gem fetch loudmouth --config-file /tmp/gemrc
+    #gem fetch loudmouth --clear-sources -s http://admin:admin123@localhost:8081/repository/rubygem-proxy/ -V --debug
+    #f_get_asset "${_prefix}-proxy" "latest_specs.4.8.gz" "${_TMP%/}/specs.4.8.gz"
+    f_get_asset "${_prefix}-proxy" "latest_specs.4.8.gz" "${_TMP%/}/latest_specs.4.8.gz"
+    f_get_asset "${_prefix}-proxy" "gems/loudmouth-0.2.4.gem" "${_TMP%/}/loudmouth-0.2.4.gem"
 
     # If no xxxx-hosted, create it
     if ! _is_repo_available "${_prefix}-hosted"; then
         f_apiS '{"action":"coreui_Repository","method":"create","data":[{"attributes":{"storage":{"blobStoreName":"'${_bs_name}'","writePolicy":"ALLOW_ONCE","strictContentTypeValidation":true'${_extra_sto_opt}'},"cleanup":{"policyName":[]}},"name":"'${_prefix}'-hosted","format":"","type":"","url":"","online":true,"recipe":"rubygems-hosted"}],"type":"rpc"}' || return $?
     fi
-    # TODO: add some data for xxxx-hosted
+    # add some data for xxxx-hosted
+    if [ -s "${_TMP%/}/loudmouth-0.2.4.gem" ]; then
+        f_upload_asset "${_prefix}-hosted" -F rubygem.asset=@${_TMP%/}/loudmouth-0.2.4.gem
+    fi
 
     # If no xxxx-group, create it
     if ! _is_repo_available "${_prefix}-group"; then
         f_apiS '{"action":"coreui_Repository","method":"create","data":[{"attributes":{"storage":{"blobStoreName":"'${_bs_name}'","strictContentTypeValidation":true'${_extra_sto_opt}'},"group":{"memberNames":["'${_prefix}'-hosted","'${_prefix}'-proxy"]}},"name":"'${_prefix}'-group","format":"","type":"","url":"","online":true,"recipe":"rubygems-group"}],"type":"rpc"}' > ${_TMP%/}/f_apiS_last.out || return $?
     fi
-    # TODO: add some data for xxxx-group
-    #f_get_asset "${_prefix}-group" "7/os/x86_64/Packages/$(basename ${_upload_file})" || return $?
+    f_get_asset "${_prefix}-group" "gems/CFPropertyList-3.0.3.gem" "${_TMP%/}/CFPropertyList-3.0.3.gem"
+}
+function _gen_gemrc() {
+    local _repo_url="${1}"
+    local _gemrc_path="${2:-"${HOME%/}/.gemrc"}"
+    local _user="${3}"
+    local _credential="${4}"
+
+    local _protocol="http"
+    local _repo_url_without_http="${_repo_url}"
+    if [[ "${_repo_url}" =~ ^(https?)://(.+)$ ]]; then
+        _protocol="${BASH_REMATCH[1]}"
+        _repo_url_without_http="${BASH_REMATCH[2]}"
+    fi
+    if [ -n "${_credential}" ]; then
+        _repo_url="${_protocol}://${_credential}@${_repo_url_without_http%/}"
+    fi
+    cat << EOF > "${_gemrc_path}"
+:verbose: :really
+:disable_default_gem_server: true
+:sources:
+    - ${_repo_url%/}/
+EOF
+    if [ -n "${_user}" ]; then
+        chown -v ${_user}:${_user} "${_gemrc_path}"
+    fi
 }
 
 function f_setup_helm() {
@@ -788,19 +830,21 @@ function _get_blobstore_name() {
         return
     fi
     f_api "/service/rest/v1/blobstores" | sed -r -n 's/.*"name" *: *"([^"]+)".*/\1/gp' >${_TMP%/}/${FUNCNAME}_$$.out
+    local _line_num="$(cat ${_TMP%/}/${FUNCNAME}_$$.out | wc -l | tr -d '[:space:]')"
     if grep -qE "^${_bs_name}$" ${_TMP%/}/${FUNCNAME}_$$.out; then
         _BLOBTORE_NAME="${_bs_name}"
-        echo "${_BLOBTORE_NAME}"
-        return
-    fi
-    # If only one blobstore defined, use it, otherwise return false
-    local _line_num="$(cat ${_TMP%/}/${FUNCNAME}_$$.out | wc -l | tr -d '[:space:]')"
-    if [ "${_line_num}" == "1" ]; then
+    elif [ "${_line_num}" == "0" ]; then
+        _log "INFO" "No blobstore defined. Creating '${_bs_name}' file blobstore ..."; sleep 3
+        f_create_file_blobstore "${_bs_name}" || return $?
+        _BLOBTORE_NAME="${_bs_name}"
+    elif [ "${_line_num}" == "1" ]; then
+        # If only one blobstore defined, use it, otherwise return false
         _BLOBTORE_NAME="$(cat ${_TMP%/}/${FUNCNAME}_$$.out)"
-        echo "${_BLOBTORE_NAME}"
-        return
+    else
+        return 1
     fi
-    return 1
+    echo "${_BLOBTORE_NAME}"
+    return
 }
 
 function _get_datastore_name() {
@@ -824,7 +868,7 @@ function _get_datastore_name() {
 }
 
 function f_create_file_blobstore() {
-    local _bs_name="$1"
+    local _bs_name="${1:-"default"}"
     if ! f_apiS '{"action":"coreui_Blobstore","method":"create","data":[{"type":"File","name":"'${_bs_name}'","isQuotaEnabled":false,"attributes":{"file":{"path":"'${_bs_name}'"}}}],"type":"rpc"}' > ${_TMP%/}/f_apiS_last.out; then
         _log "ERROR" "Blobstore ${_bs_name} does not exist."
         _log "ERROR" "$(cat ${_TMP%/}/f_apiS_last.out)"
@@ -878,6 +922,12 @@ function f_create_azure_blobstore() {
         _log "INFO" "Creating raw-az-hosted ..."
         f_apiS '{"action":"coreui_Repository","method":"create","data":[{"attributes":{"storage":{"blobStoreName":"'${_bs_name}'","writePolicy":"ALLOW","strictContentTypeValidation":true'${_extra_sto_opt}'},"cleanup":{"policyName":[]}},"name":"raw-az-hosted","format":"","type":"","url":"","online":true,"recipe":"raw-hosted"}],"type":"rpc"}' || return $?
     fi
+}
+
+f_create_group_blobstore() {
+    local __doc__="Create a new blob store, then promote to group"
+    echo "TODO: Not implemented yet"
+    return
 }
 
 function f_iq_quarantine() {
@@ -1000,7 +1050,7 @@ function f_upload_asset() {
             cat ${_TMP%/}/_upload_test_header_$$.out >&2
             return ${_rc}
         else
-            _log "WARN" "Post to ${_base_url%/}/service/rest/v1/components?repository=${_repo} might have been failed (${_rc})"
+            _log "WARN" "Post to ${_base_url%/}/service/rest/v1/components?repository=${_repo} might be failed (${_rc})"
             cat ${_TMP%/}/_upload_test_header_$$.out >&2
         fi
     fi
@@ -1230,7 +1280,7 @@ strict-ssl=false
 registry=${_repo_url%/}
 _auth=\"${_cred}\""
 EOF
-        chown -v ${_user}: ${_home%/}/.npmrc
+        chown -v ${_user}:${_user} ${_home%/}/.npmrc
     fi
     _repo_url="${_base_url%/}/repository/bower-proxy"
     if _is_url_reachable "${_repo_url}"; then
@@ -1241,7 +1291,7 @@ EOF
     "resolvers": ["bower-nexus3-resolver"]
 }
 EOF
-        chown -v ${_user}: ${_home%/}/.bowerrc
+        chown -v ${_user}:${_user} ${_home%/}/.bowerrc
     fi
 
     # Using Nexus pypi repository if available
@@ -1258,7 +1308,7 @@ repository: ${_repo_url%/}
 username: ${_usr}
 password: ${_pwd}
 EOF
-        chown -v ${_user}: ${_home%/}/.pypirc
+        chown -v ${_user}:${_user} ${_home%/}/.pypirc
     fi
     # Using Nexus conan proxy repository if available
     _repo_url="${_base_url%/}/repository/conan-proxy"
@@ -1272,27 +1322,15 @@ EOF
 
     _repo_url="${_base_url%/}/repository/rubygem-proxy"
     if _is_url_reachable "${_repo_url}"; then
-        _log "INFO" "Create a sample ${_home%/}/.gemrc ..."
-        local _protocol="http"
-        local _repo_url_without_http="${_repo_url}"
-        if [[ "${_repo_url}" =~ ^(https?)://(.+)$ ]]; then
-            _protocol="${BASH_REMATCH[1]}"
-            _repo_url_without_http="${BASH_REMATCH[2]}"
-        fi
-        cat << EOF > ${_home%/}/.gemrc
-:verbose: :really
-:disable_default_gem_server: true
-:sources:
-    - ${_protocol}://${_usr}:${_pwd}@${_repo_url_without_http%/}/
-EOF
-        chown -v ${_user}: ${_home%/}/.gemrc
+        _log "INFO" "Create/overwrite a sample ${_home%/}/.gemrc ..."
+        _gen_gemrc "${_repo_url}" "${_home%/}/.gemrc" "${_user}" "${_usr}:${_pwd}"
     fi
 
     # Need Xcode on Mac?: https://download.developer.apple.com/Developer_Tools/Xcode_10.3/Xcode_10.3.xip (or https://developer.apple.com/download/more/)
     if [ ! -s "${_home%/}/cocoapods-test.tgz" ]; then
         _log "INFO" "Downloading a Xcode cocoapods test project ..."
         curl -fL -o ${_home%/}/cocoapods-test.tgz https://github.com/hajimeo/samples/raw/master/misc/cocoapods-test.tgz
-        chown -v ${_user}: ${_home%/}/cocoapods-test.tgz
+        chown -v ${_user}:${_user} ${_home%/}/cocoapods-test.tgz
     fi
     # TODO: cocoapods is installed but not configured properly
     #https://raw.githubusercontent.com/hajimeo/samples/master/misc/cocoapods-Podfile
@@ -1324,7 +1362,7 @@ channels:
   - ${_repo_url%/}/main
   - defaults
 EOF
-        chown -v ${_user}: ${_home%/}/.condarc
+        chown -v ${_user}:${_user} ${_home%/}/.condarc
     fi
 
     # .lfsconfig needs to be under a git repo, so can't configure
@@ -1339,7 +1377,7 @@ EOF
     if _is_url_reachable "${_repo_url}"; then
         local _f=${_home%/}/.m2/settings.xml
         _log "INFO" "Create ${_f} ..."
-        [ ! -d "${_home%/}/.m2" ] && mkdir -v ${_home%/}/.m2 && chown -v ${_user}: ${_home%/}/.m2
+        [ ! -d "${_home%/}/.m2" ] && mkdir -v ${_home%/}/.m2 && chown -v ${_user}:${_user} ${_home%/}/.m2
         [ -s ${_f} ] && cat ${_f} > ${_f}.bak
         curl -fL -o ${_f} -L ${_DL_URL%/}/misc/m2_settings.tmpl.xml --compressed && \
             sed -i -e "s@_REPLACE_MAVEN_USERNAME_@${_usr}@1" -e "s@_REPLACE_MAVEN_USER_PWD_@${_pwd}@1" -e "s@_REPLACE_MAVEN_REPO_URL_@${_repo_url%/}/@1" ${_f}
@@ -1869,6 +1907,76 @@ function f_upload_dummies_nuget() {
         #f_upload_asset "${_repo_name}" -F "nuget.asset=@${_TMP%/}/${_pkg_name}.${_base_ver}.$i.nupkg" || return $?
     done
 }
+
+function f_upload_dummies_rubygem() {
+    local __doc__="Upload dummy .gem into rubygem hosted repository. Require 'ruby'"
+    local _repo_name="${1:-"rubygem-hosted"}"
+    local _how_many="${2:-"10"}"
+    local _pkg_name="${3}"    # used with grep -E "\"${_pkg_name}\"" (eg. Checked (20), aws-sdk (1174))
+    local _usr="${4:-"${_ADMIN_USER}"}"
+    local _pwd="${5:-"${_ADMIN_PWD}"}"
+    local _repo_url="${_NEXUS_URL%/}/repository/${_repo_name}/"
+    local _seq_start="${_SEQ_START:-1}"
+    local _seq_end="$((${_seq_start} + ${_how_many} - 1))"
+    local _tmpdir="$(mktemp -d)"
+
+    if [ ! -s /tmp/rubygem_specs.4.8.gz ] || [ ! -s /tmp/rubygem_specs.latest.txt ]; then
+        curl -o /tmp/rubygem_specs.4.8.gz -f -L "https://rubygems.org/specs.4.8.gz" || return $?
+        ruby -rpp -e 'pp Marshal.load(Gem.gunzip(File.read("/tmp/rubygem_specs.4.8.gz")))' > ${_tmpdir%/}/specs.latest.tmp || return $?
+        grep -oE '"[^"][^"][^"]+", ?Gem::Version.new[^,]+' ${_tmpdir%/}/specs.latest.tmp > /tmp/rubygem_specs.latest.txt
+        #cat /tmp/rubygem_specs.latest.txt | cut -d ',' -f1 | sort | uniq -c | grep -vE '^\s*[0-9]\s' | sort | head
+    fi
+
+    if [ -n "${_pkg_name}" ]; then
+        grep -E "\"${_pkg_name}\"" /tmp/rubygem_specs.latest.txt | sed -n "${_seq_start},${_seq_end}p"
+    else
+        sed -n "${_seq_start},${_seq_end}p" /tmp/rubygem_specs.latest.txt
+    fi | while read -r _pkg_ver; do
+        [[ "${_pkg_ver}" =~ .*\"([^\"]+)\",[^\"]*\"([^\"]+)\" ]] || continue
+        local _pkg="${BASH_REMATCH[1]}"
+        local _ver="${BASH_REMATCH[2]}"
+        local _url="https://rubygems.org/gems/${_pkg}-${_ver}.gem"
+        curl -sf -w "Download: %{http_code} ${_pkg}-${_ver}.gem (%{time_total}s)\n" "${_url}" -o ${_tmpdir%/}/${_pkg}-${_ver}.gem || continue
+        f_upload_asset "${_prefix}-hosted" -F rubygem.asset=@${_tmpdir%/}/${_pkg}-${_ver}.gem || return $?
+        #curl -sf -w "Download: %{http_code} specs.4.8.gz (%{time_total}s | %{size_download}b)\n" -o/dev/null "${_repo_url%/}/specs.4.8.gz"
+    done
+}
+
+function f_upload_dummies_helm() {
+    local __doc__="Upload bitnami helm charts into helm hosted repository"
+    local _repo_name="${1:-"helm-hosted"}"
+    local _how_many="${2:-"10"}"
+    local _pkg_name="${3}"      # used with grep -E "\b${_pkg_name}\b"
+    local _usr="${4:-"${_ADMIN_USER}"}"
+    local _pwd="${5:-"${_ADMIN_PWD}"}"
+    local _repo_url="${_NEXUS_URL%/}/repository/${_repo_name}/"
+    local _seq_start="${_SEQ_START:-1}"
+    local _seq_end="$((${_seq_start} + ${_how_many} - 1))"
+    local _tmpdir="$(mktemp -d)"
+    # not using _tmpdir as don't want to download always
+    if [ ! -s /tmp/helm_index.yaml ] || [ ! -s /tmp/helm_urls.out ]; then
+        curl -o /tmp/helm_index.yaml -f -L "https://charts.bitnami.com/bitnami/index.yaml" || return $?
+        grep -oE 'https://charts.bitnami.com/bitnami/.+\.tgz' /tmp/helm_index.yaml > /tmp/helm_urls.out
+    fi
+    if [ ! -s /tmp/helm_urls.out ]; then
+        return 1
+    fi
+
+    if [ -n "${_pkg_name}" ]; then
+        grep -E "\b${_pkg_name}\b" /tmp/helm_urls.out | sed -n "${_seq_start},${_seq_end}p"
+    else
+        sed -n "${_seq_start},${_seq_end}p" /tmp/helm_urls.out
+    fi | while read -r _url; do
+        _name="$(basename "${_url}")"
+        if [ -n "${_pkg_name}" ] && ! echo "${_name}" | grep -qE "\b${_pkg_name}\b"; then
+            continue
+        fi
+        curl -sf -w "Download: %{http_code} ${_name} (%{time_total}s)\n" "${_url}" -o ${_tmpdir%/}/helm-cart_tmp.tgz || continue
+        curl -sf -w "Upload  : %{http_code} ${_name} (%{time_total}s)\n" -T ${_tmpdir%/}/helm-cart_tmp.tgz -u "${_usr}:${_pwd}" "${_repo_url%/}/${_name}" || return $?
+        #curl -sf -w "Download: %{http_code} index.yaml (%{time_total}s | %{size_download}b)\n" -o/dev/null "${_repo_url%/}/index.yaml"
+    done
+}
+
 
 # NOTE: below may not work with group repo:
 # org.sonatype.nexus.repository.IllegalOperationException: Deleting from repository pypi-group of type pypi is not supported
