@@ -1908,6 +1908,7 @@ function f_upload_dummies_nuget() {
     done
 }
 
+#f_upload_dummies_rubygem "" "5" "Checked"
 function f_upload_dummies_rubygem() {
     local __doc__="Upload dummy .gem into rubygem hosted repository. Require 'ruby'"
     local _repo_name="${1:-"rubygem-hosted"}"
@@ -1937,7 +1938,7 @@ function f_upload_dummies_rubygem() {
         local _ver="${BASH_REMATCH[2]}"
         local _url="https://rubygems.org/gems/${_pkg}-${_ver}.gem"
         curl -sf -w "Download: %{http_code} ${_pkg}-${_ver}.gem (%{time_total}s)\n" "${_url}" -o ${_tmpdir%/}/${_pkg}-${_ver}.gem || continue
-        f_upload_asset "${_prefix}-hosted" -F rubygem.asset=@${_tmpdir%/}/${_pkg}-${_ver}.gem || return $?
+        f_upload_asset "${_repo_name}" -F rubygem.asset=@${_tmpdir%/}/${_pkg}-${_ver}.gem || return $?
         #curl -sf -w "Download: %{http_code} specs.4.8.gz (%{time_total}s | %{size_download}b)\n" -o/dev/null "${_repo_url%/}/specs.4.8.gz"
     done
 }
