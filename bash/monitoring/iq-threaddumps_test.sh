@@ -1,29 +1,10 @@
-source "$(dirname ${BASH_SOURCE[0]})/nrm3-threaddumps.sh"
+source "$(dirname ${BASH_SOURCE[0]})/iq-threaddumps.sh"
+
+# TODO: Not implemented yet (just copied from nrm3 one)
 
 function test_usage() {
     if ! usage >/dev/null; then
         _error
-    fi
-}
-
-function test_genDbConnTest() {
-    if [ -z "${_DB_CONN_TEST_FILE}" ]; then
-        return
-    fi
-    if [ -f "${_DB_CONN_TEST_FILE}" ]; then
-        rm -f ${_DB_CONN_TEST_FILE}
-    fi
-    if ! genDbConnTest >/dev/null; then
-        _error
-    fi
-    if [ ! -s "${_DB_CONN_TEST_FILE}" ]; then
-        _error "No ${_DB_CONN_TEST_FILE}"
-    fi
-}
-
-function test_runDbQuery() {
-    if ! runDbQuery 2>/dev/null; then
-        _error "Not implemented yet." "TODO"
     fi
 }
 

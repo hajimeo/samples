@@ -1,23 +1,24 @@
 #!/usr/bin/env bash
+# TODO: review and updat the usage
 usage() {
     cat << EOF
 PURPOSE:
 Gather basic information to troubleshoot Java process related *performance* issues.
-Tested with Nexus official docker image: https://github.com/sonatype/docker-nexus3
+Designed for Nexus official docker image: https://github.com/sonatype/docker-nexus-iq-server
 Currently this script gathers the following information:
  - Java thread dumps with kill -3, with netstat (or equivalent) and top
- - If nexus-store.properties is given, pg_stat_activity
+ - If config.yml is given, does extra test via admin-port (localhost:8071)
 
-EXAMPLES:
-    # Taking thread dumps whenever the log line contains "QuartzTaskInfo"
-    cd /nexus-data;
-    curl --compressed -O https://raw.githubusercontent.com/sonatype-nexus-community/nexus-monitoring/main/scripts/nrm3-threaddumps.sh;
-    bash ./nrm3-threaddumps.sh -s ./etc/fabric/nexus-store.properties -f ./log/nexus.log -r "QuartzTaskInfo";
+EXAMPLE:
+    # Taking thread dumps whenever the log line contains "QuartzJobStoreTX"
+    cd /sonatype-work;
+    curl --compressed -O https://raw.githubusercontent.com/sonatype-nexus-community/nexus-monitoring/main/scripts/iq-threaddumps.sh;
+    bash ./iq-threaddumps.sh -f /var/log/nexus-iq-server/clm-server.log -r "QuartzJobStoreTX";
 
-OPTIONS:
+USAGE:
     -c  How many dumps (default 5)
     -i  Interval seconds (default 2)
-    -s  Path to nexus-store.properties file (default empty = no DB check)
+    -s  Path to config.yml file (default /etc/nexus-iq-server/config.yml)
     -f  File to monitor (-r is required)
     -r  Regex (used in 'grep -E') to monitor -f file
     -p  PID
@@ -32,89 +33,33 @@ _COUNT=5
 _STORE_FILE=""
 _LOG_FILE=""
 _REGEX=""
-_DB_CONN_TEST_FILE="/tmp/DbConnTest.groovy"
 _PID=""
 
-
-function genDbConnTest() {
-    local __doc__="Generate a DB connection script file"
-    local _dbConnFile="${1:-"${_DB_CONN_TEST_FILE}"}"
-    cat << 'EOF' > "${_dbConnFile}"
-import org.postgresql.*
-import groovy.sql.Sql
-import java.time.Duration
-import java.time.Instant
-
-def elapse(Instant start, String word) {
-    Instant end = Instant.now()
-    Duration d = Duration.between(start, end)
-    println("# '${word}' took ${d}")
-}
-
-def p = new Properties()
-if (!args) p = System.getenv()  //username, password, jdbcUrl
-else {
-    def pf = new File(args[0])
-    pf.withInputStream { p.load(it) }
-}
-def query = (args.length > 1 && !args[1].empty) ? args[1] : "SELECT 'ok' as test"
-def driver = Class.forName('org.postgresql.Driver').newInstance() as Driver
-def dbP = new Properties()
-dbP.setProperty("user", p.username)
-dbP.setProperty("password", p.password)
-def start = Instant.now()
-def conn = driver.connect(p.jdbcUrl, dbP)
-elapse(start, "connect")
-def sql = new Sql(conn)
-try {
-    def queries = query.split(";")
-    queries.each { q ->
-        start = Instant.now()
-        sql.eachRow(q) { println(it) }
-        elapse(start, q)
-    }
-} finally {
-    sql.close()
-    conn.close()
-}
-EOF
-}
-
-function runDbQuery() {
-    local __doc__="Run a query against DB connection specified in the _storeProp"
-    local _query="$1"
-    local _storeProp="${2:-"${_STORE_FILE}"}"
-    local _timeout="${3:-"30"}"
-    local _dbConnFile="${4:-"${_DB_CONN_TEST_FILE}"}"
-    local _installDir="${5:-"${_INSTALL_DIR}"}"
-    local _groovyAllVer="2.4.17"
-    if [ ! -s "${_storeProp}" ]; then
-        echo "No nexus-store.properties file." >&2
-        return 1
-    fi
-    if [ ! -s "${_dbConnFile}" ]; then
-        genDbConnTest "${_dbConnFile}" || return $?
-    fi
-    local _java="java"
-    [ -d "${JAVA_HOME%/}" ] && _java="${JAVA_HOME%/}/bin/java"
-    timeout ${_timeout}s ${_java} -Dgroovy.classpath="$(find "${_installDir%/}/system/org/postgresql/postgresql" -type f -name 'postgresql-42.*.jar' | tail -n1)" -jar "${_installDir%/}/system/org/codehaus/groovy/groovy-all/${_groovyAllVer}/groovy-all-${_groovyAllVer}.jar" \
-    "${_dbConnFile}" "${_storeProp}" "${_query}"
-}
 
 function detectDirs() {    # Best effort. may not return accurate dir path
     local __doc__="Populate PID and directory path global variables"
     local _pid="${1:-"${_PID}"}"
     if [ -z "${_pid}" ]; then
-        _pid="$(ps auxwww | grep -F 'org.sonatype.nexus.karaf.NexusMain' | grep -vw grep | awk '{print $2}' | tail -n1)"
+        _pid="$(ps auxwww | grep -E 'nexus-iq-server-.+\.jar server' | grep -vw grep | awk '{print $2}' | tail -n1)"
         _PID="${_pid}"
         [ -z "${_pid}" ] && return 1
     fi
     if [ ! -d "${_INSTALL_DIR}" ]; then
-        _INSTALL_DIR="$(ps wwwp ${_pid} | sed -n -E '/org.sonatype.nexus.karaf.NexusMain/ s/.+-Dexe4j.moduleName=([^ ]+)\/bin\/nexus .+/\1/p' | head -1)"
+        _INSTALL_DIR="$(readlink -f /proc/${_pid}/cwd 2>/dev/null)"
+        [ -z "${_INSTALL_DIR}" ] && _INSTALL_DIR="$(dirname "$(lsof -nPp ${_pid} 2>/dev/null | grep -m1 -E -o  '[^ ]+/nexus-iq-server-.+\.jar')")"
     fi
     if [ ! -d "${_WORD_DIR}" ] && [ -d "${_INSTALL_DIR%/}" ]; then
-        local _karafData="$(ps wwwp ${_pid} | sed -n -E '/org.sonatype.nexus.karaf.NexusMain/ s/.+-Dkaraf.data=([^ ]+) .+/\1/p' | head -n1)"
-        _WORD_DIR="${_INSTALL_DIR%/}/${_karafData#/}"
+        local _config
+        if [ -s "${_STORE_FILE}" ]; then
+            _config="${_STORE_FILE}"
+        else
+            _config="$(ps wwwp ${_pid} | sed -n -E '/nexus-iq-server/ s/.+\.jar server ([^ ]+).*/\1/p' | head -n1)"
+            [[ ! "${_config}" =~ ^/ ]] && _config="${_INSTALL_DIR%/}/${_config}"
+        fi
+        [ -z "${_config}" ] && return 1
+        #_STORE_FILE="$(readlink -f "${_config}")"
+        _WORD_DIR="$(sed -n -E 's/sonatypeWork[[:space:]]*:[[:space:]]*(.+)/\1/p' "${_config}")"
+        [[ ! "${_WORD_DIR}" =~ ^/ ]] && _WORD_DIR="${_INSTALL_DIR%/}/${_WORD_DIR}"
     fi
 }
 
@@ -162,9 +107,8 @@ function takeDumps() {
         echo "[$(date +'%Y-%m-%d %H:%M:%S')] taking dump ${_i}/${_count} ..." >&2
         local _wpid=""
         if [ -s "${_storeProp}" ]; then
-            # If _storeProp is given, do extra check for NXRM3
-            (date +'%Y-%m-%d %H:%M:%S'; runDbQuery "select * from pg_stat_activity where state <> 'idle' and query not like '% pg_stat_activity %' order by query_start limit 100;select relation::regclass, * from pg_locks where relation::regclass::text != 'pg_locks' limit 100;" "${_storeProp}" "${_interval}") >> "${_outPfx}101.log" &
-            _wpid="$!"
+            # TODO: If _storeProp is given, do extra check for IQ
+            #_wpid="$!"
         fi
         kill -3 "${_pid}"
         (date +"%Y-%m-%d %H:%M:%S"; top -H -b -n1 2>/dev/null | head -n60) >> "${_outPfx}001.log"
@@ -226,7 +170,7 @@ function _stopping() {
 
 main() {
     local _start=$(date +%s)
-    local _outDir="${_WORD_DIR%/}/log/tasks"
+    local _outDir="/tmp"
     detectDirs "${_PID}"
     if [ -z "${_INSTALL_DIR}" ]; then
         echo "Could not find install directory." >&2
