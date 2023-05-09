@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 usage() {
     cat << EOF
-bash <(curl -sfL https://raw.githubusercontent.com/sonatype-nexus-community/nexus-monitoring/main/scripts/iq-threaddumps.sh --compressed)"
+bash <(curl -sfL https://raw.githubusercontent.com/sonatype-nexus-community/nexus-monitoring/main/scripts/iq-threaddumps.sh --compressed)
 
 PURPOSE:
 Gather basic information to troubleshoot Java process related *performance* issues.
