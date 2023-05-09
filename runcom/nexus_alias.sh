@@ -1,9 +1,17 @@
 #_import() { curl -sf --compressed "https://raw.githubusercontent.com/hajimeo/samples/master/$1" -o /tmp/_i;. /tmp/_i; }
 #_import "runcom/nexus_alias.sh"
 
-# For identifying elasticsearch directory name for repository
-alias hashUnencodedChars='python3 -c "import sys,hashlib; print(hashlib.sha1(sys.argv[1].encode(\"utf-16-le\")).hexdigest())"'
-alias esIndexName=hashUnencodedChars
+# For identifying elasticsearch directory name (hash id) from a repository name
+alias esIndexName='python3 -c "import sys,hashlib; print(hashlib.sha1(sys.argv[1].encode(\"utf-16-le\")).hexdigest())"'
+# Covert specs.4.8.gz to string
+function rubySpecs2str() {
+    local _specs="${1:-"./specs.4.8.gz"}"
+    ruby -rpp -e "pp Marshal.load(Gem::Util.gunzip(File.read(\"${_specs}\")))"
+}
+function rubyRz2str() {
+    local _pkg_ver_rz="${1}"    # https://rubygems.org/quick/Marshal.4.8/nexus-0.1.0.gemspec.rz
+    ruby -rpp -e "p Marshal.load(Gem.inflate(File.read(\"${_pkg_ver_rz}\")))"
+}
 
 
 if [ -z "${_WORK_DIR%/}" ]; then
@@ -66,10 +74,18 @@ function iqCli() {
     fi
     # NOTE: -X/--debug outputs to STDOUT
     #       Mac uses "TMPDIR" (and can't change), which is like java.io.tmpdir = /var/folders/ct/cc2rqp055svfq_cfsbvqpd1w0000gn/T/ + nexus-iq
-    local _cmd="java -jar ${_iq_cli_jar} ${_iq_cli_opt} -s ${_iq_url} -a 'admin:admin123' -i ${_iq_app_id} -t ${_iq_stage} -r iq_result.json -X ${_path}"
-    echo "[$(date +'%Y-%m-%d %H:%M:%S')] Executing: ${_cmd}" >&2
-    eval "${_cmd}"
-    echo "[$(date +'%Y-%m-%d %H:%M:%S')] Completed. (curl -u admin:admin123 ${_iq_url%/}/api/v2/applications/${_iq_app_id}/reports/{REPORT_ID}/raw | python -m json.tool > raw.json)" >&2
+    #       Newer IQ CLI removes scan-6947340794864341803.xml.gz, so no point of changing the tmpdir...
+    local _ts="$(date +'%Y%m%d%H%M%S')"
+    local _cmd="java -jar ${_iq_cli_jar} ${_iq_cli_opt} -s ${_iq_url} -a 'admin:admin123' -i ${_iq_app_id} -t ${_iq_stage} -r ./iq_result_${_ts}.json -X ${_path}"
+    echo "[$(date +'%Y-%m-%d %H:%M:%S')] Executing: ${_cmd} | tee ./iq_cli_${_ts}.out" >&2
+    eval "${_cmd} | tee ./iq_cli_${_ts}.out"
+    echo "[$(date +'%Y-%m-%d %H:%M:%S')] Completed ($?)." >&2
+    local _scanId="$(rg -m1 '"reportDataUrl"\s*:\s*"([^"]+])"' -o -r '$1' ./iq_result_${_ts}.json)"
+    if [ -n "${_scanId}" ]; then
+        _cmd="curl -sf -u admin:admin123 ${_iq_url%/}/api/v2/applications/${_iq_app_id}/reports/${_scanId}/raw | python -m json.tool > ./iq_raw_${_ts}.json"
+        echo "[$(date +'%Y-%m-%d %H:%M:%S')] Executing: ${_cmd}" >&2
+        eval "${_cmd}"
+    fi
 }
 
 # Start "mvn" with IQ plugin
@@ -164,18 +180,6 @@ function nxrmStart() {
     # ulimit / Too many open files: https://help.sonatype.com/repomanager3/installation/system-requirements#SystemRequirements-MacOSX
 }
 
-function _nexus29730() {
-    # https://issues.sonatype.org/browse/NEXUS-29730 java.lang.NoClassDefFoundError: com/sun/jna/Platform
-    local _base_dir="${1:-"."}"
-    local _good_jar_root="${2:-"/var/tmp/share/java/libs"}"
-    find ${_base_dir%/}/nexus-3.* -type f -path '*/system/net/java/dev/jna/jna/*' -name "jna-*.jar" | while read -r _jar; do
-        cp -v -f ${_good_jar_root%/}/system/net/java/dev/jna/jna/5.11.0/jna-5.11.0.jar ${_jar}
-    done
-    find ${_base_dir%/}/nexus-3.* -type f -path '*/system/net/java/dev/jna/jna-platform/*' -name "jna-*.jar" | while read -r _jar; do
-        cp -v -f ${_good_jar_root%/}/system/net/java/dev/jna/jna-platform/5.11.0/jna-platform-5.11.0.jar ${_jar}
-    done
-}
-
 function _updateNexusProps() {
     local _cfg_file="$1"
     touch ${_cfg_file}
@@ -192,6 +196,18 @@ function _updateNexusProps() {
     # For OrientDB studio (hostname:2480/studio/index.html)
     grep -qE '^\s*nexus.orient.httpListenerEnabled' "${_cfg_file}" || echo "nexus.orient.httpListenerEnabled=true" >> "${_cfg_file}"
     grep -qE '^\s*nexus.orient.dynamicPlugins' "${_cfg_file}" || echo "nexus.orient.dynamicPlugins=true" >> "${_cfg_file}"
+}
+
+# https://issues.sonatype.org/browse/NEXUS-29730 java.lang.NoClassDefFoundError: com/sun/jna/Platform
+function _nexus29730() {
+    local _base_dir="${1:-"."}"
+    local _good_jar_root="${2:-"/var/tmp/share/java/libs"}"
+    find ${_base_dir%/}/nexus-3.* -type f -path '*/system/net/java/dev/jna/jna/*' -name "jna-*.jar" | while read -r _jar; do
+        cp -v -f ${_good_jar_root%/}/system/net/java/dev/jna/jna/5.11.0/jna-5.11.0.jar ${_jar}
+    done
+    find ${_base_dir%/}/nexus-3.* -type f -path '*/system/net/java/dev/jna/jna-platform/*' -name "jna-*.jar" | while read -r _jar; do
+        cp -v -f ${_good_jar_root%/}/system/net/java/dev/jna/jna-platform/5.11.0/jna-platform-5.11.0.jar ${_jar}
+    done
 }
 
 function _prepare_install() {
@@ -222,7 +238,7 @@ function _prepare_install() {
 }
 
 # To install 2nd instance: _NXRM3_INSTALL_PORT=8082 _NXRM3_INSTALL_DIR=./nxrm_3.42.0-01_test nxrm3Install 3.42.0-01
-# To upgrade (from ${_dirname}/): tar -xvf $HOME/.nexus_executable_cache/nexus-3.42.0-01-mac.tgz
+# To upgrade (from ${_dirname}/): tar -xvf $HOME/.nexus_executable_cache/nexus-3.53.0-01-mac.tgz
 function nxrm3Install() {
     local _ver="$1" #3.40.1-01
     local _dbname="$2"  # If h2, use H2
@@ -231,7 +247,7 @@ function nxrm3Install() {
     local _port="${5:-"${_NXRM3_INSTALL_PORT:-"8081"}"}"
     local _dirname="${6:-"${_NXRM3_INSTALL_DIR}"}"
     local _download_dir="${6:-"$HOME/.nexus_executable_cache"}"
-
+    [ -z "${_ver}" ] && return 1
     for _p in $(seq ${_port} $((${_port} + 9))); do
         curl -s -q -f -I "localhost:${_p}"
         if [ $? == 52 ]; then
@@ -343,14 +359,28 @@ function iqStart() {
 
     # TODO: From v138, most of configs need to use API: https://help.sonatype.com/iqserver/automating/rest-apis/configuration-rest-api---v2
     # 'com.sonatype.insight.brain.migration.SimpleConfigurationMigrator - hdsUrl, enableDefaultPasswordWarning is now configured using the REST API. The configuration in the config.yml or via system properties is obsolete.'
+    if [ ! -s "${_cfg_file}.orig" ]; then
+        cp -v -p "${_cfg_file}" "${_cfg_file}.orig"
+    fi
     grep -qE '^hdsUrl:' "${_cfg_file}" || echo -e "hdsUrl: https://clm-staging.sonatype.com/\n$(cat "${_cfg_file}")" > "${_cfg_file}"
     grep -qE '^enableDefaultPasswordWarning:' "${_cfg_file}" || echo -e "enableDefaultPasswordWarning: false\n$(cat "${_cfg_file}")" > "${_cfg_file}"
     grep -qE '^baseUrl:' "${_cfg_file}" || echo -e "baseUrl: http://$(hostname -f):8070/\n$(cat "${_cfg_file}")" > "${_cfg_file}"
 
-    grep -qE '^\s*port: 8443$' "${_cfg_file}" && sed -i.bak 's/port: 8443/port: 8470/g' "${_cfg_file}"
-    grep -qE '^\s*threshold:\s*INFO$' "${_cfg_file}" && sed -i.bak 's/threshold: INFO/threshold: ALL/g' "${_cfg_file}"
-    grep -qE '^\s*level:\s*DEBUG$' "${_cfg_file}" || sed -i.bak -E 's/level: .+/level: DEBUG/g' "${_cfg_file}"
+    grep -qE '^\s*port: 8443$' "${_cfg_file}" && sed -i.tmp 's/port: 8443/port: 8470/g' "${_cfg_file}"
+    grep -qE '^\s*threshold:\s*INFO$' "${_cfg_file}" && sed -i.tmp 's/threshold: INFO/threshold: ALL/g' "${_cfg_file}"
+    grep -qE '^\s*level:\s*DEBUG$' "${_cfg_file}" || sed -i.tmp -E 's/level: .+/level: DEBUG/g' "${_cfg_file}"
     cd "${_base_dir}"
+    if ! grep -qE '^\s+"?com.sonatype.insight.policy.violation' "${_cfg_file}"; then
+        # Mac's sed doesn't work with '/a'
+        echo "$(sed '/^  loggers:/q' "${_cfg_file}")
+    com.sonatype.insight.policy.violation:
+      appenders:
+      - type: file
+        currentLogFilename: ./log/policy-violation.log
+        archivedLogFilenamePattern: ./log/policy-violation-%d.log.gz
+        archivedFileCount: 5
+$(sed -n "/^  loggers:/,\$p" ${_cfg_file} | grep -v '^  loggers:')" > "${_cfg_file}"
+    fi
     local _cmd="java -Xms2g -Xmx4g ${_java_opts} ${_http_proxy} -jar \"${_jar_file}\" server \"${_cfg_file}\" 2>/tmp/iq-server.err"
     echo "${_cmd}"
     eval "${_cmd}"
@@ -395,8 +425,8 @@ function iqInstall() {
     #       So changing minimum and use iqStart.
     grep -qE '^hdsUrl:' "${_cfg_file}" || echo -e "hdsUrl: https://clm-staging.sonatype.com/\n$(cat "${_cfg_file}")" > "${_cfg_file}"
     grep -qE '^licenseFile' "${_cfg_file}" || echo -e "licenseFile: ${_download_dir%/}/license/nexus.lic\n$(cat "${_cfg_file}")" > "${_cfg_file}"
-    grep -qE '^\s*port: 8070' "${_cfg_file}" && sed -i.bak 's/port: 8070/port: '${_port}'/g' "${_cfg_file}"
-    grep -qE '^\s*port: 8071' "${_cfg_file}" && sed -i.bak 's/port: 8071/port: '$((${_port} + 1))'/g' "${_cfg_file}"
+    grep -qE '^\s*port: 8070' "${_cfg_file}" && sed -i.tmp 's/port: 8070/port: '${_port}'/g' "${_cfg_file}"
+    grep -qE '^\s*port: 8071' "${_cfg_file}" && sed -i.tmp 's/port: 8071/port: '$((${_port} + 1))'/g' "${_cfg_file}"
 
     if [ -n "${_dbname}" ]; then
         # TODO: currently assuming "database:" is the end of file
