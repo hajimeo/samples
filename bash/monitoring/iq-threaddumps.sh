@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
-# TODO: review and updat the usage
 usage() {
     cat << EOF
+bash <(curl -sfL https://raw.githubusercontent.com/sonatype-nexus-community/nexus-monitoring/main/scripts/iq-threaddumps.sh --compressed)"
+
 PURPOSE:
 Gather basic information to troubleshoot Java process related *performance* issues.
 Designed for Nexus official docker image: https://github.com/sonatype/docker-nexus-iq-server

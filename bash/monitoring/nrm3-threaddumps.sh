@@ -1,6 +1,8 @@
 #!/usr/bin/env bash
 usage() {
     cat << EOF
+bash <(curl -sfL https://raw.githubusercontent.com/sonatype-nexus-community/nexus-monitoring/main/scripts/nrm3-threaddumps.sh --compressed)"
+
 PURPOSE:
 Gather basic information to troubleshoot Java process related *performance* issues.
 Tested with Nexus official docker image: https://github.com/sonatype/docker-nexus3
@@ -36,6 +38,21 @@ _REGEX=""
 _DB_CONN_TEST_FILE="/tmp/DbConnTest.groovy"
 _PID=""
 _OUT_DIR="/tmp"
+
+function genDbConnTest() {
+    local __doc__="Generate a DB connection script file"
+    local _dbConnFile="${1:-"${_DB_CONN_TEST_FILE}"}"
+    cat << 'EOF' > "${_dbConnFile}"
+import org.postgresql.*
+import groovy.sql.Sql
+import java.time.Duration
+import java.time.Instant
+
+def elapse(Instant start, String word) {
+    Instant end = Instant.now()
+    Duration d = Duration.between(start, end)
+    println("# '${word}' took ${d}")
+}
 
 def p = new Properties()
 if (!args) p = System.getenv()  //username, password, jdbcUrl
