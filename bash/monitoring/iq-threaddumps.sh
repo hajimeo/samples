@@ -12,7 +12,7 @@ Currently this script gathers the following information:
 EXAMPLE:
     # Taking thread dumps whenever the log line contains "QuartzJobStoreTX"
     cd /sonatype-work;
-    curl --compressed -O https://raw.githubusercontent.com/sonatype-nexus-community/nexus-monitoring/main/scripts/iq-threaddumps.sh;
+    curl --compressed -O -L https://raw.githubusercontent.com/sonatype-nexus-community/nexus-monitoring/main/scripts/iq-threaddumps.sh;
     bash ./iq-threaddumps.sh -f /var/log/nexus-iq-server/clm-server.log -r "QuartzJobStoreTX";
 
 USAGE:
@@ -108,7 +108,7 @@ function takeDumps() {
         local _wpid=""
         if [ -s "${_storeProp}" ]; then
             # TODO: If _storeProp is given, do extra check for IQ
-            #_wpid="$!"
+            _wpid="$!"
         fi
         kill -3 "${_pid}"
         (date +"%Y-%m-%d %H:%M:%S"; top -H -b -n1 2>/dev/null | head -n60) >> "${_outPfx}001.log"
