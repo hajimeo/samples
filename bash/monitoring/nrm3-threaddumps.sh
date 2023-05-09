@@ -274,7 +274,7 @@ if [ "$0" = "${BASH_SOURCE[0]}" ]; then
         exit 0
     fi
 
-    while getopts "c:i:s:p:f:r:" opts; do
+    while getopts "c:i:s:p:f:r:o:" opts; do
         case $opts in
             c)
                 [ -n "$OPTARG" ] && _COUNT="$OPTARG"
