@@ -21,6 +21,7 @@ OPTIONS:
     -f  File to monitor (-r is required)
     -r  Regex (used in 'grep -E') to monitor -f file
     -p  PID
+    -o  Output directory (default WORD_DIR/log/tasks)
 EOF
 }
 
@@ -34,22 +35,7 @@ _LOG_FILE=""
 _REGEX=""
 _DB_CONN_TEST_FILE="/tmp/DbConnTest.groovy"
 _PID=""
-
-
-function genDbConnTest() {
-    local __doc__="Generate a DB connection script file"
-    local _dbConnFile="${1:-"${_DB_CONN_TEST_FILE}"}"
-    cat << 'EOF' > "${_dbConnFile}"
-import org.postgresql.*
-import groovy.sql.Sql
-import java.time.Duration
-import java.time.Instant
-
-def elapse(Instant start, String word) {
-    Instant end = Instant.now()
-    Duration d = Duration.between(start, end)
-    println("# '${word}' took ${d}")
-}
+_OUT_DIR="/tmp"
 
 def p = new Properties()
 if (!args) p = System.getenv()  //username, password, jdbcUrl
@@ -111,10 +97,12 @@ function detectDirs() {    # Best effort. may not return accurate dir path
     fi
     if [ ! -d "${_INSTALL_DIR}" ]; then
         _INSTALL_DIR="$(ps wwwp ${_pid} | sed -n -E '/org.sonatype.nexus.karaf.NexusMain/ s/.+-Dexe4j.moduleName=([^ ]+)\/bin\/nexus .+/\1/p' | head -1)"
+        [ -d "${_INSTALL_DIR}" ] || return 1
     fi
     if [ ! -d "${_WORD_DIR}" ] && [ -d "${_INSTALL_DIR%/}" ]; then
         local _karafData="$(ps wwwp ${_pid} | sed -n -E '/org.sonatype.nexus.karaf.NexusMain/ s/.+-Dkaraf.data=([^ ]+) .+/\1/p' | head -n1)"
         _WORD_DIR="${_INSTALL_DIR%/}/${_karafData#/}"
+        [ -d "${_WORD_DIR}" ] || return 1
     fi
 }
 
@@ -225,9 +213,9 @@ function _stopping() {
 }
 
 main() {
-    local _start=$(date +%s)
-    local _outDir="${_WORD_DIR%/}/log/tasks"
     detectDirs "${_PID}"
+    local _start=$(date +%s)
+    local _outDir="${_OUT_DIR:-"${_WORD_DIR%/}/log/tasks"}"
     if [ -z "${_INSTALL_DIR}" ]; then
         echo "Could not find install directory." >&2
         return 1
@@ -286,7 +274,10 @@ if [ "$0" = "${BASH_SOURCE[0]}" ]; then
                 _REGEX="$OPTARG"
                 ;;
             p)
-                _PID="$OPTARG"
+                [ -n "$OPTARG" ] && _PID="$OPTARG"
+                ;;
+            o)
+                [ -n "$OPTARG" ] && _OUT_DIR="$OPTARG"
                 ;;
             *)
                 echo "$opts $OPTARG is not supported. Ignored." >&2
@@ -295,4 +286,5 @@ if [ "$0" = "${BASH_SOURCE[0]}" ]; then
     done
 
     main #"$@"
+    echo "Completed (${_OUT_DIR%/})"
 fi

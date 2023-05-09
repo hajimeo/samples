@@ -31,6 +31,10 @@ function test_detectDirs() {
     echo "sleep 1" > /tmp/sleep.sh
     bash /tmp/sleep.sh -Dkaraf.data=/var/tmp/sonatype-work -Dexe4j.moduleName=/tmp/bin/nexus org.sonatype.nexus.karaf.NexusMain &
     local _wpid=$!
+
+    unset _PID
+    unset _INSTALL_DIR
+    unset _WORD_DIR
     #set -x
     if ! detectDirs >/dev/null; then
         _error

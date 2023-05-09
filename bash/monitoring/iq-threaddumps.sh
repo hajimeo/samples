@@ -22,6 +22,7 @@ USAGE:
     -f  File to monitor (-r is required)
     -r  Regex (used in 'grep -E') to monitor -f file
     -p  PID
+    -o  Output directory (default /tmp)
 EOF
 }
 
@@ -34,6 +35,7 @@ _STORE_FILE=""
 _LOG_FILE=""
 _REGEX=""
 _PID=""
+_OUT_DIR="/tmp"
 
 
 function detectDirs() {    # Best effort. may not return accurate dir path
@@ -46,7 +48,11 @@ function detectDirs() {    # Best effort. may not return accurate dir path
     fi
     if [ ! -d "${_INSTALL_DIR}" ]; then
         _INSTALL_DIR="$(readlink -f /proc/${_pid}/cwd 2>/dev/null)"
-        [ -z "${_INSTALL_DIR}" ] && _INSTALL_DIR="$(dirname "$(lsof -nPp ${_pid} 2>/dev/null | grep -m1 -E -o  '[^ ]+/nexus-iq-server-.+\.jar')")"
+        if [ -z "${_INSTALL_DIR}" ]; then
+            local _jarpath="$(ps wwwp ${_pid} 2>/dev/null | grep -m1 -E -o '[^ ]+/nexus-iq-server-.+\.jar')"
+            _INSTALL_DIR="$(dirname "${_jarpath}")"
+        fi
+        [ -d "${_INSTALL_DIR}" ] || return 1
     fi
     if [ ! -d "${_WORD_DIR}" ] && [ -d "${_INSTALL_DIR%/}" ]; then
         local _config
@@ -60,6 +66,7 @@ function detectDirs() {    # Best effort. may not return accurate dir path
         #_STORE_FILE="$(readlink -f "${_config}")"
         _WORD_DIR="$(sed -n -E 's/sonatypeWork[[:space:]]*:[[:space:]]*(.+)/\1/p' "${_config}")"
         [[ ! "${_WORD_DIR}" =~ ^/ ]] && _WORD_DIR="${_INSTALL_DIR%/}/${_WORD_DIR}"
+        [ -d "${_WORD_DIR}" ] || return 1
     fi
 }
 
@@ -169,9 +176,9 @@ function _stopping() {
 }
 
 main() {
-    local _start=$(date +%s)
-    local _outDir="/tmp"
     detectDirs "${_PID}"
+    local _start=$(date +%s)
+    local _outDir="${_OUT_DIR:-"/tmp"}"
     if [ -z "${_INSTALL_DIR}" ]; then
         echo "Could not find install directory." >&2
         return 1
@@ -229,7 +236,10 @@ if [ "$0" = "${BASH_SOURCE[0]}" ]; then
                 _REGEX="$OPTARG"
                 ;;
             p)
-                _PID="$OPTARG"
+                [ -n "$OPTARG" ] && _PID="$OPTARG"
+                ;;
+            o)
+                [ -n "$OPTARG" ] && _OUT_DIR="$OPTARG"
                 ;;
             *)
                 echo "$opts $OPTARG is not supported. Ignored." >&2
@@ -238,4 +248,5 @@ if [ "$0" = "${BASH_SOURCE[0]}" ]; then
     done
 
     main #"$@"
+    echo "Completed (${_OUT_DIR%/})"
 fi

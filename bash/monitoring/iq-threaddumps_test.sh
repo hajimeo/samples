@@ -10,8 +10,14 @@ function test_usage() {
 
 function test_detectDirs() {
     echo "sleep 1" > /tmp/sleep.sh
-    bash /tmp/sleep.sh -Dkaraf.data=/var/tmp/sonatype-work -Dexe4j.moduleName=/tmp/bin/nexus org.sonatype.nexus.karaf.NexusMain &
+    echo "sonatypeWork: $HOME" > /tmp/config.yml
+    # Mac can't detect _INSTALL_DIR from /proc/PID/cwd, so added /tmp/
+    bash /tmp/sleep.sh /tmp/nexus-iq-server-aaaaaa.jar server /tmp/config.yml &
     local _wpid=$!
+
+    unset _PID
+    unset _INSTALL_DIR
+    unset _WORD_DIR
     #set -x
     if ! detectDirs >/dev/null; then
         _error
@@ -23,29 +29,24 @@ function test_detectDirs() {
     if [ "${_INSTALL_DIR%/}" != "/tmp" ]; then
         _error "_INSTALL_DIR: ${_INSTALL_DIR%/} != /tmp"
     fi
-    if [ "${_WORD_DIR%/}" != "${_INSTALL_DIR%/}/var/tmp/sonatype-work" ]; then
-        _error "_WORD_DIR: ${_WORD_DIR%/} != ${_INSTALL_DIR%/}/var/tmp/sonatype-work"
+    if [ "${_WORD_DIR%/}" != "$HOME" ]; then
+        _error "_WORD_DIR: ${_WORD_DIR%/} != $HOME"
     fi
     wait
 }
 
 function test_tailStdout() {
+    echo "sleep 1" > /tmp/sleep.sh
+    bash /tmp/sleep.sh -XX:LogFile=/tmp/sleep.sh &
+    local _pid=$!
     rm -f /tmp/stdout_${_pid}.out
-    local _pid
-    #if type jps &>/dev/null; then
-    #    _pid="$(jps -l | grep -vw Jps | grep -E '^\d+ \S+' | tail -n1 | cut -d' ' -f1)"
-    #fi
-    if [ -z "${_pid}" ]; then
-        echo "sleep 1" > /tmp/sleep.sh
-        bash /tmp/sleep.sh -XX:LogFile=/tmp/sleep.sh &
-        _pid=$!
-    fi
     tailStdout "${_pid}" "1" "" "/"
     local _rc=$?
     if [ "${_rc}" -ne 0 ] && [ "${_rc}" -ne 124 ] ; then
         _error
     fi
     wait
+    # More complex test doesn't work on Mac
 }
 
 function test_takeDumps() {
