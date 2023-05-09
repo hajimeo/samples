@@ -497,8 +497,9 @@ function f_setup_rubygem() {
     #_gen_gemrc "${_nexus_url%/}/repository/${_prefix}-proxy" "/tmp/gemrc" "" "${r_ADMIN_USER:-"${_ADMIN_USER}"}:${r_ADMIN_PWD:-"${_ADMIN_PWD}"}"
     #gem fetch loudmouth --config-file /tmp/gemrc
     #gem fetch loudmouth --clear-sources -s http://admin:admin123@localhost:8081/repository/rubygem-proxy/ -V --debug
+
     #f_get_asset "${_prefix}-proxy" "latest_specs.4.8.gz" "${_TMP%/}/specs.4.8.gz"
-    f_get_asset "${_prefix}-proxy" "latest_specs.4.8.gz" "${_TMP%/}/latest_specs.4.8.gz"
+    #f_get_asset "${_prefix}-proxy" "latest_specs.4.8.gz" "${_TMP%/}/latest_specs.4.8.gz"
     f_get_asset "${_prefix}-proxy" "gems/loudmouth-0.2.4.gem" "${_TMP%/}/loudmouth-0.2.4.gem"
 
     # If no xxxx-hosted, create it
@@ -539,6 +540,13 @@ function _gen_gemrc() {
 EOF
     if [ -n "${_user}" ]; then
         chown -v ${_user}:${_user} "${_gemrc_path}"
+    else
+        if [ ! -f "${HOME%/}/.gem/credentials" ]; then
+            cat << EOF > "${HOME%/}/.gem/credentials"
+---
+:rubygems_api_key: dummy
+EOF
+        fi
     fi
 }
 
@@ -1042,7 +1050,7 @@ function f_upload_asset() {
     fi
     local _curl="curl -sf"
     ${_DEBUG} && _curl="curl -fv"
-    ${_curl} -D ${_TMP%/}/_upload_test_header_$$.out -u ${_usr}:${_pwd} -H "accept: application/json" -H "Content-Type: multipart/form-data" -X POST -k "${_base_url%/}/service/rest/v1/components?repository=${_repo}" ${_forms}
+    ${_curl} -D ${_TMP%/}/_upload_test_header_$$.out -w "%{http_code} '${_forms}' (%{time_total}s)\n" -u ${_usr}:${_pwd} -H "accept: application/json" -H "Content-Type: multipart/form-data" -X POST -k "${_base_url%/}/service/rest/v1/components?repository=${_repo}" ${_forms}
     local _rc=$?
     if [ ${_rc} -ne 0 ]; then
         if grep -qE '^HTTP/1.1 [45]' ${_TMP%/}/_upload_test_header_$$.out; then
@@ -1908,7 +1916,9 @@ function f_upload_dummies_nuget() {
     done
 }
 
-#f_upload_dummies_rubygem "" "5" "Checked"
+#f_upload_dummies_rubygem "" "1" "loudmonth.+0.2.0"
+#f_upload_dummies_rubygem "rubygem-misc-hosted" "20" "(acts_as_tree|haml|rdoc)"
+#_SEQ_START=11 f_upload_dummies_rubygem "" "5" "Checked"
 function f_upload_dummies_rubygem() {
     local __doc__="Upload dummy .gem into rubygem hosted repository. Require 'ruby'"
     local _repo_name="${1:-"rubygem-hosted"}"
@@ -1919,25 +1929,28 @@ function f_upload_dummies_rubygem() {
     local _repo_url="${_NEXUS_URL%/}/repository/${_repo_name}/"
     local _seq_start="${_SEQ_START:-1}"
     local _seq_end="$((${_seq_start} + ${_how_many} - 1))"
-    local _tmpdir="$(mktemp -d)"
 
-    if [ ! -s /tmp/rubygem_specs.4.8.gz ] || [ ! -s /tmp/rubygem_specs.latest.txt ]; then
+    local _tmpdir="$(mktemp -d)"
+    _log "INFO" "Using ${_tmpdir} ..."
+
+    if [ ! -s /tmp/rubygem_specs.4.8.gz ] || [ ! -s /tmp/rubygem_specs.4.8.txt ]; then
         curl -o /tmp/rubygem_specs.4.8.gz -f -L "https://rubygems.org/specs.4.8.gz" || return $?
-        ruby -rpp -e 'pp Marshal.load(Gem.gunzip(File.read("/tmp/rubygem_specs.4.8.gz")))' > ${_tmpdir%/}/specs.latest.tmp || return $?
-        grep -oE '"[^"][^"][^"]+", ?Gem::Version.new[^,]+' ${_tmpdir%/}/specs.latest.tmp > /tmp/rubygem_specs.latest.txt
-        #cat /tmp/rubygem_specs.latest.txt | cut -d ',' -f1 | sort | uniq -c | grep -vE '^\s*[0-9]\s' | sort | head
+        _log "INFO" "Grep-ing specs.4.8.gz to generate /tmp/rubygem_specs.4.8.txt ..."
+        ruby -rpp -e 'pp Marshal.load(Gem::Util.gunzip(File.read("/tmp/rubygem_specs.4.8.gz")))' > ${_tmpdir%/}/specs.4.8.tmp || return $?
+        grep -oE '"[^"][^"][^"]+", ?Gem::Version.new[^,]+' ${_tmpdir%/}/specs.4.8.tmp > /tmp/rubygem_specs.4.8.txt
+        #cat /tmp/rubygem_specs.4.8.txt | cut -d ',' -f1 | sort | uniq -c | grep -vE '^\s*[0-9]\s' | sort | head
     fi
 
     if [ -n "${_pkg_name}" ]; then
-        grep -E "\"${_pkg_name}\"" /tmp/rubygem_specs.latest.txt | sed -n "${_seq_start},${_seq_end}p"
+        grep -E "\"${_pkg_name}\"" /tmp/rubygem_specs.4.8.txt
     else
-        sed -n "${_seq_start},${_seq_end}p" /tmp/rubygem_specs.latest.txt
-    fi | while read -r _pkg_ver; do
+        cat /tmp/rubygem_specs.4.8.txt
+    fi | sort -R | sed -n "${_seq_start},${_seq_end}p" | while read -r _pkg_ver; do
         [[ "${_pkg_ver}" =~ .*\"([^\"]+)\",[^\"]*\"([^\"]+)\" ]] || continue
         local _pkg="${BASH_REMATCH[1]}"
         local _ver="${BASH_REMATCH[2]}"
         local _url="https://rubygems.org/gems/${_pkg}-${_ver}.gem"
-        curl -sf -w "Download: %{http_code} ${_pkg}-${_ver}.gem (%{time_total}s)\n" "${_url}" -o ${_tmpdir%/}/${_pkg}-${_ver}.gem || continue
+        curl -sf -w "Download: %{http_code} ${_url} (%{time_total}s)\n" "${_url}" -o ${_tmpdir%/}/${_pkg}-${_ver}.gem || continue
         f_upload_asset "${_repo_name}" -F rubygem.asset=@${_tmpdir%/}/${_pkg}-${_ver}.gem || return $?
         #curl -sf -w "Download: %{http_code} specs.4.8.gz (%{time_total}s | %{size_download}b)\n" -o/dev/null "${_repo_url%/}/specs.4.8.gz"
     done
@@ -1964,10 +1977,10 @@ function f_upload_dummies_helm() {
     fi
 
     if [ -n "${_pkg_name}" ]; then
-        grep -E "\b${_pkg_name}\b" /tmp/helm_urls.out | sed -n "${_seq_start},${_seq_end}p"
+        grep -E "\b${_pkg_name}\b" /tmp/helm_urls.out
     else
-        sed -n "${_seq_start},${_seq_end}p" /tmp/helm_urls.out
-    fi | while read -r _url; do
+        cat /tmp/helm_urls.out
+    fi | sed -n "${_seq_start},${_seq_end}p" | sort -R | while read -r _url; do
         _name="$(basename "${_url}")"
         if [ -n "${_pkg_name}" ] && ! echo "${_name}" | grep -qE "\b${_pkg_name}\b"; then
             continue
