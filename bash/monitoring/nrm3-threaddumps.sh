@@ -233,6 +233,7 @@ main() {
     detectDirs "${_PID}"
     local _start=$(date +%s)
     local _outDir="${_OUT_DIR:-"${_WORD_DIR%/}/log/tasks"}"
+    _OUT_DIR="${_outDir}"
     if [ -z "${_INSTALL_DIR}" ]; then
         echo "Could not find install directory." >&2
         return 1
