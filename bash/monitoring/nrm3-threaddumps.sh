@@ -154,10 +154,10 @@ function takeDumps() {
     local _outDir="${6:-"/tmp"}"
     local _outPfx="${_outDir%/}/script-$(date +"%Y%m%d%H%M%S")"
 
-    tailStdout "${_pid}" "$((${_count} * ${_interval} + 2))" "${_outPfx}000.log" "${_installDir}" &
+    tailStdout "${_pid}" "$((${_count} * ${_interval} + 4))" "${_outPfx}000.log" "${_installDir}" &
     local _wpid0="$!"
     echo "${_wpid0}" > /tmp/.tailStdout.run
-    sleep 0.5
+    sleep 1
     for _i in $(seq 1 ${_count}); do
         echo "[$(date +'%Y-%m-%d %H:%M:%S')] taking dump ${_i}/${_count} ..." >&2
         local _wpid=""

@@ -11,7 +11,7 @@ Currently this script gathers the following information:
 
 EXAMPLE:
     # Taking thread dumps whenever the log line contains "QuartzJobStoreTX"
-    cd /sonatype-work;
+    cd /sonatype-work;  # or cd /sonatype-work/clm-cluster;
     curl --compressed -O -L https://raw.githubusercontent.com/sonatype-nexus-community/nexus-monitoring/main/scripts/iq-threaddumps.sh;
     bash ./iq-threaddumps.sh -f /var/log/nexus-iq-server/clm-server.log -r "QuartzJobStoreTX";
 
@@ -99,10 +99,10 @@ function takeDumps() {
     local _outDir="${6:-"/tmp"}"
     local _outPfx="${_outDir%/}/script-$(date +"%Y%m%d%H%M%S")"
 
-    tailStdout "${_pid}" "$((${_count} * ${_interval} + 2))" "${_outPfx}000.log" "${_installDir}" &
+    tailStdout "${_pid}" "$((${_count} * ${_interval} + 4))" "${_outPfx}000.log" "${_installDir}" &
     local _wpid0="$!"
     echo "${_wpid0}" > /tmp/.tailStdout.run
-    sleep 0.5
+    sleep 1
     for _i in $(seq 1 ${_count}); do
         echo "[$(date +'%Y-%m-%d %H:%M:%S')] taking dump ${_i}/${_count} ..." >&2
         local _wpid=""
