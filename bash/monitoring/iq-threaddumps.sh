@@ -183,7 +183,6 @@ main() {
     if [ -z "${_STORE_FILE}" ] && [ -d "${_WORD_DIR%/}" ]; then
         _STORE_FILE="${_WORD_DIR%/}/etc/fabric/nexus-store.properties"
     fi
-    genDbConnTest || return $?
     miscChecks "${_PID}" &> "${_outDir%/}/script-$(date +"%Y%m%d%H%M%S")900.log"
     echo "[$(date +'%Y-%m-%d %H:%M:%S')] miscChecks completed ($(( $(date +%s) - ${_start}))s)" >&2
     # NOTE: same infor as prometheus is in support zip
