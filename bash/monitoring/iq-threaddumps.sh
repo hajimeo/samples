@@ -36,7 +36,7 @@ _STORE_FILE=""
 _LOG_FILE=""
 _REGEX=""
 _PID=""
-_OUT_DIR="/tmp"
+_OUT_DIR=""
 
 
 function detectDirs() {    # Best effort. may not return accurate dir path

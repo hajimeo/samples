@@ -37,7 +37,7 @@ _LOG_FILE=""
 _REGEX=""
 _DB_CONN_TEST_FILE="/tmp/DbConnTest.groovy"
 _PID=""
-_OUT_DIR="/tmp"
+_OUT_DIR=""
 
 function genDbConnTest() {
     local __doc__="Generate a DB connection script file"
