@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 usage() {
     cat << EOF
-bash <(curl -sfL https://raw.githubusercontent.com/sonatype-nexus-community/nexus-monitoring/main/scripts/iq-threaddumps.sh --compressed)
+bash <(curl -sfL https://raw.githubusercontent.com/hajimeo/samples/master/bash/monitoring/iq-threaddumps.sh --compressed)
 
 PURPOSE:
 Gather basic information to troubleshoot Java process related *performance* issues.
@@ -19,7 +19,7 @@ EXAMPLE:
 USAGE:
     -c  How many dumps (default 5)
     -i  Interval seconds (default 2)
-    -s  Path to config.yml file (default /etc/nexus-iq-server/config.yml)
+    -s  Path to config.yml file
     -f  File to monitor (-r is required)
     -r  Regex (used in 'grep -E') to monitor -f file
     -p  PID
@@ -259,6 +259,6 @@ if [ "$0" = "${BASH_SOURCE[0]}" ]; then
     done
 
     _PFX="script-$(date +"%Y%m%d%H%M%S")"
-    main "${_PFX}"
+    main "${_PFX}" #"$@"
     echo "Completed (${_OUT_DIR%/}/${_PFX}*)"
 fi

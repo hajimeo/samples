@@ -29,7 +29,8 @@ function test_runDbQuery() {
 
 function test_detectDirs() {
     echo "sleep 1" > /tmp/sleep.sh
-    bash /tmp/sleep.sh -Dkaraf.data=/var/tmp/sonatype-work -Dexe4j.moduleName=/tmp/bin/nexus org.sonatype.nexus.karaf.NexusMain &
+    # Mac can't detect _INSTALL_DIR from /proc/PID/cwd, so added /tmp/
+    bash /tmp/sleep.sh -Dkaraf.data=${HOME} -Dexe4j.moduleName=/tmp/bin/nexus org.sonatype.nexus.karaf.NexusMain &
     local _wpid=$!
 
     unset _PID
@@ -46,8 +47,8 @@ function test_detectDirs() {
     if [ "${_INSTALL_DIR%/}" != "/tmp" ]; then
         _error "_INSTALL_DIR: ${_INSTALL_DIR%/} != /tmp"
     fi
-    if [ "${_WORD_DIR%/}" != "${_INSTALL_DIR%/}/var/tmp/sonatype-work" ]; then
-        _error "_WORD_DIR: ${_WORD_DIR%/} != ${_INSTALL_DIR%/}/var/tmp/sonatype-work"
+    if [ "${_WORD_DIR%/}" != "${HOME}" ]; then
+        _error "_WORD_DIR: ${_WORD_DIR%/} != ${HOME}"
     fi
     wait
 }
