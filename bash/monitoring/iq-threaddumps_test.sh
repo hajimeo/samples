@@ -36,17 +36,20 @@ function test_detectDirs() {
 }
 
 function test_tailStdout() {
+    rm -f /tmp/test_tailStdout.out &>/dev/null
     echo "sleep 1" > /tmp/sleep.sh
     bash /tmp/sleep.sh -XX:LogFile=/tmp/sleep.sh &
     local _pid=$!
-    rm -f /tmp/stdout_${_pid}.out
-    tailStdout "${_pid}" "1" "" "/"
+    tailStdout "${_pid}" "1" "/tmp/test_tailStdout.out" "/"
     local _rc=$?
     if [ "${_rc}" -ne 0 ] && [ "${_rc}" -ne 124 ] ; then
         _error
     fi
     wait
-    # More complex test doesn't work on Mac
+    # NOTE: more complex test may not work on Mac
+    #if [ "$(cat /tmp/test_tailStdout.out)" != "this is test" ] ; then
+    #    _error "/tmp/test_tailStdout.out doesn't contain 'this is test'"
+    #fi
 }
 
 function test_takeDumps() {

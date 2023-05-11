@@ -78,6 +78,9 @@ function tailStdout() {
     local _outputFile="${3}"
     local _installDir="${4-"${_INSTALL_DIR%/}"}"
     local _cmd=""
+    local _sleep="0.5"
+    rm -f /tmp/.tailStdout.run || return $?
+
     if [ -f /proc/${_pid}/fd/1 ]; then
         _cmd="tail -n0 -f /proc/${_pid}/fd/1"
     elif [ -n "${_installDir}" ] && [[ "$(ps wwwp ${_pid})" =~ XX:LogFile=([^[:space:]]+) ]]; then
@@ -85,16 +88,18 @@ function tailStdout() {
         _cmd="tail -n0 -f "${_installDir%/}/${jvmLog#/}""
     elif readlink -f /proc/${_pid}/fd/1 2>/dev/null | grep -q '/pipe:'; then
         _cmd="cat /proc/${_pid}/fd/1"
+        _sleep="1"
     fi
     if [ -z "${_cmd}" ]; then
         echo "No file to tail for pid:${_pid}" >&2
         return 1
     fi
-    echo "timeout ${_timeout}s ${_cmd}" > /tmp/.tailStdout.cmd
     if [ -n "${_outputFile}" ]; then
         _cmd="${_cmd} >> ${_outputFile}"
     fi
-    eval "timeout ${_timeout}s ${_cmd}"
+    eval "timeout ${_timeout}s ${_cmd}" &
+    echo "$!" > /tmp/.tailStdout.run
+    sleep ${_sleep}
 }
 
 function takeDumps() {
@@ -105,27 +110,29 @@ function takeDumps() {
     local _storeProp="${4:-"${_STORE_FILE}"}"
     local _installDir="${5-"${_INSTALL_DIR%/}"}"
     local _outDir="${6:-"/tmp"}"
-    local _outPfx="${_outDir%/}/script-$(date +"%Y%m%d%H%M%S")"
+    local _pfx="${7:-"script-$(date +"%Y%m%d%H%M%S")"}"
+    local _outPfx="${_outDir%/}/${_pfx}"
 
-    tailStdout "${_pid}" "$((${_count} * ${_interval} + 4))" "${_outPfx}000.log" "${_installDir}" &
-    local _wpid0="$!"
-    echo "${_wpid0}" > /tmp/.tailStdout.run
-    sleep 1
+    tailStdout "${_pid}" "$((${_count} * ${_interval} + 4))" "${_outPfx}000.log" "${_installDir}"
+
     for _i in $(seq 1 ${_count}); do
         echo "[$(date +'%Y-%m-%d %H:%M:%S')] taking dump ${_i}/${_count} ..." >&2
-        local _wpid=""
+        local _wpid_in_for=""
         if [ -s "${_storeProp}" ]; then
             # TODO: If _storeProp is given, do extra check for IQ
-            _wpid="$!"
+            _wpid_in_for="$!"
         fi
         kill -3 "${_pid}"
         (date +"%Y-%m-%d %H:%M:%S"; top -H -b -n1 2>/dev/null | head -n60) >> "${_outPfx}001.log"
         (date +"%Y-%m-%d %H:%M:%S"; netstat -topen 2>/dev/null || cat /proc/net/tcp 2>/dev/null) >> "${_outPfx}002.log"
         (date +"%Y-%m-%d %H:%M:%S"; netstat -s 2>/dev/null || cat /proc/net/dev 2>/dev/null) >> "${_outPfx}003.log"
         [ ${_i} -lt ${_count} ] && sleep ${_interval}
-        [ -n "${_wpid}" ] && wait ${_wpid}
+        [ -n "${_wpid_in_for}" ] && wait ${_wpid_in_for}
     done
-    ps -p ${_wpid0} &>/dev/null && wait ${_wpid0}
+    if [ -s /tmp/.tailStdout.run ]; then
+        local _wpid="$(cat /tmp/.tailStdout.run)"
+        ps -p ${_wpid} &>/dev/null && wait ${_wpid}
+    fi
     return 0
 }
 
@@ -177,8 +184,9 @@ function _stopping() {
 }
 
 main() {
+    local _pfx="${1:-"script-$(date +"%Y%m%d%H%M%S")"}"
     detectDirs "${_PID}"
-    local _start=$(date +%s)
+
     local _outDir="${_OUT_DIR:-"/tmp"}"
     _OUT_DIR="${_outDir}"
     if [ -z "${_INSTALL_DIR}" ]; then
@@ -192,12 +200,13 @@ main() {
     if [ -z "${_STORE_FILE}" ] && [ -d "${_WORD_DIR%/}" ]; then
         _STORE_FILE="${_WORD_DIR%/}/etc/fabric/nexus-store.properties"
     fi
-    miscChecks "${_PID}" &> "${_outDir%/}/script-$(date +"%Y%m%d%H%M%S")900.log"
-    echo "[$(date +'%Y-%m-%d %H:%M:%S')] miscChecks completed ($(( $(date +%s) - ${_start}))s)" >&2
+    local _misc_start=$(date +%s)
+    miscChecks "${_PID}" &> "${_outDir%/}/${_pfx}900.log"
+    echo "[$(date +'%Y-%m-%d %H:%M:%S')] miscChecks completed ($(( $(date +%s) - ${_misc_start} ))s)" >&2
     # NOTE: same infor as prometheus is in support zip
 
     if [ -z "${_LOG_FILE}" ]; then
-        takeDumps "${_PID}" "${_COUNT}" "${_INTERVAL}" "${_STORE_FILE}" "${_INSTALL_DIR%/}" "${_outDir%/}"
+        takeDumps "${_PID}" "${_COUNT}" "${_INTERVAL}" "${_STORE_FILE}" "${_INSTALL_DIR%/}" "${_outDir%/}" "${_pfx}"
         return $?
     fi
 
@@ -249,6 +258,7 @@ if [ "$0" = "${BASH_SOURCE[0]}" ]; then
         esac
     done
 
-    main #"$@"
-    echo "Completed (${_OUT_DIR%/})"
+    _PFX="script-$(date +"%Y%m%d%H%M%S")"
+    main "${_PFX}"
+    echo "Completed (${_OUT_DIR%/}/${_PFX}*)"
 fi
