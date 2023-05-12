@@ -461,7 +461,7 @@ function f_setup_yum() {
         f_apiS '{"action":"coreui_Repository","method":"create","data":[{"attributes":{"storage":{"blobStoreName":"'${_bs_name}'","strictContentTypeValidation":true'${_extra_sto_opt}'},"group":{"memberNames":["'${_prefix}'-hosted","'${_prefix}'-proxy"]}},"name":"'${_prefix}'-group","format":"","type":"","url":"","online":true,"recipe":"yum-group"}],"type":"rpc"}' || return $?
     fi
     # add some data for xxxx-group
-    f_get_asset "${_prefix}-group" "7/os/x86_64/Packages/$(basename ${_upload_file})"
+    #f_get_asset "${_prefix}-group" "7/os/x86_64/Packages/$(basename ${_upload_file})"
 }
 function f_echo_yum_repo_file() {
     local _repo="${1:-"yum-group"}"
@@ -546,6 +546,7 @@ EOF
 ---
 :rubygems_api_key: dummy
 EOF
+            chmod 600 "${HOME%/}/.gem/credentials"
         fi
     fi
 }
@@ -1433,6 +1434,7 @@ EOF
     curl -fL https://rpm.nodesource.com/setup_14.x --compressed | bash - || _log "ERROR" "Executing https://rpm.nodesource.com/setup_14.x failed"
     rpm -Uvh https://packages.microsoft.com/config/centos/7/packages-microsoft-prod.rpm
     yum install -y centos-release-scl-rh centos-release-scl || _log "ERROR" "Installing .Net (for Nuget) related packages failed"
+    # TODO: I think rubygems on CentOS requires ruby 2.3
     ${_yum_install} java-1.8.0-openjdk-devel maven nodejs rh-ruby23 rubygems aspnetcore-runtime-3.1 golang git gcc openssl-devel bzip2-devel libffi-devel zlib-devel xz-devel || _log "ERROR" "yum install java maven nodejs etc. failed"
     if type python3 &>/dev/null; then
         _log "WARN" "python3 is already in the $PATH so not installing"
@@ -1505,14 +1507,15 @@ EOF
         yum install -y https://packages.endpoint.com/rhel/7/os/x86_64/endpoint-repo-1.7-1.x86_64.rpm
         ${_yum_install} git
     fi
-    # Enabling ruby 2.3 globally
-    if [ ! -s /opt/rh/rh-ruby23/enable ]; then
-        yum install -y rh-ruby23
+    # Enabling ruby 2.6 globally (can't remember why 2.3 was used)
+    local rb="26"   # or "23"
+    if [ ! -s /opt/rh/rh-ruby${rb}/enable ]; then
+        yum install -y rh-ruby${rb}
     fi
-    cat << EOF > /etc/profile.d/rh-ruby23.sh
+    cat << EOF > "/etc/profile.d/rh-ruby${rb}.sh"
 #!/bin/bash
-source /opt/rh/rh-ruby23/enable
-export X_SCLS="`scl enable rh-ruby23 \"echo $X_SCLS\"`"
+source /opt/rh/rh-ruby${rb}/enable
+export X_SCLS="\$(scl enable rh-ruby${rb} 'echo \$X_SCLS')"
 EOF
     # NOTE: At this moment, the newest cocoapods fails with "Failed to build gem native extension"
     _log "INFO" "*EXPERIMENTAL* Install cocoapods 1.8.4 ..."
