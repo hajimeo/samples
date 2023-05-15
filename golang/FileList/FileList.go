@@ -47,7 +47,7 @@ func _usage() {
 List .properties and .bytes files as *Tab* Separated Values (Path LastModified Size).
     
 HOW TO and USAGE EXAMPLES:
-    https://github.com/hajimeo/samples/tree/master/golang/FileList`)
+    https://github.com/hajimeo/samples/blob/master/golang/FileList/README.md`)
 	fmt.Println("")
 }
 
@@ -939,39 +939,38 @@ func isTimestampBetween(tMsec int64, fromTsMsec int64, toTsMsec int64) bool {
 }
 
 func genOutputFromProp(contents string, path string) (string, error) {
-	if len(*_FILTER_P) == 0 && len(*_FILTER_PX) == 0 {
-		// If no _FILTER_P, just return the contents as single line. Should also escape '"'?
-		return strings.ReplaceAll(contents, "\n", ","), nil
-	}
-
 	if *_USE_REGEX {
 		// To use simpler regex, sorting line and converting to single line first
 		lines := strings.Split(contents, "\n")
 		sort.Strings(lines)
 		contents = strings.Join(lines, ",")
-		// Exclude check first
-		if _RX != nil && len(_RX.String()) > 0 && _RX.MatchString(contents) {
-			return "", errors.New(fmt.Sprintf("%s matches with the exclude regex filter: %s. Skipping.", path, *_FILTER_PX))
-		}
-		if _R != nil && len(_R.String()) > 0 {
-			if _R.MatchString(contents) {
-				_log("DEBUG2", fmt.Sprintf("%s match with the regex filter: %s.", path, *_FILTER_P))
-				return contents, nil
-			} else {
-				return "", errors.New(fmt.Sprintf("%s does NOT match with the regex filter %s. Skipping.", path, *_FILTER_P))
-			}
-		}
-	} else {
-		if len(*_FILTER_PX) > 0 && strings.Contains(contents, *_FILTER_PX) {
-			return "", errors.New(fmt.Sprintf("%s contain exclude filter: %s. Skipping.", path, *_FILTER_PX))
-		}
-		// If not regex (eg: 'deleted=true')
-		if len(*_FILTER_P) > 0 && !strings.Contains(contents, *_FILTER_P) {
-			return "", errors.New(fmt.Sprintf("%s does not contain %s. Skipping.", path, *_FILTER_P))
-		}
-		contents = strings.ReplaceAll(contents, "\n", ",")
 	}
-	return contents, nil
+
+	// Exclude check first
+	if _RX != nil && len(_RX.String()) > 0 && _RX.MatchString(contents) {
+		return "", errors.New(fmt.Sprintf("%s matches with the exclude regex filter: %s. Skipping.", path, *_FILTER_PX))
+	}
+
+	if _R != nil && len(_R.String()) > 0 {
+		if _R.MatchString(contents) {
+			_log("DEBUG2", fmt.Sprintf("%s match with the regex filter: %s.", path, *_FILTER_P))
+			return contents, nil
+		} else {
+			return "", errors.New(fmt.Sprintf("%s does NOT match with the regex filter %s. Skipping.", path, *_FILTER_P))
+		}
+	}
+
+	if len(*_FILTER_PX) > 0 && strings.Contains(contents, *_FILTER_PX) {
+		return "", errors.New(fmt.Sprintf("%s contain exclude filter: %s. Skipping.", path, *_FILTER_PX))
+	}
+
+	// If not regex (eg: 'deleted=true')
+	if len(*_FILTER_P) > 0 && !strings.Contains(contents, *_FILTER_P) {
+		return "", errors.New(fmt.Sprintf("%s does not contain %s. Skipping.", path, *_FILTER_P))
+	}
+
+	// If no _FILTER_P, just return the contents as single line. Should also escape '"'?
+	return strings.ReplaceAll(contents, "\n", ","), nil
 }
 
 // get *all* directories under basedir and which name starts with prefix
