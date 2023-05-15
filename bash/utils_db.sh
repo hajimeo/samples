@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-#source /dev/stdin <<< "$(curl https://raw.githubusercontent.com/hajimeo/samples/master/bash/utils.sh --compressed)"
-#source /dev/stdin <<< "$(curl https://raw.githubusercontent.com/hajimeo/samples/master/bash/utils_db.sh --compressed)"
+#source /dev/stdin <<< "$(curl -sfL https://raw.githubusercontent.com/hajimeo/samples/master/bash/utils.sh --compressed)"
+#source /dev/stdin <<< "$(curl -sfL https://raw.githubusercontent.com/hajimeo/samples/master/bash/utils_db.sh --compressed)"
 
 function _get_dbadmin_user() {
     local _dbadmin="$1"
@@ -109,7 +109,7 @@ function _postgresql_configure() {
         _upsert ${_postgresql_conf} "log_line_prefix" "'%t [%p]: db=%d,user=%u,app=%a,client=%h '" "#log_line_prefix"
         # NOTE: Below stays after restarting and requires superuser
         # ALTER system RESET ALL;
-        # ALTER system SET log_min_duration_statement = 0;SELECT pg_reload_conf(); -- DATABASE :DBNAME
+        # ALTER system SET log_min_duration_statement = 0;SELECT pg_reload_conf(); -- 'DATABASE :DBNAME' doesn't work?
         _upsert ${_postgresql_conf} "log_min_duration_statement" "0" "#log_min_duration_statement"
         _upsert ${_postgresql_conf} "log_checkpoints" "on" "#log_checkpoints"
         _upsert ${_postgresql_conf} "log_autovacuum_min_duration" "0" "#log_autovacuum_min_duration"
@@ -308,31 +308,36 @@ function _postgres_pitr() {
 function _psql_restore() {
     local __doc__="To import database / restore database from pg_dump result with psql"
     local _dump_filepath="$1"
-    local _dbusr="${2:-"$USER"}"
-    local _dbpwd="${3:-"${_dbusr}"}"
-    local _dbname="${4:-"${_dbusr}"}"
+    local _dbusr="${2:-"${_DBUSER:-"$USER"}"}"
+    local _dbpwd="${3:-"${PGPASSWORD:-"${_dbusr}"}"}"
+    local _dbname="${4:-"${_DBNAME:-"${_dbusr}"}"}"
     local _schema="${5}"    #:-"public"
     local _opts="${6-"${_PSQL_OPTIONS}"}"  # eg: '--set ON_ERROR_STOP=1' '--set VERBOSITY=verbose' doesn't add any extra information
-    local _db_hostname="${7:-"${_DB_HOSTNAME:-"localhost"}"}"
-    local _db_port="${8:-"${_DB_PORT:-"5432"}"}"
-    local _dry_run="${9:-"${_DRY_RUN}"}"
+    local _dbhost="${7:-"${_DBHOST:-"localhost"}"}"
+    local _dbport="${8:-"${_DBPORT:-"5432"}"}"
+    local _db_del_cascade="${9:-"${_DB_DEL_CASCADE}"}"
     # NOTE: pg_restore has useful options: --jobs=2 --no-owner --verbose #--clean --data-only, but does not support SQL file
-    #PGPASSWORD="${_dbpwd}" pg_restore -h ${_db_hostname} -U ${_dbusr} -d ${_dbname} --jobs=2 --no-owner --verbose ${_dump_filepath}
+    #PGPASSWORD="${_dbpwd}" pg_restore -h ${_dbhost} -U ${_dbusr} -d ${_dbname} --jobs=2 --no-owner --verbose ${_dump_filepath}
     _postgresql_create_role_and_db "${_dbusr}" "${_dbpwd}" "${_dbname}" "${_schema}"
     local _cmd=""
     if [[ "${_dump_filepath}" =~ \.gz$ ]]; then
-        _cmd="gunzip -c ${_dump_filepath} |"
+        _cmd="gunzip -c ${_dump_filepath}"
     else
-        _cmd="cat ${_dump_filepath} |"
+        _cmd="cat ${_dump_filepath}"
     fi
     if [ -n "${_schema}" ]; then
-        _cmd="${_cmd} sed -E 's/ SCHEMA [^ ;]+/ SCHEMA ${_schema}/' |"
+        _cmd="${_cmd} | sed -E 's/ SCHEMA [^ ;]+/ SCHEMA ${_schema}/'"
     fi
-    _cmd="${_cmd} sed -E 's/( OWNER|GRANT ALL ON SCHEMA .+) TO [^ ]+;/\1 TO ${_dbusr};/'"
-    local _cmd2="psql ${_opts} -h ${_db_hostname} -p ${_db_port} -U ${_dbusr} -d ${_dbname} -L ./${FUNCNAME}_psql.log"
-    echo "${_cmd} | ${_cmd2}"
-    [[ "${_dry_run}" =~ ^[yY] ]] && return
+    if [ -n "${_dbusr}" ]; then
+        _cmd="${_cmd} | sed -E 's/( OWNER|GRANT ALL ON SCHEMA .+) TO [^ ]+;/\1 TO ${_dbusr};/'"
+    fi
+    if [[ "${_db_del_cascade}" =~ ^[yY] ]]; then
+        _cmd="${_cmd} | sed -E 's/^DROP TABLE ([^;]+);$/DROP TABLE \1 cascade;/'"
+    fi
+    local _cmd2="psql ${_opts} -h ${_dbhost} -p ${_dbport} -U ${_dbusr} -d ${_dbname} -L ./${FUNCNAME[0]}_psql.log 2>./${FUNCNAME[0]}_psql.log"
+    echo "${_cmd} | ${_cmd2}"; sleep 3
     eval "${_cmd} | PGPASSWORD="${_dbpwd}" ${_cmd2}"
+    grep -w "ERROR" ./${FUNCNAME[0]}_psql.log && return 1
 }
 
 function _psql_copydb() {
@@ -342,9 +347,9 @@ function _psql_copydb() {
     local _dbpwd="${3:-"${_dbusr}"}"
     local _dbname="${4:-"${_dbusr}"}"
     #local _schema="${5}"    # psql ... -n "${_schema}"
-    local _db_hostname="${5:-"${_DB_HOSTNAME:-"localhost"}"}"
-    local _db_port="${6:-"${_DB_PORT:-"5432"}"}"
+    local _dbhost="${5:-"${_DBHOST:-"localhost"}"}"
+    local _dbport="${6:-"${_DBPORT:-"5432"}"}"
 
-    local _pg_dump_as_admin="$(_get_psql_as_admin "$(_get_dbadmin_user)" "pg_dump" "${_db_port}")"
-    ${_pg_dump_as_admin} -d "${_local_src_db}" -c -O | PGPASSWORD="${_dbpwd}" psql -h ${_db_hostname} -p ${_db_port} -U ${_dbusr} -d ${_dbname}
+    local _pg_dump_as_admin="$(_get_psql_as_admin "$(_get_dbadmin_user)" "pg_dump" "${_dbport}")"
+    ${_pg_dump_as_admin} -d "${_local_src_db}" -c -O | PGPASSWORD="${_dbpwd}" psql -h ${_dbhost} -p ${_dbport} -U ${_dbusr} -d ${_dbname}
 }

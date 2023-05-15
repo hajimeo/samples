@@ -41,6 +41,7 @@ function _web() {
 function _curl() {
     local _url="$1"
     local _max_timeout="${2:-12}"
+    # size_download (bytes), size_upload (bytes)
     time curl -s -v -m ${_max_timeout} --retry 0 -f -L -k -o /dev/null -w "\ntime_namelookup:\t%{time_namelookup}\ntime_connect:\t%{time_connect}\ntime_appconnect:\t%{time_appconnect}\ntime_pretransfer:\t%{time_pretransfer}\ntime_redirect:\t%{time_redirect}\ntime_starttransfer:\t%{time_starttransfer}\n----\ntime_total:\t%{time_total}\nhttp_code:\t%{http_code}\nspeed_download:\t%{speed_download}\nspeed_upload:\t%{speed_upload}\n" "${_url}"
 }
 

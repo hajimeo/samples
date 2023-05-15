@@ -1762,7 +1762,7 @@ function _search_json() {
             _result="$(bc <<<"scale=2;${_result} / 1024") KB"
         fi
     fi
-    echo "${_search}: ${_result}"
+    echo "{\"${_search}\": ${_result}}"
 }
 
 function _human_friendly() {

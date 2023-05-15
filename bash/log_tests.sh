@@ -98,10 +98,10 @@ _runner() {
     local _n="${2:-"3"}"
     local _sec="${3:-"3"}"
     local _tmp="$(mktemp -d)"
-    _LOG "INFO" "Executing ${FUNCNAME[1]}->${FUNCNAME} $(typeset -F | grep "^declare -f ${_pfx}" | wc -l  | tr -d "[:space:]") functions."
+    _LOG "INFO" "Executing ${FUNCNAME[1]}->${FUNCNAME[0]} $(typeset -F | grep "^declare -f ${_pfx}" | wc -l  | tr -d "[:space:]") functions."
     for _t in $(typeset -F | grep "^declare -f ${_pfx}" | cut -d' ' -f3); do
         if ! _wait_jobs "${_n}"; then
-            _LOG "ERROR" "${FUNCNAME} failed."
+            _LOG "ERROR" "${FUNCNAME[0]} failed."
             return 11
         fi
         _LOG "DEBUG" "Started ${_t}"    # TODO: couldn't display actual command in jogs -l command
@@ -110,7 +110,7 @@ _runner() {
     done
     _wait_jobs 0
     cat ${_tmp}/${_pfx}*.out
-    _LOG "INFO" "Completed ${FUNCNAME[1]}->${FUNCNAME}."
+    _LOG "INFO" "Completed ${FUNCNAME[1]}->${FUNCNAME[0]}."
 }
 
 function f_run_extract() {
@@ -127,7 +127,7 @@ function f_run_extract() {
 }
 
 function f_run_report() {
-    echo "# ${FUNCNAME} results"
+    echo "# ${FUNCNAME[0]} results"
     echo ""
     if [ ! -s ${_FILTERED_DATA_DIR%/}/extracted_configs.md ]; then
         _head "INFO" "No ${_FILTERED_DATA_DIR%/}/extracted_configs.md"
@@ -138,7 +138,7 @@ function f_run_report() {
 }
 
 function f_run_tests() {
-    echo "# ${FUNCNAME} results"
+    echo "# ${FUNCNAME[0]} results"
     echo ""
     _runner "t_"
     # TODO: currently can't count failed test.
@@ -287,7 +287,7 @@ function _jira() {
     echo -e -n "[${_id}](https://issues.sonatype.org/browse/${_id})${_pfx}"
 }
 function _basic_check() {
-    local _required_app_ver_regex="${1}"
+    local _required_app_ver_regex="${1}"    # Can't include " " "\d" etc.
     local _required_file="${2}"
     local _level="${3:-"INFO"}"
     local _message="${4}"
@@ -471,7 +471,17 @@ function t_system() {
 }
 function t_mounts() {
     _basic_check "" "${_FILTERED_DATA_DIR%/}/system-filestores.json" || return
-    _test_template "$(rg '"usableSpace": [1-7]\d{1,9}\b' -B5 ${_FILTERED_DATA_DIR%/}/system-filestores.json)" "ERROR" "some of 'usableSpace' might be less than 8GB" "NOTE: 'No space left on device' can be also caused by Inode, which won't be shown in above."
+    # language=Python
+    python3 -c "import sys,json
+with open('${_FILTERED_DATA_DIR%/}/system-filestores.json') as f:
+    fsDicts=json.load(f)
+for key in fsDicts['system-filestores']:
+    if fsDicts['system-filestores'][key]['description'].startswith(('/sys', '/proc', '/boot', '/tmp', '/dev', '/run')):
+        continue
+    if fsDicts['system-filestores'][key]['totalSpace'] >= (4 * 1024 * 1024 * 1024) and fsDicts['system-filestores'][key]['usableSpace'] < (4 * 1024 * 1024 * 1024):
+        print(fsDicts['system-filestores'][key])
+" > /tmp/${FUNCNAME[0]}_$$.out
+    _test_template "$(cat /tmp/${FUNCNAME[0]}_$$.out)" "WARN" "some of 'usableSpace' might be less than 8GB" "NOTE: 'No space left on device' can be also caused by Inode, which won't be shown in above."
 
     local _workingDirectory="$(_search_json "sysinfo.json" "nexus-configuration,workingDirectory" | _rg -o -r '$1' '"(/[^"]+)"')"
     local _display_result=""
@@ -524,9 +534,10 @@ function t_errors() {
     fi
 }
 function t_threads() {
+    _test_template "$(rg -g threads.txt -i -w "deadlock")" "ERROR" "deadlock found in threads.txt"
     local _dir="$(find . -maxdepth 3 -type d -name "_threads" -print -quit)"
     if [ -z "${_dir}" ]; then
-        _head "INFO" "Can not run ${FUNCNAME} as no _threads directory."
+        _head "INFO" "Can not run ${FUNCNAME[0]} as no _threads directory."
         return
     fi
     if type _threads_extra_check &>/dev/null; then
@@ -535,7 +546,7 @@ function t_threads() {
 }
 function t_requests() {
     _basic_check "" "${_FILTERED_DATA_DIR%/}/request.csv" || return
-    local _query="SELECT requestURL, statusCode, count(*) as c, avg(elapsedTime) as avg_elapsed, max(elapsedTime) as max_elapsed, sum(elapsedTime) as sum_elapsed FROM ${_FILTERED_DATA_DIR}/request.csv WHERE (statusCode like '5%') GROUP BY requestURL, statusCode HAVING (c > 100 or avg_elapsed > 1000 or max_elapsed > 7000) ORDER BY sum_elapsed DESC LIMIT 10"
+    local _query="SELECT requestURL, statusCode, count(*) as c, avg(bytesSent) as avg_bytes, max(bytesSent) as max_bytes, sum(bytesSent) as sum_bytes, avg(elapsedTime) as avg_elapsed, max(elapsedTime) as max_elapsed, sum(elapsedTime) as sum_elapsed FROM ${_FILTERED_DATA_DIR}/request.csv WHERE (statusCode like '5%') GROUP BY requestURL, statusCode HAVING (c > 100 or avg_elapsed > 1000 or max_elapsed > 7000) ORDER BY sum_elapsed DESC LIMIT 10"
     if _q -H "${_query}" 2>/dev/null > ${_FILTERED_DATA_DIR%/}/agg_requests_5xx_slow.ssv; then
         local _line_num="$(cat ${_FILTERED_DATA_DIR%/}/agg_requests_5xx_slow.ssv | wc -l | tr -d '[:space:]')"
         if [ -n "${_line_num}" ] && [ ${_line_num} -gt 5 ]; then

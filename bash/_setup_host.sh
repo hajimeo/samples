@@ -1114,7 +1114,7 @@ function f_microk8s() {
     microk8s.start || return $?
 
     # get all from all namespace (a kind of test)
-    microk8s kubectl get all --all-namespaces || return $?
+    microk8s kubectl get all -A || return $?
     # If above test works, update firewall. at this moment, only for ufw
     if type ufw &>/dev/null; then
         ufw allow in on vxlan.calico || return $?
@@ -1187,6 +1187,9 @@ function f_microk8s() {
 ### troubleshooting helm related issue
     helm3 get manifest <release name>       # https://helm.sh/docs/helm/helm_get_manifest/
     helm3 template [NAME] [CHART]           # https://helm.sh/docs/helm/helm_template/
+### 'microk8s enable nfs' alternative
+    helm repo add nfs-ganesha-server-and-external-provisioner https://kubernetes-sigs.github.io/nfs-ganesha-server-and-external-provisioner/
+    helm install nfs nfs-ganesha-server-and-external-provisioner/nfs-server-provisioner -n sonatype
 
 ## Kubectl
     kubectl config get-contexts             # list available kubectl configs

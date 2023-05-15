@@ -6,8 +6,8 @@
 #   _import() { source /var/tmp/share/sonatype/$1; } && export -f _import
 #
 # How to source:
-#   source /dev/stdin <<< "$(curl https://raw.githubusercontent.com/hajimeo/samples/master/bash/setup_nexus3_repos.sh --compressed)"
-#   export _NEXUS_URL="http://localhost:8081/"
+#   source /dev/stdin <<< "$(curl -sfL https://raw.githubusercontent.com/hajimeo/samples/master/bash/setup_nexus3_repos.sh --compressed)"
+#   #export _NEXUS_URL="http://localhost:8081/"
 #
 _DL_URL="${_DL_URL:-"https://raw.githubusercontent.com/hajimeo/samples/master"}"
 type _import &>/dev/null || _import() { [ ! -s /tmp/${1} ] && curl -sf --compressed "${_DL_URL%/}/bash/$1" -o /tmp/${1}; . /tmp/${1}; }
@@ -1919,6 +1919,7 @@ function f_upload_dummies_nuget() {
     done
 }
 
+#f_upload_dummies_rubygem "" "100" "nexus"
 #f_upload_dummies_rubygem "" "1" "loudmonth.+0.2.0"
 #f_upload_dummies_rubygem "rubygem-misc-hosted" "20" "(acts_as_tree|haml|rdoc)"
 #_SEQ_START=11 f_upload_dummies_rubygem "" "5" "Checked"
