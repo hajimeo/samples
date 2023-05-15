@@ -299,7 +299,6 @@ public class Main {
         if (input.toLowerCase().startsWith("set paging")) {
             Matcher matcher = setPagingPtn.matcher(input);
             if (matcher.find()) {
-                // Not in use as not sure how to do 'desc <non table>'
                 String pageSize = matcher.group(3);
                 if (pageSize != null && !pageSize.trim().isEmpty()) {
                     paging = Integer.parseInt(pageSize);
@@ -311,7 +310,6 @@ public class Main {
         if (input.toLowerCase().startsWith("set offset")) {
             Matcher matcher = setPagingPtn.matcher(input);
             if (matcher.find()) {
-                // Not in use as not sure how to do 'desc <non table>'
                 String offsetSize = matcher.group(3);
                 if (offsetSize != null && !offsetSize.trim().isEmpty()) {
                     offset = Integer.parseInt(offsetSize);
