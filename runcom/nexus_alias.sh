@@ -9,9 +9,21 @@ function rubySpecs2str() {
     ruby -rpp -e "pp Marshal.load(Gem::Util.gunzip(File.read(\"${_specs}\")))"
 }
 function rubyRz2str() {
-    local _pkg_ver_rz="${1}"    # https://rubygems.org/quick/Marshal.4.8/nexus-0.1.0.gemspec.rz
-    ruby -rpp -e "p Marshal.load(Gem.inflate(File.read(\"${_pkg_ver_rz}\")))"
+    local _pkg_ver_rz="${1}"    # https://rubygems.org/quick/Marshal.4.8/nexus-1.4.0.gemspec.rz
+    ruby -rpp -e "p Marshal.load(Gem::Util.inflate(File.read(\"${_pkg_ver_rz}\")))"
 }
+# Cocoapods buildNxrmSpecFilePath
+function specFilePath() {
+    local _name="$1"
+    local _ver="$2"
+    python -c "import hashlib
+n=\"${_name}\";v=\"${_ver}\"
+md5=hashlib.md5()
+md5.update(n.encode('utf-8'))
+h=md5.hexdigest()
+print(\"Specs/%s/%s/%s/%s/%s/%s.podspec.json\" % (h[0],h[1],h[2],n,v,n))"
+}
+
 
 
 if [ -z "${_WORK_DIR%/}" ]; then
@@ -246,7 +258,8 @@ function nxrm3Install() {
     local _dbpwd="${4:-"${_dbusr}123"}"
     local _port="${5:-"${_NXRM3_INSTALL_PORT:-"8081"}"}"
     local _dirname="${6:-"${_NXRM3_INSTALL_DIR}"}"
-    local _download_dir="${6:-"$HOME/.nexus_executable_cache"}"
+    local _download_dir="${7:-"$HOME/.nexus_executable_cache"}"
+    local _schema="${_DB_SCHEMA}"
     [ -z "${_ver}" ] && return 1
     for _p in $(seq ${_port} $((${_port} + 9))); do
         curl -s -q -f -I "localhost:${_p}"
@@ -281,6 +294,7 @@ function nxrm3Install() {
 jdbcUrl=jdbc\:postgresql\://$(hostname -f)\:5432/${_dbname}
 username=${_dbusr}
 password=${_dbpwd}
+schema=${_schema:-"public"}
 maximumPoolSize=40
 advanced=maxLifetime\=600000
 EOF
@@ -288,7 +302,7 @@ EOF
             if [ -s "${_util_dir}/utils_db.sh" ]; then
                 source ${_util_dir}/utils.sh
                 source ${_util_dir}/utils_db.sh
-                _postgresql_create_dbuser "${_dbusr}" "${_dbpwd}" "${_dbname}"
+                _postgresql_create_dbuser "${_dbusr}" "${_dbpwd}" "${_dbname}" "${_schema}"
             else
                 echo "WARN Not creating database"
             fi
