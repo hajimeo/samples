@@ -2,17 +2,22 @@
 usage() {
     cat << EOF
 USAGE:
-    bash ./nrm3-db-test.sh [/path/to/nexus-store.properties] [query]
+    bash <(curl -sfL https://raw.githubusercontent.com/hajimeo/samples/master/bash/monitoring/nrm3-db-test.sh --compressed) -q "query"
+
+    bash ./nrm3-db-test.sh [-q "query"] [-s /path/to/nexus-store.properties]
 EOF
 }
 
-_DB_CONN_TEST_FILE="/tmp/DbConnTest.groovy"
-_GROOVY_ALL_VER="2.4.17"
 : "${_INSTALL_DIR:=""}"
 : "${_WORK_DIR:=""}"
+_STORE_FILE=""
+_DB_CONN_TEST_FILE="/tmp/DbConnTest.groovy"
+_PID=""
 
-function _genDbConnTest() {
-    cat << 'EOF' > "${_DB_CONN_TEST_FILE}"
+function genDbConnTest() {
+    local __doc__="Generate a DB connection script file"
+    local _dbConnFile="${1:-"${_DB_CONN_TEST_FILE}"}"
+    cat << 'EOF' > "${_dbConnFile}"
 import org.postgresql.*
 import groovy.sql.Sql
 import java.time.Duration
@@ -53,49 +58,84 @@ try {
 EOF
 }
 
-function _detectDirs() {    # Best effort. may not return accurate dir path
-    if [ ! -d "${_INSTALL_DIR}" ]; then
-        _INSTALL_DIR="$(ps auxwww | sed -n -E '/org.sonatype.nexus.karaf.NexusMain/ s/.+-Dexe4j.moduleName=([^ ]+)\/bin\/nexus .+/\1/p' | head -1)"
-    fi
-    if [ ! -d "${_WORD_DIR}" ] && [ -d "${_INSTALL_DIR%/}" ]; then
-        local _karafData="$(ps auxwww | sed -n -E '/org.sonatype.nexus.karaf.NexusMain/ s/.+-Dkaraf.data=([^ ]+) .+/\1/p' | head -1)"
-        _WORD_DIR="${_INSTALL_DIR%/}/${_karafData%/}"
-    fi
-}
-
-function runDbConnTest() {
-    local storeProp="$1"
-    local query="$2"
-    if [ ! -s "${_DB_CONN_TEST_FILE}" ]; then
-        _genDbConnTest || return $?
-    fi
-    if [ -z "${storeProp}" ] && [ -d "${_WORD_DIR%/}" ]; then
-        storeProp="${_WORD_DIR%/}/etc/fabric/nexus-store.properties"
-    fi
-    if [ ! -s "${storeProp}" ]; then
-        echo "Could not find nexus-store.properties file." >&2
+function runDbQuery() {
+    local __doc__="Run a query against DB connection specified in the _storeProp"
+    local _query="$1"
+    local _storeProp="${2:-"${_STORE_FILE}"}"
+    local _timeout="${3:-"30"}"
+    local _dbConnFile="${4:-"${_DB_CONN_TEST_FILE}"}"
+    local _installDir="${5:-"${_INSTALL_DIR}"}"
+    local _groovyAllVer="2.4.17"
+    if [ ! -s "${_storeProp}" ]; then
+        echo "No nexus-store.properties file." >&2
         return 1
     fi
-    java -Dgroovy.classpath="$(find "${_INSTALL_DIR%/}/system/org/postgresql/postgresql" -type f -name 'postgresql-42.*.jar' | tail -n1)" -jar "${_INSTALL_DIR%/}/system/org/codehaus/groovy/groovy-all/${_GROOVY_ALL_VER}/groovy-all-${_GROOVY_ALL_VER}.jar" \
-    "${_DB_CONN_TEST_FILE}" "${storeProp}" "${query}"
+    if [ ! -s "${_dbConnFile}" ]; then
+        genDbConnTest "${_dbConnFile}" || return $?
+    fi
+    local _java="java"
+    [ -d "${JAVA_HOME%/}" ] && _java="${JAVA_HOME%/}/bin/java"
+    timeout ${_timeout}s ${_java} -Dgroovy.classpath="$(find "${_installDir%/}/system/org/postgresql/postgresql" -type f -name 'postgresql-42.*.jar' | tail -n1)" -jar "${_installDir%/}/system/org/codehaus/groovy/groovy-all/${_groovyAllVer}/groovy-all-${_groovyAllVer}.jar" \
+    "${_dbConnFile}" "${_storeProp}" "${_query}"
+}
+
+function detectDirs() {    # Best effort. may not return accurate dir path
+    local __doc__="Populate PID and directory path global variables"
+    local _pid="${1:-"${_PID}"}"
+    if [ -z "${_pid}" ]; then
+        _pid="$(ps auxwww | grep -F 'org.sonatype.nexus.karaf.NexusMain' | grep -vw grep | awk '{print $2}' | tail -n1)"
+        _PID="${_pid}"
+        [ -z "${_pid}" ] && return 1
+    fi
+    if [ ! -d "${_INSTALL_DIR}" ]; then
+        _INSTALL_DIR="$(ps wwwp ${_pid} | sed -n -E '/org.sonatype.nexus.karaf.NexusMain/ s/.+-Dexe4j.moduleName=([^ ]+)\/bin\/nexus .+/\1/p' | head -1)"
+        [ -d "${_INSTALL_DIR}" ] || return 1
+    fi
+    if [ ! -d "${_WORD_DIR}" ] && [ -d "${_INSTALL_DIR%/}" ]; then
+        _WORD_DIR="$(ps wwwp ${_pid} | sed -n -E '/org.sonatype.nexus.karaf.NexusMain/ s/.+-Dkaraf.data=([^ ]+) .+/\1/p' | head -n1)"
+        [[ ! "${_WORD_DIR}" =~ ^/ ]] && _WORD_DIR="${_INSTALL_DIR%/}/${_WORD_DIR}"
+        [ -d "${_WORD_DIR}" ] || return 1
+    fi
 }
 
 main() {
-    local storeProp="$1"
-    local query="$2"
-    _detectDirs
+    local query="$1"
+    local storeProp="$2"
+    detectDirs "${_PID}"
     if [ -z "${_INSTALL_DIR}" ]; then
         echo "Could not find install directory." >&2
         return 1
     fi
-    runDbConnTest "${storeProp}" "${query}" || return $?
+    if [ -z "${_WORD_DIR}" ]; then
+        echo "Could not find work directory." >&2
+        return 1
+    fi
+    if [ -z "${storeProp}" ] && [ -d "${_WORD_DIR%/}" ]; then
+        storeProp="${_WORD_DIR%/}/etc/fabric/nexus-store.properties"
+    fi
+
+    runDbQuery "${query}" "${storeProp}"
 }
 
 if [ "$0" = "$BASH_SOURCE" ]; then
     #if [ "$#" -eq 0 ]; then
     if [ "$1" == "-h" ] || [ "$1" == "--help" ] || [ "$1" == "help" ]; then
         usage
-        exit 1
+        exit 0
     fi
-    main "$@"
+    while getopts "s:q:" opts; do
+        case $opts in
+            q)
+                _QUERY="$OPTARG"
+                ;;
+            s)
+                _STORE_FILE="$OPTARG"
+                ;;
+            *)
+                echo "$opts $OPTARG is not supported. Ignored." >&2
+                ;;
+        esac
+    done
+
+    main "${_QUERY}" "${_STORE_FILE}" #"$@"
 fi
