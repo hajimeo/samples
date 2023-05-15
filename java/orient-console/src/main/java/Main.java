@@ -692,15 +692,18 @@ public class Main {
     }
 
     public static void main(final String[] args) throws IOException {
+        String path;
+        Path tmpDir = null;
+
         if (args.length < 1) {
             usage();
-            System.exit(1);
+            path = "remote:localhost/component";
+            log("Trying " + path + " ... ");
+        } else {
+            path = args[0];
         }
 
         setGlobals();
-
-        String path = args[0];
-        Path tmpDir = null;
 
         // if exportPath is given, create the path
         if (exportPath != null && exportPath.length() > 0) {
