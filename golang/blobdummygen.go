@@ -80,11 +80,11 @@ func main() {
 
 	outDir := "."
 	if len(os.Args) > 2 {
-		outDir = os.Args[2]
+		outDir = os.Args[1]
 	}
 	useRealSzie := false
 	if len(os.Args) > 2 {
-		if os.Args[3] == "--use-real-size" {
+		if os.Args[2] == "--use-real-size" {
 			useRealSzie = true
 		}
 	}

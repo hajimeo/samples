@@ -45,9 +45,15 @@ func line2CSV(line string, positions []int) string {
 }
 
 func main() {
-	// Assuming the first line is the header, which can be used to determine the width
+	if len(os.Args) < 2 {
+		fmt.Println("Please provide an input file which uses fixed width for columns")
+		return
+	}
 	inFile := os.Args[1]
-	outFile := os.Args[2]
+	outFile := inFile + ".csv"
+	if len(os.Args) > 2 {
+		outFile = os.Args[2]
+	}
 	var positions []int = nil
 
 	inputFile, err := os.Open(inFile)
@@ -71,6 +77,7 @@ func main() {
 		if strings.HasPrefix(line, "#") {
 			continue
 		}
+		// Assuming the first line is the header, which can be used to determine the width
 		if positions == nil {
 			positions = nonSpacePos(line)
 		}
