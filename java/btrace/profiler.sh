@@ -17,6 +17,12 @@ Usage example:
 
 Download the latest script:
     curl -OL https://github.com/hajimeo/samples/raw/master/java/btrace/profiler.sh
+
+Extra:
+    # gcsplit if Mac
+    curl -o /usr/local/bin/fixed2csv -L "https://github.com/hajimeo/samples/raw/master/misc/fixed2csv_\$(uname)_\$(uname -m)
+    csplit -f profile_ profiler.out '/^# \[202/' '{*}'
+    for _f in \$(ls -1 profile_??); do fixed2csv \${_f}; done
 EOF
 }
 
