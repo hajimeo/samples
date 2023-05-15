@@ -117,7 +117,7 @@ main() {
     runDbQuery "${query}" "${storeProp}"
 }
 
-if [ "$0" = "$BASH_SOURCE" ]; then
+if [ "$0" = "${BASH_SOURCE[0]}" ]; then
     #if [ "$#" -eq 0 ]; then
     if [ "$1" == "-h" ] || [ "$1" == "--help" ] || [ "$1" == "help" ]; then
         usage
