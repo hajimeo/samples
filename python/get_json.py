@@ -108,8 +108,12 @@ def get_json(filepath="", json_str="", search_props=[], key_name=None, rtn_attrs
                     continue
                 _debug("  _p (%s) is in _dd and _dd[_p] = %s " % (str(_p), str(_dd[_p])))
                 if bool(_p_name) is False:
-                    _debug("  _p = %s is in _dd and _dd[_p] = %s and _p_name is False " % (str(_p), str(_dd[_p])))
-                    _tmp_d.append(_dd[_p])
+                    if type(_dd[_p]) == list and len(_dd[_p]) == 1:
+                        _debug("  _p = %s is in _dd and _p_name is False and len(_dd[_p]) == 1, and _dd[_p] = %s" % (str(_p), str(_dd[_p][0])))
+                        _tmp_d.append(_dd[_p][0])
+                    else:
+                        _debug("  _p = %s is in _dd and _p_name is False, and _dd[_p] = %s" % (str(_p), str(_dd[_p])))
+                        _tmp_d.append(_dd[_p])
                 elif _dd[_p] == _p_name:
                     _debug("  _p = %s and _dd[_p] is _p_name (%s) " % (str(_p), str(_p_name)))
                     _tmp_d.append(_dd)
@@ -121,6 +125,7 @@ def get_json(filepath="", json_str="", search_props=[], key_name=None, rtn_attrs
                 _d = None
                 break
             if len(_tmp_d) == 1:
+                _debug("len(_tmp_d) is 1 so not returning as list ")
                 _d = _tmp_d[0]
             else:
                 _d = _tmp_d
