@@ -7,6 +7,8 @@ alias fd='find . -name'
 alias sha1R='find . -type f -exec sha1sum "{}" \;'
 alias fcv='fc -e vim'
 alias vim0='vim -u NONE'   # handy when you process large text
+# like dos2unix
+alias crlf2lf='vim -c "set ff=unix" -c ":x"'
 # 'time' with format
 alias timef='/usr/bin/time -f"[%Us user %Ss sys %es real %MkB mem]"' # brew install gnu-time --with-default-names
 # In case 'tree' is not installed
@@ -136,11 +138,17 @@ type pgbadger &>/dev/null && alias pgbg='pgbadger --timezone 0'
 #type microk8s &>/dev/null && alias kubectl="microk8s kubectl"
 alias kPods='kubectl get pods --show-labels -A'
 function kBash() {
-    kubectl exec "$1" -n "${2:-"default"}" -t -i -- bash
+    local _pod="${1}"
+    local _ns="${2}"
+    if [ -z "${_ns}" ]; then
+        _ns="$(kubectl get pods -A | grep -E "\s${_pod}\s.+\sRunning\s" | awk '{print $1}')"
+        [ -z "${_ns}" ] && return 1
+    fi
+    kubectl exec "$1" -n "${_ns}" -t -i -- bash
 }
 if type aws-vault &>/dev/null && [ -s "$HOME/.kube/support_test_config" ]; then
     alias awsSpt='aws-vault exec support -- aws'
-    alias kcSpt='aws-vault exec support -- kubectl --kubeconfig $HOME/.kube/support_test_config'
+    alias kcSpt='aws-vault exec support -- kubectl'
 fi
 #type zsh &>/dev/null && alias zzhi='env /usr/bin/arch -x86_64 /bin/zsh —-login'
 type zsh &>/dev/null && alias ibrew="arch -x86_64 /usr/local/bin/brew"
@@ -177,12 +185,14 @@ alias tda='java -Xmx4g -jar $HOME/Apps/tda-bin-2.4/tda.jar &>/tmp/tda.out &'    
 alias gcviewer='java -Xmx4g -jar $HOME/Apps/gcviewer/gcviewer-1.36.jar' # &>/tmp/gcviewer.out & # Mac can't stop this so not put in background
 alias gitbucket='java -jar gitbucket.war &> /tmp/gitbucket.out &'   #https://github.com/gitbucket/gitbucket/releases/download/4.34.0/gitbucket.war
 alias groovyi='groovysh -e ":set interpreterMode true"'
-alias jenkins='java -jar $HOME/Apps/jenkins.war'  #curl -o $HOME/Apps/jenkins.war -L https://get.jenkins.io/war-stable/2.346.1/jenkins.war
+# _JAVA_HOME_11 is set in bash_profile.sh
+alias jenkins='${_JAVA_HOME_11%/}/bin/java -jar $HOME/Apps/jenkins.war'  #curl -o $HOME/Apps/jenkins.war -L https://get.jenkins.io/war-stable/2.346.1/jenkins.war
 # http (but https fails) + reverse proxy server https://www.mock-server.com/mock_server/getting_started.html
 alias mockserver='java -jar $HOME/Apps/mockserver-netty.jar'  #curl -o $HOME/Apps/mockserver-netty.jar -L https://search.maven.org/remotecontent?filepath=org/mock-server/mockserver-netty/5.11.1/mockserver-netty-5.11.1-jar-with-dependencies.jar
 alias jkCli='java -jar $HOME/Apps/jenkins-cli.jar -s http://localhost:8080/ -auth admin:admin123' #curl -o $HOME/Apps/jenkins-cli.jar -L http://localhost:8080/jnlpJars/jenkins-cli.jar
 [ -f /var/tmp/share/java/orient-console.jar ] && alias orient-console="java -jar /var/tmp/share/java/orient-console.jar"
 [ -f /var/tmp/share/java/blobpath.jar ] && alias blobpathJ="java -jar /var/tmp/share/java/blobpath.jar"
+# _JAVA_HOME_11 is set in bash_profile.sh
 alias matJ11='/Applications/mat.app/Contents/MacOS/MemoryAnalyzer -vm ${_JAVA_HOME_11%/}/bin'
 
 # Chrome aliases for Mac (URL needs to be IP as hostname wouldn't be resolvable on remote)
@@ -336,9 +346,9 @@ function every_Nth() {
 # Run specific command X times parallely with Y concurrency
 function multiexec() {
     local _cmd="$1"
-    local _X="${2:-"1"}"
-    local _Y="${3:-"1"}"
-    echo "$(seq 1 ${_X})" | xargs -I{} -P${_Y} -t bash -c "${_cmd}"
+    local _ttl="${2:-"1"}"    # How many times
+    local _con="${3:-"1"}"    # Concurrency
+    echo "$(seq 1 ${_ttl})" | xargs -I{} -P${_con} -t bash -c "${_cmd}"
 }
 # make a directory and cd
 function mcd() {
@@ -592,7 +602,7 @@ alias _ssh='ssh $(basename "$PWD" | cut -d"_" -f1)'
 function pgStatus() {
     local _cmd="${1:-"status"}"
     local _pg_data="${2:-"/usr/local/var/postgresql@14"}"
-    local _log_path="${3:-"$HOME/postgresql.log"}"
+    local _log_path="${3-"${HOME%/}/postgresql.log"}"   # may not have permission on /var/log and /tmp might be small
     local _wal_backup_path="${4:-"$HOME/share/$USER/backups/$(hostname -s)_wal"}"
     #ln -s /Volumes/Samsung_T5/hajime/backups $HOME/share/$USER/backups
     if [ "${_cmd}" == "start" ]; then
@@ -623,6 +633,18 @@ function ncWeb() {
         echo -e "HTTP/1.1 ${_http_status}\nDate: $(type gdate &>/dev/null && gdate --rfc-2822 || date --rfc-2822)\nServer: ncWeb\nLast-Modified: ${_last_mod}\nContent-Length: 0\n\n" | nc -v -v -n -l -p ${_port}
         echo -e "\n"
     done
+}
+
+function goBuild() {
+    local _goFile="$1"
+    local _name="$2"
+    local _destDir="${3:-"$HOME/IdeaProjects/samples/misc"}"
+    [ -z "${_name}" ] && _name="$(basename "${_goFile}" ".go" | tr '[:upper:]' '[:lower:]')"
+    env GOOS=linux GOARCH=amd64 go build -o "${_destDir%/}/${_name}_Linux_x86_64" ${_goFile} && \
+    env GOOS=darwin GOARCH=amd64 go build -o "${_destDir%/}/${_name}_Darwin_x86_64" ${_goFile} && \
+    env GOOS=darwin GOARCH=arm64 go build -o "${_destDir%/}/${_name}_Darwin_arm64" ${_goFile} || return $?
+    ls -l ${_destDir%/}/${_name}_* || return $?
+    echo "curl -o /usr/local/bin/${_name} -L \"https://github.com/hajimeo/samples/raw/master/misc/${_name}_\$(uname)_\$(uname -m)\""
 }
 
 # backup & cleanup (backing up files smaller than 10MB only)
@@ -772,6 +794,7 @@ function pubS() {
     [ $HOME/IdeaProjects/work/bash/log_tests_nxrm.sh -nt /tmp/pubS.last ] && cp -v -f $HOME/IdeaProjects/work/bash/log_tests_nxrm.sh $HOME/IdeaProjects/nexus-toolbox/scripts/log_check_scripts/
     [ $HOME/IdeaProjects/samples/java/asset-dupe-checker/src/main/java/AssetDupeCheckV2.java -nt /tmp/pubS.last ] && cp -v -f $HOME/IdeaProjects/samples/java/asset-dupe-checker/src/main/java/AssetDupeCheckV2.java $HOME/IdeaProjects/nexus-toolbox/asset-dupe-checker/src/main/java/ && cp -v -f $HOME/IdeaProjects/samples/misc/asset-dupe-checker-v2.jar $HOME/IdeaProjects/nexus-toolbox/asset-dupe-checker/
     [ $HOME/IdeaProjects/samples/bash/patch_java.sh -nt /tmp/pubS.last ] && scp -C $HOME/IdeaProjects/samples/bash/patch_java.sh dh1:/var/tmp/share/java/
+    [ $HOME/IdeaProjects/samples/bash/monitoring/nrm3-threaddumps.sh -nt /tmp/pubS.last ] && cp -v -f $HOME/IdeaProjects/samples/bash/monitoring/*-threaddumps*.sh $HOME/IdeaProjects/nexus-monitoring/scripts/
     #cp -v -f $HOME/IdeaProjects/work/nexus-groovy/src2/TrustStoreConverter.groovy $HOME/IdeaProjects/nexus-toolbox/scripts/
     scp ~/IdeaProjects/samples/misc/orient-console.jar dh1:/var/tmp/share/java/ &
     sync_nexus_binaries &>/dev/null &
