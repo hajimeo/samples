@@ -23,8 +23,9 @@
 #  - Configure tls secret for Ingress
 #     kubectl -n ${_NAMESPACE} create secret tls nexus-tls --key ~/IdeaProjects/samples/misc/standalone.localdomain.key --cert ~/IdeaProjects/samples/misc/standalone.localdomain.crt
 #
+#   # If DB username and password has been changed
 #   #kubectl -n ${_NAMESPACE} delete secret ${_ID}-jdbc
-#   #kubectl -n ${_NAMESPACE} create secret generic ${_ID}-jdbc --from-literal=db_user="${_DB_USER}" --from-literal=db_pwd="${_DB_PWD}" --from-literal=jdbc_url="${_JDBC_URL}"
+#   #kubectl -n ${_NAMESPACE} create secret generic ${_ID}-jdbc --from-literal=db_user="${_DB_USER}" --from-literal=db_pwd="${_DB_PWD}"
 #   eval "echo \"$(cat ./k8s-nxrm3-pg.yaml | grep -v '^\s*#')\"" > ./${_ID}.yaml
 #   #kubectl -n ${_NAMESPACE} delete -f ./${_ID}.yaml   # NOTE: This deletes PVC as well
 #   kubectl -n ${_NAMESPACE} apply -f ./${_ID}.yaml
@@ -89,14 +90,14 @@ spec:
         - name: ${_ID}-pod
           securityContext:
             runAsUser: ${_RUNAS_USR:-200}
-          # expecting "latest" uses imagePullPolicy: Always
           image: sonatype/nexus3:${_TAG:-latest}
+          # expecting "latest" uses 'imagePullPolicy: Always' automatically
           #imagePullPolicy: IfNotPresent
           resources:
             requests:
               # Make sure blow works with INSTALL4J_ADD_VM_PARAMS
               cpu: '1'
-              memory: '6G'
+              memory: '4G'
           ports:
             - containerPort: 8081
             #- containerPort: 8443
@@ -135,21 +136,16 @@ spec:
             #  value: 'en_US.UTF-8'
             - name: PATH
               value: '/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin/:/nexus-data/bin'
-            - name: DB_USER
+            - name: NEXUS_DATASTORE_NEXUS_USERNAME
               valueFrom:
                 secretKeyRef:
                   name: ${_ID}-jdbc
                   key: db_user
-            - name: DB_PWD
+            - name: NEXUS_DATASTORE_NEXUS_PASSWORD
               valueFrom:
                 secretKeyRef:
                   name: ${_ID}-jdbc
                   key: db_pwd
-            - name: JDBC_URL
-              valueFrom:
-                secretKeyRef:
-                  name: ${_ID}-jdbc
-                  key: jdbc_url
             # NOTE: Should use 'true' (or remove) for the production for security
             - name: NEXUS_SECURITY_RANDOMPASSWORD
               value: 'false'
@@ -158,19 +154,18 @@ spec:
               # NOTE: In the datastore parameter, no schema specified, so will be public.
               #       The nexus.scripts.allowCreation shouldn't be used for production.
               #       Also, maybe using nexus.onboarding.enabled=false and nexus.skipDefaultRepositories=true ?
-              #       To enable HTTPS/SSL, prepare keystore.jks and append ',/nexus-data/etc/ssl/jetty-https.xml'
-              value: '-XX:ActiveProcessorCount=1 -Xms2g -Xmx4g \
+              #       To enable HTTPS/SSL, prepare keystore.jks and: append
+              #  -Dssl.etc=/nexus-data/etc/ssl \
+              #  -Dnexus-args=/opt/sonatype/nexus/etc/jetty/jetty.xml,/opt/sonatype/nexus/etc/jetty/jetty-http.xml,/nexus-data/etc/ssl/jetty-https.xml,/opt/sonatype/nexus/etc/jetty/jetty-requestlog.xml \
+              value: '-XX:ActiveProcessorCount=1 -Xms2g -Xmx3g \
                 -XX:+UnlockExperimentalVMOptions -XX:+UseCGroupMemoryLimitForHeap \
                 -Dfile.encoding=UTF-8 -Dsun.jnu.encoding=UTF-8 \
                 -Djava.util.prefs.userRoot=/nexus-data/javaprefs \
                 -Dnexus.licenseFile=/etc/sonatype/sonatype-license.lic \
                 -Dnexus.scripts.allowCreation=true \
-                -Dssl.etc=/nexus-data/etc/ssl \
-                -Dnexus-args=/opt/sonatype/nexus/etc/jetty/jetty.xml,/opt/sonatype/nexus/etc/jetty/jetty-http.xml,/opt/sonatype/nexus/etc/jetty/jetty-requestlog.xml \
                 -Dnexus.datastore.enabled=true \
-                -Dnexus.datastore.nexus.jdbcUrl=\${JDBC_URL} \
-                -Dnexus.datastore.nexus.username=\${DB_USER} \
-                -Dnexus.datastore.nexus.password=\${DB_PWD} \
+                -Dnexus.datastore.nexus.jdbcUrl=${_JDBC_URL} \
+                -Dnexus.datastore.nexus.schema=${_DB_SCHEMA:-"public"} \
                 -Dnexus.datastore.nexus.maximumPoolSize=10 \
                 -Dnexus.datastore.nexus.advanced=maxLifetime=600000 \
                 -Dnexus.replication.http.enabled=true'
