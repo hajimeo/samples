@@ -1,9 +1,7 @@
 /*
 #go mod init github.com/hajimeo/samples/golang/FileList
 #go mod tidy
-env GOOS=linux GOARCH=amd64 go build -o ../../misc/file-list_Linux_x86_64 FileList.go && \
-env GOOS=darwin GOARCH=amd64 go build -o ../../misc/file-list_Darwin_x86_64 FileList.go && \
-env GOOS=darwin GOARCH=arm64 go build -o ../../misc/file-list_Darwin_arm64 FileList.go && date
+goBuild ./FileList.go file-list
 
 echo 3 > /proc/sys/vm/drop_caches
 
@@ -103,6 +101,7 @@ var _R_BLOB_NAME *regexp.Regexp
 
 var _DEBUG *bool
 var _DEBUG2 *bool
+var _DRY_RUN *bool
 var _CHECKED_N int64 // Atomic (maybe slower?)
 var _PRINTED_N int64 // Atomic (maybe slower?)
 var _TTL_SIZE int64  // Atomic (maybe slower?)
@@ -129,6 +128,7 @@ func _setGlobals() {
 	_NO_HEADER = flag.Bool("H", false, "If true, no header line")
 	_DEBUG = flag.Bool("X", false, "If true, verbose logging")
 	_DEBUG2 = flag.Bool("XX", false, "If true, more verbose logging")
+	_DRY_RUN = flag.Bool("Dry", false, "If true, RDel does not do anything")
 
 	// Reconcile related
 	_TRUTH = flag.String("src", "BS", "Using database or blobstore as source [BS|DB]") // TODO: not implemented "DB" yet
@@ -136,7 +136,7 @@ func _setGlobals() {
 	_BS_NAME = flag.String("bsName", "", "Eg. 'default'. If provided, the query will be faster")
 	_NODE_ID = flag.String("nodeId", "", "Advanced option.")
 	_RECON_FMT = flag.Bool("RF", false, "Output for the Reconcile task (any_string,blob_ref). -P will be ignored")
-	_REMOVE_DEL = flag.Bool("RDel", false, "Remove 'deleted=true' from .properties. Requires -RF *and* -dF") // TODO: also think about restore plan
+	_REMOVE_DEL = flag.Bool("RDel", false, "Remove 'deleted=true' from .properties. Requires -RF *and* -dF")
 	_DEL_DATE_FROM = flag.String("dF", "", "Deleted date YYYY-MM-DD (from). Used to search deletedDateTime")
 	_DEL_DATE_TO = flag.String("dT", "", "Deleted date YYYY-MM-DD (to). To exclude newly deleted assets")
 	_MOD_DATE_FROM = flag.String("mF", "", "File modification date YYYY-MM-DD from")
@@ -190,7 +190,7 @@ func _setGlobals() {
 	_R_DELETED, _ = regexp.Compile("deleted=true") // should not use ^ as replacing one-line text
 	_R_REPO_NAME, _ = regexp.Compile("[^#]?@Bucket.repo-name=(.+)")
 	_R_BLOB_NAME, _ = regexp.Compile("[^#]?@BlobStore.blob-name=(.+)")
-	if *_RECON_FMT {
+	if *_RECON_FMT || *_REMOVE_DEL {
 		*_FILTER = _PROP_EXT
 		if len(*_FILTER_P) == 0 {
 			*_FILTER_P = "deleted=true"
@@ -209,10 +209,11 @@ func _setGlobals() {
 		}
 	}
 	if *_REMOVE_DEL {
-		if !*_RECON_FMT || len(*_DEL_DATE_FROM) == 0 {
-			_log("WARN", "Ignoring -RDel as no -RF or no -dF.")
+		if len(*_DEL_DATE_FROM) == 0 {
+			_log("WARN", "Disabling -RDel as no -dF.")
+			*_REMOVE_DEL = false
 		} else if _IS_S3 != nil && *_IS_S3 {
-			panic("TODO: -RDel is not implemented for S3.")
+			_log("INFO", "-RDel is experimental for S3.")
 		}
 	}
 	_log("DEBUG", "_setGlobals completed.")
@@ -572,18 +573,16 @@ func printLine(path string, fInfo os.FileInfo, db *sql.DB) {
 func _printLineExtra(output string, path string, modTimeTs int64, db *sql.DB, client *s3.Client) string {
 	skipCheck := false
 
-	if *_RECON_FMT {
-		if _START_TIME_ts > 0 && modTimeTs > _START_TIME_ts {
-			_log("DEBUG2", "path:"+path+" is recently modified, so skipping ("+strconv.FormatInt(modTimeTs, 10)+" > "+strconv.FormatInt(_START_TIME_ts, 10)+")")
-			return ""
-		}
-		// TODO: probably do not need this check when _DEL_DATE_FROM_ts is gven
-		/*if _DEL_DATE_FROM_ts > 0 && modTimeTs < _DEL_DATE_FROM_ts {
-			_log("DEBUG2", "path:"+path+" mod time is older than _DEL_DATE_FROM_ts, so skipping ("+strconv.FormatInt(modTimeTs, 10)+" < "+strconv.FormatInt(_DEL_DATE_FROM_ts, 10)+")")
-			return ""
-		}*/
-		// NOTE: Not doing same for _DEL_DATE_TO_ts as some task may touch.
+	if _START_TIME_ts > 0 && modTimeTs > _START_TIME_ts {
+		_log("INFO", "path:"+path+" is recently modified, so skipping ("+strconv.FormatInt(modTimeTs, 10)+" > "+strconv.FormatInt(_START_TIME_ts, 10)+")")
+		return ""
 	}
+	// TODO: probably do not need this check when _DEL_DATE_FROM_ts is gven
+	/*if _DEL_DATE_FROM_ts > 0 && modTimeTs < _DEL_DATE_FROM_ts {
+		_log("DEBUG2", "path:"+path+" mod time is older than _DEL_DATE_FROM_ts, so skipping ("+strconv.FormatInt(modTimeTs, 10)+" < "+strconv.FormatInt(_DEL_DATE_FROM_ts, 10)+")")
+		return ""
+	}*/
+	// NOTE: Not doing same for _DEL_DATE_TO_ts as some task may touch.
 
 	// If _NODE_ID is given and no deleted date from/to, should not need to open a file
 	if len(*_DB_CON_STR) > 0 && len(*_TRUTH) > 0 && len(*_NODE_ID) > 0 && _DEL_DATE_FROM_ts == 0 && _DEL_DATE_TO_ts == 0 {
@@ -594,7 +593,7 @@ func _printLineExtra(output string, path string, modTimeTs int64, db *sql.DB, cl
 			_log("DEBUG2", "path:"+path+" exists in Blobstore. Skipping.")
 			return ""
 		}
-		reconOutput, reconErr := genOutputForReconcile("", path, _DEL_DATE_FROM_ts, _DEL_DATE_TO_ts, true, client)
+		reconOutput, _, reconErr := genOutputForReconcile("", path, _DEL_DATE_FROM_ts, _DEL_DATE_TO_ts, true, client)
 		if reconErr != nil {
 			_log("DEBUG", reconErr.Error())
 		}
@@ -628,25 +627,32 @@ func _printLineExtra(output string, path string, modTimeTs int64, db *sql.DB, cl
 		}
 	}
 
-	if *_RECON_FMT {
-		// If reconciliation output format is requested, should not use 'output'
-		reconOutput, reconErr := genOutputForReconcile(contents, path, _DEL_DATE_FROM_ts, _DEL_DATE_TO_ts, skipCheck, client)
-		if reconErr != nil {
-			_log("DEBUG", reconErr.Error())
-		}
-		return reconOutput
-	}
-
+	// TODO: too messy and confusing
 	if *_WITH_PROPS || len(*_FILTER_P) > 0 || len(*_FILTER_PX) > 0 {
 		props, skipReason := genOutputFromProp(contents, path)
 		if skipReason != nil {
-			_log("DEBUG2", skipReason.Error())
+			_log("DEBUG", skipReason.Error())
 			return ""
 		}
 		if *_WITH_PROPS && len(props) > 0 {
 			output = fmt.Sprintf("%s%s%s", output, _SEP, props)
 		}
 	}
+	if *_RECON_FMT || *_REMOVE_DEL {
+		// If reconciliation output format is requested, should not use 'output'
+		reconOutput, shouldRemoveDel, reconErr := genOutputForReconcile(contents, path, _DEL_DATE_FROM_ts, _DEL_DATE_TO_ts, skipCheck, client)
+		if reconErr != nil {
+			_log("DEBUG", reconErr.Error())
+		}
+		// Currently, for the safety, _REMOVE_DEL requires delDateFromTs
+		if shouldRemoveDel && *_REMOVE_DEL && _DEL_DATE_FROM_ts > 0 {
+			_ = removeDel(contents, path, client)
+		}
+		if *_RECON_FMT {
+			return reconOutput
+		}
+	}
+
 	return output
 }
 
@@ -673,10 +679,16 @@ func getContents(path string, client *s3.Client) (string, error) {
 }
 
 func getContentsFile(path string) (string, error) {
+	thresholdMs := 0
 	if _DEBUG != nil && *_DEBUG {
-		defer _elapsed(time.Now().UnixMilli(), "DEBUG Read "+path, 0)
+		defer _elapsed(time.Now().UnixMilli(), "DEBUG Read "+path, int64(thresholdMs))
 	} else {
-		defer _elapsed(time.Now().UnixMilli(), "WARN  slow file read for path:"+path, 500)
+		if *_IS_S3 {
+			thresholdMs = 3000
+		} else {
+			thresholdMs = 1000
+		}
+		defer _elapsed(time.Now().UnixMilli(), "WARN  slow file read for path:"+path, int64(thresholdMs))
 	}
 	bytes, err := os.ReadFile(path)
 	if err != nil {
@@ -863,15 +875,14 @@ func isBlobMissingInDB(contents string, path string, db *sql.DB) bool {
 	return noRows
 }
 
-func genOutputForReconcile(contents string, path string, delDateFromTs int64, delDateToTs int64, skipCheck bool, client *s3.Client) (string, error) {
-	deletedMsg := ""
+func genOutputForReconcile(contents string, path string, delDateFromTs int64, delDateToTs int64, skipCheck bool, client *s3.Client) (string, bool, error) {
 	deletedDtMsg := ""
 
 	// If skipCheck is true and no deletedDateFrom/To and _REMOVE_DEL are specified, just return the output for reconcile
 	if skipCheck && !*_REMOVE_DEL && delDateFromTs == 0 {
 		_log("INFO", fmt.Sprintf("Found path:%s .", path))
 		// Not using _SEP for this output
-		return fmt.Sprintf("%s,%s", getNowStr(), getBaseNameWithoutExt(path)), nil
+		return fmt.Sprintf("%s,%s", getNowStr(), getBaseNameWithoutExt(path)), false, nil
 	}
 
 	// if _DEL_DATE_FROM or _DEL_DATE_TO, examine deletedDateTime
@@ -879,44 +890,60 @@ func genOutputForReconcile(contents string, path string, delDateFromTs int64, de
 		m := _R_DEL_DT.FindStringSubmatch(contents)
 		// stop in here with error, only when skipCheck is false
 		if !skipCheck && len(m) < 2 {
-			return "", errors.New(fmt.Sprintf("path:%s dos not match with %s (%s)", path, _R_DEL_DT.String(), m))
+			return "", false, errors.New(fmt.Sprintf("path:%s does not match with %s (%s)", path, _R_DEL_DT.String(), m))
 		}
 
 		// Current logic is Check and Remove deleted=true only when deletedDatetime is set in the properties file
 		if len(m) > 1 {
 			deletedTSMsec, _ := strconv.ParseInt(m[1], 10, 64)
 			if !isTimestampBetween(deletedTSMsec, delDateFromTs*1000, delDateToTs*1000) {
-				return "", errors.New(fmt.Sprintf("%d is not between %d and %d", deletedTSMsec, delDateFromTs*1000, delDateToTs*1000))
+				return "", false, errors.New(fmt.Sprintf("%d is not between %d and %d", deletedTSMsec, delDateFromTs*1000, delDateToTs*1000))
 			}
 			deletedDtMsg = fmt.Sprintf(" deletedDateTime=%d", deletedTSMsec)
-
-			// Currently, for the safety, _REMOVE_DEL requires delDateFromTs
-			if *_REMOVE_DEL && delDateFromTs > 0 {
-				updatedContents := removeLines(contents, _R_DELETED)
-				err := writeContents(path, updatedContents, client)
-				if err != nil {
-					_log("ERROR", fmt.Sprintf("Updating path:%s failed with %s", path, err))
-				} else if len(contents) == len(updatedContents) {
-					_log("WARN", fmt.Sprintf("Removed 'deleted=true' from path:%s but size is same (%d => %d)", path, len(contents), len(updatedContents)))
-				} else {
-					deletedMsg = " (removed 'deleted=true')"
-
-					if _IS_S3 != nil && *_IS_S3 {
-						errTag := removeTagsS3(path, client)
-						if errTag == nil {
-							_ = removeTagsS3(getPathWithoutExt(path)+".bytes", client)
-						}
-					}
-				}
-			}
 		}
-		_log("INFO", fmt.Sprintf("Found path:%s%s%s", path, deletedDtMsg, deletedMsg))
+		_log("INFO", fmt.Sprintf("Found path:%s%s", path, deletedDtMsg))
 	} else {
-		_log("DEBUG", fmt.Sprintf("Found path:%s%s%s", path, deletedDtMsg, deletedMsg))
+		_log("DEBUG", fmt.Sprintf("Found path:%s%s", path, deletedDtMsg))
+	}
+	// Not using _SEP for this output
+	return fmt.Sprintf("%s,%s", getNowStr(), getBaseNameWithoutExt(path)), true, nil
+}
+
+func removeDel(contents string, path string, client *s3.Client) bool {
+	if *_DRY_RUN {
+		_log("INFO", fmt.Sprintf("Removed 'deleted=true' for path:%s (DRY-RUN)", path))
+		return true
 	}
 
-	// Not using _SEP for this output
-	return fmt.Sprintf("%s,%s", getNowStr(), getBaseNameWithoutExt(path)), nil
+	updatedContents := removeLines(contents, _R_DELETED)
+	err := writeContents(path, updatedContents, client)
+	if err != nil {
+		_log("ERROR", fmt.Sprintf("Removing 'deleted=true' for path:%s failed with %s", path, err))
+		return false
+	}
+	if len(contents) == len(updatedContents) {
+		_log("WARN", fmt.Sprintf("Removed 'deleted=true' from path:%s but size is same (%d => %d)", path, len(contents), len(updatedContents)))
+		return false
+	}
+
+	if _IS_S3 != nil && *_IS_S3 {
+		errTag := removeTagsS3(path, client)
+		if errTag != nil {
+			_log("ERROR", fmt.Sprintf("Removed 'deleted=true' but removeTagsS3 for path:%s failed with %s", path, errTag))
+			return false
+		}
+
+		bPath := getPathWithoutExt(path) + ".bytes"
+		errTag = removeTagsS3(bPath, client)
+		if errTag != nil {
+			_log("WARN", fmt.Sprintf("Removed 'deleted=true' but removeTagsS3 for path:%s failed with %s", bPath, errTag))
+			return true
+		}
+		_log("INFO", fmt.Sprintf("Removed 'deleted=true' and S3 tag for path:%s", path))
+	} else {
+		_log("INFO", fmt.Sprintf("Removed 'deleted=true' for path:%s", path))
+	}
+	return true
 }
 
 // one line but for unit testing
@@ -939,38 +966,36 @@ func isTimestampBetween(tMsec int64, fromTsMsec int64, toTsMsec int64) bool {
 }
 
 func genOutputFromProp(contents string, path string) (string, error) {
-	if *_USE_REGEX {
-		// To use simpler regex, sorting line and converting to single line first
-		lines := strings.Split(contents, "\n")
-		sort.Strings(lines)
-		contents = strings.Join(lines, ",")
-	}
+	// To use simpler regex, sorting line and converting to single line first
+	lines := strings.Split(contents, "\n")
+	sort.Strings(lines)
+	sortedContents := strings.Join(lines, ",")
 
 	// Exclude check first
-	if _RX != nil && len(_RX.String()) > 0 && _RX.MatchString(contents) {
+	if _RX != nil && len(_RX.String()) > 0 && _RX.MatchString(sortedContents) {
 		return "", errors.New(fmt.Sprintf("%s matches with the exclude regex filter: %s. Skipping.", path, *_FILTER_PX))
 	}
 
 	if _R != nil && len(_R.String()) > 0 {
-		if _R.MatchString(contents) {
+		if _R.MatchString(sortedContents) {
 			_log("DEBUG2", fmt.Sprintf("%s match with the regex filter: %s.", path, *_FILTER_P))
-			return contents, nil
+			return sortedContents, nil
 		} else {
 			return "", errors.New(fmt.Sprintf("%s does NOT match with the regex filter %s. Skipping.", path, *_FILTER_P))
 		}
 	}
 
-	if len(*_FILTER_PX) > 0 && strings.Contains(contents, *_FILTER_PX) {
+	if len(*_FILTER_PX) > 0 && strings.Contains(sortedContents, *_FILTER_PX) {
 		return "", errors.New(fmt.Sprintf("%s contain exclude filter: %s. Skipping.", path, *_FILTER_PX))
 	}
 
 	// If not regex (eg: 'deleted=true')
-	if len(*_FILTER_P) > 0 && !strings.Contains(contents, *_FILTER_P) {
+	if len(*_FILTER_P) > 0 && !strings.Contains(sortedContents, *_FILTER_P) {
 		return "", errors.New(fmt.Sprintf("%s does not contain %s. Skipping.", path, *_FILTER_P))
 	}
 
 	// If no _FILTER_P, just return the contents as single line. Should also escape '"'?
-	return strings.ReplaceAll(contents, "\n", ","), nil
+	return sortedContents, nil
 }
 
 // get *all* directories under basedir and which name starts with prefix

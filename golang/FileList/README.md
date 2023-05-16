@@ -39,11 +39,13 @@ chmod a+x /usr/local/bin/file-list
 Usage of file-list:
   -BSize
     	If true, includes .bytes size (When -f is '.properties')
+  -Dry
+    	If true, RDel does not do anything
   -H	If true, no header line
   -L	If true, just list directories and exit
   -O	If true, also get owner display name
   -P	If true, read and output the .properties files
-  -R	If true, .properties content is *sorted* and _FILTER_P string is treated as regex
+  -R	If true, .properties content is *sorted* and -fP|-fPX string is treated as regex
   -RDel
     	Remove 'deleted=true' from .properties. Requires -RF *and* -dF
   -RF
@@ -66,26 +68,26 @@ Usage of file-list:
     	Deleted date YYYY-MM-DD (from). Used to search deletedDateTime
   -dT string
     	Deleted date YYYY-MM-DD (to). To exclude newly deleted assets
-  -mF string
-    	File modification date YYYY-MM-DD (from).
-  -mT string
-    	File modification date YYYY-MM-DD (to).
   -db string
     	DB connection string or path to properties file
   -f string
     	Filter file paths (eg: '.properties')
   -fP string
-    	Filter .properties contents (eg: 'deleted=true')
+    	Filter for .properties (eg: 'deleted=true')
   -fPX string
     	Excluding Filter for .properties (eg: 'BlobStore.blob-name=.+/maven-metadata.xml.*')
   -m int
     	Integer value for Max Keys (<= 1000) (default 1000)
+  -mF string
+    	File modification date YYYY-MM-DD from
+  -mT string
+    	File modification date YYYY-MM-DD to
   -n int
     	Return first N lines (0 = no limit). (TODO: may return more than N)
   -nodeId string
     	Advanced option.
   -p string
-    	Prefix of sub directories (eg: 'vol-'). This is not recursive
+    	Prefix of sub directories (eg: 'vol-') This is not recursive
   -src string
     	Using database or blobstore as source [BS|DB] (default "BS")
 ```
@@ -114,9 +116,9 @@ Exclude .bytes files, so that .properties file only:
 file-list -b ./sonatype-work/nexus3/blobs/default/content -p 'vol-' -P -f ".properties" -c 10 > /tmp/default_props_only.tsv
 ```
 
-### Finding deleted=true (-fP "\<expression\>")
+### Finding first 1 'deleted=true' (-fP "\<expression\>")
 ```
-file-list -b ./sonatype-work/nexus3/blobs/default/content -p 'vol-' -fP "deleted=true" -c 10 > /tmp/default_soft_deleted.tsv
+file-list -b ./sonatype-work/nexus3/blobs/default/content -p 'vol-' -fP "deleted=true" -n 1 -c 10 > /tmp/default_soft_deleted.tsv
 ```
 
 ### Check the total count and size of all .bytes files

@@ -246,7 +246,7 @@ func TestIsTimestampBetween(t *testing.T) {
 func TestGenOutputForReconcile(t *testing.T) {
 	delDateFrom := datetimeStrToTs("2021-06-02")
 	delDateTo := datetimeStrToTs("2021-06-03")
-	output, err := genOutputForReconcile(DUMMY_PROP_TXT, DUMMY_FILE_PATH, delDateFrom, delDateTo, false, nil)
+	output, _, err := genOutputForReconcile(DUMMY_PROP_TXT, DUMMY_FILE_PATH, delDateFrom, delDateTo, false, nil)
 	if err != nil {
 		t.Errorf("genOutputForReconcile return error %s", err.Error())
 	}
@@ -256,7 +256,7 @@ func TestGenOutputForReconcile(t *testing.T) {
 
 	delDateFrom = datetimeStrToTs("2022-06-02")
 	delDateTo = datetimeStrToTs("2022-07-02")
-	output, err = genOutputForReconcile(DUMMY_PROP_TXT, DUMMY_FILE_PATH, delDateFrom, delDateTo, false, nil)
+	output, _, err = genOutputForReconcile(DUMMY_PROP_TXT, DUMMY_FILE_PATH, delDateFrom, delDateTo, false, nil)
 	if err == nil || !strings.Contains(err.Error(), "is not between") {
 		t.Errorf("genOutputForReconcile return unexpected error %s", err.Error())
 	}
