@@ -645,7 +645,11 @@ func _printLineExtra(output string, path string, modTimeTs int64, db *sql.DB, cl
 			_log("DEBUG", reconErr.Error())
 		}
 		// Currently, for the safety, _REMOVE_DEL requires delDateFromTs
-		if shouldRemoveDel && *_REMOVE_DEL && _DEL_DATE_FROM_ts > 0 {
+		if *_REMOVE_DEL && _DEL_DATE_FROM_ts > 0 {
+			if !shouldRemoveDel {
+				_log("DEBUG", reconErr.Error())
+				return ""
+			}
 			_ = removeDel(contents, path, client)
 		}
 		if *_RECON_FMT {

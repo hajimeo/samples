@@ -152,9 +152,13 @@ file-list -b ./sonatype-work/nexus3/blobs/default/content -p "vol-" -c 10 -RF -m
 file-list -b ./sonatype-work/nexus3/blobs/default/content -p "vol-" -c 10 -RF -dF "$(date -d "1 day ago" +%Y-%m-%d)" > ./$(date '+%Y-%m-%d')
 ```
 
-### Remove 'deleted=true' (-RDel), then output lines for the reconciliation YYYY-MM-DD text
+### Remove 'deleted=true' (-RDel), then outputs lines for the reconciliation YYYY-MM-DD text
 ```
 file-list -b ./sonatype-work/nexus3/blobs/default/content -p "vol-" -c 10 -RF -dF "$(date -d "1 day ago" +%Y-%m-%d)" -RDel > ./$(date '+%Y-%m-%d')
+```
+### Remove 'deleted=true' (-RDel) against S3, then outputs the contents of .properties file (before editing), and with DRY-RUN mode
+```
+file-list -S3 -b apac-support-bucket -p "node-nxrm-ha1/content/vol-" -c 10 -R -fP "@Bucket\.repo-name=raw-s3-hosted,.+deleted=true" -P -dF "$(date -d "1 day ago" +%Y-%m-%d)" -RDel -Dry
 ```
 
 ### Check orphaned files by querying against PostgreSQL (-db "\<conn string or nexus-store.properties file path) with max 10 DB connections (-c 10)
