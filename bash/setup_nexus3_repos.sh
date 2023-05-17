@@ -1434,7 +1434,7 @@ EOF
     curl -fL https://rpm.nodesource.com/setup_14.x --compressed | bash - || _log "ERROR" "Executing https://rpm.nodesource.com/setup_14.x failed"
     rpm -Uvh https://packages.microsoft.com/config/centos/7/packages-microsoft-prod.rpm
     yum install -y centos-release-scl-rh centos-release-scl || _log "ERROR" "Installing .Net (for Nuget) related packages failed"
-    # TODO: I think rubygems on CentOS requires ruby 2.3
+    # TODO: I think rubygems on CentOS requires ruby 2.3 (or 2.6?) or was it for cocoapods?
     ${_yum_install} java-1.8.0-openjdk-devel maven nodejs rh-ruby23 rubygems aspnetcore-runtime-3.1 golang git gcc openssl-devel bzip2-devel libffi-devel zlib-devel xz-devel || _log "ERROR" "yum install java maven nodejs etc. failed"
     if type python3 &>/dev/null; then
         _log "WARN" "python3 is already in the $PATH so not installing"
@@ -1498,7 +1498,7 @@ EOF
     else
         pip3 install conan
     fi
-    _log "INFO" "Setting up Rubygem 2.3 ..."
+    _log "INFO" "Setting up Rubygem (2.3?) ..."
     # @see: https://www.server-world.info/en/note?os=CentOS_7&p=ruby23
     #       Also need git newer than 1.8.8, but https://github.com/iusrepo/git216/issues/5
     if git --version | grep 'git version 1.'; then
@@ -1507,7 +1507,7 @@ EOF
         yum install -y https://packages.endpoint.com/rhel/7/os/x86_64/endpoint-repo-1.7-1.x86_64.rpm
         ${_yum_install} git
     fi
-    # Enabling ruby 2.6 globally (can't remember why 2.3 was used)
+    # Enabling ruby 2.6 globally for Bundler|bundle (can't remember why 2.3 was used)
     local rb="26"   # or "23"
     if [ ! -s /opt/rh/rh-ruby${rb}/enable ]; then
         yum install -y rh-ruby${rb}
@@ -1517,9 +1517,12 @@ EOF
 source /opt/rh/rh-ruby${rb}/enable
 export X_SCLS="\$(scl enable rh-ruby${rb} 'echo \$X_SCLS')"
 EOF
+    _log "INFO" "Install Bundler (bundle) ..."
+    bash -l -c "gem install bundle"
     # NOTE: At this moment, the newest cocoapods fails with "Failed to build gem native extension"
     _log "INFO" "*EXPERIMENTAL* Install cocoapods 1.8.4 ..."
     bash -l -c "gem install cocoapods -v 1.8.4" # To reload shell just in case
+
     _log "INFO" "Install go/golang and adding GO111MODULE=on ..."
     rpm --import https://mirror.go-repo.io/centos/RPM-GPG-KEY-GO-REPO
     curl -fL https://mirror.go-repo.io/centos/go-repo.repo --compressed > /etc/yum.repos.d/go-repo.repo
@@ -1648,14 +1651,19 @@ nexus.scripts.allowCreation=true' > ${_sonatype_work%/}/etc/nexus.properties || 
 
 
 # SAML server: https://github.com/hajimeo/samples/blob/master/golang/SamlTester/README.md
+# friendly attributes {uid=[samluser], eduPersonAffiliation=[users], givenName=[saml], eduPersonPrincipalName=[samluser@standalone.localdomain], cn=[Saml User], sn=[user]}
+#$ curl -o ./idp_metadata.xml "${_idp_base_url%/}/metadata"
+#$ curl -o ${_sp_meta_file} -u "admin:admin123" "http://localhost:8081/service/rest/v1/security/saml/metadata"
 function f_start_saml_server() {
-    local _service_metadata_url="${1:-"./service-metadata.xml"}"
-    local _idp_base_url="${2:-"http://localhost:2080/"}"
-    if [ -z "${_service_metadata_url}" ]; then
-        echo "Please specify _service_metadata_url"; return 1
+    local _idp_base_url="${1:-"http://localhost:2080/"}"
+    local _sp_meta_file="${2:-"./service-metadata.xml"}"
+    local _sp_meta_url="${3-"http://localhost:8081/service/rest/v1/security/saml/metadata"}"
+    local _sp_meta_cred="${4-"admin:admin123"}"
+    if [ -z "${_sp_meta_file}" ]; then
+        echo "Please specify _sp_meta_file"; return 1
     fi
     local _cmd="simplesamlidp"
-    if type ${_cmd} &>/dev/null; then
+    if ! type ${_cmd} &>/dev/null; then
         if [ ! -s "${_SHARE_DIR%/}/simplesamlidp" ]; then
             curl -o "${_SHARE_DIR%/}/simplesamlidp" -L "https://github.com/hajimeo/samples/raw/master/misc/simplesamlidp_$(uname)_$(uname -m)" --compressed || return $?
             chmod u+x "${_SHARE_DIR%/}/simplesamlidp" || return $?
@@ -1665,8 +1673,14 @@ function f_start_saml_server() {
     if [ ! -s ./simple-saml-idp.json ]; then
         curl -O -L "https://raw.githubusercontent.com/hajimeo/samples/master/misc/simple-saml-idp.json" --compressed  || return $?
     fi
-    openssl req -x509 -newkey rsa:2048 -keyout ./myidp.key -out ./myidp.crt -days 365 -nodes -subj "/CN=$(hostname -f)"
-    export IDP_KEY=./myidp.key IDP_CERT=./myidp.crt USER_JSON=./simple-saml-idp.json IDP_BASE_URL="${_idp_base_url}" SERVICE_METADATA_URL="${_service_metadata_url}"
+    # Not implemented to use credential, so for now using _sp_meta_file
+    if [ -n "${_sp_meta_url}" ] && [ ! -s "${_sp_meta_file}" ]; then
+        curl -sfL -o ${_sp_meta_file} -u "${_sp_meta_cred}" "${_sp_meta_url}"   # It's OK if fails
+    fi
+    if [ ! -s ./myidp.key ]; then
+        openssl req -x509 -newkey rsa:2048 -keyout ./myidp.key -out ./myidp.crt -days 365 -nodes -subj "/CN=$(hostname -f)" || return $?
+    fi
+    export IDP_KEY=./myidp.key IDP_CERT=./myidp.crt USER_JSON=./simple-saml-idp.json IDP_BASE_URL="${_idp_base_url}" SERVICE_METADATA_URL="${_sp_meta_file}"
     eval "${_cmd}"
 }
 
