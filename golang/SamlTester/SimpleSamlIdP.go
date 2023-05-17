@@ -7,9 +7,7 @@ Example env variables:
 To get IdP metadata:
 	${IDP_BASE_URL%/}/metadata
 
-env GOOS=linux GOARCH=amd64 go build -o ../../misc/simplesamlidp_Linux_x86_64 SimpleSamlIdP.go && \
-env GOOS=darwin GOARCH=amd64 go build -o ../../misc/simplesamlidp_Darwin_x86_64 SimpleSamlIdP.go && \
-env GOOS=darwin GOARCH=arm64 go build -o ../../misc/simplesamlidp_Darwin_arm64 SimpleSamlIdP.go && date
+TODO: eduPersonAffiliation, eduPersonAffiliation etc. should be changeable.
 */
 
 package main
@@ -100,6 +98,7 @@ func main() {
 		logr.Fatalf("create idp: %s", err)
 	}
 
+	// Loading (putting) users from the json file
 	addUsers(userJsonFilename, idpServer, logr)
 	addService(idpServer, idpBaseURL, serviceUrlOrXml, logr)
 
@@ -201,7 +200,6 @@ func addUsers(filename string, idpServer *samlidp.Server, logr *log.Logger) {
 	f.Close()
 
 	for _, user := range users {
-
 		if user.PlaintextPassword != nil {
 			hashedPassword, _ := bcrypt.GenerateFromPassword([]byte(*user.PlaintextPassword), bcrypt.DefaultCost)
 			user.HashedPassword = hashedPassword
@@ -209,8 +207,8 @@ func addUsers(filename string, idpServer *samlidp.Server, logr *log.Logger) {
 
 		err = idpServer.Store.Put("/users/"+user.Name, user)
 		if err != nil {
-			logr.Fatalf("put user: %s", err)
+			logr.Fatalf("put user: %s failed with %s", user.Name, err.Error())
 		}
-		logr.Printf("created user %s", user.Name)
+		logr.Printf("created user %v", user)
 	}
 }
