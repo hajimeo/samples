@@ -30,6 +30,8 @@ curl -o ${SERVICE_METADATA_URL} -u "admin:admin123" "http://localhost:8081/servi
 ```
 NOTE: If above service is not registered, please restart "./simplesamlidp" (ctrl+c to stop)
 ### IdP Field Mappings
-Please check the JSON file specified in USER_JSON for the attributes (fields)
-https://raw.githubusercontent.com/hajimeo/samples/master/misc/simple-saml-idp.json
+Example:
+```
+friendly attributes {uid=[samluser], eduPersonAffiliation=[users], givenName=[saml], eduPersonPrincipalName=[samluser@standalone.localdomain], cn=[Saml User], sn=[user]}
+```
 ### Test SAML login (eg: "samluser")
