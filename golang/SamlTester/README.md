@@ -29,4 +29,7 @@ Then download Service's metadata into SERVICE_METADATA_URL:
 curl -o ${SERVICE_METADATA_URL} -u "admin:admin123" "http://localhost:8081/service/rest/v1/security/saml/metadata"
 ```
 NOTE: If above service is not registered, please restart "./simplesamlidp" (ctrl+c to stop)
+### IdP Field Mappings
+Please check the JSON file specified in USER_JSON for the attributes (fields)
+https://raw.githubusercontent.com/hajimeo/samples/master/misc/simple-saml-idp.json
 ### Test SAML login (eg: "samluser")
