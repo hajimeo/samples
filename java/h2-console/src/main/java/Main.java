@@ -464,6 +464,8 @@ public class Main {
 
         String path = args[0];
         if (new File(path).isFile()) {
+            // TODO: not perfect to avoid "A file path that is implicitly relative to the current working directory is not allowed in the database UR"
+            path = new File(path).getAbsolutePath();
             path = path.replaceAll("\\.(h2|mv)\\.db.*", "");
         }
         String h2Opt = "MV_STORE=FALSE;DATABASE_TO_UPPER=FALSE;LOCK_MODE=0;DEFAULT_LOCK_TIMEOUT=600000";
