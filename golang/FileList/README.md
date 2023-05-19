@@ -36,60 +36,67 @@ chmod a+x /usr/local/bin/file-list
 
 ## ARGUMENTS:
 ```
+$ file-list --help
+
+List .properties and .bytes files as *Tab* Separated Values (Path LastModified Size).
+    
+HOW TO and USAGE EXAMPLES:
+    https://github.com/hajimeo/samples/blob/master/golang/FileList/README.md
+
 Usage of file-list:
   -BSize
-    	If true, includes .bytes size (When -f is '.properties')
+        If true, includes .bytes size (When -f is '.properties')
   -Dry
-    	If true, RDel does not do anything
-  -H	If true, no header line
-  -L	If true, just list directories and exit
-  -O	If true, also get owner display name
-  -P	If true, read and output the .properties files
-  -R	If true, .properties content is *sorted* and -fP|-fPX string is treated as regex
+        If true, RDel does not do anything
+  -H    If true, no header line
+  -L    If true, just list directories and exit
+  -O    AWS S3: If true, get the owner display name
+  -P    If true, read and output the .properties files
+  -R    If true, .properties content is *sorted* and -fP|-fPX string is treated as regex
   -RDel
-    	Remove 'deleted=true' from .properties. Requires -RF *and* -dF
+        Reconcile: Remove 'deleted=true' from .properties. Requires -dF
   -RF
-    	Output for the Reconcile task (any_string,blob_ref). -P will be ignored
+        Reconcile: Output for the Reconcile task (datetime,blob_ref). -P will be ignored
   -S3
-    	If true, access S3 bucket with AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY and AWS_REGION
-  -T	If true, also get tags of each object
-  -X	If true, verbose logging
+        AWS S3: If true, access S3 bucket with AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY and AWS_REGION
+  -T    AWS S3: If true, get tags of each object
+  -X    If true, verbose logging
   -XX
-    	If true, more verbose logging
+        If true, more verbose logging
   -b string
-    	Base directory (default: '.') or S3 Bucket name (default ".")
+        Base directory (default: '.') or S3 Bucket name (default ".")
   -bsName string
-    	Eg. 'default'. If provided, the query will be faster
+        Reconcile: eg. 'default'. If provided, the SQL query will be faster
   -c int
-    	Concurrent number for sub directories (may not need to use with very fast disk) (default 1)
+        Concurrent number for sub directories (may not need to use with very fast disk) (default 1)
   -c2 int
-    	Concurrent number for retrieving AWS Tags (default 16)
+        AWS S3: Concurrent number for retrieving AWS Tags (default 16)
   -dF string
-    	Deleted date YYYY-MM-DD (from). Used to search deletedDateTime
+        Reconcile: Deleted date YYYY-MM-DD (from). Used to search deletedDateTime
   -dT string
-    	Deleted date YYYY-MM-DD (to). To exclude newly deleted assets
+        Reconcile: Deleted date YYYY-MM-DD (to). To exclude newly deleted assets
   -db string
-    	DB connection string or path to properties file
+        Reconcile: DB connection string or path to properties file
   -f string
-    	Filter file paths (eg: '.properties')
+        Filter for the file path (eg: '.properties' to include only this extension)
   -fP string
-    	Filter for .properties (eg: 'deleted=true')
+        Filter for the content of the .properties files (eg: 'deleted=true')
   -fPX string
-    	Excluding Filter for .properties (eg: 'BlobStore.blob-name=.+/maven-metadata.xml.*')
+        Excluding Filter for .properties (eg: 'BlobStore.blob-name=.+/maven-metadata.xml.*')
   -m int
-    	Integer value for Max Keys (<= 1000) (default 1000)
+        AWS S3: Integer value for Max Keys (<= 1000) (default 1000)
   -mF string
-    	File modification date YYYY-MM-DD from
+        Reconcile: File modification date YYYY-MM-DD from
   -mT string
-    	File modification date YYYY-MM-DD to
+        Reconcile: File modification date YYYY-MM-DD to
   -n int
-    	Return first N lines (0 = no limit). (TODO: may return more than N)
+        Return first N lines (0 = no limit). (TODO: may return more than N)
   -nodeId string
-    	Advanced option.
+        Reconcile: Nexus node Id used in the blob ref (old version)
   -p string
-    	Prefix of sub directories (eg: 'vol-') This is not recursive
+        Prefix of sub directories (eg: 'vol-') This is not recursive
   -src string
-    	Using database or blobstore as source [BS|DB] (default "BS")
+        Reconcile: Using database or blobstore as source [BS|DB] (default "BS")
 ```
 
 ## Usage Examples

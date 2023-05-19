@@ -115,9 +115,9 @@ func _setGlobals() {
 	//_BASEDIR = flag.String("b", "", "S3 Bucket name")
 	_PREFIX = flag.String("p", "", "Prefix of sub directories (eg: 'vol-') This is not recursive")
 	_WITH_PROPS = flag.Bool("P", false, "If true, read and output the .properties files")
-	_FILTER = flag.String("f", "", "Filter file paths (eg: '.properties')")
+	_FILTER = flag.String("f", "", "Filter for the file path (eg: '.properties' to include only this extension)")
 	_WITH_BLOB_SIZE = flag.Bool("BSize", false, "If true, includes .bytes size (When -f is '.properties')")
-	_FILTER_P = flag.String("fP", "", "Filter for .properties (eg: 'deleted=true')")
+	_FILTER_P = flag.String("fP", "", "Filter for the content of the .properties files (eg: 'deleted=true')")
 	_FILTER_PX = flag.String("fPX", "", "Excluding Filter for .properties (eg: 'BlobStore.blob-name=.+/maven-metadata.xml.*')")
 	_USE_REGEX = flag.Bool("R", false, "If true, .properties content is *sorted* and -fP|-fPX string is treated as regex")
 	//_EXCLUDE_FILE = flag.String("sk", "", "Blob IDs in this file will be skipped from the check") // TODO
@@ -131,23 +131,23 @@ func _setGlobals() {
 	_DRY_RUN = flag.Bool("Dry", false, "If true, RDel does not do anything")
 
 	// Reconcile related
-	_TRUTH = flag.String("src", "BS", "Using database or blobstore as source [BS|DB]") // TODO: not implemented "DB" yet
-	_DB_CON_STR = flag.String("db", "", "DB connection string or path to properties file")
-	_BS_NAME = flag.String("bsName", "", "Eg. 'default'. If provided, the query will be faster")
-	_NODE_ID = flag.String("nodeId", "", "Advanced option.")
-	_RECON_FMT = flag.Bool("RF", false, "Output for the Reconcile task (any_string,blob_ref). -P will be ignored")
-	_REMOVE_DEL = flag.Bool("RDel", false, "Remove 'deleted=true' from .properties. Requires -RF *and* -dF")
-	_DEL_DATE_FROM = flag.String("dF", "", "Deleted date YYYY-MM-DD (from). Used to search deletedDateTime")
-	_DEL_DATE_TO = flag.String("dT", "", "Deleted date YYYY-MM-DD (to). To exclude newly deleted assets")
-	_MOD_DATE_FROM = flag.String("mF", "", "File modification date YYYY-MM-DD from")
-	_MOD_DATE_TO = flag.String("mT", "", "File modification date YYYY-MM-DD to")
+	_TRUTH = flag.String("src", "BS", "Reconcile: Using database or blobstore as source [BS|DB]") // TODO: not implemented "DB" type yet
+	_DB_CON_STR = flag.String("db", "", "Reconcile: DB connection string or path to properties file")
+	_BS_NAME = flag.String("bsName", "", "Reconcile: eg. 'default'. If provided, the SQL query will be faster")
+	_NODE_ID = flag.String("nodeId", "", "Reconcile: Nexus node Id used in the blob ref (old version)")
+	_RECON_FMT = flag.Bool("RF", false, "Reconcile: Output for the Reconcile task (datetime,blob_ref). -P will be ignored")
+	_REMOVE_DEL = flag.Bool("RDel", false, "Reconcile: Remove 'deleted=true' from .properties. Requires -dF")
+	_DEL_DATE_FROM = flag.String("dF", "", "Reconcile: Deleted date YYYY-MM-DD (from). Used to search deletedDateTime")
+	_DEL_DATE_TO = flag.String("dT", "", "Reconcile: Deleted date YYYY-MM-DD (to). To exclude newly deleted assets")
+	_MOD_DATE_FROM = flag.String("mF", "", "Reconcile: File modification date YYYY-MM-DD from")
+	_MOD_DATE_TO = flag.String("mT", "", "Reconcile: File modification date YYYY-MM-DD to")
 
 	// AWS S3 related
-	_CONC_2 = flag.Int("c2", 16, "Concurrent number for retrieving AWS Tags")
-	_IS_S3 = flag.Bool("S3", false, "If true, access S3 bucket with AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY and AWS_REGION")
-	_MAXKEYS = flag.Int("m", 1000, "Integer value for Max Keys (<= 1000)")
-	_WITH_OWNER = flag.Bool("O", false, "If true, also get owner display name")
-	_WITH_TAGS = flag.Bool("T", false, "If true, also get tags of each object")
+	_CONC_2 = flag.Int("c2", 16, "AWS S3: Concurrent number for retrieving AWS Tags")
+	_IS_S3 = flag.Bool("S3", false, "AWS S3: If true, access S3 bucket with AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY and AWS_REGION")
+	_MAXKEYS = flag.Int("m", 1000, "AWS S3: Integer value for Max Keys (<= 1000)")
+	_WITH_OWNER = flag.Bool("O", false, "AWS S3: If true, get the owner display name")
+	_WITH_TAGS = flag.Bool("T", false, "AWS S3: If true, get tags of each object")
 
 	flag.Parse()
 
