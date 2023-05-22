@@ -374,6 +374,7 @@ function jsondiff() {
         sortjson "$1" "/tmp/${_f1}" || return $?
         sortjson "$2" "/tmp/${_f2}" || return $?
     else
+        # NOTE: python one doesn't look like sorting recursively
         python3 -c "import sys,json;print(json.dumps(json.load(open('${1}')), indent=4, sort_keys=True))" >"/tmp/${_f1}" || return $?
         python3 -c "import sys,json;print(json.dumps(json.load(open('${2}')), indent=4, sort_keys=True))" >"/tmp/${_f2}" || return $?
     fi
