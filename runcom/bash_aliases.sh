@@ -48,6 +48,7 @@ function git_tags() {
     fi
     git -C "${_project%/}" tag -l | sort --version-sort # | grep -oE "\d+\.\d+\.\d+\-\d+"
 }
+# compare commits: git diff <commit1>[..<commit2>]
 # compare tags
 function git_comp_tags() {
     local _tag1="$1"
@@ -78,10 +79,16 @@ function git_search() {
 #pip tends to cause a lot of issue and using -m is safer
 alias pip='python -m pip'
 #virtualenv -p python3 $HOME/.pyvenv
-alias newpyv='python -m venv ./pyvenv && source ./pyvenv/bin/activate'
+function pyvTest() {
+    local _dir="${1:-"pyvTest"}"
+    if [ ! -d "${_dir%/}" ]; then
+        python3 -m venv "${_dir%/}" || return $?
+    fi
+    cd "${_dir%/}" && source ./bin/activate
+}
+#alias pyv='pyenv activate mypyvenv'    # I felt pyenv is slow, so not using
 alias pyv='source $HOME/.pyvenv/bin/activate'
 alias pyv39='source $HOME/.pyvenv39/bin/activate'
-#alias pyv='pyenv activate mypyvenv'    # I felt pyenv is slow, so not using
 alias urlencode='python3 -c "import sys;from urllib import parse; print(parse.quote(sys.stdin.read()))"'
 #alias urlencode='python2 -c "import sys, urllib as ul; print(ul.quote(sys.stdin.read()))"'
 alias urldecode='python3 -c "import sys;from urllib import parse; print(parse.unquote(sys.stdin.read()))"'
@@ -191,6 +198,7 @@ alias jenkins='${_JAVA_HOME_11%/}/bin/java -jar $HOME/Apps/jenkins.war'  #curl -
 alias mockserver='java -jar $HOME/Apps/mockserver-netty.jar'  #curl -o $HOME/Apps/mockserver-netty.jar -L https://search.maven.org/remotecontent?filepath=org/mock-server/mockserver-netty/5.11.1/mockserver-netty-5.11.1-jar-with-dependencies.jar
 alias jkCli='java -jar $HOME/Apps/jenkins-cli.jar -s http://localhost:8080/ -auth admin:admin123' #curl -o $HOME/Apps/jenkins-cli.jar -L http://localhost:8080/jnlpJars/jenkins-cli.jar
 [ -f /var/tmp/share/java/orient-console.jar ] && alias orient-console="java -jar /var/tmp/share/java/orient-console.jar"
+[ -f /var/tmp/share/java/h2-console.jar ] && alias h2-console="java -jar /var/tmp/share/java/h2-console.jar"
 [ -f /var/tmp/share/java/blobpath.jar ] && alias blobpathJ="java -jar /var/tmp/share/java/blobpath.jar"
 # _JAVA_HOME_11 is set in bash_profile.sh
 alias matJ11='/Applications/mat.app/Contents/MacOS/MemoryAnalyzer -vm ${_JAVA_HOME_11%/}/bin'
@@ -357,13 +365,24 @@ function mcd() {
     cd "${_path}"
 }
 function jsondiff() {
+    # alternative https://json-delta.readthedocs.io/en/latest/json_diff.1.html
     local _f1="$(basename $1 .json)_1.json"
     local _f2="$(basename $2 .json)_2.json"
-    # alternative https://json-delta.readthedocs.io/en/latest/json_diff.1.html
-    python3 -c "import sys,json;print(json.dumps(json.load(open('${1}')), indent=4, sort_keys=True))" >"/tmp/${_f1}" || return $?
-    python3 -c "import sys,json;print(json.dumps(json.load(open('${2}')), indent=4, sort_keys=True))" >"/tmp/${_f2}" || return $?
-    # sometimes vimdiff crush and close the terminal
-    bash -c "vimdiff \"/tmp/${_f1}\" \"/tmp/${_f2}\"" 2>/tmp/vimdiff.err
+    local _use_vimdiff="$3"
+    if type sortjson &>/dev/null; then
+        # curl -o /usr/local/bin/sortjson -L "https://github.com/hajimeo/samples/raw/master/misc/sortjson_$(uname)_$(uname -m)"
+        sortjson "$1" "/tmp/${_f1}" || return $?
+        sortjson "$2" "/tmp/${_f2}" || return $?
+    else
+        python3 -c "import sys,json;print(json.dumps(json.load(open('${1}')), indent=4, sort_keys=True))" >"/tmp/${_f1}" || return $?
+        python3 -c "import sys,json;print(json.dumps(json.load(open('${2}')), indent=4, sort_keys=True))" >"/tmp/${_f2}" || return $?
+    fi
+    if [[ "${_use_vimdiff}" =~ ^[yY] ]]; then
+        # sometimes vimdiff crush and close the terminal
+        bash -c "vimdiff \"/tmp/${_f1}\" \"/tmp/${_f2}\"" 2>/tmp/vimdiff.err
+    else
+        diff -w -y --suppress-common-lines "/tmp/${_f1}" "/tmp/${_f2}"
+    fi
 }
 function xmldiff() {
     python3 -c "import sys,xmltodict,json;print(json.dumps(xmltodict.parse(open(sys.argv[1]).read()), indent=4, sort_keys=True))" $1 >/tmp/xmldiff1_$$.json || return $?
@@ -645,6 +664,7 @@ function goBuild() {
     env GOOS=darwin GOARCH=arm64 go build -o "${_destDir%/}/${_name}_Darwin_arm64" ${_goFile} || return $?
     ls -l ${_destDir%/}/${_name}_* || return $?
     echo "curl -o /usr/local/bin/${_name} -L \"https://github.com/hajimeo/samples/raw/master/misc/${_name}_\$(uname)_\$(uname -m)\""
+    date
 }
 
 # backup & cleanup (backing up files smaller than 10MB only)
