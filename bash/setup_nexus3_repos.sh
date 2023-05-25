@@ -90,7 +90,7 @@ If HA-C, edit nexus.properties for all nodes, then remove 'db' directory from no
 : ${_DOMAIN:="standalone.localdomain"}
 : ${_NEXUS_URL:="http://localhost:8081/"}   # or https://local.standalone.localdomain:8443/ for docker
 : ${_IQ_URL:="http://localhost:8070/"}
-: ${_IQ_CLI_VER-"1.141.0-01"}               # If "" (empty), not download CLI jar
+: ${_IQ_CLI_VER-"1.158.0-01"}               # If "" (empty), not download CLI jar
 : ${_DOCKER_NETWORK_NAME:="nexus"}
 : ${_SHARE_DIR:="/var/tmp/share"}
 : ${_IS_NXRM2:="N"}
@@ -690,7 +690,20 @@ function f_setup_cocoapods() {
     if ! _is_repo_available "${_prefix}-proxy"; then
         f_apiS '{"action":"coreui_Repository","method":"create","data":[{"attributes":{"proxy":{"remoteUrl":"https://cdn.cocoapods.org/","contentMaxAge":1440,"metadataMaxAge":1440},"httpclient":{"blocked":false,"autoBlock":true,"connection":{"useTrustStore":false}},"storage":{"blobStoreName":"'${_bs_name}'","strictContentTypeValidation":true'${_extra_sto_opt}'},"negativeCache":{"enabled":true,"timeToLive":1440},"cleanup":{"policyName":[]}},"name":"'${_prefix}'-proxy","format":"","type":"","url":"","online":true,"routingRuleId":"","authEnabled":false,"httpRequestSettings":false,"recipe":"cocoapods-proxy"}],"type":"rpc"}' || return $?
     fi
-    # TODO: add some data for xxxx-proxy
+    # add some data for xxxx-proxy
+    # add some data for xxxx-proxy
+    local _name="SDWebImage"
+    local _ver="5.9.3"
+    local _podspec_path="$(python -c "import hashlib
+n=\"${_name}\";v=\"${_ver}\"
+md5=hashlib.md5()
+md5.update(n.encode('utf-8'))
+h=md5.hexdigest()
+print(\"Specs/%s/%s/%s/%s/%s/%s.podspec.json\" % (h[0],h[1],h[2],n,v,n))")"
+    #curl -v -LO http://dh1:8081/repository/cocoapods-proxy/Specs/1/1/7/SDWebImage/5.9.3/SDWebImage.podspec.json
+    f_get_asset "${_prefix}-proxy" "${_podspec_path}"
+    #curl -v -LO http://dh1:8081/repository/cocoapods-proxy/pods/SDWebImage/5.9.3/5.9.3.tar.gz
+    f_get_asset "${_prefix}-proxy" "pods/SDWebImage/5.9.3/5.9.3.tar.gz"
 }
 
 function f_setup_go() {
@@ -1652,11 +1665,10 @@ nexus.scripts.allowCreation=true' > ${_sonatype_work%/}/etc/nexus.properties || 
 
 # SAML server: https://github.com/hajimeo/samples/blob/master/golang/SamlTester/README.md
 # friendly attributes {uid=[samluser], eduPersonAffiliation=[users], givenName=[saml], eduPersonPrincipalName=[samluser@standalone.localdomain], cn=[Saml User], sn=[user]}
-#$ curl -o ./idp_metadata.xml "${_idp_base_url%/}/metadata"
-#$ curl -o ${_sp_meta_file} -u "admin:admin123" "http://localhost:8081/service/rest/v1/security/saml/metadata"
+# NXRM3 meta: curl -o ${_sp_meta_file} -u "admin:admin123" "http://localhost:8081/service/rest/v1/security/saml/metadata"
 function f_start_saml_server() {
     local _idp_base_url="${1:-"http://localhost:2080/"}"
-    local _sp_meta_file="${2:-"./service-metadata.xml"}"
+    local _sp_meta_file="${2:-"./metadata.xml"}"
     local _sp_meta_url="${3-"http://localhost:8081/service/rest/v1/security/saml/metadata"}"
     local _sp_meta_cred="${4-"admin:admin123"}"
     if [ -z "${_sp_meta_file}" ]; then
@@ -1681,7 +1693,13 @@ function f_start_saml_server() {
         openssl req -x509 -newkey rsa:2048 -keyout ./myidp.key -out ./myidp.crt -days 365 -nodes -subj "/CN=$(hostname -f)" || return $?
     fi
     export IDP_KEY=./myidp.key IDP_CERT=./myidp.crt USER_JSON=./simple-saml-idp.json IDP_BASE_URL="${_idp_base_url}" SERVICE_METADATA_URL="${_sp_meta_file}"
-    eval "${_cmd}"
+    eval "${_cmd}" 2> ./simplesamlidp_$$.log &
+    local _pid="$!"
+    sleep 2
+    curl -sf -o ./idp_metadata.xml "${_idp_base_url%/}/metadata" || return $?
+    echo "IDP metadata: ./idp_metadata.xml"
+    echo "Attributes example: {uid=[samluser], eduPersonPrincipalName=[samluser@standalone.localdomain], eduPersonAffiliation=[users], givenName=[saml], sn=[user], cn=[Saml User]}"
+    echo "Running simplesamlidp (PID:${_pid}, log:./simplesamlidp_$$.log)"
 }
 
 function f_start_ldap_server() {
