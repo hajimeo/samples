@@ -66,13 +66,14 @@ function iqCli() {
     local _iq_app_id="${2:-${_IQ_APP_ID:-"sandbox-application"}}"
     local _iq_stage="${3:-${_IQ_STAGE:-"build"}}" #develop|build|stage-release|release|operate
     local _iq_url="${4:-${_IQ_URL}}"
-    local _iq_cli_ver="${5:-${_IQ_CLI_VER:-"1.144.0-05"}}"
+    local _iq_cli_ver="${5:-${_IQ_CLI_VER}}"
     local _iq_cli_opt="${6:-${_IQ_CLI_OPT}}"    # -D fileIncludes="**/package-lock.json"
-    local _iq_cli_jar="${_IQ_CLI_JAR:-"${_WORK_DIR%/}/sonatype/iq-cli/nexus-iq-cli-${_iq_cli_ver}.jar"}"
-    # TODO: utilise http://localhost:8070/rest/product/version
 
     _iq_url="$(_get_iq_url "${_iq_url}")" || return $?
-    #[ ! -d "${_iq_tmp}" ] && mkdir -p "${_iq_tmp}"
+        if [ -z "${_iq_cli_ver}" ]; then
+        _iq_cli_ver="$(curl -sf "${_iq_url%/}/rest/product/version" | python -c "import sys,json;a=json.loads(sys.stdin.read());print(a['version'])")"
+    fi
+    local _iq_cli_jar="${_IQ_CLI_JAR:-"${_WORK_DIR%/}/sonatype/iq-cli/nexus-iq-cli-${_iq_cli_ver}.jar"}"
 
     if [ ! -s "${_iq_cli_jar}" ]; then
         #local _tmp_iq_cli_jar="$(find ${_WORK_DIR%/}/sonatype -name 'nexus-iq-cli*.jar' 2>/dev/null | sort -r | head -n1)"
@@ -150,7 +151,7 @@ function nxrmStart() {
         echo "This function requires sonatype-work/{nexus|nexus3}"
         return 1
     fi
-    local _version="$(basename "$(dirname "$(dirname "$(realpath "${_nexus_file}")")")")"
+    local _nexus_ver="$(basename "$(dirname "$(dirname "$(realpath "${_nexus_file}")")")")"
     local _jetty_https="$(find ${_base_dir%/} -maxdepth 4 -path '*/etc/*' -type f -name 'jetty-https.xml' 2>/dev/null | sort | tail -n1)"
     local _logback_overrides="$(find ${_base_dir%/} -maxdepth 4 -path '*/etc/logback/*' -type f -name 'logback-overrides.xml' 2>/dev/null | sort | tail -n1)"
     local _cfg_file="${_sonatype_work%/}/etc/nexus.properties"
@@ -164,10 +165,14 @@ function nxrmStart() {
         fi
         [ -n "${_cfg_file}" ] && _updateNexusProps "${_cfg_file}"
         [ -z "${_mode}" ] && _mode="run"
-        # TODO: https://issues.sonatype.org/browse/NEXUS-29730 java.lang.NoClassDefFoundError: com/sun/jna/Platform
-        #cd ${_base_dir%/}/nexus-3.*
-        #cp /Users/hosako/share/java/libs/system/net/java/dev/jna/jna/5.11.0/jna-5.11.0.jar ./system/net/java/dev/jna/jna/5.4.0/jna-5.4.0.jar
-        #cp $HOME/share/java/libs/system/net/java/dev/jna/jna-platform/5.11.0/jna-platform-5.11.0.jar ./system/net/java/dev/jna/jna-platform/5.4.0/jna-platform-5.4.0.jar
+        if [ -n "${_jetty_https}" ] && [[ "${_nexus_ver}" =~ nexus-3\.26\.+ ]]; then
+            # @see: https://issues.sonatype.org/browse/NEXUS-24867
+            sed -i.bak 's@class="org.eclipse.jetty.util.ssl.SslContextFactory"@class="org.eclipse.jetty.util.ssl.SslContextFactory$Server"@g' ${_jetty_https}
+        fi
+        if [[ "${_nexus_ver}" =~ nexus-3\.3 ]]; then
+            # https://issues.sonatype.org/browse/NEXUS-29730 java.lang.NoClassDefFoundError: com/sun/jna/Platform
+            _nexus29730 "${_base_dir%/}"
+        fi
     else    # if NXRM2
         [ -z "${_mode}" ] && _mode="console"
         # jvm 1    | Caused by: java.lang.ClassNotFoundException: org.eclipse.tycho.nexus.internal.plugin.UnzipRepository
@@ -176,10 +181,6 @@ function nxrmStart() {
         # jvm 1    | Caused by: java.lang.ClassNotFoundException: org.codehaus.janino.ScriptEvaluator
         #./sonatype-work/nexus/conf/logback-nexus.xml
         #[ -n "${_java_opts}" ] && export JAVA_TOOL_OPTIONS="${_java_opts}"
-    fi
-    if [ -n "${_jetty_https}" ] && [[ "${_version}" =~ 3\.26\.+ ]]; then
-        # @see: https://issues.sonatype.org/browse/NEXUS-24867
-        sed -i.bak 's@class="org.eclipse.jetty.util.ssl.SslContextFactory"@class="org.eclipse.jetty.util.ssl.SslContextFactory$Server"@g' ${_jetty_https}
     fi
     # Currently i'm not using.
     if false && [ -s "${_logback_overrides}" ]; then
@@ -214,11 +215,19 @@ function _updateNexusProps() {
 function _nexus29730() {
     local _base_dir="${1:-"."}"
     local _good_jar_root="${2:-"/var/tmp/share/java/libs"}"
+    if [ ! -s "${_good_jar_root%/}/system/net/java/dev/jna/jna/5.11.0/jna-5.11.0.jar" ]; then
+        echo "ERROR: No good jar (${_good_jar_root%/}/system/net/java/dev/jna/jna/5.11.0/jna-5.11.0.jar)"
+        return 1
+    fi
     find ${_base_dir%/}/nexus-3.* -type f -path '*/system/net/java/dev/jna/jna/*' -name "jna-*.jar" | while read -r _jar; do
-        cp -v -f ${_good_jar_root%/}/system/net/java/dev/jna/jna/5.11.0/jna-5.11.0.jar ${_jar}
+        if [[ "${_jar}" =~ /jna-[0-5]\.[0-9]\.[0-9]\.jar ]]; then
+            cp -v -f ${_good_jar_root%/}/system/net/java/dev/jna/jna/5.11.0/jna-5.11.0.jar ${_jar}
+        fi
     done
     find ${_base_dir%/}/nexus-3.* -type f -path '*/system/net/java/dev/jna/jna-platform/*' -name "jna-*.jar" | while read -r _jar; do
-        cp -v -f ${_good_jar_root%/}/system/net/java/dev/jna/jna-platform/5.11.0/jna-platform-5.11.0.jar ${_jar}
+        if [[ "${_jar}" =~ /jna-platform-[0-5]\.[0-9]\.[0-9]\.jar ]]; then
+            cp -v -f ${_good_jar_root%/}/system/net/java/dev/jna/jna-platform/5.11.0/jna-platform-5.11.0.jar ${_jar}
+        fi
     done
 }
 
