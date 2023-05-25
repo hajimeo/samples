@@ -701,9 +701,14 @@ md5.update(n.encode('utf-8'))
 h=md5.hexdigest()
 print(\"Specs/%s/%s/%s/%s/%s/%s.podspec.json\" % (h[0],h[1],h[2],n,v,n))")"
     #curl -v -LO http://dh1:8081/repository/cocoapods-proxy/Specs/1/1/7/SDWebImage/5.9.3/SDWebImage.podspec.json
-    f_get_asset "${_prefix}-proxy" "${_podspec_path}"
+    f_get_asset "${_prefix}-proxy" "${_podspec_path}" "${_TMP%/}/${_name}.podspec.json"
     #curl -v -LO http://dh1:8081/repository/cocoapods-proxy/pods/SDWebImage/5.9.3/5.9.3.tar.gz
-    f_get_asset "${_prefix}-proxy" "pods/SDWebImage/5.9.3/5.9.3.tar.gz"
+    local _url_tar_gz="$(cat "${_TMP%/}/${_name}.podspec.json" | python -c "import sys,json;print(json.load(sys.stdin)['source']['http'])")"
+    if [ -n "${_url_tar_gz}" ]; then
+        curl -sf -u "${r_ADMIN_USER:-"${_ADMIN_USER}"}:${r_ADMIN_PWD:-"${_ADMIN_PWD}"}" -I "${_url_tar_gz}"
+    else
+        f_get_asset "${_prefix}-proxy" "pods/${_name}/${_ver}/${_ver}.tar.gz"
+    fi
 }
 
 function f_setup_go() {
@@ -1269,7 +1274,7 @@ To save : docker stop ${_name}; docker commit ${_name} ${_name}
 To login: ssh testuser@${_name}"
 }
 
-# Setup (reset) client configs against a CentOS container
+# Setup (reset) client configs "from" a CentOS container and as "root"
 #f_reset_client_configs "testuser" "http://dh1.standalone.localdomain:8081/" && f_install_clients
 function f_reset_client_configs() {
     local __doc__="Configure various client tools"
@@ -1356,7 +1361,8 @@ EOF
     fi
     # TODO: cocoapods is installed but not configured properly
     #https://raw.githubusercontent.com/hajimeo/samples/master/misc/cocoapods-Podfile
-    # (probably) how to retry pod install: cd $HOME/cocoapods-test && rm -rf $HOME/Library/Caches Pods Podfile.lock cocoapods-test.xcworkspace
+    # (probably) how to retry 'pod install':
+    # cd $HOME/cocoapods-test && rm -rf $HOME/Library/Caches Pods Podfile.lock cocoapods-test.xcworkspace
 
     # If repo is reachable, setup GOPROXY env
     _repo_url="${_base_url%/}/repository/go-proxy"
