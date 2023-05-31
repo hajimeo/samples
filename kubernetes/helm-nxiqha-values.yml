@@ -1,4 +1,7 @@
-# helm template -n sonatype-ha nxiqha -f ~/IdeaProjects/samples/kubernetes/helm-nxiqha-values.yml . >~/IdeaProjects/samples/kubernetes/helm-nxiqha-deployed.yaml
+#$ cd ~/IdeaProjects/nexus-iq-server-ha/
+#$ helm template nxiqha . -f ~/IdeaProjects/samples/kubernetes/helm-nxiqha-values.yml -n sonatype-ha >~/IdeaProjects/samples/kubernetes/helm-nxiqha-deployed.yaml
+#$ helm upgrade nxiqha . -f ~/IdeaProjects/samples/kubernetes/helm-nxiqha-values.yml -n sonatype-ha --dry-run
+
 
 # Default values for nexus-iq-server-ha.
 # This is a YAML-formatted file.
@@ -9,19 +12,19 @@ iq_server:
   # Sonatype official public image
   imageRegistry: # Container image registry, if not specified the Docker public registry will be used
   image: "sonatype/nexus-iq-server"
-  tag: "1.160.0"
-  imagePullPolicy: "IfNotPresent"
+  tag: "latest"
+  imagePullPolicy: "Always"
 
   # We usually recommend not to specify default resources and to leave this as a conscious choice for the user.
   # This also increases the chance that the chart runs on environments with little resources.
   # The commented values below are the minimum recommended resources for production.
-  resources:
-    requests:
-      cpu: 1
-      memory: 2G
-    limits:
-      cpu: 1
-      memory: 2G
+  #resources:
+  #  requests:
+  #    cpu: #8
+  #    memory: #8Gi
+  #  limits:
+  #    cpu: #8
+  #    memory: #8Gi
 
   # Value for the JAVA_OPTS environment variable to pass custom settings to the JVM
   javaOpts:
