@@ -152,35 +152,35 @@ function f_topErrors() {
     echo "# rg -c \"${_regex}\" ..."
     if [ -f "${_glob}" ]; then
         rg -z -c "${_regex}" -H "${_glob}" && echo " "
-        rg -z --no-line-number --no-filename "${_regex}" ${_max_N_opt} "${_glob}" > /tmp/${FUNCNAME}_$$.tmp
+        rg -z --no-line-number --no-filename "${_regex}" ${_max_N_opt} "${_glob}"
     else
         rg -z -c -g "${_glob}" "${_regex}" && echo " "
-        rg -z --no-line-number --no-filename -g "${_glob}" ${_max_N_opt} "${_regex}" > /tmp/${FUNCNAME}_$$.tmp
-    fi
+        rg -z --no-line-number --no-filename -g "${_glob}" ${_max_N_opt} "${_regex}"
+    fi > /tmp/${FUNCNAME[0]}_$$.tmp
     [ -n "${_max_N}" ] && echo "# Top ${_top_N} with -m ${_max_N}"
     if [ -z "${_exclude_regex}" ]; then
-        cat /tmp/${FUNCNAME}_$$.tmp
+        cat /tmp/${FUNCNAME[0]}_$$.tmp
     else
-        cat /tmp/${FUNCNAME}_$$.tmp | rg -v "${_exclude_regex}"
+        cat /tmp/${FUNCNAME[0]}_$$.tmp | rg -v "${_exclude_regex}"
     fi | _replace_number | sort | uniq -c | sort -nr | head -n ${_top_N}
 
     # just for fun, drawing bar chart
     if which bar_chart.py &>/dev/null; then
-        echo " "
         if [ -z "${_date_regex}" ]; then
-            if [ -f "${_glob}" ]; then
-                rg -z --no-line-number --no-filename -o '^\d\d\d\d-\d\d-\d\d.\d\d:\d' "${_glob}" > /tmp/${FUNCNAME}_2_$$.tmp
-            else
-                rg -z --no-line-number --no-filename -o '^\d\d\d\d-\d\d-\d\d.\d\d:\d' -g "${_glob}" > /tmp/${FUNCNAME}_2_$$.tmp
-            fi
-            local _num=$(cat /tmp/${FUNCNAME}_2_$$.tmp | sort | uniq | wc -l | tr -d '[:space:]')
+            local _num=$(rg -z --no-line-number --no-filename -o '^\d\d\d\d-\d\d-\d\d.\d\d:\d' /tmp/${FUNCNAME[0]}_$$.tmp | sort | uniq | wc -l | tr -d '[:space:]')
             if [ "${_num}" -lt 30 ]; then
                 _date_regex="^\d\d\d\d-\d\d-\d\d.\d\d:\d"
             else
                 _date_regex="^\d\d\d\d-\d\d-\d\d.\d\d"
             fi
         fi
-        rg -z --no-line-number --no-filename -o "${_date_regex}" /tmp/${FUNCNAME}_$$.tmp | sed 's/T/ /' | bar_chart.py
+
+        echo " "
+        if [ -z "${_exclude_regex}" ]; then
+            cat /tmp/${FUNCNAME[0]}_$$.tmp
+        else
+            cat /tmp/${FUNCNAME[0]}_$$.tmp | rg -v "${_exclude_regex}"
+        fi | rg -z --no-line-number --no-filename -o "${_date_regex}" | sed 's/T/ /' | bar_chart.py
     fi
 }
 
@@ -791,12 +791,12 @@ function f_gc_overview() {
     [ -z "${_saveTo}" ] && _saveTo="$(basename ${_file%.*}).csv"
     # TODO: ([0-9.]+) secs does not work with PrintClassHistogramBeforeFullGC
     if rg -m1 'Class Histogram' -q ${_file}; then
-        rg -z "(^20\d\d-\d\d-\d\d.+(GC pause|Full GC).+$|Heap:\s*[^\]]+|\[Times: .+real=.+$)" -o ${_file} | rg '(GC pause|Full GC)' -A2 | rg -v -- '--' | paste - - - > /tmp/${FUNCNAME}.tmp || return $?
-        rg "^(${_datetime_filter}).+(GC pause[^,]+|Full GC.+?\)).+Heap:\s*([0-9.]+)${_size}[\(\)0-9.KMG ]+->\s*([0-9.]+)${_size}.+ real=([0-9.]+) secs.+" -o -r '"${1}",${5},${3},${4},"${2}"' /tmp/${FUNCNAME}.tmp > "${_saveTo}" || return $?
+        rg -z "(^20\d\d-\d\d-\d\d.+(GC pause|Full GC).+$|Heap:\s*[^\]]+|\[Times: .+real=.+$)" -o ${_file} | rg '(GC pause|Full GC)' -A2 | rg -v -- '--' | paste - - - > /tmp/${FUNCNAME[0]}.tmp || return $?
+        rg "^(${_datetime_filter}).+(GC pause[^,]+|Full GC.+?\)).+Heap:\s*([0-9.]+)${_size}[\(\)0-9.KMG ]+->\s*([0-9.]+)${_size}.+ real=([0-9.]+) secs.+" -o -r '"${1}",${5},${3},${4},"${2}"' /tmp/${FUNCNAME[0]}.tmp > "${_saveTo}" || return $?
     else
         # TODO: can't use the _datetime_filter at below rg command. Need to use more complex rg command
-        rg -z '(^20\d\d-\d\d-\d\d.+(GC pause|Full GC).+$|Heap:\s*[^\]]+)' -o ${_file} | paste - - > /tmp/${FUNCNAME}.tmp || return $?
-        rg "^(${_datetime_filter}).+(GC pause[^,]+|Full GC[^,]+).* ([0-9.]+) secs.+Heap:\s*([0-9.]+)${_size}[\(\)0-9.KMG ]+->\s*([0-9.]+)${_size}" -o -r '"${1}",${3},${4},${5},"${2}"' /tmp/${FUNCNAME}.tmp > "${_saveTo}" || return $?
+        rg -z '(^20\d\d-\d\d-\d\d.+(GC pause|Full GC).+$|Heap:\s*[^\]]+)' -o ${_file} | paste - - > /tmp/${FUNCNAME[0]}.tmp || return $?
+        rg "^(${_datetime_filter}).+(GC pause[^,]+|Full GC[^,]+).* ([0-9.]+) secs.+Heap:\s*([0-9.]+)${_size}[\(\)0-9.KMG ]+->\s*([0-9.]+)${_size}" -o -r '"${1}",${3},${4},${5},"${2}"' /tmp/${FUNCNAME[0]}.tmp > "${_saveTo}" || return $?
     fi
     head -n1 "${_saveTo}" | rg -q '^date_time' || echo "date_time,elapsed_secs,heap_before_${_size},heap_after_${_size},gc_type
 $(cat "${_saveTo}")" > ${_saveTo}
@@ -804,7 +804,7 @@ $(cat "${_saveTo}")" > ${_saveTo}
     rg "^\"(${_DATE_FORMAT}.\d\d:\d).+Full GC" -o -r '$1' ${_saveTo} | bar_chart.py
     echo "# All GCs"
     rg "^\"(${_DATE_FORMAT}.\d\d)" -o -r '$1' ${_saveTo} | bar_chart.py
-    ls -l /tmp/${FUNCNAME}.tmp ${_saveTo}
+    ls -l /tmp/${FUNCNAME[0]}.tmp ${_saveTo}
     #df = ju.q(\"SELECT date_time,elapsed_secs,heap_before_M,heap_after_M from t_gc WHERE gc_type like 'Full GC%'\")"
 }
 
@@ -815,19 +815,19 @@ function f_gc_before_after_check() {
     local _log_dir="${1:-"."}"
     local _keyword="${2-"sonatype"}"
     local _A_max="${3-"100"}"
-    #rg -z -N --no-filename "^(${_DT_FMT}).+\bFull GC" -o -r '$1' ${_log_dir} | sort | uniq > /tmp/${FUNCNAME}_datetimes_$$.tmp || return $?
+    #rg -z -N --no-filename "^(${_DT_FMT}).+\bFull GC" -o -r '$1' ${_log_dir} | sort | uniq > /tmp/${FUNCNAME[0]}_datetimes_$$.tmp || return $?
     # NOTE: expecting filenames works with --sort=path
-    rg -z -N --sort=path --no-filename '\bFull GC\b' -A ${_A_max} ${_log_dir} > /tmp/${FUNCNAME}_$$.tmp || return $?
-    cat /tmp/${FUNCNAME}_$$.tmp | rg "${_keyword:-".*"}" | awk '{print $4}' | sort | uniq | while read -r _cls; do
+    rg -z -N --sort=path --no-filename '\bFull GC\b' -A ${_A_max} ${_log_dir} > /tmp/${FUNCNAME[0]}_$$.tmp || return $?
+    cat /tmp/${FUNCNAME[0]}_$$.tmp | rg "${_keyword:-".*"}" | awk '{print $4}' | sort | uniq | while read -r _cls; do
         echo "# 'date_time' '#instances' '#bytes' for ${_cls}"
-        rg "(^${_DT_FMT}|\s+\d+\s+\d+\s+${_cls//$/\\$}$)" -o /tmp/${FUNCNAME}_$$.tmp | rg "${_cls//$/\\$}" -B1 | rg -v -- '--' | paste - -
+        rg "(^${_DT_FMT}|\s+\d+\s+\d+\s+${_cls//$/\\$}$)" -o /tmp/${FUNCNAME[0]}_$$.tmp | rg "${_cls//$/\\$}" -B1 | rg -v -- '--' | paste - -
         echo ""
     done
     echo "# diff between first and last for class includes '${_keyword}':"
     local _n1=$((${_A_max} + 1))
-    diff -w -y -W200 <(head -n ${_n1} /tmp/${FUNCNAME}_$$.tmp | rg "(\d+)\s+(\d+)\s+(.*${_keyword}.*)" -o -r '${3} ${2} ${1}') <(tail -n ${_n1} /tmp/${FUNCNAME}_$$.tmp | rg "(\d+)\s+(\d+)\s+(.*${_keyword}.*)" -o -r '${3} ${2} ${1}')
+    diff -w -y -W200 <(head -n ${_n1} /tmp/${FUNCNAME[0]}_$$.tmp | rg "(\d+)\s+(\d+)\s+(.*${_keyword}.*)" -o -r '${3} ${2} ${1}') <(tail -n ${_n1} /tmp/${FUNCNAME[0]}_$$.tmp | rg "(\d+)\s+(\d+)\s+(.*${_keyword}.*)" -o -r '${3} ${2} ${1}')
     echo ""
-    echo "# Temp file: /tmp/${FUNCNAME}_$$.tmp"
+    echo "# Temp file: /tmp/${FUNCNAME[0]}_$$.tmp"
 }
 
 # If jmap output starts with YYYY-MM-DD hh:mm:ss.xxx
@@ -907,10 +907,10 @@ function f_hexTids_from_topH() {
         rg '^top' -A ${_n} "${_file}"
     else
         rg '^top' -A ${_n} -g "${_file}" --no-filename
-    fi | rg "^(top|\s*\d+\s+${_user}\s.+\s.[^ ]+)" | tee /tmp/${FUNCNAME}_$$.tmp || return $?
+    fi | rg "^(top|\s*\d+\s+${_user}\s.+\s.[^ ]+)" | tee /tmp/${FUNCNAME[0]}_$$.tmp || return $?
     echo ""
     echo "# Converting suspicious PIDs to hex"
-    cat /tmp/${FUNCNAME}_$$.tmp | rg "^\s*(\d+) +${_user} +[^ ]+ +[^ ]+ +[^ ]+ +[^ ]+ +[^ ]+ +[^ ]+ +(\d\d\d+\.\d+|${_cpu_pct_regex})" -o -r '$1' | sort | uniq -c | sort -nr | head -n${_n} | while read -r _l; do
+    cat /tmp/${FUNCNAME[0]}_$$.tmp | rg "^\s*(\d+) +${_user} +[^ ]+ +[^ ]+ +[^ ]+ +[^ ]+ +[^ ]+ +[^ ]+ +(\d\d\d+\.\d+|${_cpu_pct_regex})" -o -r '$1' | sort | uniq -c | sort -nr | head -n${_n} | while read -r _l; do
         if [[ "${_l}" =~ ([0-9]+)[[:space:]]+([0-9]+) ]]; then
             local _cnt="${BASH_REMATCH[1]}"
             local _pid="${BASH_REMATCH[2]}"
@@ -1080,6 +1080,12 @@ function f_threads() {
     rg -m1 '\b(getConnection|org.apache.http.pool.PoolEntryFuture.await)\b' ${_save_dir%/}/ -g '*WAITING*' -g '*waiting*' --no-filename | sort | uniq -c
     echo " "
 
+    echo "## Counting locked thread from 'Locked ownable synchronizers:' and runnable"
+    rg "Locked ownable synchronizers:" -l -g '*runnable*' ${_save_dir%/} | while read -r _f; do
+        rg -H -c '^\s+- <0x' ${_f}
+    done
+    echo " "
+
     echo "## Finding BLOCKED or waiting to lock lines (excluding '-acceptor-')"
     rg -w '(BLOCKED|waiting to lock)' -C1 --no-filename -g '!*-acceptor-*' -g '!*_Acceptor*' ${_save_dir%/}/
     echo " "
@@ -1117,8 +1123,8 @@ function f_threads() {
     echo " "
 
     if [ -n "${_running_thread_search_re}" ]; then
-        echo "## Finding *probably* running threads containing '${_running_thread_search_re}'"
-        rg -l -w RUNNABLE ${_save_dir%/}/ | xargs -I {} rg -H -m1 "${_running_thread_search_re}" {}
+        echo "## Finding *probably* running threads containing '${_running_thread_search_re}', size +4k"
+        find ${_save_dir%/} -size +4k -iname '*run*' -exec rg -H -m5 "${_running_thread_search_re}[^$]+$" {} \;
         echo " "
         echo "## Finding popular methods from *probably* running threads containing '${_running_thread_search_re}'"
         #rg -w RUNNABLE -A1 -H ${_save_dir%/} | rg '^\sat' | sort | uniq -c
@@ -1144,7 +1150,9 @@ function f_threads() {
     rg '^[^\s]' ${_file} | rg -v WAITING | _replace_number 1 | sort | uniq -c | sort -nr | head -n 20
     echo " "
     echo "### Counting thread states"
-    _thread_state_sum ${_file}
+    _thread_state_sum "${_file}"
+    echo "### _threads_extra_check"
+    _threads_extra_check "${_file}"
 }
 function _thread_state_sum() {
     local _file="$1"
@@ -1174,6 +1182,38 @@ function _long_blocked() {
     local _search_re="${2}"
     local _min_count="${3:-"2"}"
     rg -l --multiline --multiline-dotall " BLOCKED .+${_search_re}" -g '*wait*.out' ${_search_dir%/} | xargs -I {} md5sum {} | rg '([0-9a-z]+)\s+.+/([^/]+)$' -o -r '$1 $2' | sort | uniq -c | sort -nr | rg "^\s*([${_min_count}-9]|\d\d+)\s+"
+}
+function _threads_extra_check() {
+    local _file="${1:-"threads.txt"}"
+    if [ ! -f "${_file}" ]; then
+        _file="--no-filename -g \"${_file}\""
+    fi
+    rg '(DefaultTimelineIndexer|content_digest|findAssetByContentDigest|touchItemLastRequested|preClose0|sun\.security\.util\.MemoryCache|java\.lang\.Class\.forName|CachingDateFormatter|metrics\.health\.HealthCheck\.execute|WeakHashMap|userId\.toLowerCase|MessageDigest|UploadManagerImpl\.startUpload|UploadManagerImpl\.blobsByName|maybeTrimRepositories|getQuarantinedVersions|nonCatalogedVersions|getProxyDownloadNumbers|RepositoryManagerImpl.retrieveConfigurationByName|\.StorageFacetManagerImpl\.|OTransactionRealAbstract\.isIndexKeyMayDependOnRid)' ${_file} | sort | uniq -c > /tmp/$FUNCNAME_$$.out || return $?
+    if [ -s /tmp/$FUNCNAME_$$.out ]; then
+        echo "## Counting:"
+        echo "##    'DefaultTimelineIndexer' for NXRM2 System Feeds: timeline-plugin,"
+        # https://support.sonatype.com/hc/en-us/articles/213464998-How-to-disable-the-System-Feeds-nexus-timeline-plugin-feature-to-improve-Nexus-performance
+        echo "##    'content_digest' https://issues.sonatype.org/browse/NEXUS-26379 (3.29.x) and NEXUS-25294 (3.27.x and older)"
+        echo "##    'findAssetByContentDigest' https://issues.sonatype.org/browse/NEXUS-26379 / https://issues.sonatype.org/browse/NEXUS-36069"
+        echo "##    'touchItemLastRequested' https://issues.sonatype.org/browse/NEXUS-10372 all NXRM2"
+        echo "##    'preClose0' https://issues.sonatype.org/browse/NEXUS-30865 Jetty, all NXRM2"
+        echo "##    'MemoryCache' https://bugs.openjdk.java.net/browse/JDK-8259886 < 8u301"
+        echo "##    'java.lang.Class.forName' https://issues.sonatype.org/browse/NEXUS-28608 up to NXRM 2.14.20"
+        echo "##    'CachingDateFormatter' https://issues.sonatype.org/browse/NEXUS-31564 (logback)"
+        echo "##    'com.codahale.metrics.health.HealthCheck.execute' (nexus.healthcheck.refreshInterval)"
+        echo "##    'WeakHashMap' https://issues.sonatype.org/browse/NEXUS-10991"
+        echo "##    'userId\.toLowerCase' https://issues.sonatype.org/browse/NEXUS-31776"
+        echo "##    'UploadManagerImpl.startUpload|.blobsByName' https://issues.sonatype.org/browse/NEXUS-31395"
+        echo "##    'MessageDigest' (May indicate CPU resource issue?)"
+        echo "##    'maybeTrimRepositories' https://issues.sonatype.org/browse/NEXUS-28891"
+        echo "##    'getQuarantinedVersions|nonCatalogedVersions' https://issues.sonatype.org/browse/NEXUS-31891"
+        echo "##    'getProxyDownloadNumbers' https://issues.sonatype.org/browse/NEXUS-37536"
+        echo "##    'RepositoryManagerImpl.retrieveConfigurationByName' https://issues.sonatype.org/browse/NEXUS-38579"
+        echo "##    'StorageFacetManagerImpl' Storage facet cleanup might might cause performance issue"
+        echo "##    'OTransactionRealAbstract.isIndexKeyMayDependOnRid' https://github.com/orientechnologies/orientdb/issues/9396"
+        cat /tmp/$FUNCNAME_$$.out
+        echo " "
+    fi
 }
 
 #f_last_tid_in_log "" ../support-20200915-143729-1/log/request.log "15/Sep/2020:08:" > f_last_tid_in_log.csv 2> f_last_tid_in_log.err
@@ -1537,10 +1577,10 @@ function f_splitByRegex() {
         rg "${_line_regex}" --search-zip --no-filename -n -o "${_file}" | sort -u -t":" -k2
     else
         rg "${_line_regex}" --search-zip --no-filename -n -o "${_file}"
-    fi > /tmp/${FUNCNAME}_$$.out
-    echo "END_OF_FILE:ZZZ" >> /tmp/${FUNCNAME}_$$.out
+    fi > /tmp/${FUNCNAME[0]}_$$.out
+    echo "END_OF_FILE:ZZZ" >> /tmp/${FUNCNAME[0]}_$$.out
     # NOTE: scope of variable in BASH is strange. _prev_str can't be used outside of while loop.
-    cat /tmp/${FUNCNAME}_$$.out | while read -r _t; do
+    cat /tmp/${FUNCNAME[0]}_$$.out | while read -r _t; do
         if [[ "${_t}" =~ ^([0-9]+):(.+) ]]; then
             # Skip if this number is already processed
             if [ ${_prev_n} == ${BASH_REMATCH[1]} ]; then
