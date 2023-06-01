@@ -28,7 +28,7 @@
 #
 #   # If DB username and password has been changed
 #   #kubectl -n ${_NAMESPACE} delete secret ${_ID}-jdbc
-#   #kubectl -n ${_NAMESPACE} create secret generic ${_ID}-jdbc --from-literal=db_user="${_DB_USER}" --from-literal=db_pwd="${_DB_PWD}"
+#   #kubectl -n ${_NAMESPACE} create secret generic ${_ID}-jdbc --from-literal=db_user="${_DB_USER}" --from-literal=db_pwd="${_DB_PWD}" --from-literal=jdbc_url="${_JDBC_URL}"
 #   eval "echo \"$(cat ./k8s-nxrm3-pg-ha.yaml | grep -v '^\s*#')\"" > ./${_ID}.yaml
 #   #kubectl -n ${_NAMESPACE} delete -f ./${_ID}.yaml   # NOTE: This deletes PVC as well
 #   kubectl -n ${_NAMESPACE} apply -f ./${_ID}.yaml
@@ -118,16 +118,22 @@ spec:
           env:
             - name: PATH
               value: '/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin/:/nexus-data/bin'
-            - name: NEXUS_DATASTORE_NEXUS_USERNAME
+            # TODO: NEXUS_DATASTORE_NEXUS_USERNAME and NEXUS_DATASTORE_NEXUS_PASSWORD do not work
+            - name: DB_USER
               valueFrom:
                 secretKeyRef:
                   name: ${_ID}-jdbc
                   key: db_user
-            - name: NEXUS_DATASTORE_NEXUS_PASSWORD
+            - name: DB_PWD
               valueFrom:
                 secretKeyRef:
                   name: ${_ID}-jdbc
                   key: db_pwd
+            - name: JDBC_URL
+              valueFrom:
+                secretKeyRef:
+                  name: ${_ID}-jdbc
+                  key: jdbc_url
             # NOTE: Should use 'true' (or remove) for the production for security
             - name: NEXUS_SECURITY_RANDOMPASSWORD
               value: 'false'
@@ -135,7 +141,7 @@ spec:
             - name: INSTALL4J_ADD_VM_PARAMS
               # NOTE: In the datastore parameter, no schema specified, so will be public.
               #       The nexus.scripts.allowCreation shouldn't be used for production.
-              #       Also, maybe using nexus.onboarding.enabled=false and nexus.skipDefaultRepositories=true (but HA doesn't do this anyway)?
+              #       Also, maybe using nexus.onboarding.enabled=false and nexus.skipDefaultRepositories=true (this also won't create default blobstore)
               #       To enable HTTPS/SSL, prepare keystore.jks and append ',/nexus-data/etc/ssl/jetty-https.xml'
               #       Only for preview: '-Dnexus.jwt.enabled=true'
               value: '-XX:ActiveProcessorCount=1 -Xms1g -Xmx2g \
@@ -144,7 +150,9 @@ spec:
                 -Dnexus.licenseFile=/etc/sonatype/sonatype-license.lic \
                 -Dnexus.scripts.allowCreation=true \
                 -Dnexus.datastore.enabled=true \
-                -Dnexus.datastore.nexus.jdbcUrl=${_JDBC_URL} \
+                -Dnexus.datastore.nexus.jdbcUrl=\${JDBC_URL} \
+                -Dnexus.datastore.nexus.username=\${DB_USER} \
+                -Dnexus.datastore.nexus.password=\${DB_PWD} \
                 -Dnexus.datastore.nexus.schema=${_DB_SCHEMA:-"public"} \
                 -Dnexus.datastore.nexus.maximumPoolSize=10 \
                 -Dnexus.datastore.nexus.advanced=maxLifetime=600000 \
