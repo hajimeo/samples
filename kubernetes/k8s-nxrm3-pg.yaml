@@ -161,7 +161,7 @@ spec:
             - name: INSTALL4J_ADD_VM_PARAMS
               # NOTE: In the datastore parameter, no schema specified, so will be public.
               #       The nexus.scripts.allowCreation shouldn't be used for production.
-              #       Also, maybe using nexus.onboarding.enabled=false and nexus.skipDefaultRepositories=true ?
+              #       Also, maybe using nexus.onboarding.enabled=false, nexus.skipDefaultRepositories=true, and nexus.blobstore.provisionDefaults (this also won't create default blobstore)
               #       To enable HTTPS/SSL, prepare keystore.jks and: append
               #  -Dssl.etc=/nexus-data/etc/ssl \
               #  -Dnexus-args=/opt/sonatype/nexus/etc/jetty/jetty.xml,/opt/sonatype/nexus/etc/jetty/jetty-http.xml,/nexus-data/etc/ssl/jetty-https.xml,/opt/sonatype/nexus/etc/jetty/jetty-requestlog.xml \

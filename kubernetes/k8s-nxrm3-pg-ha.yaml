@@ -137,11 +137,13 @@ spec:
             # NOTE: Should use 'true' (or remove) for the production for security
             - name: NEXUS_SECURITY_RANDOMPASSWORD
               value: 'false'
+            #- name: NEXUS_SECURITY_INITIAL_PASSWORD
+            #  value: 'admin123'
             # NOTE: install4jAddVmParams is wrong
             - name: INSTALL4J_ADD_VM_PARAMS
               # NOTE: In the datastore parameter, no schema specified, so will be public.
               #       The nexus.scripts.allowCreation shouldn't be used for production.
-              #       Also, maybe using nexus.onboarding.enabled=false and nexus.skipDefaultRepositories=true (this also won't create default blobstore)
+              #       Also, maybe using nexus.onboarding.enabled=false, nexus.skipDefaultRepositories=true, and nexus.blobstore.provisionDefaults (this also won't create default blobstore)
               #       To enable HTTPS/SSL, prepare keystore.jks and append ',/nexus-data/etc/ssl/jetty-https.xml'
               #       Only for preview: '-Dnexus.jwt.enabled=true'
               value: '-XX:ActiveProcessorCount=1 -Xms1g -Xmx2g \
