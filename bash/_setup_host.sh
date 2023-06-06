@@ -371,7 +371,7 @@ umount -f -l ${_DIR%/}'
 }
 
 function f_s3fs() {
-    local __doc__="Install and setup NFS/NFSd on Ubuntu"
+    local __doc__="Install and setup Fuse S3 client on Ubuntu"
     # @see: https://github.com/s3fs-fuse/s3fs-fuse/blob/master/README.md
     local _secret="$1"
     local _bucket="$2"
@@ -1352,6 +1352,7 @@ function f_dnsmasq() {
     grep -q '^no-resolv' /etc/dnsmasq.conf || echo 'no-resolv' >>/etc/dnsmasq.conf
     # I might use 8.8.8.8
     grep -q '^server=' /etc/dnsmasq.conf || echo 'server=1.1.1.1' >>/etc/dnsmasq.conf
+    grep -q '^cache-size=' /etc/dnsmasq.conf || echo 'cache-size=5000' >>/etc/dnsmasq.conf
     #grep -q '^domain-needed' /etc/dnsmasq.conf || echo 'domain-needed' >> /etc/dnsmasq.conf
     #grep -q '^bogus-priv' /etc/dnsmasq.conf || echo 'bogus-priv' >> /etc/dnsmasq.conf
     grep -q '^local=' /etc/dnsmasq.conf || echo 'local=/'${_domain_suffix#.}'/' >>/etc/dnsmasq.conf
