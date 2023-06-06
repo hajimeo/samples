@@ -23,7 +23,8 @@ function usage() {
     echo "Main purpose of this script is to create repositories with some sample components.
 Also functions in this script can be used for testing downloads and uploads.
 
-_NEXUS_URL='http://node-nxrm-ha1.standalone.localdomain:8081/' ./${_filename} -A
+#export _NEXUS_URL='http://SOME_REMOTE_NEXUS:8081/'
+./${_filename} -A
 
 DOWNLOADS:
     curl ${_DL_URL%/}/bash/setup_nexus3_repos.sh -o ${_WORK_DIR%/}/sonatype/setup_nexus3_repos.sh
@@ -40,12 +41,8 @@ COMMAND OPTIONS:
     -f <format1,format2,...>
         Comma separated repository formats.
         Default: ${_REPO_FORMATS}
-    -v <nexus version>
-        Create Nexus container if version number (eg: 3.24.0) is given and 'docker' command is available.
-
-    -C [-r /path/to/existing/response-file.resp]
-        *DANGER*
-        Cleaning/deleting a container and sonatype-work directory for fresh installation.
+    -i <nexus version>
+        Install Nexus with this version number (eg: 3.24.0)
 
 EXAMPLE COMMANDS:
 Start script with interview mode:
@@ -71,14 +68,6 @@ Using previously saved response file and NO interviews:
 
 Just get the repositories setting:
     f_api /service/rest/v1/repositorySettings
-
-NOTE:
-For fresh install with same container name:
-    docker rm -f <container>
-    sudo mv ${_WORK_DIR%/}/sonatype/<mounting-volume> /tmp/  # or rm -rf
-
-To upgrade, if /nexus-data is a mounted volume, just reuse same response file but with newer Nexus version.
-If HA-C, edit nexus.properties for all nodes, then remove 'db' directory from node-2 and node-3.
 "
 }
 
@@ -90,7 +79,7 @@ If HA-C, edit nexus.properties for all nodes, then remove 'db' directory from no
 : ${_DOMAIN:="standalone.localdomain"}
 : ${_NEXUS_URL:="http://localhost:8081/"}   # or https://local.standalone.localdomain:8443/ for docker
 : ${_IQ_URL:="http://localhost:8070/"}
-: ${_IQ_CLI_VER-"1.158.0-01"}               # If "" (empty), not download CLI jar
+: ${_IQ_CLI_VER-"latest"}                   # If "" (empty), not download CLI jar
 : ${_DOCKER_NETWORK_NAME:="nexus"}
 : ${_SHARE_DIR:="/var/tmp/share"}
 : ${_IS_NXRM2:="N"}
@@ -109,9 +98,116 @@ _CLEAN=false
 _RESP_FILE=""
 
 
+### Nexus installation functions ##############################################################################
+function f_install_nexus3() {
+    local __doc__="Install specific NXRM3 version"
+    local _ver="$1"     #3.40.1-01  # TODO: should be able to use "latest" by checking github
+    local _dbname="$2"  # If h2, use H2
+    local _dbusr="${3:-"nxrm"}"     # Specifyign default as do not want to create many users/roles
+    local _dbpwd="${4:-"${_dbusr}123"}"
+    local _port="${5:-"${_NXRM3_INSTALL_PORT:-"8081"}"}"
+    local _dirpath="${6-"${_NXRM3_INSTALL_DIR}"}"  # If not specified, create a new dir under current dir
+    local _download_dir="${7}"
+    local _schema="${_DB_SCHEMA}"
+    [ -z "${_ver}" ] && return 1
+    for _p in $(seq ${_port} $((${_port} + 9))); do
+        curl -s -q -f -I "localhost:${_p}"
+        if [ $? == 52 ]; then
+            _port="${_p}"
+            echo "WARN Using port:${_port}"
+            break
+        fi
+        # If couldn't find any available port, anyway trying the original _port
+    done
+    # I think PostgreSQL doesn't work with mixed case.
+    _dbname="$(echo "${_dbname}" | tr '[:upper:]' '[:lower:]')"
+    if [ -z "${_dirpath}" ]; then
+        _dirpath="./nxrm_${_ver}"
+        [ -n "${_dbname}" ] && _dirpath="${_dirpath}_${_dbname}"
+    fi
+    _prepare_install "${_dirpath}" "${_ver}" || return $?
+
+    if [ ! -d ${_dirpath%/}/sonatype-work/nexus3/etc/fabric ]; then
+        mkdir -v -p ${_dirpath%/}/sonatype-work/nexus3/etc/fabric || return $?
+    fi
+
+    local _license_path=""
+    if [ -f "${HOME%/}/.nexus_executable_cache/license/nexus.lic" ]; then
+        _license_path="${HOME%/}/.nexus_executable_cache/license/nexus.lic"
+    else
+        _license_path="$(find ${_SHARE_DIR%/}/sonatype -maxdepth 1 -name '*.lic' -print | head -n1)"
+    fi
+
+    local _prop="${_dirpath%/}/sonatype-work/nexus3/etc/nexus.properties"
+    for _l in "nexus.licenseFile=${_license_path}" "application-port=${_port}" "nexus.security.randompassword=false" "nexus.onboarding.enabled=false" "nexus.scripts.allowCreation=true"; do
+        grep -q "^${_l%=*}" "${_prop}" 2>/dev/null || echo "${_l}" >> "${_prop}" || return $?
+    done
+    if [ -n "${_dbname}" ]; then
+        grep -q "^nexus.datastore.enabled" "${_prop}" 2>/dev/null || echo "nexus.datastore.enabled=true" >> "${_prop}" || return $?
+        if [[ ! "${_dbname}" =~ [hH]2 ]]; then
+            cat << EOF > "${_dirpath%/}/sonatype-work/nexus3/etc/fabric/nexus-store.properties"
+jdbcUrl=jdbc\:postgresql\://$(hostname -f)\:5432/${_dbname}
+username=${_dbusr}
+password=${_dbpwd}
+schema=${_schema:-"public"}
+maximumPoolSize=40
+advanced=maxLifetime\=600000
+EOF
+            local _util_dir="$(dirname "$(dirname "$BASH_SOURCE")")/bash"
+            if [ -s "${_util_dir}/utils_db.sh" ]; then
+                source ${_util_dir}/utils.sh
+                source ${_util_dir}/utils_db.sh
+                # TODO: this should be used only localhost:5432
+                _postgresql_create_dbuser "${_dbusr}" "${_dbpwd}" "${_dbname}" "${_schema}"
+            else
+                echo "WARN Not creating database"
+            fi
+        fi
+    fi
+
+    cd "${_dirpath%/}" || return $?
+    echo "To start: ./nexus-${_ver}/bin/nexus run"
+    type nxrmStart &>/dev/null && echo "      Or: nxrmStart"
+}
+function _prepare_install() {
+    local _extract_path="$1"
+    local _ver="$2"
+    local _download_dir="${3}"
+
+    local _tgz_name="nexus-${_ver}-unix.tar.gz"
+    [ "`uname`" = "Darwin" ] && _tgz_name="nexus-${_ver}-mac.tgz"
+    local _url="${_REPO_URL%/}/nexus/${_ver%%.*}/${_name_ver}-unix.tar.gz"
+    local _tgz="${_download_dir:-"."}/${_tgz_name}"
+    if [ ! -s "${_tgz}" ]; then
+        if [ -s "${HOME%/}/.nexus_executable_cache/${_tgz_name}" ]; then
+            _tgz="${HOME%/}/.nexus_executable_cache/${_tgz_name}"
+            [ -z "${_download_dir}" ] && _download_dir="${HOME%/}/.nexus_executable_cache"
+        elif [ -s "${_SHARE_DIR%/}/sonatype/${_tgz_name}" ]; then
+            _tgz="${_SHARE_DIR%/}/sonatype/${_tgz_name}"
+            [ -z "${_download_dir}" ] && _download_dir="${_SHARE_DIR%/}/sonatype"
+        fi
+    fi
+    local _extractTar=true
+    if [ -d "${_extract_path}" ]; then
+        echo "WARN ${_extract_path} exists, so not extracting ${_tgz}"
+        return
+    fi
+    if [ ! -s "${_tgz}" ]; then
+        local _filename="$(basename "${_tgz}")"
+        local _url="https://download.sonatype.com/nexus/3/${_filename}"
+        [[ "${_filename}" =~ ^nexus-iq ]] && _url="https://download.sonatype.com/clm/server/${_filename}"
+        echo "no ${_tgz}. Downloading from ${_url} ..."
+        curl -o "/tmp/${_filename}" -L "${_url}" || return $?
+        mv -v -f /tmp/${_filename} ${_tgz} || return $?
+    fi
+    mkdir -v -p "${_extract_path}" || return $?
+    tar -C ${_extract_path%/} -xf ${_tgz}
+}
+
 ### Repository setup functions ################################################################################
 # Eg: r_NEXUS_URL="http://dh1.standalone.localdomain:8081/" f_setup_xxxxx
 function f_setup_maven() {
+    local __doc__="Create Maven2 proxy/hosted/group repositories with dummy data"
     local _prefix="${1:-"maven"}"
     local _bs_name="${2:-"${r_BLOBSTORE_NAME:-"${_BLOBTORE_NAME}"}"}"
     local _ds_name="${3:-"${r_DATASTORE_NAME:-"${_DATASTORE_NAME}"}"}"
@@ -156,6 +252,7 @@ function f_setup_maven() {
 }
 
 function f_setup_pypi() {
+    local __doc__="Create Pypi proxy/hosted/group repositories with dummy data"
     local _prefix="${1:-"pypi"}"
     local _bs_name="${2:-"${r_BLOBSTORE_NAME:-"${_BLOBTORE_NAME}"}"}"
     local _ds_name="${3:-"${r_DATASTORE_NAME:-"${_DATASTORE_NAME}"}"}"
@@ -187,6 +284,7 @@ function f_setup_pypi() {
 }
 
 function f_setup_p2() {
+    local __doc__="Create Maven2 proxy repository with dummy data"
     local _prefix="${1:-"p2"}"
     local _bs_name="${2:-"${r_BLOBSTORE_NAME:-"${_BLOBTORE_NAME}"}"}"
     local _ds_name="${3:-"${r_DATASTORE_NAME:-"${_DATASTORE_NAME}"}"}"
@@ -204,6 +302,7 @@ function f_setup_p2() {
 }
 
 function f_setup_npm() {
+    local __doc__="Create NPM proxy/hosted/group repositories with dummy data"
     local _prefix="${1:-"npm"}"
     local _bs_name="${2:-"${r_BLOBSTORE_NAME:-"${_BLOBTORE_NAME}"}"}"
     local _ds_name="${3:-"${r_DATASTORE_NAME:-"${_DATASTORE_NAME}"}"}"
@@ -249,6 +348,7 @@ function f_setup_npm() {
 }
 
 function f_setup_nuget() {
+    local __doc__="Create Nuget V2|V3 proxy/hosted/group repositories with dummy data"
     local _prefix="${1:-"nuget"}"
     local _bs_name="${2:-"${r_BLOBSTORE_NAME:-"${_BLOBTORE_NAME}"}"}"
     local _ds_name="${3:-"${r_DATASTORE_NAME:-"${_DATASTORE_NAME}"}"}"
@@ -296,6 +396,7 @@ function f_setup_nuget() {
 
 #_NEXUS_URL=http://node3281.standalone.localdomain:8081/ f_setup_docker
 function f_setup_docker() {
+    local __doc__="Create Docker proxy/hosted/group repositories with dummy data"
     local _prefix="${1:-"docker"}"
     local _bs_name="${2:-"${r_BLOBSTORE_NAME:-"${_BLOBTORE_NAME}"}"}"
     local _ds_name="${3:-"${r_DATASTORE_NAME:-"${_DATASTORE_NAME}"}"}"
@@ -314,8 +415,8 @@ function f_setup_docker() {
     fi
     # add some data for xxxx-proxy
     _log "INFO" "Populating ${_prefix}-proxy repository with some image ..."
-    if ! f_populate_docker_proxy; then
-        _log "WARN" "f_populate_docker_proxy failed. May need to add 'Docker Bearer Token Realm' (not only for anonymous access)."
+    if ! _populate_docker_proxy; then
+        _log "WARN" "_populate_docker_proxy failed. May need to add 'Docker Bearer Token Realm' (not only for anonymous access)."
     fi
 
     if [ -n "${_source_nexus_url}" ] && [ -n "${_extra_sto_opt}" ] && ! _is_repo_available "${_prefix}-repl-proxy"; then
@@ -329,8 +430,8 @@ function f_setup_docker() {
     fi
     # add some data for xxxx-hosted
     _log "INFO" "Populating ${_prefix}-hosted repository with some image ..."
-    if ! f_populate_docker_hosted; then
-        _log "WARN" "f_populate_docker_hosted failed. May need to add 'Docker Bearer Token Realm'."
+    if ! _populate_docker_hosted; then
+        _log "WARN" "_populate_docker_hosted failed. May need to add 'Docker Bearer Token Realm'."
     fi
 
     # If no xxxx-group, create it
@@ -340,11 +441,11 @@ function f_setup_docker() {
     fi
     # add some data for xxxx-group
     _log "INFO" "Populating ${_prefix}-group repository with some image via docker proxy repo ..."
-    f_populate_docker_proxy "hello-world" "${r_DOCKER_GROUP}" "5000 4999"
+    _populate_docker_proxy "hello-world" "${r_DOCKER_GROUP}" "5000 4999"
 }
 
-#f_populate_docker_proxy "" "nxrm3ha-docker-k8s.standalone.localdomain"
-function f_populate_docker_proxy() {
+#_populate_docker_proxy "" "nxrm3ha-docker-k8s.standalone.localdomain"
+function _populate_docker_proxy() {
     local _img_name="${1:-"alpine:3.7"}"
     local _host_port="${2:-"${r_DOCKER_PROXY:-"${r_DOCKER_GROUP:-"${r_NEXUS_URL:-"${_NEXUS_URL}"}"}"}"}"
     local _backup_ports="${3-"18179 18178"}"
@@ -363,8 +464,8 @@ function f_populate_docker_proxy() {
     ${_cmd} pull ${_host_port}/${_img_name} || return $?
 }
 #ssh -2CNnqTxfg -L18182:localhost:18182 node3250    #ps aux | grep 2CNnqTxfg
-#f_populate_docker_hosted "" "localhost:18182"
-function f_populate_docker_hosted() {
+#_populate_docker_hosted "" "localhost:18182"
+function _populate_docker_hosted() {
     local _base_img="${1:-"alpine:latest"}"    # dh1.standalone.localdomain:5000/alpine:3.7
     local _host_port="${2:-"${r_DOCKER_PROXY:-"${r_DOCKER_GROUP:-"${r_NEXUS_URL:-"${_NEXUS_URL}"}"}"}"}"
     local _backup_ports="${3-"18182 18181"}"
@@ -412,9 +513,10 @@ function f_populate_docker_hosted() {
     _log "DEBUG" "${_cmd} push ${_host_port}/${_tag_to}"
     ${_cmd} push ${_host_port}/${_tag_to} || return $?
 }
-#echo -e "FROM alpine:3.7\nRUN apk add --no-cache mysql-client\nCMD echo 'Built ${_tag_to} from image:${_base_img}' > /var/tmp/f_populate_docker_hosted.out" > Dockerfile && ${_cmd} build --rm -t ${_tag_to} .
+#echo -e "FROM alpine:3.7\nRUN apk add --no-cache mysql-client\nCMD echo 'Built ${_tag_to} from image:${_base_img}' > /var/tmp/_populate_docker_hosted.out" > Dockerfile && ${_cmd} build --rm -t ${_tag_to} .
 
 function f_setup_yum() {
+    local __doc__="Create Yum(rpm) proxy/hosted/group repositories with dummy data"
     local _prefix="${1:-"yum"}"
     local _bs_name="${2:-"${r_BLOBSTORE_NAME:-"${_BLOBTORE_NAME}"}"}"
     local _ds_name="${3:-"${r_DATASTORE_NAME:-"${_DATASTORE_NAME}"}"}"
@@ -428,7 +530,7 @@ function f_setup_yum() {
     fi
     # add some data for xxxx-proxy (Ubuntu has "yum" command)
     # NOTE: using 'yum' command is a bit too slow, so not using at this moment
-    #f_echo_yum_repo_file "${_prefix}-proxy" > /etc/yum.repos.d/nexus-yum-test.repo
+    #_echo_yum_repo_file "${_prefix}-proxy" > /etc/yum.repos.d/nexus-yum-test.repo
     #yum --disablerepo="*" --enablerepo="nexusrepo-test" install --downloadonly --downloaddir=${_TMP%/} dos2unix
     # NOTE: due to the known limitation, some version of Nexus requires anonymous for yum repo
     # https://support.sonatype.com/hc/en-us/articles/213464848-Authenticated-Access-to-Nexus-from-Yum-Doesn-t-Work
@@ -463,7 +565,7 @@ function f_setup_yum() {
     # add some data for xxxx-group
     #f_get_asset "${_prefix}-group" "7/os/x86_64/Packages/$(basename ${_upload_file})"
 }
-function f_echo_yum_repo_file() {
+function _echo_yum_repo_file() {
     local _repo="${1:-"yum-group"}"
     local _base_url="${2:-"${r_NEXUS_URL:-"${_NEXUS_URL}"}"}"
     # At this moment, Nexus yum repositories require anonymous, so not modifying the url with "https://admin:admin123@HOST:PORT/repository/..."
@@ -481,6 +583,7 @@ password='${_ADMIN_PWD:-"admin123"}
 }
 
 function f_setup_rubygem() {
+    local __doc__="Create Rubygems proxy/hosted/group repositories with dummy data"
     local _prefix="${1:-"rubygem"}"
     local _bs_name="${2:-"${r_BLOBSTORE_NAME:-"${_BLOBTORE_NAME}"}"}"
     local _ds_name="${3:-"${r_DATASTORE_NAME:-"${_DATASTORE_NAME}"}"}"
@@ -552,6 +655,7 @@ EOF
 }
 
 function f_setup_helm() {
+    local __doc__="Create Helm proxy/hosted repositories with dummy data"
     local _prefix="${1:-"helm"}"
     local _bs_name="${2:-"${r_BLOBSTORE_NAME:-"${_BLOBTORE_NAME}"}"}"
     local _ds_name="${3:-"${r_DATASTORE_NAME:-"${_DATASTORE_NAME}"}"}"
@@ -580,6 +684,7 @@ function f_setup_helm() {
 }
 
 function f_setup_bower() {
+    local __doc__="Create Bower proxy repository with dummy data"
     local _prefix="${1:-"bower"}"
     local _bs_name="${2:-"${r_BLOBSTORE_NAME:-"${_BLOBTORE_NAME}"}"}"
     local _ds_name="${3:-"${r_DATASTORE_NAME:-"${_DATASTORE_NAME}"}"}"
@@ -597,6 +702,7 @@ function f_setup_bower() {
 }
 
 function f_setup_conan() {
+    local __doc__="Create Conan proxy/hosted repositories with dummy data"
     local _prefix="${1:-"conan"}"
     local _bs_name="${2:-"${r_BLOBSTORE_NAME:-"${_BLOBTORE_NAME}"}"}"
     local _ds_name="${3:-"${r_DATASTORE_NAME:-"${_DATASTORE_NAME}"}"}"
@@ -664,6 +770,7 @@ function _upload_to_conan_hosted() {
 }
 
 function f_setup_conda() {
+    local __doc__="Create Conda proxy repository"
     local _prefix="${1:-"conda"}"
     local _bs_name="${2:-"${r_BLOBSTORE_NAME:-"${_BLOBTORE_NAME}"}"}"
     local _ds_name="${3:-"${r_DATASTORE_NAME:-"${_DATASTORE_NAME}"}"}"
@@ -679,6 +786,7 @@ function f_setup_conda() {
 }
 
 function f_setup_cocoapods() {
+    local __doc__="Create Cocoapod proxy repository with dummy data"
     local _prefix="${1:-"cocoapods"}"
     local _bs_name="${2:-"${r_BLOBSTORE_NAME:-"${_BLOBTORE_NAME}"}"}"
     local _ds_name="${3:-"${r_DATASTORE_NAME:-"${_DATASTORE_NAME}"}"}"
@@ -712,6 +820,7 @@ print(\"Specs/%s/%s/%s/%s/%s/%s.podspec.json\" % (h[0],h[1],h[2],n,v,n))")"
 }
 
 function f_setup_go() {
+    local __doc__="Create Golang proxy repositories with dummy data"
     local _prefix="${1:-"go"}"
     local _bs_name="${2:-"${r_BLOBSTORE_NAME:-"${_BLOBTORE_NAME}"}"}"
     local _ds_name="${3:-"${r_DATASTORE_NAME:-"${_DATASTORE_NAME}"}"}"
@@ -732,6 +841,7 @@ function f_setup_go() {
 }
 
 function f_setup_apt() {
+    local __doc__="Create Apt proxy repositories"
     local _prefix="${1:-"apt"}"
     local _bs_name="${2:-"${r_BLOBSTORE_NAME:-"${_BLOBTORE_NAME}"}"}"
     local _ds_name="${3:-"${r_DATASTORE_NAME:-"${_DATASTORE_NAME}"}"}"
@@ -757,6 +867,7 @@ function f_setup_apt() {
 }
 
 function f_setup_r() {
+    local __doc__="Create R proxy/hosted/group repositories with dummy data"
     local _prefix="${1:-"r"}"
     local _bs_name="${2:-"${r_BLOBSTORE_NAME:-"${_BLOBTORE_NAME}"}"}"
     local _ds_name="${3:-"${r_DATASTORE_NAME:-"${_DATASTORE_NAME}"}"}"
@@ -794,6 +905,7 @@ function f_setup_r() {
 }
 
 function f_setup_gitlfs() {
+    local __doc__="Create Git-LFS hosted repository"
     local _prefix="${1:-"gitlfs"}"
     local _bs_name="${2:-"${r_BLOBSTORE_NAME:-"${_BLOBTORE_NAME}"}"}"
     local _ds_name="${3:-"${r_DATASTORE_NAME:-"${_DATASTORE_NAME}"}"}"
@@ -808,6 +920,7 @@ function f_setup_gitlfs() {
 }
 
 function f_setup_raw() {
+    local __doc__="Create Raw proxy/hosted/group repositories with dummy data"
     local _prefix="${1:-"raw"}"
     local _bs_name="${2:-"${r_BLOBSTORE_NAME:-"${_BLOBTORE_NAME}"}"}"
     local _ds_name="${3:-"${r_DATASTORE_NAME:-"${_DATASTORE_NAME}"}"}"
@@ -895,6 +1008,7 @@ function _get_datastore_name() {
 }
 
 function f_create_file_blobstore() {
+    local __doc__="Create a File type blobstore"
     local _bs_name="${1:-"default"}"
     if ! f_apiS '{"action":"coreui_Blobstore","method":"create","data":[{"type":"File","name":"'${_bs_name}'","isQuotaEnabled":false,"attributes":{"file":{"path":"'${_bs_name}'"}}}],"type":"rpc"}' > ${_TMP%/}/f_apiS_last.out; then
         _log "ERROR" "Blobstore ${_bs_name} does not exist."
@@ -906,6 +1020,7 @@ function f_create_file_blobstore() {
 
 # AWS_ACCESS_KEY_ID=xxx AWS_SECRET_ACCESS_KEY=yyy f_create_s3_blobstore
 function f_create_s3_blobstore() {
+    local __doc__="Create a S3 blobstore. AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY are required"
     local _bs_name="${1:-"s3-test"}"
     local _prefix="${2:-"$(hostname -s)_${_bs_name}"}"    # cat /etc/machine-id is not perfect if docker container
     local _bucket="${3:-"apac-support-bucket"}"
@@ -933,6 +1048,7 @@ aws s3 cp s3://${_bucket}/${_prefix}/content/vol-42/chap-31/f062f002-88f0-4b53-a
 }
 
 function f_create_azure_blobstore() {
+    local __doc__="Create an Azure blobstore. AZURE_ACCOUNT_NAME and AZURE_ACCOUNT_KEY are required"
     #https://learn.microsoft.com/en-us/azure/active-directory/develop/howto-create-service-principal-portal#get-tenant-and-app-id-values-for-signing-in
     local _bs_name="${1:-"az-test"}"
     local _container_name="${2:-"$(hostname -s)_${_bs_name}"}"
@@ -951,13 +1067,14 @@ function f_create_azure_blobstore() {
     fi
 }
 
-f_create_group_blobstore() {
-    local __doc__="Create a new blob store, then promote to group"
+function f_create_group_blobstore() {
+    local __doc__="TODO: Create a new blob store, then promote to group"
     echo "TODO: Not implemented yet"
     return
 }
 
 function f_iq_quarantine() {
+    local __doc__="Create Firewall Audit and Quarantine capability"
     local _repo_name="$1"
     if [ -z "${_IQ_URL}" ] || ! curl -sfI "${_IQ_URL}" &>/dev/null ; then
         _log "WARN" "IQ ${_IQ_URL} is not reachable capability"
@@ -973,6 +1090,7 @@ function f_iq_quarantine() {
 
 # f_get_and_upload_jars "maven" "junit" "junit" "3.8 4.0 4.1 4.2 4.3 4.4 4.5 4.6 4.7 4.8 4.9 4.10 4.11 4.12"
 function f_get_and_upload_jars() {
+    local __doc__="Example script for getting multiple versions from maven-proxy, then upload to maven-hosted"
     local _prefix="${1:-"maven"}"
     local _group_id="$2"
     local _artifact_id="$3"
@@ -994,6 +1112,7 @@ function f_get_and_upload_jars() {
 
 # f_move_jars "maven-hosted" "maven-releases" "junit"
 function f_move_jars() {
+    local __doc__="Example script for testing staging/promotion API"
     local _from_repo="$1"
     local _to_repo="$2"
     local _group="$3"
@@ -1004,6 +1123,7 @@ function f_move_jars() {
 }
 
 function f_get_asset() {
+    local __doc__="Get/download an asset"
     if [[ "${_IS_NXRM2}" =~ ^[yY] ]]; then
         _get_asset_NXRM2 "$@"
     else
@@ -1058,6 +1178,7 @@ function _get_asset_NXRM2() {
 
 # Same way as using Upload UI
 function f_upload_asset() {
+    local __doc__="Upload an asset with Upload API"
     local _repo="$1"
     local _forms=${@:2} #-F maven2.groupId=junit -F maven2.artifactId=junit -F maven2.version=4.21 -F maven2.asset1=@${_TMP%/}/junit-4.12.jar -F maven2.asset1.extension=jar
     # NOTE: Because _forms takes all arguments except first one, can't assign any other arguments
@@ -1205,7 +1326,7 @@ function f_api() {
 #usermod -a -G docker $USER (then relogin)
 #docker rm -f nexus-client; p_client_container "http://dh1.standalone.localdomain:8081/"
 function p_client_container() {
-    local __doc__="Create / start a docker container to install various client commands. Also calls f_reset_client_configs"
+    local __doc__="Process multiple functions to create a docker container to install various client commands"
     local _base_url="${1:-"${r_NEXUS_URL:-"${_NEXUS_URL}"}"}"
     local _name="${2:-"nexus-client"}"
     local _centos_ver="${3:-"7.6.1810"}"
@@ -1292,7 +1413,7 @@ function f_reset_client_configs() {
     local _repo_url="${_base_url%/}/repository/yum-group"
     if _is_url_reachable "${_repo_url}"; then
         _log "INFO" "Generating /etc/yum.repos.d/nexus-yum-test.repo ..."
-        f_echo_yum_repo_file "yum-group" "${_base_url}" > /etc/yum.repos.d/nexus-yum-test.repo
+        _echo_yum_repo_file "yum-group" "${_base_url}" > /etc/yum.repos.d/nexus-yum-test.repo
     fi
 
     _log "INFO" "Not setting up any nuget/pwsh configs. Please do it manually later ..."
@@ -1416,7 +1537,6 @@ EOF
 }
 function f_install_clients() {
     local __doc__="Install various client software with mainly yum as 'root' (TODO: so that works with CentOS 7 only)"
-
     if [ -n "${_IQ_CLI_VER}" ]; then
         [ -d "${_SHARE_DIR%/}/sonatype" ] || mkdir -v -p -m 777 "${_SHARE_DIR%/}/sonatype"
         local _f="${_SHARE_DIR%/}/sonatype/nexus-iq-cli-${_IQ_CLI_VER}.jar"
@@ -1454,7 +1574,7 @@ EOF
     rpm -Uvh https://packages.microsoft.com/config/centos/7/packages-microsoft-prod.rpm
     yum install -y centos-release-scl-rh centos-release-scl || _log "ERROR" "Installing .Net (for Nuget) related packages failed"
     # TODO: I think rubygems on CentOS requires ruby 2.3 (or 2.6?) or was it for cocoapods?
-    ${_yum_install} java-1.8.0-openjdk-devel maven nodejs rh-ruby23 rubygems aspnetcore-runtime-3.1 golang git gcc openssl-devel bzip2-devel libffi-devel zlib-devel xz-devel || _log "ERROR" "yum install java maven nodejs etc. failed"
+    ${_yum_install} java-1.8.0-openjdk-devel maven nodejs aspnetcore-runtime-3.1 gcc openssl-devel bzip2-devel libffi-devel zlib-devel xz-devel || _log "ERROR" "yum install java maven nodejs etc. failed"
     if type python3 &>/dev/null; then
         _log "WARN" "python3 is already in the $PATH so not installing"
     else
@@ -1476,7 +1596,7 @@ EOF
     fi
 
     _log "INFO" "Installing ripgrep (rg) ..."
-    yum-config-manager --add-repo=https://copr.fedorainfracloud.org/coprs/carlwgeorge/ripgrep/repo/epel-7/carlwgeorge-ripgrep-epel-7.repo && sudo yum install -y ripgrep
+    yum-config-manager --add-repo=https://copr.fedorainfracloud.org/coprs/carlwgeorge/ripgrep/repo/epel-7/carlwgeorge-ripgrep-epel-7.repo && yum install -y ripgrep
     _log "INFO" "Install Skopeo ..."
     # Skopeo (instead of podman) https://github.com/containers/skopeo/blob/master/install.md
     # NOTE: may need Deployment policy = allow redeployment
@@ -1496,8 +1616,7 @@ fi
 EOF
     # https://docs.microsoft.com/en-us/powershell/scripting/install/install-centos?view=powershell-7.2
     _log "INFO" "Install Powershell ..."    # NOTE: using /rhel/ is correct.
-    curl -fL -o /etc/yum.repos.d/microsoft-prod.repo https://packages.microsoft.com/config/rhel/7/prod.repo --compressed
-    yum install -y powershell
+    curl -fL -o /etc/yum.repos.d/microsoft-prod.repo https://packages.microsoft.com/config/rhel/7/prod.repo --compressed && yum install -y powershell
     _log "INFO" "Install yarn and bower globally ..."
     npm install -g yarn
     npm install -g bower
@@ -1517,35 +1636,43 @@ EOF
     else
         pip3 install conan
     fi
-    _log "INFO" "Setting up Rubygem (2.3?) ..."
+    _log "INFO" "Setting up Rubygem (2.3?), which requires git version 1.8.4 or higher ..."
     # @see: https://www.server-world.info/en/note?os=CentOS_7&p=ruby23
     #       Also need git newer than 1.8.8, but https://github.com/iusrepo/git216/issues/5
-    if git --version | grep 'git version 1.'; then
+    if ! type git &>/dev/null || git --version | grep -q 'git version 1.'; then
         _log "INFO" "Updating git for Rubygem ..."
         yum remove -y git*
-        yum install -y https://packages.endpoint.com/rhel/7/os/x86_64/endpoint-repo-1.7-1.x86_64.rpm
-        ${_yum_install} git
+        yum install -y https://packages.endpointdev.com/rhel/7/os/x86_64/endpoint-repo.x86_64.rpm
+        yum --disablerepo=nexusrepo-test --enablerepo=endpoint install -y git || _log "ERROR" "'yum install git' for git v2 failed"
     fi
-    # Enabling ruby 2.6 globally for Bundler|bundle (can't remember why 2.3 was used)
-    local rb="26"   # or "23"
-    if [ ! -s /opt/rh/rh-ruby${rb}/enable ]; then
-        yum install -y rh-ruby${rb}
-    fi
-    cat << EOF > "/etc/profile.d/rh-ruby${rb}.sh"
+
+    # Enabling ruby 2.6 globally for Bundler|bundle and cocoapods (can't remember why 2.3 was used)
+    for rb in "26"; do
+        if [ ! -s /opt/rh/rh-ruby${rb}/enable ]; then   # not ruby-devel
+            yum install -y rh-ruby${rb} rh-ruby${rb}-ruby-devel rubygems
+        fi
+        cat << EOF > "/etc/profile.d/rh-ruby${rb}.sh"
 #!/bin/bash
 source /opt/rh/rh-ruby${rb}/enable
 export X_SCLS="\$(scl enable rh-ruby${rb} 'echo \$X_SCLS')"
 EOF
-    _log "INFO" "Install Bundler (bundle) ..."
-    bash -l -c "gem install bundle"
+    done
+    _log "INFO" "Install Bundler (bundle) -v 2.4.13 ..."
+    bash -l -c "gem install bundle -v 2.4.13"
     # NOTE: At this moment, the newest cocoapods fails with "Failed to build gem native extension"
-    _log "INFO" "*EXPERIMENTAL* Install cocoapods 1.8.4 ..."
+    _log "INFO" "Install cocoapods 1.8.4 (for ruby 2.6)..."
+    # mkmf.rb can't find header files for ruby at /opt/...
     bash -l -c "gem install cocoapods -v 1.8.4" # To reload shell just in case
+    # it's very hard to use cocoapods pod command without trusting certificate
+    if [ ! -f /etc/pki/ca-trust/source/anchors/rootCA_standalone.crt ] && [ -s /var/tmp/share/cert/rootCA_standalone.crt ]; then
+        cp -v /var/tmp/share/cert/rootCA_standalone.crt /etc/pki/ca-trust/source/anchors/ && update-ca-trust
+    fi
 
+    # golang requires git, so installing in here
     _log "INFO" "Install go/golang and adding GO111MODULE=on ..."
     rpm --import https://mirror.go-repo.io/centos/RPM-GPG-KEY-GO-REPO
     curl -fL https://mirror.go-repo.io/centos/go-repo.repo --compressed > /etc/yum.repos.d/go-repo.repo
-    yum install -y golang
+    ${_yum_install} golang || _log "ERROR" "'yum install golang' failed"
     cat << EOF > /etc/profile.d/go-proxy.sh
 export GO111MODULE=on
 EOF
@@ -1567,21 +1694,21 @@ EOF
 }
 
 # Set admin password after initial installation. If no 'admin.password' file, no error message and silently fail.
-function f_nexus_admin_pwd() {
-    local _container_name="${1:-"${r_NEXUS_CONTAINER_NAME_1:-"${r_NEXUS_CONTAINER_NAME}"}"}"
-    local _new_pwd="${2:-"${r_ADMIN_PWD:-"${_ADMIN_PWD}"}"}"
+function f_nexus_change_pwd() {
+    local __doc__="Change admin password with API"
+    local _username="${1}"
+    local _new_pwd="${2:-"${_username}123"}"
     local _current_pwd="${3}"
-    [ -z "${_container_name}" ] && return 110
-    [ -z "${_current_pwd}" ] && _current_pwd="$(docker exec -ti ${_container_name} cat /opt/sonatype/sonatype-work/nexus3/admin.password | tr -cd "[:print:]")"
-    [ -z "${_current_pwd}" ] && _current_pwd="$(docker exec -ti ${_container_name} cat /nexus-data/admin.password | tr -cd "[:print:]")"
+    local _base_dir="${4:-"."}"
+    [ -z "${_current_pwd}" ] && _current_pwd="$(find ${_base_dir%/} -maxdepth 4 -name "admin.password" -print | head -n1 | xargs cat)"
     [ -z "${_current_pwd}" ] && return 112
-    f_api "/service/rest/beta/security/users/admin/change-password" "${_new_pwd}" "PUT" "admin" "${_current_pwd}"
+    f_api "/service/rest/beta/security/users/${_username}/change-password" "${_new_pwd}" "PUT" "admin" "${_current_pwd}"
 }
 
 function f_put_realms() {
     local _optional_realms=""
     f_api "/service/rest/v1/security/realms/active" | grep -q '"SamlRealm"' || _optional_realms=",\"SamlRealm\""
-    f_api "/service/rest/v1/security/realms/active" "[\"NexusAuthenticatingRealm\",\"NexusAuthorizingRealm\",\"User-Token-Realm\",\"DockerToken\",\"ConanToken\",\"NpmToken\",\"NuGetApiKey\",\"LdapRealm\",\"rutauth-realm\"${_optional_realms}]" "PUT" || return $?
+    f_api "/service/rest/v1/security/realms/active" "[\"NexusAuthenticatingRealm\",\"NexusAuthorizingRealm\",\"User-Token-Realm\",\"rutauth-realm\",\"DockerToken\",\"ConanToken\",\"NpmToken\",\"NuGetApiKey\",\"LdapRealm\"${_optional_realms}]" "PUT" || return $?
     # Removed ,"SamlRealm" as it adds extra popup to login
 }
 
@@ -2438,7 +2565,7 @@ main() {
         _check_update "$BASH_SOURCE" "" "N"
     fi
 
-    # If _RESP_FILE is popurated by -r xxxxx.resp, load it
+    # If _RESP_FILE is populated by -r xxxxx.resp, load it
     if [ -s "${_RESP_FILE}" ];then
         _load_resp "${_RESP_FILE}"
     elif ! ${_AUTO}; then
@@ -2465,44 +2592,12 @@ main() {
 
     if _isYes "${r_NEXUS_INSTALL}"; then
         echo "NOTE: If 'password' is asked, please type 'sudo' password." >&2
-        sudo echo "Starting Nexus installation..." >&2
-        # TODO: Mac's docker doesn't work well with extra network interface (or I do not know how to configure)
-        if [ "`uname`" = "Darwin" ]; then
-            unset _DOCKER_NETWORK_NAME
-        else
-            _docker_add_network "${_DOCKER_NETWORK_NAME}" "" "${r_DOCKER_CMD}" || return $?
-        fi
-
-        local _tmp_ext_opts="-v ${_WORK_DIR%/}:${_SHARE_DIR}"
-        # Port forwarding for Nexus Single Node (obviously can't do same for HA as port will conflict)
-        if [ -n "${r_NEXUS_CONTAINER_PORT1}" ] && [ "${r_NEXUS_CONTAINER_PORT1}" -gt 0 ]; then
-            local _p="-p ${r_NEXUS_CONTAINER_PORT1}:8081"
-            [ -n "${r_NEXUS_CONTAINER_PORT2}" ] && [ "${r_NEXUS_CONTAINER_PORT2}" -gt 0 ] && _p="${_p% } -p ${r_NEXUS_CONTAINER_PORT2}:8443"
-            if [[ "${r_DOCKER_PROXY}" =~ :([0-9]+)$ ]]; then
-                _pid_by_port "${BASH_REMATCH[1]}" &>/dev/null || _p="${_p% } -p ${BASH_REMATCH[1]}:${BASH_REMATCH[1]}"
-            fi
-            if [[ "${r_DOCKER_HOSTED}" =~ :([0-9]+)$ ]]; then
-                _pid_by_port "${BASH_REMATCH[1]}" &>/dev/null || _p="${_p% } -p ${BASH_REMATCH[1]}:${BASH_REMATCH[1]}"
-            fi
-            if [[ "${r_DOCKER_GROUP}" =~ :([0-9]+)$ ]]; then
-                _pid_by_port "${BASH_REMATCH[1]}" &>/dev/null || _p="${_p% } -p ${BASH_REMATCH[1]}:${BASH_REMATCH[1]}"
-            fi
-            _tmp_ext_opts="${_p} ${_tmp_ext_opts}"
-        fi
-        if _isYes "${r_NEXUS_MOUNT}"; then
-            _tmp_ext_opts="${_tmp_ext_opts} $(f_nexus_mount_volume "${r_NEXUS_MOUNT_DIR}")" || return $?
-            f_nexus_init_properties "${r_NEXUS_MOUNT_DIR}" || return $?
-        fi
-        _docker_run_or_start "${r_NEXUS_CONTAINER_NAME}" "${_tmp_ext_opts}" "sonatype/nexus3:${r_NEXUS_VERSION:-"latest"}"  "${r_DOCKER_CMD}"
-        # 'main' requires "r_NEXUS_URL"
-        if [ -z "${r_NEXUS_URL}" ] || ! _wait_url "${r_NEXUS_URL}"; then
-            _log "ERROR" "${r_NEXUS_URL} is unreachable"
-            return 1
-        fi
+        sudo echo "TODO: Starting Nexus installation..." >&2
+        # TODO:
     fi
 
     _log "INFO" "Updating 'admin' user's password (may fail if already updated) ..."
-    f_nexus_admin_pwd
+    f_nexus_change_pwd "admin" "${r_ADMIN_PWD:-"${_ADMIN_PWD}"}" "" "."
 
     if ! _is_blob_available "${r_BLOBSTORE_NAME}"; then
         f_create_file_blobstore || return $?
