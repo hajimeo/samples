@@ -165,7 +165,15 @@ function takeDumps() {
     local _pfx="${7:-"script-$(date +"%Y%m%d%H%M%S")"}"
     local _outPfx="${_outDir%/}/${_pfx}"
 
-    tailStdout "${_pid}" "$((${_count} * ${_interval} + 4))" "${_outPfx}000.log" "${_installDir}"
+    local _jstack=""
+    if [ -x "${JAVA_HOME%/}/bin/jstack" ]; then
+        _jstack="${JAVA_HOME%/}/bin/jstack"
+    elif type jstack &>/dev/null; then
+        _jstack="jstack"
+    fi
+    if [ -z "${_jstack}" ]; then
+        tailStdout "${_pid}" "$((${_count} * ${_interval} + 4))" "${_outPfx}000.log" "${_installDir}"
+    fi
 
     for _i in $(seq 1 ${_count}); do
         echo "[$(date +'%Y-%m-%d %H:%M:%S')] taking dump ${_i}/${_count} ..." >&2
@@ -175,7 +183,11 @@ function takeDumps() {
             (date +'%Y-%m-%d %H:%M:%S'; runDbQuery "select * from pg_stat_activity where state <> 'idle' and query not like '% pg_stat_activity %' order by query_start limit 100;select relation::regclass, * from pg_locks where relation::regclass::text != 'pg_locks' limit 100;" "${_storeProp}" "${_interval}") >> "${_outPfx}101.log" &
             _wpid_in_for="$!"
         fi
-        kill -3 "${_pid}"
+        if [ -n "${_jstack}" ]; then
+            ${_jstack} -l ${_pid} >> "${_outPfx}000.log"
+        else
+            kill -3 "${_pid}"
+        fi
         (date +"%Y-%m-%d %H:%M:%S"; top -H -b -n1 2>/dev/null | head -n60) >> "${_outPfx}001.log"
         (date +"%Y-%m-%d %H:%M:%S"; netstat -topen 2>/dev/null || cat /proc/net/tcp 2>/dev/null) >> "${_outPfx}002.log"
         (date +"%Y-%m-%d %H:%M:%S"; netstat -s 2>/dev/null || cat /proc/net/dev 2>/dev/null) >> "${_outPfx}003.log"
