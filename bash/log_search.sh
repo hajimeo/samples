@@ -937,24 +937,39 @@ function f_hexTids_from_topH() {
 function f_splitTopNetstat() {
     local __doc__="Split a file which contains multiple top and netstat outputs"
     local _file="$1"
-    local _netstat_str="${2}"    # if /proc/net/tcp, " *sl" NOTE HEX is reversed order
-    local _out_dir="top_netstat" #"`basename ${_file} .out`"
+    local _out_dir="${2:-"./top_netstat"}"
+
+    local _tmpDir="$(mktemp -d)"
+    local _netstat_str=""   # used to split netstat output
+    local _useGonetstat=false
+
     if [ ! -d $_out_dir ]; then
         mkdir -v -p $_out_dir || return $?
     fi
-    local _tmpDir="$(mktemp -d)"
-    _csplit -z -f "${_tmpDir%/}/topOrNet_" ${_file} "/^top /" '{*}' || return $?
-    if [ -z "${_netstat_str}" ]; then
-        if rg -q "^Active Internet\s+" "${_file}"; then
-            _netstat_str="Active Internet"
-        elif rg -q "^\s*sl\s+" "${_file}"; then
-            _netstat_str=" *sl"
+
+    if rg -q "^Active Internet\s+" "${_file}"; then
+        _netstat_str="Active Internet"
+    elif rg -q "^\s*sl\s+" "${_file}"; then
+        # if /proc/net/tcp, " *sl" NOTE: the value in HEX is reversed order
+        _netstat_str=" *sl"
+        if ! type gonetstat &>/dev/null; then
+            curl -o /usr/local/bin/gonetstat -L "https://github.com/hajimeo/samples/raw/master/misc/gonetstat_$(uname)_$(uname -m)" && chmod a+x /usr/local/bin/gonetstat
+        fi
+        if type gonetstat &>/dev/null; then
+            _useGonetstat=true
         fi
     fi
+
+    local _split_pfx="${_tmpDir%/}/topOrNet_"
     if [ -z "${_netstat_str}" ]; then
-        return 11
+        _split_pfx="${_out_dir%/}/top_"
     fi
-    for _f in $(ls -1 ${_tmpDir%/}/topOrNet_*); do
+    _csplit -z -f "${_split_pfx}" ${_file} "/^top /" '{*}' || return $?
+
+    if [ -z "${_netstat_str}" ]; then
+        return
+    fi
+    for _f in $(ls -1 ${_split_pfx}*); do
         _csplit -z -f "${_out_dir%/}/`basename ${_f}`_" ${_f} "/^${_netstat_str} /" '{*}' || return $?
     done
     ls -1 ${_out_dir%/}/topOrNet_* | while read _fpath; do
@@ -964,7 +979,11 @@ function f_splitTopNetstat() {
         if [ "${_n2}" == "00" ]; then
             mv "${_fpath}" "${_out_dir%/}/top_${_n1}.out"
         elif [ "${_n2}" == "01" ]; then
-            mv "${_fpath}" "${_out_dir%/}/netstat_${_n1}.out"
+            if ${_useGonetstat}; then
+                gonetstat "${_fpath}" > "${_out_dir%/}/netstat_${_n1}.out" && rm -f "${_fpath}"
+            else
+                mv "${_fpath}" "${_out_dir%/}/netstat_${_n1}.out"
+            fi
         fi
     done
 }
@@ -1040,19 +1059,29 @@ function f_threads() {
         echo "## Long *RUN*ning (or BLOCKED) and no-change (same hash) threads which contain '${_running_thread_search_re}' (threads:${_count})"
         _long_running "${_save_dir%/}" "${_running_thread_search_re}"
         _long_blocked "${_save_dir%/}" "${_running_thread_search_re}"
-        echo '### rg -A7 -m1 "RUNNABLE" -g <filename>'
+        echo 'NOTE: rg -A7 -m1 "RUNNABLE" -g <filename>'
         # TODO: also check similar file sizes (wc -c?)
+        echo " "
+
+        echo "## Long running (more than ${_times} times) threads which contain '${_running_thread_search_re}' (threads:${_count})"
         local _times=3
         [ -n "${_count}" ] && [ ${_count} -gt 1 ] && [ 3 -gt ${_count} ] && _times=${_count}
-        echo "## Long running (more than ${_times} times) threads which contain '${_running_thread_search_re}' (threads:${_count})"
         rg -l "${_running_thread_search_re}" ${_save_dir%/}/ | xargs -I {} basename {} | sort | uniq -c | rg "^\s+([${_times}-9]|\d\d+)\s+.+ ([^ ]+$)" -o -r '$1' | sort
         #| rg -v "(ParallelGC|G1 Concurrent Refinement|Parallel Marking Threads|GC Thread|VM Thread)"
         echo " "
+
         echo "## Counting methods (but more than once) from running threads which also contains '${_running_thread_search_re}' (threads:${_count})"
         rg "${_running_thread_search_re}" -l -g '*runnable*' ${_save_dir%/} | while read -r _f; do
             echo "$(basename "${_f}") $(rg '^\sat\s' -m1 "${_f}")"
         done | sort | uniq -c | sort -nr | rg -v '^\s*1\s' | head -n40
         echo " "
+
+        echo "## Counting locked thread from 'Locked ownable synchronizers:' and runnable and more than 3"
+        rg "Locked ownable synchronizers:" -l -g '*runnable*' ${_save_dir%/} | while read -r _f; do
+            rg -H -c '^\s+- <0x' ${_f} | rg -v ":[1-2]$"
+        done | sort -t":" -k1,1 -k2,2r
+        echo " "
+
         echo "### May also want to use f_splitTopNetstat() and f_hexTids_from_topH()"
         echo " "
         return $?
@@ -1080,26 +1109,30 @@ function f_threads() {
     rg -m1 '\b(getConnection|org.apache.http.pool.PoolEntryFuture.await)\b' ${_save_dir%/}/ -g '*WAITING*' -g '*waiting*' --no-filename | sort | uniq -c
     echo " "
 
-    echo "## Counting locked thread from 'Locked ownable synchronizers:' and runnable"
+    echo "## Counting locked thread from 'Locked ownable synchronizers:' and runnable and more than 3"
     rg "Locked ownable synchronizers:" -l -g '*runnable*' ${_save_dir%/} | while read -r _f; do
-        rg -H -c '^\s+- <0x' ${_f}
-    done
+        rg -H -c '^\s+- <0x' ${_f} | rg -v ":[1-2]$"
+    done | sort -t":" -k1,1 -k2,2r
     echo " "
 
     echo "## Finding BLOCKED or waiting to lock lines (excluding '-acceptor-')"
     rg -w '(BLOCKED|waiting to lock)' -C1 --no-filename -g '!*-acceptor-*' -g '!*_Acceptor*' ${_save_dir%/}/
     echo " "
+
     #echo "## Counting 2nd lines from .out files (top 20)"
     #awk 'FNR == 2' ${_save_dir%/}/*.out | sort | uniq -c | sort -r | head -n 20
     #echo " "
+
     echo "## Counting 'waiting to lock|waiting on|waiting to lock' etc. basically hung processes (excluding smaller than 1k threads, 'parking to wait for' and 'None', and top 20)"
     rg '^\s+\- [^<]' --no-filename `find ${_save_dir%/} -type f -size +1k` | rg -v '(- locked|- None|parking to wait for)' | sort | uniq -c | sort -nr | tee ${_tmp_dir%/}/f_threads_$$_waiting_counts.out | head -n 20
     echo " "
+
     echo "## Checking 'parking to wait for' qtp threads, because it may indicate the pool exhaustion issue (eg:NEXUS-17896 / NEXUS-10372) (excluding smaller than 1k threads)"
     #rg '\bparking to wait for\b' -l `find ${_save_dir%/} -type f -size +1k -name 'qtp*.out'` | wc -l
     rg '\bparking to wait for\s+<([^>]+)>.+\(([^\)]+)\)' -o -r '$1 $2' --no-filename `find ${_save_dir%/} -type f -size +1k -name 'qtp*.out'` | sort | uniq -c | sort -nr | head -n10
     # NOTE: probably java.util.concurrent.SynchronousQueue can be ignored
     echo " "
+
     # At least more than 5 waiting:
     local _most_waiting="$(rg -m 1 '^\s*([5-9]|\d\d+)\s+.+(0x[0-9a-f]+)' -o -r '$2' ${_tmp_dir%/}/f_threads_$$_waiting_counts.out)"
     if [ -n "${_most_waiting}" ]; then
@@ -1111,13 +1144,16 @@ function f_threads() {
             fi
         done
         echo " "
+
         echo "## Finding top 10 'owned by' for '${_most_waiting}' (excluding smaller than 1k threads)"
         rg "waiting to lock .${_most_waiting}\b" -A1 ${_save_dir%/} | rg -o 'owned by .+' | sort | uniq -c | sort -n | head -n10
         echo " "
+
         echo "## Finding (TIMED_)WAITING which contains \"${_running_thread_search_re}\""
         rg 'State:\s*.*WAITING' -l ${_save_dir%/} | xargs -I{} rg -m1 "${_running_thread_search_re}" {} | sort | uniq -c | sort -nr | head -n10
         echo " "
     fi
+
     echo "## 'locked' objects or id excluding synchronizers (top 20 and more than once)"    # | rg -v '^\s+1\s'
     rg ' locked [^ @]+' -o --no-filename ${_save_dir%/}/ | rg -vw synchronizers | sort | uniq -c | sort -nr | head -n 20
     echo " "
@@ -1126,15 +1162,18 @@ function f_threads() {
         echo "## Finding *probably* running threads containing '${_running_thread_search_re}', size +4k"
         find ${_save_dir%/} -size +4k -iname '*run*' -exec rg -H -m5 "${_running_thread_search_re}[^$]+$" {} \;
         echo " "
+
         echo "## Finding popular methods from *probably* running threads containing '${_running_thread_search_re}'"
         #rg -w RUNNABLE -A1 -H ${_save_dir%/} | rg '^\sat' | sort | uniq -c
         rg "${_running_thread_search_re}" -l -g '*runnable*' ${_save_dir%/} | xargs -P3 -I {} rg '^\s+at\s' -m1 "{}" | sort | uniq -c | sort -nr | head -10
         # NOTE: RUNNABLE "sun.nio.ch.EPollArrayWrapper.epollWait" would be ignorable
         # https://support.sonatype.com/hc/en-us/articles/360000744687-Understanding-Eclipse-Jetty-9-4-Thread-Allocation#SelectorManager-SelectorThreads
         echo " "
+
         echo "## Finding RUNNABLE which contains \"${_running_thread_search_re}\""
         rg 'State:\s*RUNNABLE' -l ${_save_dir%/} | xargs -I{} rg -m1 "${_running_thread_search_re}" {} | sort | uniq -c | sort -nr | head -n10
         echo " "
+
         echo "## Finding runnable (expecting QuartzTaskJob) '${_running_thread_search_re}.+Task.execute' from ${_save_dir%/}"
         rg -m1 -s "${_running_thread_search_re}.+Task\.execute\(" -g '*runnable*' "${_save_dir%/}"
         echo " "
@@ -1149,8 +1188,10 @@ function f_threads() {
     echo "## Counting thread types excluding WAITING (top 20)"
     rg '^[^\s]' ${_file} | rg -v WAITING | _replace_number 1 | sort | uniq -c | sort -nr | head -n 20
     echo " "
+
     echo "### Counting thread states"
     _thread_state_sum "${_file}"
+
     echo "### _threads_extra_check"
     _threads_extra_check "${_file}"
 }
