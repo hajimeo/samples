@@ -322,43 +322,61 @@ print(cert.prettyPrint())"
     fi
 }
 
-# TODO: read keytool list -v to check/verify certificate chain, subject, common name, valid from / to
-function check_keytool_v_output() {
+function keytool_v() {
+    # TODO: read keytool -list -v to check/verify certificate chain, subject, common name, valid from / to
+    local _keystore="$1"
+    local _storepass="$2"
+    local _alias="$3"
     local _keytool="$(which keytool 2>/dev/null)"
     [ -x "${JAVA_HOME%/}/bin/keytool" ] && _keytool="${JAVA_HOME%/}/bin/keytool"
-    echo "TODO
-    ${_keytool} -list -v -keystore <value_of_KeyStorePath> -storetype JKS -storepass <value_of_KeyStorePassword> -keypass <value_of_KeyManagerPassword> -alias <value_of_certAlias>
-    "
+    local _pwd_opts=""
+    [ -n "${_storepass}" ] && _pwd_opts="-storepass \"${_storepass}\""
+    if [ -z "${_alias}" ]; then
+        eval "${_keytool} -list -keystore \"${_keystore}\" ${_pwd_opts}"
+        return
+    fi
+    # Many java app expects storepass and keypass are same. Not using '-storetype JKS' in case of p12
+    [ -n "${_storepass}" ] && _pwd_opts="-storepass \"${_storepass}\" -keypass \"${_storepass}\""
+    local _cmd="${_keytool} -list -v -keystore \"${_keystore}\" -alias \"${_alias}\""
+    echo "${_cmd} -storepass '*******' -keypass '*******'"
+    eval "${_cmd} ${_pwd_opts}"
 }
 
 #keytool -printcert -sslserver ${_host}:${_port}
+# Accept _PROXY_HOST_PORT _PROXY_USER_PWD
 function get_cert_from_https() {
     local _host="$1"
     local _port="${2:-443}"
-    local _import_truststore="$3"  # If provided, import the cert into this store
+    local _import_truststore="$3"   # If provided, import the cert into this store
     local _export_pem_path="$4"
-    local _proxy="${5:-"_PROXY_HOST_PORT"}"
-    # To DEBUG, -J-Djavax.net.debug=ssl,keymanager or -Djavax.net.debug=ssl:handshake:verbose, and without system proxy: -J-Djava.net.useSystemProxies=true
+    # To DEBUG, -J-Djavax.net.debug=help, -J-Djavax.net.debug=ssl,keymanager,handshake or -J-Djavax.net.debug=ssl:record:plaintext, and without system proxy: -J-Djava.net.useSystemProxies=true
 
     [ -z "${_export_pem_path}" ] && _export_pem_path=./${_host}_${_port}.pem
     local _keytool="$(which keytool 2>/dev/null)"
     [ -x "${JAVA_HOME%/}/bin/keytool" ] && _keytool="${JAVA_HOME%/}/bin/keytool"
 
     local _proxy_opt=""
-    if [ -n "${_proxy}" ]; then
+    if [ -n "${_PROXY_HOST_PORT}" ]; then
         if [ -n "${_keytool}" ]; then
-            local _proxy_host="${_proxy}"
+            local _proxy_host="${_PROXY_HOST_PORT}"
             local _proxy_port="443"
-            if [[ "${_proxy}" =~ ^([^:]+):([0-9]+)$ ]]; then
+            if [[ "${_PROXY_HOST_PORT}" =~ ^([^:]+):([0-9]+)$ ]]; then
                 _proxy_host="${BASH_REMATCH[1]}"
                 _proxy_port="${BASH_REMATCH[2]}"
             fi
-            # To pass proxyuser and proxypwd, -J-Dhttps.proxyHost=proxyuser:proxypwd@${_proxy_host}
             _proxy_opt="-J-Dhttps.proxyHost=${_proxy_host} -J-Dhttps.proxyPort=${_proxy_port}"
+            if [ -n "${_PROXY_USER_PWD}" ]; then
+                # '-J-Dhttps.proxyUser=${_proxy_user} -J-Dhttps.proxyPassword=${_proxy_pwd}' does not work
+                _proxy_opt="-J-Dhttps.proxyHost=${_PROXY_USER_PWD}@${_proxy_host} -J-Dhttps.proxyPort=${_proxy_port}"
+            fi
         else
-            # NOTE: very old openssl version may fail with -proxy (Mac and modern Linux works) TODO: username and password
-            # curl -sfv -p -x ${_proxy} --proxy-basic -U proxyuser:proxypwd -k -L https://${_host}:${_port}/ 2>&1 | grep 'Server certificate:' -A10"
-            _proxy_opt="-proxy ${_proxy}"
+            # NOTE: very old openssl version may fail with -proxy (Mac and modern Linux works), so workaround:
+            # curl -sfv -p -x dh1.standalone.localdomain:28080 --proxy-basic -U proxyuser:proxypwd -k -L https://${_host}:${_port}/ 2>&1 | grep 'Server certificate:' -A10"
+            _proxy_opt="-proxy ${_PROXY_HOST_PORT}"
+            if [ -n "${_PROXY_USER_PWD}" ]; then
+                # TODO: Not sure if below works, and not sure '-proxy_user proxyuser -proxy_pass proxypwd'
+                _proxy_opt="-proxy ${_PROXY_USER_PWD}@${_PROXY_HOST_PORT}"
+            fi
         fi
     fi
     # Trying keytool first as some https server doesn't return cert with openssl (CONNECT_CR_SRVR_HELLO:wrong version number)
