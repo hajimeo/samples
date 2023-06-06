@@ -283,8 +283,8 @@ function _code() {
 }
 function _jira() {
     local _id="$1"
-    local _pfx="${2:-"\\n"}"
-    echo -e -n "[${_id}](https://issues.sonatype.org/browse/${_id})${_pfx}"
+    local _sfx="${2:-"\\n"}"
+    echo -e -n "[${_id}](https://sonatype.atlassian.net/browse/${_id})${_sfx}"
 }
 function _basic_check() {
     local _required_app_ver_regex="${1}"    # Can't include " " "\d" etc.
@@ -458,6 +458,7 @@ function t_system() {
     _test_template "$(rg 'SystemLoadAverage: *([4-9]\.|\d\d+)' ${_FILTERED_DATA_DIR%/}/extracted_configs.md)" "WARN" "SystemLoadAverage might be too high (check number of CPUs)"
     _test_template "$(rg 'maxMemory: *(.+ MB|[1-3]\.\d+ GB)' ${_FILTERED_DATA_DIR%/}/extracted_configs.md)" "WARN" "maxMemory (heap|Xmx) might be too low (NEXUS-35218)"
     _test_template "$(rg -g jmx.json -g wrapper.conf -q -- '-XX:\+UseG1GC' || rg -g jmx.json -- '-Xmx')" "WARN" "No '-XX:+UseG1GC' for below Xmx (only for Java 8)" "Also consider using -XX:+ExplicitGCInvokesConcurrent"
+    _test_template "$(rg -g jmx.json 'UseCGroupMemoryLimitForHeap')" "WARN" "UseCGroupMemoryLimitForHeap is specified (not required from 8v191)"
     _test_template "$(rg -- '-Djavax\.net\.ssl..+=' ${_FILTERED_DATA_DIR%/}/extracted_configs.md | rg -v -i 'password')" "WARN" "javax.net.ssl.xxxx is used in jmx.json, java.lang:type=Runtime,InputArguments"
     if ! _rg -g jmx.json -q 'x86_64'; then
         _head "WARN" "No 'x86_64' found in jmx.json. Might be 32 bit Java or Windows, check the top of jvm.log)"
