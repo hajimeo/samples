@@ -2,13 +2,6 @@
 Based on https://raw.githubusercontent.com/drael/GOnetstat/master/gonetstat.go
 Ref: https://www.kernel.org/doc/Documentation/networking/proc_net_tcp.txt
 
-go mod init github.com/hajimeo/samples/golang/GoNetStat
-go get -u -t && go mod tidy
-
-env GOOS=linux GOARCH=amd64 go build -o ../../misc/gonetstat_Linux_x86_64 GoNetstat.go && \
-env GOOS=darwin GOARCH=amd64 go build -o ../../misc/gonetstat_Darwin_x86_64 GoNetstat.go && \
-env GOOS=darwin GOARCH=arm64 go build -o ../../misc/gonetstat_Darwin_arm64 GoNetstat.go && date
-
 # To install:
 curl -o /usr/local/bin/gonetstat -L https://github.com/hajimeo/samples/raw/master/misc/gonetstat_$(uname)_$(uname -m)
 chmod a+x /usr/local/bin/gonetstat
@@ -29,7 +22,7 @@ import (
 	"strings"
 )
 
-// Proto    Recv-Q     Send-Q     Local Adress           Foregin Adress         State          Inode      Pid/Program          timeout
+// Proto    Recv-Q     Send-Q     Local Address           Foregin Address         State          Inode      Pid/Program          timeout
 var DisplayFmt = "%-8v %-10v %-10v %-22v %-22v %-14v %-10v %-20v %v %v"
 
 var STATE = map[string]string{
@@ -247,7 +240,7 @@ func netstat(path string) []Socket {
 }
 
 func genHeader() string {
-	return fmt.Sprintf(DisplayFmt, "Proto", "Recv-Q", "Send-Q", "Local Adress", "Foregin Adress",
+	return fmt.Sprintf(DisplayFmt, "Proto", "Recv-Q", "Send-Q", "Local Address", "Foregin Address",
 		"State", "Inode", "Pid/Program", "timeout", "misc.")
 }
 
