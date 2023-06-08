@@ -22,7 +22,7 @@ import (
 	"strings"
 )
 
-// Proto    Recv-Q     Send-Q     Local Address           Foregin Address         State          Inode      Pid/Program          timeout
+// Proto    Recv-Q     Send-Q     Local Address           Foreign Address         State          Inode      Pid/Program          timeout
 var DisplayFmt = "%-8v %-10v %-10v %-22v %-22v %-14v %-10v %-20v %v %v"
 
 var STATE = map[string]string{
@@ -240,7 +240,7 @@ func netstat(path string) []Socket {
 }
 
 func genHeader() string {
-	return fmt.Sprintf(DisplayFmt, "Proto", "Recv-Q", "Send-Q", "Local Address", "Foregin Address",
+	return fmt.Sprintf(DisplayFmt, "Proto", "Recv-Q", "Send-Q", "Local Address", "Foreign Address",
 		"State", "Inode", "Pid/Program", "timeout", "misc.")
 }
 
