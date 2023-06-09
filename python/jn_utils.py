@@ -59,6 +59,7 @@ Kind of joining two tables with UDF_REGEX:
 
 # TODO: When you add a new pip package, don't forget to update setup_work_env.sh
 import sys, os, io, fnmatch, gzip, re, json, sqlite3, ast
+from sqlite3 import OperationalError
 from time import time
 from datetime import datetime
 from dateutil import parser
@@ -331,7 +332,7 @@ def load_jsons(src="./", conn=None, include_ptn='*.json', exclude_ptn='', chunks
     """
     Find json files from current path and load into Database or pandas dataframes object
     :param src: source/importing directory path
-    :param conn: If connection object is given, convert JSON to table
+    :param conn: If connection 'ju.connect()' is given, convert JSON to table
     :param include_ptn: Regex string to include some file
     :param exclude_ptn: Regex string to exclude some file
     :param chunksize: Rows will be written in batches of this size at a time. By default, all rows will be written at once
@@ -430,6 +431,7 @@ def json2df(filename, tablename=None, conn=None, chunksize=1000, if_exists='repl
         else:
             # TODO: currently too slow to use.
             if line_by_line:
+                _debug("line_by_line for %s ..." % (str(file_path)))
                 _dfs = []
                 _ln = 0
                 for line in _open_file(file_path):
@@ -450,9 +452,9 @@ def json2df(filename, tablename=None, conn=None, chunksize=1000, if_exists='repl
                 if len(_dfs) > 0:
                     _df = pd.concat(_dfs, sort=False)
             elif flatten is True:
+                _debug("flatten for %s ..." % (str(file_path)))
                 try:
-                    with open(file_path) as f:
-                        j_obj = json.load(f)
+                    j_obj = json2dict(file_path=file_path, rtn_list_if_1=True)
                     # 'fillna' is for workaround-ing "probably unsupported type." (because of N/a)
                     _df = pd.json_normalize(j_obj).fillna("")
                 except JSONDecodeError as e:
@@ -460,7 +462,9 @@ def json2df(filename, tablename=None, conn=None, chunksize=1000, if_exists='repl
                     continue
             else:
                 try:
-                    _df = pd.read_json(file_path)
+                    # Not directly using read_json to do some workarounds
+                    j_obj = json2dict(file_path=file_path, rtn_list_if_1=True)
+                    _df = pd.read_json(j_obj)
                 except UnicodeDecodeError:
                     _err("%s caused %s" % (file_path, str(e)))
                     _df = pd.read_json(file_path, encoding="iso-8859-1")
@@ -546,20 +550,25 @@ def jq(file_path, query='.', as_string=False):
     return result
 
 
-def json2dict(file_path, sort=True, key_name=None, key_value=None):
+def json2dict(file_path, sort=True, key_name=None, key_value=None, rtn_list_if_1=False):
     """
-    Read a json file and return as dicts in a list
+    Read a json file and return as dicts
     :param file_path: Json File path
     :param sort: Boolean. Used in json.dumps sort_keys
     :param key_name: String. Return becomes dict with this key
     :param key_value: String. Returns only key value is this value
+    :param rtn_list_if_1: Boolean. If rtn is a dict and only one item, return the value of the first item
     :return: Python list contains dicts or dict if key_name is given
     >>> pass    # TODO: implement test
     """
     with open(file_path) as f:
         rtn = json.load(f)
     if not rtn:
-        return []
+        return {}
+    # if this is dict and only one, returns first item
+    if rtn_list_if_1 and type(rtn) in [dict] and len(rtn) == 1:
+        _debug("rtn_list_if_1 for %s ..." % (str(file_path)))
+        rtn = list(next(iter(rtn.values())))
     if sort:
         rtn = json.loads(json.dumps(rtn, sort_keys=sort))
     if bool(key_name):
@@ -2263,6 +2272,9 @@ def df2table(df, tablename, conn=None, chunksize=1000, if_exists='replace', sche
             global _DB_SCHEMA
             schema = _DB_SCHEMA
         df.to_sql(name=tablename, con=conn, chunksize=chunksize, if_exists=if_exists, schema=schema, index=False)
+    except OperationalError as e:
+        _err("OperationalError: %s for %s" % (str(e), tablename))
+        return False
     except InterfaceError as e:
         res = re.search('Error binding parameter ([0-9]+) - probably unsupported type', str(e))
         _err(e)
