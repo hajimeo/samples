@@ -340,7 +340,7 @@ public class Main {
         }
         if (input.toLowerCase().startsWith("list classes") || input.toLowerCase().startsWith("list tables")) {
             String query = "SELECT TABLE_SCHEMA, TABLE_NAME, ROW_COUNT_ESTIMATE FROM INFORMATION_SCHEMA.TABLES ORDER BY TABLE_SCHEMA, TABLE_NAME";
-            execute(query);
+            execQuery(query, false);
             return true;
         }
         return false;
