@@ -1,6 +1,6 @@
 #$ cd ~/IdeaProjects/nexus-iq-server-ha/
 #$ helm template nxiqha . -f ~/IdeaProjects/samples/kubernetes/helm-nxiqha-values.yml -n sonatype-ha >~/IdeaProjects/samples/kubernetes/helm-nxiqha-deployed.yaml
-#$ helm upgrade nxiqha ./chart -f ~/IdeaProjects/samples/kubernetes/helm-nxiqha-values.yml -n sonatype-ha --dry-run
+#$ helm upgrade nxiqha ./chart -f ~/IdeaProjects/samples/kubernetes/helm-nxiqha-values.yml -n sonatype-ha --version 1.162.0 --dry-run
 
 
 # Default values for nexus-iq-server-ha.
@@ -27,11 +27,11 @@ iq_server:
   #    memory: #8Gi
 
   # Value for the JAVA_OPTS environment variable to pass custom settings to the JVM
-  javaOpts:
+  #javaOpts: "-Dsun.net.spi.nameservice.nameservers=192.168.1.31 -Dsun.net.spi.nameservice.provider.1=dns,sun"
 
   # Product license
   # One of these can be set to automatically install a product license
-  license: /var/tmp/share/sonatype/sonatype-license.lic
+  license: "/var/tmp/share/sonatype/sonatype-license.lic"
   # The name of an existing Kubernetes secret containing a license_lic key with a value of the base64 encoding of your
   # product license file content
   licenseSecret:
