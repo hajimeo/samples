@@ -103,9 +103,9 @@ function _postgresql_configure() {
     _upsert ${_postgresql_conf} "log_lock_waits" "on" "#log_lock_waits"
     _upsert ${_postgresql_conf} "log_temp_files" "1kB" "#log_temp_files"    # -1
 
+    # @see: https://github.com/darold/pgbadger#POSTGRESQL-CONFIGURATION (brew install pgbadger)
     if [[ "${_verbose_logging}" =~ (y|Y) ]]; then
-        # @see: https://github.com/darold/pgbadger#POSTGRESQL-CONFIGURATION (brew install pgbadger)
-        # To log the SQL statements. @see: https://www.eversql.com/enable-slow-query-log-postgresql/ for AWS RDS
+        # @see: https://www.eversql.com/enable-slow-query-log-postgresql/ for AWS RDS to log SQL
         _upsert ${_postgresql_conf} "log_line_prefix" "'%t [%p]: db=%d,user=%u,app=%a,client=%h '" "#log_line_prefix"
         # NOTE: Below stays after restarting and requires superuser
         # ALTER system RESET ALL;
@@ -121,6 +121,7 @@ function _postgresql_configure() {
         _upsert ${_postgresql_conf} "log_statement" "'mod'" "#log_statement"
         _upsert ${_postgresql_conf} "log_min_duration_statement" "100" "#log_min_duration_statement"
     fi
+    # NOTE: ALTER system generates postgresql.auto.conf
 
     # "CREATE EXTENSION" creates in the current database. "" to check
     local _shared_preload_libraries="auto_explain"
