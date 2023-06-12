@@ -1253,7 +1253,7 @@ function f_vnc_setup() {
     fi
     #f_chrome
     #apt-get install -y tightvncserver autocutsel || return $?
-    apt-get install -y tigervnc-standalone-server || return $?
+    apt-get install -y tigervnc-standalone-server autocutsel || return $?
 
     # TODO: also disable screensaver and sleep (eg: /home/hajime/.xscreensaver)
     su - $_user -c 'expect <<EOF
