@@ -141,13 +141,12 @@ spec:
             #  value: 'admin123'
             # NOTE: install4jAddVmParams is wrong
             - name: INSTALL4J_ADD_VM_PARAMS
-              # NOTE: In the datastore parameter, no schema specified, so will be public.
+              # NOTE: In the datastore parameter, no schema specified, so it will be public.
               #       The nexus.scripts.allowCreation shouldn't be used for production.
               #       Also, maybe using nexus.onboarding.enabled=false, nexus.skipDefaultRepositories=true, and nexus.blobstore.provisionDefaults (this also won't create default blobstore)
               #       To enable HTTPS/SSL, prepare keystore.jks and append ',/nexus-data/etc/ssl/jetty-https.xml'
               #       Only for preview: '-Dnexus.jwt.enabled=true'
               value: '-XX:ActiveProcessorCount=1 -Xms1g -Xmx2g \
-                -XX:+UnlockExperimentalVMOptions -XX:+UseCGroupMemoryLimitForHeap \
                 -Djava.util.prefs.userRoot=/nexus-data/javaprefs \
                 -Dnexus.licenseFile=/etc/sonatype/sonatype-license.lic \
                 -Dnexus.scripts.allowCreation=true \
@@ -158,7 +157,6 @@ spec:
                 -Dnexus.datastore.nexus.schema=${_DB_SCHEMA:-"public"} \
                 -Dnexus.datastore.nexus.maximumPoolSize=10 \
                 -Dnexus.datastore.nexus.advanced=maxLifetime=600000 \
-                -Dnexus.replication.http.enabled=true \
                 -Dnexus.datastore.clustered.enabled=true'
           volumeMounts:
             - name: sonatype-license-volume
