@@ -74,6 +74,7 @@ Just get the repositories setting:
 
 ## Global variables
 : ${_REPO_FORMATS:="maven,pypi,npm,nuget,docker,yum,rubygem,helm,conda,cocoapods,bower,go,apt,r,p2,gitlfs,raw"}
+#TODO: : ${_NO_ASSET_UPLOAD:=""}
 : ${_ADMIN_USER:="admin"}
 : ${_ADMIN_PWD:="admin123"}
 : ${_DOMAIN:="standalone.localdomain"}
@@ -99,6 +100,8 @@ _RESP_FILE=""
 
 
 ### Nexus installation functions ##############################################################################
+# To install 2nd instance: _NXRM3_INSTALL_PORT=8082 _NXRM3_INSTALL_DIR=./nxrm_3.42.0-01_test f_install_nexus3 3.42.0-01
+# To upgrade (from ${_dirpath}/): tar -xvf $HOME/.nexus_executable_cache/nexus-3.54.1-01-mac.tgz
 function f_install_nexus3() {
     local __doc__="Install specific NXRM3 version"
     local _ver="$1"     #3.40.1-01  # TODO: should be able to use "latest" by checking github
@@ -316,7 +319,8 @@ function f_setup_npm() {
         f_apiS '{"action":"coreui_Repository","method":"create","data":[{"attributes":{"proxy":{"remoteUrl":"https://registry.npmjs.org","contentMaxAge":1440,"metadataMaxAge":1440},"httpclient":{"blocked":false,"autoBlock":true,"connection":{"useTrustStore":false}},"storage":{"blobStoreName":"'${_bs_name}'","strictContentTypeValidation":true'${_extra_sto_opt}'},"negativeCache":{"enabled":true,"timeToLive":1440},"cleanup":{"policyName":[]}},"name":"'${_prefix}'-proxy","format":"","type":"","url":"","online":true,"routingRuleId":"","authEnabled":false,"httpRequestSettings":false,"recipe":"npm-proxy"}],"type":"rpc"}' || return $?
     fi
     # add some data for xxxx-proxy
-    f_get_asset "${_prefix}-proxy" "lodash/-/lodash-4.17.19.tgz" "${_TMP%/}/lodash-4.17.19.tgz"
+    f_get_asset "${_prefix}-proxy" "lodash/-/lodash-4.17.19.tgz"
+    f_get_asset "${_prefix}-proxy" "@sonatype/policy-demo/-/policy-demo-2.0.0.tgz"
 
     if [ -n "${_source_nexus_url}" ] && [ -n "${_extra_sto_opt}" ] && ! _is_repo_available "${_prefix}-repl-proxy"; then
         f_apiS '{"action":"coreui_Repository","method":"create","data":[{"attributes":{"npm":{"removeNonCataloged":false,"removeQuarantinedVersions":false},"proxy":{"remoteUrl":"'${_source_nexus_url%/}'/repository/'${_prefix}'-hosted/","contentMaxAge":60,"metadataMaxAge":60},"replication":{"preemptivePullEnabled":true,"assetPathRegex":""},"httpclient":{"blocked":false,"autoBlock":true,"connection":{"useTrustStore":true}},"storage":{"blobStoreName":"'${_bs_name}'","strictContentTypeValidation":true'${_extra_sto_opt}'},"negativeCache":{"enabled":true,"timeToLive":1440},"cleanup":{"policyName":[]}},"name":"'${_prefix}'-repl-proxy","format":"","type":"","url":"","online":true,"routingRuleId":"","authEnabled":false,"httpRequestSettings":false,"recipe":"npm-proxy"}],"type":"rpc","tid"' || return $?
@@ -327,7 +331,8 @@ function f_setup_npm() {
         f_apiS '{"action":"coreui_Repository","method":"create","data":[{"attributes":{"storage":{"blobStoreName":"'${_bs_name}'","writePolicy":"ALLOW_ONCE","strictContentTypeValidation":true'${_extra_sto_opt}'},"cleanup":{"policyName":[]}},"name":"'${_prefix}'-hosted","format":"","type":"","url":"","online":true,"recipe":"npm-hosted"}],"type":"rpc"}' || return $?
     fi
     # add some data for xxxx-hosted
-    f_upload_asset "${_prefix}-hosted" -F "npm.asset=@${_TMP%/}/lodash-4.17.19.tgz"
+    curl -sSf -o "${_TMP%/}/sonatype-policy-demo-2.1.0.tgz" -L "https://registry.npmjs.org/@sonatype/policy-demo/-/policy-demo-2.1.0.tgz"
+    f_upload_asset "${_prefix}-hosted" -F "npm.asset=@${_TMP%/}/sonatype-policy-demo-2.1.0.tgz"
 
     # If no xxxx-prop-hosted (proprietary), create it (from 3.30)
     # https://help.sonatype.com/integrations/iq-server-and-repository-management/iq-server-and-nxrm-3.x/preventing-namespace-confusion
@@ -344,7 +349,8 @@ function f_setup_npm() {
         f_apiS '{"action":"coreui_Repository","method":"create","data":[{"attributes":{"storage":{"blobStoreName":"'${_bs_name}'","strictContentTypeValidation":true'${_extra_sto_opt}'},"group":{"memberNames":["'${_prefix}'-hosted","'${_prefix}'-proxy"]}},"name":"'${_prefix}'-group","format":"","type":"","url":"","online":true,"recipe":"npm-group"}],"type":"rpc"}' || return $?
     fi
     # add some data for xxxx-group
-    f_get_asset "${_prefix}-group" "grunt/-/grunt-1.1.0.tgz"
+    #f_get_asset "${_prefix}-group" "grunt/-/grunt-1.1.0.tgz"
+    f_get_asset "${_prefix}-proxy" "@sonatype/policy-demo/-/policy-demo-2.3.0.tgz"
 }
 
 function f_setup_nuget() {
@@ -1076,11 +1082,12 @@ function f_create_group_blobstore() {
 function f_iq_quarantine() {
     local __doc__="Create Firewall Audit and Quarantine capability"
     local _repo_name="$1"
-    if [ -z "${_IQ_URL}" ] || ! curl -sfI "${_IQ_URL}" &>/dev/null ; then
-        _log "WARN" "IQ ${_IQ_URL} is not reachable capability"
+    local _iq_url="${2:-"${_IQ_URL}"}"
+    if [ -z "${_iq_url}" ] || ! curl -sfI "${_iq_url}" &>/dev/null ; then
+        _log "WARN" "IQ ${_iq_url} is not reachable capability"
         return
     fi
-    f_apiS '{"action":"clm_CLM","method":"update","data":[{"enabled":true,"url":"'${_IQ_URL}'","authenticationType":"USER","username":"'${_ADMIN_USER}'","password":"'${_ADMIN_PWD}'","timeoutSeconds":null,"properties":"","showLink":true}],"type":"rpc"}' || return $?
+    f_apiS '{"action":"clm_CLM","method":"update","data":[{"enabled":true,"url":"'${_iq_url}'","authenticationType":"USER","username":"'${_ADMIN_USER}'","password":"'${_ADMIN_PWD}'","timeoutSeconds":null,"properties":"","showLink":true}],"type":"rpc"}' || return $?
     # To create IQ: Audit and Quarantine for this repository:
     if [ -n "${_repo_name}" ]; then
         f_apiS '{"action":"capability_Capability","method":"create","data":[{"id":"NX.coreui.model.Capability-1","typeId":"firewall.audit","notes":"","enabled":true,"properties":{"repository":"'${_repo_name}'","quarantine":"true"}}],"type":"rpc"}' || return $?
@@ -1826,13 +1833,14 @@ function f_start_saml_server() {
         openssl req -x509 -newkey rsa:2048 -keyout ./myidp.key -out ./myidp.crt -days 365 -nodes -subj "/CN=$(hostname -f)" || return $?
     fi
     export IDP_KEY=./myidp.key IDP_CERT=./myidp.crt USER_JSON=./simple-saml-idp.json IDP_BASE_URL="${_idp_base_url}" SERVICE_METADATA_URL="${_sp_meta_file}"
-    eval "${_cmd}" 2> ./simplesamlidp_$$.log &
+    eval "${_cmd}" &> ./simplesamlidp_$$.log &
     local _pid="$!"
     sleep 2
     curl -sf -o ./idp_metadata.xml "${_idp_base_url%/}/metadata" || return $?
-    echo "IDP metadata: ./idp_metadata.xml"
-    echo "Attributes example: {uid=[samluser], eduPersonPrincipalName=[samluser@standalone.localdomain], eduPersonAffiliation=[users], givenName=[saml], sn=[user], cn=[Saml User]}"
-    echo "Running simplesamlidp (PID:${_pid}, log:./simplesamlidp_$$.log)"
+    echo "[INFO] Running simplesamlidp in background ..."
+    echo "       PID: ${_pid}  Log: ./simplesamlidp_$$.log"
+    echo "       IdP metadata: ./idp_metadata.xml"
+    echo "       Example Attr: {uid=[samluser], eduPersonPrincipalName=[samluser@standalone.localdomain], eduPersonAffiliation=[users], givenName=[saml], sn=[user], cn=[Saml User]}"
 }
 
 function f_start_ldap_server() {
@@ -2288,7 +2296,7 @@ function f_export_postgresql_component() {
 }
 
 # How to verify
-#VACUUM(FULL, ANALYZE, VERBOSE);
+#VACUUM(FREEZE, ANALYZE, VERBOSE);  -- or FULL
 #SELECT relname, reltuples as row_count_estimate FROM pg_class WHERE relnamespace ='public'::regnamespace::oid AND relkind = 'r' AND relname NOT LIKE '%_browse_%' AND (relname like '%repository%' OR relname like '%component%' OR relname like '%asset%') ORDER BY 2 DESC LIMIT 40;
 function f_restore_postgresql_component() {
     local _workingDirectory="${1}"
