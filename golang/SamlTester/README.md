@@ -15,7 +15,7 @@ openssl req -x509 -newkey rsa:2048 -keyout ./myidp.key -out ./myidp.crt -days 36
 ```
 ### Set environment variable then start
 ```
-export IDP_KEY=./myidp.key IDP_CERT=./myidp.crt USER_JSON=./simple-saml-idp.json IDP_BASE_URL="http://localhost:2080/" SERVICE_METADATA_URL="./service-metadata.xml"
+export IDP_KEY=./myidp.key IDP_CERT=./myidp.crt USER_JSON=./simple-saml-idp.json IDP_BASE_URL="http://localhost:2080/" SERVICE_METADATA_URL="./metadata.xml"
 ./simplesamlidp
 ```
 ### Set up SAML on your Service
