@@ -895,10 +895,9 @@ function f_count_lines() {
 #ls -1 top_2021-03-31_*.out | while read -r _f;do (echo "# ${_f}"; f_hexTids_from_topH ${_f} | xargs -I {} grep 'nid={} run' ${_f}); done &> result.out
 function f_hexTids_from_topH() {
     # grep top output and return PID (currently over 90% CUP one) for the user, then use printf to convert to hex
-    local _file="${1}"
+    local _file="${1}"  # file path or glob for rg
     local _user="${2:-".+"}" # [^ ]+
-    local _command="${3:-"java"}" # Only for netstat. Used to be '(java|VM Thread|GC )' but it can be quartz- or qtp-
-    local _search_word="${4-"sonatype"}"
+    local _search_word="${3-"sonatype"}"
     local _threads_dir="${4-"./_threads"}"
     local _cpu_pct_regex="${5-"${_CPU_PCT_REGEX:-"[6-9]\d\.\d+"}"}"
     local _n="${6:-20}"
@@ -926,12 +925,27 @@ function f_hexTids_from_topH() {
         fi
     done
     echo ""
-    echo "# Large Receive / Send Q from netstat"
-    #rg '^Proto' "${_file}"
-    rg "^(Proto|tcp\s+(\d{4,}\s+\d+|\d+\s+\d{4,})\s+.+/${_command})" "${_file}"
-    echo ""
     echo "# High CPU thread summaries"
     ls -ltr ./high_cpu_threads_*.out
+}
+
+function f_check_netstat() {
+    local _file="${1}"  # file path or glob for rg
+    local _port="${2:-"8081"}"
+    #rg '^Proto' "${_file}"
+    if [ ! -f "${_file}" ]; then
+        _file="-g ${_file}"
+    fi
+    echo "# Large Receive / Send Q from netstat"
+    rg "^(Proto|tcp\s+(\d{4,}\s+\d+|\d+\s+\d{4,})\s+[^ ]+:${_port}\s+.+/)" ${_file}
+    echo ""
+    echo "# Counting _WAIT"
+    rg "\s+([^ ]+_WAIT)\s+" -o -r '$1' ${_file} | sort | uniq -c
+    echo "# Counting _WAIT against Local Address:${_port}"
+    rg "\s+[^ ]+:${_port}\s+([^:]+):\d+\s+([^ ]+_WAIT)\s+" -o -r '$1 $2' ${_file} | sort | uniq -c
+    echo "# Counting _WAIT against Foreign Address:${_port} (top 20)"
+    rg "\s+[^ ]+:${_port}\s+([^:]+:\d+)\s+([^ ]+_WAIT)\s+" -o -r '$1 $2' --no-filename ${_file} | sort | uniq -c | rg -v '^\s+1\s+' | sort -nr | head -n20
+    echo "(check /proc/sys/net/ipv4/tcp_tw_reuse)"
 }
 
 function f_splitTopNetstat() {
@@ -1082,7 +1096,7 @@ function f_threads() {
         done | sort -t":" -k1,1 -k2,2r
         echo " "
 
-        echo "### May also want to use f_splitTopNetstat() and f_hexTids_from_topH()"
+        echo "### May also want to use f_splitTopNetstat() and f_hexTids_from_topH() and f_check_netstat()"
         echo " "
         return $?
     fi
