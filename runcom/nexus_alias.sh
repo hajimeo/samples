@@ -38,7 +38,7 @@ fi
 function _get_iq_url() {
     local _iq_url="${1:-${_IQ_URL}}"
     if [ -z "${_iq_url}" ]; then
-        for _url in "http://localhost:8070/" "https://nxiqha-k8s.standalone.localdomain/" "https://nxiq-k8s.standalone.localdomain/" "http://dh1:8070/"; do
+        for _url in "http://localhost:8070/" "https://nxiqha-k8s.standalone.localdomain/" "http://dh1:8070/"; do
             if curl -f -s -I "${_url%/}/" &>/dev/null; then
                 echo "${_url%/}/"
                 return
@@ -216,7 +216,7 @@ function _nexus29730() {
     local _base_dir="${1:-"."}"
     local _good_jar_root="${2:-"/var/tmp/share/java/libs"}"
     if [ ! -s "${_good_jar_root%/}/system/net/java/dev/jna/jna/5.11.0/jna-5.11.0.jar" ]; then
-        echo "ERROR: No good jar (${_good_jar_root%/}/system/net/java/dev/jna/jna/5.11.0/jna-5.11.0.jar)"
+        echo "WARN: No good jar (${_good_jar_root%/}/system/net/java/dev/jna/jna/5.11.0/jna-5.11.0.jar)"
         return 1
     fi
     find ${_base_dir%/}/nexus-3.* -type f -path '*/system/net/java/dev/jna/jna/*' -name "jna-*.jar" | while read -r _jar; do
@@ -259,68 +259,12 @@ function _prepare_install() {
 }
 
 # To install 2nd instance: _NXRM3_INSTALL_PORT=8082 _NXRM3_INSTALL_DIR=./nxrm_3.42.0-01_test nxrm3Install 3.42.0-01
-# To upgrade (from ${_dirname}/): tar -xvf $HOME/.nexus_executable_cache/nexus-3.53.0-01-mac.tgz
+# To upgrade (from ${_dirname}/): tar -xvf $HOME/.nexus_executable_cache/nexus-3.54.1-01-mac.tgz
 function nxrm3Install() {
-    local _ver="$1" #3.40.1-01
-    local _dbname="$2"  # If h2, use H2
-    local _dbusr="${3:-"nxrm"}"     # do not want to create many users/roles
-    local _dbpwd="${4:-"${_dbusr}123"}"
-    local _port="${5:-"${_NXRM3_INSTALL_PORT:-"8081"}"}"
-    local _dirname="${6:-"${_NXRM3_INSTALL_DIR}"}"
-    local _download_dir="${7:-"$HOME/.nexus_executable_cache"}"
-    local _schema="${_DB_SCHEMA}"
-    [ -z "${_ver}" ] && return 1
-    for _p in $(seq ${_port} $((${_port} + 9))); do
-        curl -s -q -f -I "localhost:${_p}"
-        if [ $? == 52 ]; then
-            _port="${_p}"
-            echo "WARN Using port:${_port}"
-            break
-        fi
-        # If couldn't find any available port, anyway trying the original _port
-    done
-    # I think PostgreSQL doesn't work with mixed case.
-    _dbname="$(echo "${_dbname}" | tr '[:upper:]' '[:lower:]')"
-    local _os="linux"
-    [ "`uname`" = "Darwin" ] && _os="mac"
-    if [ -z "${_dirname}" ]; then
-        _dirname="nxrm_${_ver}"
-        [ -n "${_dbname}" ] && _dirname="${_dirname}_${_dbname}"
+    if [ -s "$HOME/IdeaProjects/samples/bash/setup_nexus3_repos.sh" ]; then
+        source "$HOME/IdeaProjects/samples/bash/setup_nexus3_repos.sh" || return $?
+        f_install_nexus3 "$@"
     fi
-    _prepare_install "${_dirname}" "${_download_dir%/}/nexus-${_ver}-${_os}.tgz"  "${_download_dir}" || return $?
-
-    if [ ! -d ./sonatype-work/nexus3/etc/fabric ]; then
-        mkdir -v -p ./sonatype-work/nexus3/etc/fabric || return $?
-    fi
-    local _prop="./sonatype-work/nexus3/etc/nexus.properties"
-    for _l in "nexus.licenseFile=${_download_dir%/}/license/nexus.lic" "application-port=${_port}" "nexus.security.randompassword=false" "nexus.onboarding.enabled=false" "nexus.scripts.allowCreation=true"; do
-        grep -q "^${_l%=*}" "${_prop}" 2>/dev/null || echo "${_l}" >> "${_prop}" || return $?
-    done
-    if [ -n "${_dbname}" ]; then
-        grep -q "^nexus.datastore.enabled" "${_prop}" 2>/dev/null || echo "nexus.datastore.enabled=true" >> "${_prop}" || return $?
-        if [[ ! "${_dbname}" =~ [hH]2 ]]; then
-            cat << EOF > ./sonatype-work/nexus3/etc/fabric/nexus-store.properties
-jdbcUrl=jdbc\:postgresql\://$(hostname -f)\:5432/${_dbname}
-username=${_dbusr}
-password=${_dbpwd}
-schema=${_schema:-"public"}
-maximumPoolSize=40
-advanced=maxLifetime\=600000
-EOF
-            local _util_dir="$(dirname "$(dirname "$BASH_SOURCE")")/bash"
-            if [ -s "${_util_dir}/utils_db.sh" ]; then
-                source ${_util_dir}/utils.sh
-                source ${_util_dir}/utils_db.sh
-                _postgresql_create_dbuser "${_dbusr}" "${_dbpwd}" "${_dbname}" "${_schema}"
-            else
-                echo "WARN Not creating database"
-            fi
-        fi
-    fi
-
-    #nxrmStart
-    echo "To start: ./nexus-${_ver}/bin/nexus run"
-    type nxrmStart &>/dev/null && echo "      Or: nxrmStart"
 }
 
 #nxrmDocker "nxrm3-test" "" "8181:8081 8543:8443 15000:5000" #"--read-only -v /tmp/nxrm3-test:/tmp" or --tmpfs /tmp:noexec
@@ -369,7 +313,8 @@ function iqStart() {
     local _java_opts="${2-"-agentlib:jdwp=transport=dt_socket,server=y,address=5006,suspend=n"}"
     #local _java_opts=${@:2}
     # IQ doesn't seem to use below HTTP proxy one but just in case
-    local _http_proxy="${3-"-Dhttp.proxyHost=non-existing-hostname -Dhttp.proxyPort=8800 -Dhttp.nonProxyHosts=\"*.sonatype.com\" -Dsun.net.spi.nameservice.nameservers=127.0.0.1 -Dsun.net.spi.nameservice.provider.1=dns,sun"}"
+    # TODO: -Dsun.net.spi.nameservice.nameservers=127.0.0.1 -Dsun.net.spi.nameservice.provider.1=dns,sun
+    local _http_proxy="${3-"-Dhttp.proxyHost=non-existing-hostname -Dhttp.proxyPort=8800 -Dhttp.nonProxyHosts=\"*.sonatype.com\""}"
     _base_dir="$(realpath ${_base_dir%/})"
     local _jar_file="$(find "${_base_dir%/}" -maxdepth 2 -type f -name 'nexus-iq-server*.jar' 2>/dev/null | sort | tail -n1)"
     [ -z "${_jar_file}" ] && return 11
@@ -427,6 +372,8 @@ function iqConfigUpdate() {
     echo "May want to run 'f_api_nxiq_scm_setup _token' as well"
 }
 
+# To upgrade (from ${_dirname}/): mv -v ./config.yml{,.bak} && tar -xvf $HOME/.nexus_executable_cache/nexus-iq-server-1.161.0-01-bundle.tar.gz
+# NOTE: Above will overwrite config.yml
 function iqInstall() {
     local _ver="$1" #1.142.0-02
     local _dbname="$2"
@@ -609,7 +556,7 @@ done
 EOF
 function mvn-deploy() {
     local __doc__="Wrapper of mvn clean package deploy"
-    local _deploy_repo="${1:-"http://dh1.standalone.localdomain:8081/repository/maven-hosted/"}"
+    local _deploy_repo="${1:-"${_NEXUS_URL:-"http://localhost:8081/"}repository/maven-hosted/"}"
     local _remote_repo="${2}"
     local _local_repo="${3}"
     local _server_id="${4:-"nexus"}"
@@ -676,7 +623,7 @@ alias mvn-get='mvn-get-file'
 function mvn-get-file() {
     local __doc__="It says mvn- but curl to get a single file with GAV."
     local _gav="${1:-"junit:junit:4.12"}"   # or org.yaml:snakeyaml:jar:1.23
-    local _repo_url="${2:-"http://dh1.standalone.localdomain:8081/repository/maven-public/"}"
+    local _repo_url="${2:-"${_NEXUS_URL:-"http://localhost:8081/"}repository/maven-public/"}"
     local _user="${3:-"admin"}"
     local _pwd="${4:-"admin123"}"
     local _path=""
@@ -711,8 +658,8 @@ function mvn-get-with-dep() {
 function mvn-get-then-deploy() {
     local __doc__="Get a file with curl/mvn-get-file, then mvn deploy:deploy-file"
     local _gav="${1:-"junit:junit:4.12"}"
-    local _get_repo="${2:-"http://localhost:8081/repository/maven-public/"}"
-    local _dep_repo="${3:-"http://localhost:8081/repository/maven-snapshots/"}" # layout policy: strict may make request fail.
+    local _get_repo="${2:-"${_NEXUS_URL:-"http://localhost:8081/"}repository/maven-public/"}"
+    local _dep_repo="${3:-"${_NEXUS_URL:-"http://localhost:8081/"}repository/maven-snapshots/"}" # layout policy: strict may make request fail.
     local _is_snapshot="${4-"Y"}"
     local _file="$(mvn-get-file "${_gav}" "${_get_repo}")" || return $?
     if [ -n "${_file}" ]; then
@@ -750,9 +697,9 @@ function _mvn_settings() {
     # -Dmaven.repo.remote=${_remote_repo} or -DremoteRepositories both is NOT working, so replacing settings.xml
     local _remote_repo="$1"
     local _settings_xml="$(find . -maxdepth 2 -name '*settings*.xml' -not -path "./.m2/*" -print | tail -n1)"
-    if [ -z "${_settings_xml}" ] && [ -s $HOME/.m2/settings.xml ]; then
+    if [ -z "${_settings_xml}" ] && [ -s "${HOME%/}/IdeaProjects/samples/runcom/m2_settings.xml" ]; then
         _settings_xml="./m2_settings.xml"
-        cp $HOME/.m2/settings.xml ${_settings_xml}
+        cp ${HOME%/}/IdeaProjects/samples/runcom/m2_settings.xml ${_settings_xml} || return $?
     fi
     [ -z "${_settings_xml}" ] && return 1
     echo "Using ${_settings_xml}..." >&2
@@ -793,7 +740,7 @@ EOF
 alias npm-deploy='npmDeploy'
 alias npmPublish='npmDeploy'
 function npmDeploy() {
-    local _repo_url="${1:-"http://localhost:8081/repository/npm-hosted/"}"
+    local _repo_url="${1:-"${_NEXUS_URL:-"http://localhost:8081/"}repository/npm-hosted/"}"
     local _name="${2:-"lodash-vulnerable"}"
     local _ver="${3:-"1.0.0"}"
     if [ -s ./package.json ] && [ ! -s ./package.json.orig ]; then
@@ -847,7 +794,7 @@ function npmDummyVer() {
 
 function nuget-get() {
     local _pkg="$1" # Syncfusion.SfChart.WPF@19.2.0.62
-    local _repo_url="${2:-"http://dh1.standalone.localdomain:8081/repository/nuget.org-proxy/index.json"}"
+    local _repo_url="${2:-"${_NEXUS_URL:-"http://localhost:8081/"}repository/nuget.org-proxy/index.json"}"
     local _save_to="${3}"  # NOTE: nuget.exe does not work with SSD with exFat
     local _ver=""
     if [[ "${_pkg}" =~ ^([^@]+)@([^ ]+)$ ]]; then
