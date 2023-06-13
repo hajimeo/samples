@@ -5,7 +5,7 @@
 # NOTE: This script always tries to overwrite (update)
 #       Using 'sudo' for pip3 and others
 #
-# curl -O "https://raw.githubusercontent.com/hajimeo/samples/master/bash/setup_work_env.sh"
+# curl -O -L "https://raw.githubusercontent.com/hajimeo/samples/master/bash/setup_work_env.sh" --compressed
 # bash ./setup_work_env.sh
 #
 
@@ -266,7 +266,7 @@ function f_setup_python() {
     ### pip3 (not pip) from here ############################################################
     #python3.7 -m pip install -U pip ${_i_opt} &>/dev/null
     # outdated list
-    python3.7 -m pip list -o ${_i_opt} | tee /tmp/pip.log
+    python3.7 -m pip list -o ${_i_opt} | tee /tmp/pip_$$.log
     #python -m pip list -o --format=freeze ${_i_opt} | cut -d'=' -f1 | xargs python -m pip install -U
 
     # My favourite/essential python packages (except jupyter and pandas related)
@@ -279,19 +279,19 @@ function f_setup_python() {
     # TODO: Autocomplete doesn't work with Lab and NB if different version is used. @see https://github.com/ipython/ipython/issues/11530
     #       However, using 7.1.1 with python 3.8 may cause TypeError: required field "type_ignores" missing from Module
     python3.7 -m pip install -U ${_i_opt} ipython==7.1.1 || return $?  #prettytable==0.7.2
-    #python3.7 -m pip install -U ${_i_opt} modin[ray] --log /tmp/pip.log    # it's OK if fails
-    python3.7 -m pip install -U ${_i_opt} jupyter jupyterlab pandas dfsql --log /tmp/pip.log || return $?   #ipython
+    #python3.7 -m pip install -U ${_i_opt} modin[ray] --log /tmp/pip_$$.log    # it's OK if fails
+    python3.7 -m pip install -U ${_i_opt} jupyter jupyterlab pandas dfsql --log /tmp/pip_$$.log || return $?   #ipython
     # Reinstall: python3.7 -m pip uninstall -y jupyterlab && python3.7 -m pip install jupyterlab
 
     # Must-have packages. NOTE: Initially I thought pandasql looked good but it's actually using sqlite, and slow, and doesn't look like maintained any more.
-    python3.7 -m pip install -U ${_i_opt} jupyter_kernel_gateway sqlalchemy ipython-sql pivottablejs matplotlib --log /tmp/pip.log
-    python3.7 -m pip install -U ${_i_opt} psycopg2-binary --log /tmp/pip.log
+    python3.7 -m pip install -U ${_i_opt} jupyter_kernel_gateway sqlalchemy ipython-sql pivottablejs matplotlib --log /tmp/pip_$$.log
+    python3.7 -m pip install -U ${_i_opt} psycopg2-binary --log /tmp/pip_$$.log
     # pandas_profiling may fail to install. pixiedust works only with jupyter-notebook
-    #python3.7 -m pip install -U ${_i_opt} pandas_profiling pixiedust --log /tmp/pip.log
+    #python3.7 -m pip install -U ${_i_opt} pandas_profiling pixiedust --log /tmp/pip_$$.log
     #   import pandas_profiling as pdp
     #   pdp.ProfileReport(df)
     # NOTE: In case I might use jupyter notebook, still installing this
-    python3.7 -m pip install -U ${_i_opt} bash_kernel --log /tmp/pip.log && python3.7 -m bash_kernel.install
+    python3.7 -m pip install -U ${_i_opt} bash_kernel --log /tmp/pip_$$.log && python3.7 -m bash_kernel.install
     # For Spark etc., BeakerX http://beakerx.com/ NOTE: this works with only python3.7
     #python3.7 -m pip install -U ${_i_opt} beakerx && beakerx-install
 
