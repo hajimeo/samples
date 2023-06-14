@@ -1,5 +1,6 @@
 # Simple H2 client
-Limitation: only standard and SELECT SQL statements. H2 specific commands/queries may not work.
+Limitation: only standard and SELECT SQL statements. H2 specific commands/queries may not work.  
+"h2-console_v200.jar" is for Nexus Repository Manager 3.
 
 ## Download the latest version:
 ```
@@ -10,6 +11,8 @@ curl -O -L "https://github.com/hajimeo/samples/raw/master/misc/h2-console.jar"
 ### Start interactive console
 ```
 java -Xmx16g -jar ./h2-console.jar <DB file path>
+# or
+java -Xmx16g -jar ./h2-console_v200.jar <DB file path>
 ```
 Default H2 options:
 ```

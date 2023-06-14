@@ -23,7 +23,7 @@ import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 public class Main {
-    static final private String H2_DEFAULT_OPTS = "DATABASE_TO_UPPER=FALSE;LOCK_MODE=0;DEFAULT_LOCK_TIMEOUT=600000;MV_STORE=FALSE";
+    static final private String H2_DEFAULT_OPTS = "DATABASE_TO_UPPER=FALSE;LOCK_MODE=0;DEFAULT_LOCK_TIMEOUT=600000";
     static final private String PROMPT = "=> ";
     static private String h2ExtraOpts = "";
     static private Terminal terminal;
@@ -35,7 +35,7 @@ public class Main {
     static private String ridName = "_ROWID_";
     static private int lastRows = 0;
     static private String lastRid = "0";
-    static private String dbUser = "sa";
+    static private String dbUser = "";
     static private String dbPwd = "";
     static private Boolean isDebug;
     private static Connection conn;
@@ -471,6 +471,13 @@ public class Main {
         // As the default option doesn't have MV_STORE to support Repo Manager's H2, automatically add MV_STORE=FALSE
         if (h2ExtraOpts.isEmpty() && path.endsWith(".h2.db")) {
             h2ExtraOpts = "MV_STORE=FALSE";
+            if (path.endsWith("ods.h2.db")) {
+                h2ExtraOpts = h2ExtraOpts + ";SCHEMA=insight_brain_ods";
+            }
+            // TODO: this is not good logic but assuming ".h2.db" is for IQ
+            if (dbUser.isEmpty()) {
+                dbUser = "sa";
+            }
         }
         if (new File(path).isFile()) {
             // TODO: not perfect to avoid "A file path that is implicitly relative to the current working directory is not allowed in the database UR"
@@ -482,9 +489,9 @@ public class Main {
             h2Opt = h2Opt + ";" + h2ExtraOpts;
         }
         try {
+            System.err.println("# jdbc:h2:" + path + ";" + h2Opt);
             org.h2.Driver.load();
             conn = DriverManager.getConnection("jdbc:h2:" + path + ";" + h2Opt, dbUser, dbPwd);
-            System.err.println("# Connected with jdbc:h2:" + path + ";" + h2Opt);
             // Making sure auto commit is on as default
             conn.setAutoCommit(true);
             stat = conn.createStatement();
