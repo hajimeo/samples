@@ -23,7 +23,9 @@ import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 public class Main {
+    static final private String H2_DEFAULT_OPTS = "DATABASE_TO_UPPER=FALSE;LOCK_MODE=0;DEFAULT_LOCK_TIMEOUT=600000;MV_STORE=FALSE";
     static final private String PROMPT = "=> ";
+    static private String h2ExtraOpts = "";
     static private Terminal terminal;
     static private History history;
     static private String historyPath;
@@ -444,6 +446,9 @@ public class Main {
         log("ridName      = " + ridName, isDebug);
         lastRid = System.getProperty("lastRid", "0");
         log("lastRid      = " + lastRid, isDebug);
+        h2ExtraOpts = System.getProperty("h2ExtraOpts", "");
+        log("lastRid      = " + lastRid, isDebug);
+
         String envH2DBUser = System.getenv("_H2DB_USER");
         if (envH2DBUser != null) {
             dbUser = envH2DBUser;
@@ -463,14 +468,18 @@ public class Main {
         setGlobals();
 
         String path = args[0];
+        // As the default option doesn't have MV_STORE to support Repo Manager's H2, automatically add MV_STORE=FALSE
+        if (h2ExtraOpts.isEmpty() && path.endsWith(".h2.db")) {
+            h2ExtraOpts = "MV_STORE=FALSE";
+        }
         if (new File(path).isFile()) {
             // TODO: not perfect to avoid "A file path that is implicitly relative to the current working directory is not allowed in the database UR"
             path = new File(path).getAbsolutePath();
-            path = path.replaceAll("\\.(h2|mv)\\.db.*", "");
+            path = path.replaceAll("\\.(h2|mv)\\.db", "");
         }
-        String h2Opt = "MV_STORE=FALSE;DATABASE_TO_UPPER=FALSE;LOCK_MODE=0;DEFAULT_LOCK_TIMEOUT=600000";
-        if (args.length > 1) {
-            h2Opt = args[1];
+        String h2Opt = H2_DEFAULT_OPTS;
+        if (! h2ExtraOpts.isEmpty()) {
+            h2Opt = h2Opt + ";" + h2ExtraOpts;
         }
         try {
             org.h2.Driver.load();

@@ -9,10 +9,15 @@ curl -O -L "https://github.com/hajimeo/samples/raw/master/misc/h2-console.jar"
 ## Usage Examples:
 ### Start interactive console
 ```
-java -Xmx16g -jar ./h2-console.jar <DB file path> [<H2 options>]
-
-# Default H2 options:
-    MV_STORE=FALSE;DATABASE_TO_UPPER=FALSE;LOCK_MODE=0;DEFAULT_LOCK_TIMEOUT=600000
+java -Xmx16g -jar ./h2-console.jar <DB file path>
+```
+Default H2 options:
+```
+DATABASE_TO_UPPER=FALSE;LOCK_MODE=0;DEFAULT_LOCK_TIMEOUT=600000
+```
+If the DB file path end with ".h2.db", "MV_STORE=FALSE" is automatically added. Alternatively, set 'h2ExtraOpts' system property (or append DB options in the end of file path):
+```
+java -Xmx16g -Dh2ExtraOpts="<some extra options>" -jar ./h2-console.jar <DB file path>
 ```
 ### Execute SQL statement(s)
 ```
@@ -48,5 +53,8 @@ echo "select <PK>, <TEXT_column> from <table_name>" | java -jar ~/IdeaProjects/s
 - Replace jline3
 
 ## My note:
-mvn clean package && cp -v -p ./target/h2-console-1.0-SNAPSHOT.jar ../../misc/h2-console.jar
+```
+mvn clean package && cp -v -p ./target/h2-console-1.0-SNAPSHOT.jar ../../misc/h2-console.jar;
+sed -i .bak 's/>1.4.196</>1.4.200</' ./pom.xml && mvn clean package && cp -v -p ./target/h2-console-1.0-SNAPSHOT.jar ../../misc/h2-console_v200.jar; mv -f -v ./pom.xml.bak ./pom.xml
+```
 

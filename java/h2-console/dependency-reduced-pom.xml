@@ -56,7 +56,7 @@
     </plugins>
   </build>
   <properties>
-    <h2.version>1.4.196</h2.version>
+    <h2.version>1.4.200</h2.version>
     <clm.applicationId>sandbox-application</clm.applicationId>
     <clm.stage>develop</clm.stage>
     <clm.serverUrl>http://dh1:8070</clm.serverUrl>
