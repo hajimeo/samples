@@ -6,7 +6,7 @@ alias cdl='cd "`ls -dtr ./*/ | tail -n 1`"'
 alias fd='find . -name'
 alias sha1R='find . -type f -exec sha1sum "{}" \;'
 alias fcv='fc -e vim'
-alias vim0='vim -u NONE'   # handy when you process large text
+alias vim0='vim -u NONE -N -c "syn off" -c "set nowrap"'   # handy when you process large text
 # like dos2unix
 alias crlf2lf='vim -c "set ff=unix" -c ":x"'
 # 'time' with format
