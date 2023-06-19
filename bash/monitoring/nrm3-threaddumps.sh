@@ -12,6 +12,7 @@ Currently this script gathers the following information:
 
 EXAMPLES:
     # Taking thread dumps whenever the log line contains "QuartzTaskInfo"
+    # as "nexus" user
     cd /nexus-data;
     curl --compressed -O -L https://raw.githubusercontent.com/sonatype-nexus-community/nexus-monitoring/main/scripts/nrm3-threaddumps.sh;
     bash ./nrm3-threaddumps.sh -s ./etc/fabric/nexus-store.properties -f ./log/nexus.log -r "QuartzTaskInfo";
