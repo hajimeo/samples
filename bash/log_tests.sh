@@ -410,7 +410,7 @@ function r_configs() {
 function r_audits() {
     _head "AUDIT" "Top 20 'domain','type' from ${_AUDIT_LOG}"
     echo '```'
-    _rg --no-filename '"domain":"([^"]+)", *"type":"([^"]+)"' -o -r '$1,$2' -g ${_AUDIT_LOG} | sort | uniq -c | sort -nr | head -n20
+    _rg --no-filename '"domain":"([^"]+)", *"type":"([^"]+)"' -o -r '$1,$2' -g "${_AUDIT_LOG}" | sort | uniq -c | sort -nr | head -n20
     echo "NOTE: taskblockedevent would mean another task is running (dupe tasks?)."
     echo "      repositorymetadataupdatedevent (NXRM) and governance.repository.quarantine (IQ) could be quarantine."
     echo '```'
