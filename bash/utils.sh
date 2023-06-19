@@ -106,7 +106,7 @@ function _help() {
             echo -e "${_output}"; return
         fi
 
-        local _params="$(type $_function_name 2>/dev/null | grep -iP '^\s*local _[^_].*?=.*?\$\{?[1-9]' | grep -v awk)"
+        local _params="$(type $_function_name 2>/dev/null | _grep -iP '^\s*local _[^_].*?=.*?\$\{?[1-9]' | grep -v "awk")"
         if [ -n "$_params" ]; then
             _output="${_output}Parameters:\n"
             _output="${_output}${_params}\n\n"
@@ -131,7 +131,7 @@ function _list() {
     set -o posix
 
     if [[ -z "$_name" ]]; then
-        (for _f in `typeset -F | grep -P '^declare -f [fp]_' | cut -d' ' -f3`; do
+        (for _f in `typeset -F | grep -E '^declare -f [fp]_' | cut -d' ' -f3`; do
             #eval "echo \"--[ $_f ]\" | gsed -e :a -e 's/^.\{1,${_width}\}$/&-/;ta'"
             _tmp_txt="`_help "$_f" "" "Y"`"
             printf "%-28s%s\n" "$_f" "$_tmp_txt"
