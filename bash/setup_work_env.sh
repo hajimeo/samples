@@ -5,8 +5,8 @@
 # NOTE: This script always tries to overwrite (update)
 #       Using 'sudo' for pip3 and others
 #
-# curl -O -L "https://raw.githubusercontent.com/hajimeo/samples/master/bash/setup_work_env.sh" --compressed
-# bash ./setup_work_env.sh
+# curl -o /usr/local/bin/setup_work_env -L "https://raw.githubusercontent.com/hajimeo/samples/master/bash/setup_work_env.sh" --compressed
+# setup_work_env
 #
 
 _DOWNLOAD_FROM_BASE="https://raw.githubusercontent.com/hajimeo/samples/master/"
