@@ -476,11 +476,14 @@ def json2df(filename, tablename=None, conn=None, chunksize=1000, if_exists='repl
     df = pd.concat(dfs, sort=False)
     if bool(conn):
         if bool(json_cols) is False:
-            # TODO: if non first raw contains dict or list?
-            first_row = df[:1].to_dict(orient='records')[0]  # 'records' is for list like data
-            for k in first_row:
-                if type(first_row[k]) is dict or type(first_row[k]) is list:
-                    json_cols.append(k)
+            # if non-first raw contains dict or list? probably IndexError?
+            try:
+                first_row = df[:1].to_dict(orient='records')[0]  # 'records' is for list like data
+                for k in first_row:
+                    if type(first_row[k]) is dict or type(first_row[k]) is list:
+                        json_cols.append(k)
+            except IndexError as ie:
+                _err(str(ie))
         if bool(tablename) is False:
             tablename = _pick_new_key(os.path.basename(files[0]), {}, using_1st_char=False, prefix='t_')
         # Temp workaround: "<table>: Error binding parameter <N> - probably unsupported type."
@@ -538,8 +541,8 @@ def jq(file_path, query='.', as_string=False):
     """
     try:
         import pyjq
-    except ImportError:
-        _err("importing pyjq failed")
+    except ImportError as ie:
+        _err("importing pyjq failed:" + str(ie))
         return
     jd = json2dict(file_path)
     result = pyjq.all(query, jd)
