@@ -81,6 +81,7 @@ function _postgresql_configure() {
     #_upsert ${_postgresql_conf} "ssl_key_file" "'/var/lib/pgsql/12/standalone.localdomain.key'" "#ssl_key_file"
     #_upsert ${_postgresql_conf} "ssl_cert_file" "'/var/lib/pgsql/12/standalone.localdomain.crt'" "#ssl_cert_file"
     #_upsert ${_postgresql_conf} "ssl_ca_file" "'/var/tmp/share/cert/rootCA_standalone.crt'" "#ssl_ca_file"
+    #   SELECT setting FROM pg_settings WHERE name like '%hba%';
     # pg_hba.conf: hostssl sonatype sonatype 0.0.0.0/0 md5
 
     if [ -z "${_wal_archive_dir}" ]; then
@@ -96,6 +97,7 @@ function _postgresql_configure() {
     #TODO: Can't append under #archive_command. Use recovery_min_apply_delay = '1h'
     # For wal/replication/pg_rewind, better save log files outside of _postgresql_conf
 
+    #_upsert ${_postgresql_conf} "log_destination" "stderr" "#log_destination"  # stderr
     _upsert ${_postgresql_conf} "log_error_verbosity" "verbose" "#log_error_verbosity"  # default
     _upsert ${_postgresql_conf} "log_connections" "on" "#log_connections"
     _upsert ${_postgresql_conf} "log_disconnections" "on" "#log_disconnections"
@@ -110,6 +112,7 @@ function _postgresql_configure() {
         # NOTE: Below stays after restarting and requires superuser
         # ALTER system RESET ALL;
         # ALTER system SET log_min_duration_statement = 0;SELECT pg_reload_conf(); -- 'DATABASE :DBNAME' doesn't work?
+        # ALTER system SET log_statement = 'mod';SELECT pg_reload_conf();
         _upsert ${_postgresql_conf} "log_min_duration_statement" "0" "#log_min_duration_statement"
         _upsert ${_postgresql_conf} "log_checkpoints" "on" "#log_checkpoints"
         _upsert ${_postgresql_conf} "log_autovacuum_min_duration" "0" "#log_autovacuum_min_duration"

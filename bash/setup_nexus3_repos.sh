@@ -41,8 +41,10 @@ COMMAND OPTIONS:
     -f <format1,format2,...>
         Comma separated repository formats.
         Default: ${_REPO_FORMATS}
-    -i <nexus version>
+    -v <nexus version>
         Install Nexus with this version number (eg: 3.24.0)
+    -d <dbname>
+        Existing PostgreSQL DB name or 'h2'
 
 EXAMPLE COMMANDS:
 Start script with interview mode:
@@ -95,7 +97,6 @@ _TMP="/tmp"  # for downloading/uploading assets
 ## Variables which used by command arguments
 _AUTO=false
 _DEBUG=false
-_CLEAN=false
 _RESP_FILE=""
 
 
@@ -104,24 +105,24 @@ _RESP_FILE=""
 # To upgrade (from ${_dirpath}/): tar -xvf $HOME/.nexus_executable_cache/nexus-3.54.1-01-mac.tgz
 function f_install_nexus3() {
     local __doc__="Install specific NXRM3 version"
-    local _ver="$1"     #3.40.1-01  # TODO: should be able to use "latest" by checking github
-    local _dbname="$2"  # If h2, use H2
-    local _dbusr="${3:-"nxrm"}"     # Specifyign default as do not want to create many users/roles
+    local _ver="${1:-"${r_NEXUS_VERSION}"}"     # 'latest'
+    local _dbname="${2:-"${r_NEXUS_DBNAME}"}"   # If h2, use H2
+    local _dbusr="${3:-"nxrm"}"     # Specifying default as do not want to create many users/roles
     local _dbpwd="${4:-"${_dbusr}123"}"
-    local _port="${5:-"${_NXRM3_INSTALL_PORT:-"8081"}"}"
-    local _dirpath="${6-"${_NXRM3_INSTALL_DIR}"}"  # If not specified, create a new dir under current dir
+    local _port="${5-"${r_NEXUS_INSTALL_PORT:-"${_NXRM3_INSTALL_PORT}"}"}"      # If not specified, checking from 8081
+    local _dirpath="${6-"${r_NEXUS_INSTALL_PATH:-"${_NXRM3_INSTALL_DIR}"}"}"    # If not specified, create a new dir under current dir
     local _download_dir="${7}"
     local _schema="${_DB_SCHEMA}"
+    local _starting="${_NEXUS_START}"
+    if [ -z "${_ver}" ] || [ "${_ver}" == "latest" ]; then
+      _ver="$(curl -s -I https://github.com/sonatype/nexus-public/releases/latest | _sed -n -r '/^location/ s/^location: http.+\/release-([0-9\.-]+).*$/\1/p')"
+    fi
     [ -z "${_ver}" ] && return 1
-    for _p in $(seq ${_port} $((${_port} + 9))); do
-        curl -s -q -f -I "localhost:${_p}"
-        if [ $? == 52 ]; then
-            _port="${_p}"
-            echo "WARN Using port:${_port}"
-            break
-        fi
-        # If couldn't find any available port, anyway trying the original _port
-    done
+    if [ -z "${_port}" ]; then
+        _port="$(_find_port "8081")"
+        [ -z "${_port}" ] && return 1
+        _log "INFO" "Using port: ${_port}" >&2
+    fi
     # I think PostgreSQL doesn't work with mixed case.
     _dbname="$(echo "${_dbname}" | tr '[:upper:]' '[:lower:]')"
     if [ -z "${_dirpath}" ]; then
@@ -133,18 +134,30 @@ function f_install_nexus3() {
     if [ ! -d ${_dirpath%/}/sonatype-work/nexus3/etc/fabric ]; then
         mkdir -v -p ${_dirpath%/}/sonatype-work/nexus3/etc/fabric || return $?
     fi
-
-    local _license_path=""
-    if [ -f "${HOME%/}/.nexus_executable_cache/license/nexus.lic" ]; then
-        _license_path="${HOME%/}/.nexus_executable_cache/license/nexus.lic"
-    else
-        _license_path="$(find ${_SHARE_DIR%/}/sonatype -maxdepth 1 -name '*.lic' -print | head -n1)"
+    local _prop="${_dirpath%/}/sonatype-work/nexus3/etc/nexus.properties"
+    if [ ! -f "${_prop}" ]; then
+        touch "${_prop}" || return $?
     fi
 
-    local _prop="${_dirpath%/}/sonatype-work/nexus3/etc/nexus.properties"
-    for _l in "nexus.licenseFile=${_license_path}" "application-port=${_port}" "nexus.security.randompassword=false" "nexus.onboarding.enabled=false" "nexus.scripts.allowCreation=true"; do
-        grep -q "^${_l%=*}" "${_prop}" 2>/dev/null || echo "${_l}" >> "${_prop}" || return $?
-    done
+    local _license_path="${r_NEXUS_LICENSE_FILE}"
+    if [ ! -f "${_license_path}" ]; then
+        if [ -f "${HOME%/}/.nexus_executable_cache/license/nexus.lic" ]; then
+            _license_path="${HOME%/}/.nexus_executable_cache/license/nexus.lic"
+        else
+            _license_path="$(find ${_SHARE_DIR%/}/sonatype -maxdepth 1 -name '*.lic' -print | head -n1)"
+        fi
+    fi
+
+    _upsert "${_prop}" "application-port" "${_port}" || return $?
+    _upsert "${_prop}" "nexus.licenseFile" "${_license_path}" || return $?
+    if _isYes "${r_NEXUS_ENABLE_HA}"; then
+        _upsert "${_prop}" "nexus.datastore.clustered.enabled" "true" || return $?
+    fi
+    # optional
+    _upsert "${_prop}" "nexus.security.randompassword" "false" || return $?
+    _upsert "${_prop}" "nexus.onboarding.enabled" "false" || return $?
+    _upsert "${_prop}" "nexus.scripts.allowCreation" "true" || return $?
+
     if [ -n "${_dbname}" ]; then
         grep -q "^nexus.datastore.enabled" "${_prop}" 2>/dev/null || echo "nexus.datastore.enabled=true" >> "${_prop}" || return $?
         if [[ ! "${_dbname}" =~ [hH]2 ]]; then
@@ -156,21 +169,19 @@ schema=${_schema:-"public"}
 maximumPoolSize=40
 advanced=maxLifetime\=600000
 EOF
-            local _util_dir="$(dirname "$(dirname "$BASH_SOURCE")")/bash"
-            if [ -s "${_util_dir}/utils_db.sh" ]; then
-                source ${_util_dir}/utils.sh
-                source ${_util_dir}/utils_db.sh
-                # TODO: this should be used only localhost:5432
-                _postgresql_create_dbuser "${_dbusr}" "${_dbpwd}" "${_dbname}" "${_schema}"
-            else
-                echo "WARN Not creating database"
+            if ! _postgresql_create_dbuser "${_dbusr}" "${_dbpwd}" "${_dbname}" "${_schema}"; then
+                _log "WARN" "Failed to create database/user"
             fi
         fi
     fi
-
-    cd "${_dirpath%/}" || return $?
-    echo "To start: ./nexus-${_ver}/bin/nexus run"
-    type nxrmStart &>/dev/null && echo "      Or: nxrmStart"
+    if _isYes "${_starting}"; then
+        echo "Starting with: ${_dirpath%/}/nexus-${_ver}/bin/nexus start"; sleep 3
+        eval "${_dirpath%/}/nexus-${_ver}/bin/nexus start"
+    else
+        cd "${_dirpath%/}" || return $?
+        echo "To start: ./nexus-${_ver}/bin/nexus run"
+        type nxrmStart &>/dev/null && echo "      Or: nxrmStart"
+    fi
 }
 function _prepare_install() {
     local _extract_path="$1"
@@ -2352,46 +2363,32 @@ function interview_cancel_handler() {
 }
 
 function questions() {
-    [ -z "${r_DOCKER_CMD}" ] && r_DOCKER_CMD="$(_docker_cmd)"
-    [ -z "${_cmd}" ] && return 0    # If no docker command, just exist
-
-    # Ask if install nexus docker container if docker command is available
-    if [ -n "${r_DOCKER_CMD}" ]; then
-        _ask "Would you like to install Nexus in a docker container?" "Y" "r_NEXUS_INSTALL" "N" "N"
-        if _isYes "${r_NEXUS_INSTALL}"; then
-            echo "NOTE: sudo password may be required."
-            _ask "Nexus version" "latest" "r_NEXUS_VERSION" "N" "Y"
-            local _ver_num=$(echo "${r_NEXUS_VERSION}" | sed 's/[^0-9]//g')
-            _ask "Nexus container name" "nexus${_ver_num}" "r_NEXUS_CONTAINER_NAME" "N" "N" "_is_container_name"
-            _ask "Would you like to mount SonatypeWork directory?" "Y" "r_NEXUS_MOUNT" "N" "N"
-            if _isYes "${r_NEXUS_MOUNT}"; then
-                _ask "Mount to container:/nexus-data" "${_WORK_DIR%/}/sonatype/nexus-data_${r_NEXUS_CONTAINER_NAME%/}" "r_NEXUS_MOUNT_DIR" "N" "Y" "_is_existed"
-            fi
-            _ask "Nexus container exposing port for 8081 ('0' to disable docker port forward)" "8081" "r_NEXUS_CONTAINER_PORT1" "N" "Y" "_is_port_available"
-            if [ -n "${r_NEXUS_CONTAINER_PORT1}" ] && [ "${r_NEXUS_CONTAINER_PORT1}" -gt 0 ]; then
-                _ask "Nexus container exposing port for 8443 (HTTPS)" "8443" "r_NEXUS_CONTAINER_PORT2" "N" "N" "_is_port_available"
-            fi
-            _ask "Nexus license file path if you have:
-If empty, it will try finding from ${_WORK_DIR%/}/sonatype/sonatype-*.lic" "" "r_NEXUS_LICENSE_FILE" "N" "N" "_is_license_path"
-        fi
-        _ask "Would you like to create another container with python, npm, mvn etc. client commands?" "N" "r_NEXUS_CLIENT_INSTALL" "N" "N"
-    fi
-
+    _ask "Would you like to install Nexus?" "Y" "r_NEXUS_INSTALL" "N" "N"
     if _isYes "${r_NEXUS_INSTALL}"; then
-        if [ -z "${r_NEXUS_CONTAINER_PORT1}" ] || [ "${r_NEXUS_CONTAINER_PORT1}" -gt 0 ]; then
-            _ask "Nexus base URL" "http://localhost:${r_NEXUS_CONTAINER_PORT1:-"8081"}/" "r_NEXUS_URL" "N" "Y"
-        elif [ -n "${r_NEXUS_CONTAINER_NAME}" ]; then
-            _ask "Nexus base URL" "http://${r_NEXUS_CONTAINER_NAME}.${_DOMAIN#.}:8081/" "r_NEXUS_URL" "N" "Y"
-        else
-            _ask "Nexus base URL" "" "r_NEXUS_URL" "N" "Y"
+        _ask "Nexus version" "latest" "r_NEXUS_VERSION" "N" "Y"
+        if [ "${r_NEXUS_VERSION}" == "latest" ]; then
+            r_NEXUS_VERSION="$(curl -s -I https://github.com/sonatype/nexus-public/releases/latest | _sed -n -r '/^location/ s/^location: http.+\/release-([0-9\.-]+).*$/\1/p')"
         fi
+        #local _ver_num=$(echo "${r_NEXUS_VERSION}" | sed 's/[^0-9]//g')
+        local _port="$(_find_port "8081")"
+        _ask "Nexus install port" "${_port}" "r_NEXUS_INSTALL_PORT" "N" "Y" "_is_port_available"
+        _ask "*Existing* PostgreSQL DB name or 'h2'=H2 or empty=OrientDB)" "" "r_NEXUS_DBNAME" "N" "N" "_is_DB_created"
+        if [ -n "${r_NEXUS_DBNAME}" ] && [[ ! "${r_NEXUS_DBNAME}" =~ ^[hH]2 ]]; then
+            _ask "Start this Nexus as new HA?" "N" "r_NEXUS_ENABLE_HA" "N" "N"
+        fi
+        _ask "Nexus install path" "./nexus_${r_NEXUS_VERSION}${r_NEXUS_DBNAME}" "r_NEXUS_INSTALL_PATH" "N" "N" "_is_available"
+        _ask "Nexus license file path if you have:
+If empty, it will try finding from ${_WORK_DIR%/}/sonatype/sonatype-*.lic" "" "r_NEXUS_LICENSE_FILE" "N" "N" "_is_license_path"
+        _ask "Nexus base URL" "${_NEXUS_URL}" "r_NEXUS_URL" "N" "Y"
     else
-        _ask "Nexus base URL" "" "r_NEXUS_URL" "N" "Y" "_is_url_reachable"
+        _ask "Nexus base URL" "${_NEXUS_URL}" "r_NEXUS_URL" "N" "Y" "_is_url_reachable"
     fi
+
     local _host="$(hostname -f)"
     [[ "${r_NEXUS_URL}" =~ ^https?://([^:/]+).+$ ]] && _host="${BASH_REMATCH[1]}"
-    _ask "Blob store name" "${_BLOBTORE_NAME}" "r_BLOBSTORE_NAME" "N" "Y"
-    _ask "Data store name ('nexus' if PostgreSQL, empty if OrientDB)" "${_DATASTORE_NAME}" "r_DATASTORE_NAME"
+    _ask "Blob store name (empty = automatically decided)" "${_BLOBTORE_NAME}" "r_BLOBSTORE_NAME" "N" "N"
+    [ -n "${r_NEXUS_DBNAME}" ] && [ -z "${_DATASTORE_NAME}" ] && _DATASTORE_NAME="nexus"
+    _ask "Data store name ('nexus' if PostgreSQL/H2, empty if OrientDB)" "${_DATASTORE_NAME}" "r_DATASTORE_NAME"
     _ask "Admin username" "${r_ADMIN_USER:-"${_ADMIN_USER}"}" "r_ADMIN_USER" "N" "Y"
     _ask "Admin password" "${r_ADMIN_PWD:-"${_ADMIN_PWD}"}" "r_ADMIN_PWD" "Y" "Y"
     _ask "Formats to setup (comma separated)" "${_REPO_FORMATS}" "r_REPO_FORMATS" "N" "Y"
@@ -2435,58 +2432,6 @@ function questions_docker_repos() {
     done
     echo "${_def_host}:${_def_port}"
 }
-function questions_cleanup() {
-    local _clean_cmds_file="${_TMP%/}/clean_cmds.sh"
-    > ${_clean_cmds_file} || return $?
-    if [ -n "${r_NEXUS_CONTAINER_NAME}" ]; then
-        _questions_cleanup_inner "${r_NEXUS_CONTAINER_NAME}" "${r_NEXUS_MOUNT_DIR}" "${_clean_cmds_file}"
-    else
-        for _i in {1..3}; do
-            local _v_name="r_NEXUS_CONTAINER_NAME_${_i}"
-            local _v_name_m="r_NEXUS_MOUNT_DIR_${_i}"
-            _questions_cleanup_inner "${!_v_name}" "${!_v_name_m}" "${_clean_cmds_file}"
-        done
-    fi
-    # Only if the mount path is under ${_WORK_DIR%/}/sonatype to be safe.
-    if [ -n "${r_NEXUS_MOUNT_DIR_SHARED}" ] && [ -n "${_WORK_DIR%/}" ] && [[ "${r_NEXUS_MOUNT_DIR_SHARED}" =~ ^${_WORK_DIR%/}/sonatype ]]; then
-        _questions_cleanup_inner_inner "sudo rm -rf ${r_NEXUS_MOUNT_DIR_SHARED}" "${_clean_cmds_file}"
-    fi
-    echo "=== Commands which will be run: ==================================="
-    cat ${_clean_cmds_file} || return $?
-    echo "==================================================================="
-    if ! ${_AUTO}; then
-        _ask "Are you sure to execute above? ('sudo' password may be asked)" "N"
-        if ! _isYes; then
-            echo "Aborting..."
-            return 0
-        fi
-    else
-        sleep 5
-    fi
-    [ -s "${_clean_cmds_file}" ] && bash -x ${_clean_cmds_file}
-}
-function _questions_cleanup_inner() {
-    local _name="$1"
-    local _mount="$2"
-    local _tmp_file="$3"
-    if [ -n "${_name}" ]; then
-        _questions_cleanup_inner_inner "docker rm -f ${_name}" "${_tmp_file}"
-    fi
-    # Only if the mount path is under _WORK_DIR to be safe.
-    if [ -n "${_mount}" ] && [ -n "${_WORK_DIR%/}" ] && [[ "${_mount}" =~ ^${_WORK_DIR%/}/sonatype ]]; then
-        _questions_cleanup_inner_inner "sudo rm -rf ${_mount}" "${_tmp_file}"
-    fi
-}
-function _questions_cleanup_inner_inner() {
-    local _cmd="$1"
-    local _tmp_file="$2"
-    if ! ${_AUTO}; then
-        _ask "Would you like to run '${_cmd}'" "N"
-        _isYes && echo "${_cmd}" >> ${_tmp_file}
-    else
-        echo "${_cmd}" >> ${_tmp_file}
-    fi
-}
 
 
 ### Validation functions (NOTE: needs to start with _is because of _ask()) #######################################
@@ -2521,12 +2466,14 @@ function _is_container_name() {
         echo "Container:'${1}' already exists." >&2
         return 1
     fi
+    return 0
 }
 function _is_license_path() {
     if [ -n "$1" ] && [ ! -s "$1" ]; then
         echo "$1 does not exist." >&2
         return 1
     fi
+    return 0
 }
 function _is_url_reachable() {
     # As I'm checking the reachability, not using -f
@@ -2534,18 +2481,33 @@ function _is_url_reachable() {
         echo "$1 is not reachable." >&2
         return 1
     fi
+    return 0
 }
 function _is_port_available() {
-    if [ -n "$1" ] && nc -w1 -z localhost $1 2>/dev/null; then
-        echo "Port $1 is already in use." >&2
-        return 1
-    fi
+    # TODO: checking only tcp (and ipv4)
+    if [ "`uname`" = "Darwin" ]; then
+        lsof -ti:${1}
+    else
+        netstat -t4lnp | grep -q -wE "[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+:${1}"
+    fi &>/dev/null && return 1
+    return 0
 }
-function _is_existed() {
+function _is_available() {
     if [ -n "$1" ] && [ -e "$1" ]; then
-        echo "$1 already exists." >&2
+        echo "$1 is already taken." >&2
         return 1
     fi
+    return 0
+}
+function _is_DB_created() {
+    # If can't check, return true for now
+    type psql &>/dev/null || return 0
+    # special logic
+    if [ -z "${1}" ] || [[ "${1}" =~ ^[hH]2 ]]; then
+        return 0
+    fi
+
+    psql -l 2>/dev/null | grep -qE "^\s*${1}\s"
 }
 # NOTE: Above  can't be moved into utils.sh as it might be used in _ask
 
@@ -2577,21 +2539,17 @@ main() {
     if [ -s "${_RESP_FILE}" ];then
         _load_resp "${_RESP_FILE}"
     elif ! ${_AUTO}; then
-        _ask "Would you like to load your response file?" "Y" "" "N" "N"
+        _ask "Would you like to load your response file?" "N" "" "N" "N"
         _isYes && _load_resp
     fi
     # Command line arguments are stronger than response file
     [ -n "${_REPO_FORMATS_FROM_ARGS}" ] && r_REPO_FORMATS="${_REPO_FORMATS_FROM_ARGS}"
     [ -n "${_NEXUS_VERSION_FROM_ARGS}" ] && r_NEXUS_VERSION="${_NEXUS_VERSION_FROM_ARGS}"
+    [ -n "${_NEXUS_DBNAME_FROM_ARGS}" ] && r_NEXUS_DBNAME="${_NEXUS_DBNAME_FROM_ARGS}"
 
-    if ${_CLEAN}; then
-        _log "WARN" "CLEAN-UP (DELETE) mode is selected."
-        questions_cleanup
-        return $?
-    fi
     if ! ${_AUTO}; then
         interview
-        _ask "Interview completed. Would like you like to setup?" "Y" "" "N" "N"
+        _ask "Interview completed. Would like you like to start configuring?" "Y" "" "N" "N"
         if ! _isYes; then
             echo 'Bye!'
             return
@@ -2599,9 +2557,13 @@ main() {
     fi
 
     if _isYes "${r_NEXUS_INSTALL}"; then
-        echo "NOTE: If 'password' is asked, please type 'sudo' password." >&2
-        sudo echo "TODO: Starting Nexus installation..." >&2
-        # TODO:
+        #echo "NOTE: If 'password' is asked, please type 'sudo' password." >&2
+        echo "Starting Nexus installation..." >&2
+        _NEXUS_START="Y" f_install_nexus3 || return $?
+    fi
+    if [ -z "${r_NEXUS_URL}" ] || ! _wait_url "${r_NEXUS_URL}"; then
+        _log "ERROR" "${r_NEXUS_URL} is unreachable"
+        return 1
     fi
 
     _log "INFO" "Updating 'admin' user's password (may fail if already updated) ..."
@@ -2643,26 +2605,31 @@ if [ "$0" = "$BASH_SOURCE" ]; then
     # parsing command options (help is handled before calling 'main')
     _REPO_FORMATS_FROM_ARGS=""
     _NEXUS_VERSION_FROM_ARGS=""
-    while getopts "ACDf:r:v:" opts; do
+    _NEXUS_DBNAME_FROM_ARGS=""
+    while getopts "ADf:r:v:d:" opts; do
         case $opts in
             A)
                 _AUTO=true
                 ;;
-            C)
-                _CLEAN=true
-                ;;
             D)
                 _DEBUG=true
-                ;;
-            f)
-                _REPO_FORMATS_FROM_ARGS="$OPTARG"
                 ;;
             r)
                 _RESP_FILE="$OPTARG"
                 ;;
+            f)
+                _REPO_FORMATS_FROM_ARGS="$OPTARG"
+                ;;
             v)
                 _NEXUS_VERSION_FROM_ARGS="$OPTARG"
                 ;;
+            d)
+                _NEXUS_DBNAME_FROM_ARGS="$OPTARG"
+                ;;
+			*)
+				echo "Unsupported command line argument: $opts"
+				exit 1
+				;;
         esac
     done
     
