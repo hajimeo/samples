@@ -139,10 +139,15 @@ function iqMvn() {
 #  INSERT INTO http_client_configuration (id, proxy) VALUES (1, '{"http": {"host": "localhost", "port": 28080, "enabled": true, "authentication": null}, "https": null, "nonProxyHosts": null}' FORMAT JSON);
 function nxrmStart() {
     local _base_dir="${1:-"."}"
-    local _java_opts=${2-"-agentlib:jdwp=transport=dt_socket,server=y,address=5005,suspend=n"}
+    local _java_opts=${2-"-agentlib:jdwp=transport=dt_socket,server=y,address=5005,suspend=${_SUSPEND:-"n"}"}
     local _mode=${3} # if NXRM2, not 'run' but 'console'
     #local _java_opts=${@:2}
     _base_dir="$(realpath "${_base_dir}")"
+
+    if [ -n "${_CUSTOM_DNS}" ]; then
+        _java_opts="${_java_opts} -Dsun.net.spi.nameservice.nameservers=${_CUSTOM_DNS} -Dsun.net.spi.nameservice.provider.1=dns,sun"
+    fi
+
     local _nexus_file="${_base_dir%/}/nexus/bin/nexus"
     [ -s "${_nexus_file}" ] || _nexus_file="$(find ${_base_dir%/} -maxdepth 4 -path '*/bin/*' -type f -name 'nexus' 2>/dev/null | sort | tail -n1)"
     local _nexus_vmopt="$(find ${_base_dir%/} -maxdepth 4 -path '*/bin/*' -type f -name 'nexus.vmoptions' 2>/dev/null | sort | tail -n1)"
@@ -308,13 +313,17 @@ function nxrmDocker() {
 # TODO: delete LDAP
 #TRUNCATE TABLE insight_brain_ods.proxy_server_configuration;INSERT INTO insight_brain_ods.proxy_server_configuration (proxy_server_configuration_id, hostname, port, exclude_hosts) VALUES ('proxy-server-configuration', 'non-existing-hostname', 8080, '*.sonatype.com');
 #java -jar nexus-iq-server-[version].jar reset-admin config.yml
+#export _CUSTOM_DNS="127.0.0.1"
 function iqStart() {
     local _base_dir="${1:-"."}"
-    local _java_opts="${2-"-agentlib:jdwp=transport=dt_socket,server=y,address=5006,suspend=n"}"
+    local _java_opts="${2-"-agentlib:jdwp=transport=dt_socket,server=y,address=5006,suspend=${_SUSPEND:-"n"}"}"
     #local _java_opts=${@:2}
-    # IQ doesn't seem to use below HTTP proxy one but just in case
-    # TODO: -Dsun.net.spi.nameservice.nameservers=127.0.0.1 -Dsun.net.spi.nameservice.provider.1=dns,sun
-    local _http_proxy="${3-"-Dhttp.proxyHost=non-existing-hostname -Dhttp.proxyPort=8800 -Dhttp.nonProxyHosts=\"*.sonatype.com\""}"
+
+    if [ -n "${_CUSTOM_DNS}" ]; then
+        _java_opts="${_java_opts} -Dsun.net.spi.nameservice.nameservers=${_CUSTOM_DNS} -Dsun.net.spi.nameservice.provider.1=dns,sun"
+    fi
+    # NOTE: below does not work for SCM due to the change added in INT-5729
+    #_java_opts="${_java_opts} -Dhttp.proxyHost=non-existing-hostname -Dhttp.proxyPort=8800 -Dhttp.nonProxyHosts=\"*.sonatype.com\""
     _base_dir="$(realpath ${_base_dir%/})"
     local _jar_file="$(find "${_base_dir%/}" -maxdepth 2 -type f -name 'nexus-iq-server*.jar' 2>/dev/null | sort | tail -n1)"
     [ -z "${_jar_file}" ] && return 11
@@ -350,7 +359,7 @@ function iqStart() {
 $(sed -n "/^  loggers:/,\$p" ${_cfg_file} | grep -v '^  loggers:')" > "${_cfg_file}"
     fi
     local _cmd="java -Xms2g -Xmx4g ${_java_opts} ${_http_proxy} -jar \"${_jar_file}\" server \"${_cfg_file}\" 2>/tmp/iq-server.err"
-    echo "${_cmd}"
+    echo "${_cmd}"; sleep 2
     eval "${_cmd}"
     cd -
 }
@@ -372,7 +381,7 @@ function iqConfigUpdate() {
     echo "May want to run 'f_api_nxiq_scm_setup _token' as well"
 }
 
-# To upgrade (from ${_dirname}/): mv -v ./config.yml{,.bak} && tar -xvf $HOME/.nexus_executable_cache/nexus-iq-server-1.161.0-01-bundle.tar.gz
+# To upgrade (from ${_dirname}/): mv -v ./config.yml{,.bak} && tar -xvf $HOME/.nexus_executable_cache/nexus-iq-server-1.162.0-01-bundle.tar.gz
 # NOTE: Above will overwrite config.yml
 function iqInstall() {
     local _ver="$1" #1.142.0-02
