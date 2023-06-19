@@ -35,7 +35,7 @@ REQUIREMENTS / DEPENDENCIES:
 
 COMMAND OPTIONS:
     -A
-        Automatically setup Nexus (best effort)
+        Automatically setup repositories against _NEXUS_URL Nexus (best effort)
     -r <response_file_path>
         Specify your saved response file. Without -A, you can review your responses.
     -f <format1,format2,...>
@@ -45,6 +45,11 @@ COMMAND OPTIONS:
         Install Nexus with this version number (eg: 3.24.0)
     -d <dbname>
         Existing PostgreSQL DB name or 'h2'
+
+    -h list
+        List all functions
+    -h <function name>
+        Show help of the function
 
 EXAMPLE COMMANDS:
 Start script with interview mode:
