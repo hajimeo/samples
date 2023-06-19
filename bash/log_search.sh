@@ -896,10 +896,10 @@ function f_count_lines() {
 function f_hexTids_from_topH() {
     # grep top output and return PID (currently over 90% CUP one) for the user, then use printf to convert to hex
     local _file="${1}"  # file path or glob for rg
-    local _user="${2:-".+"}" # [^ ]+
+    local _user="${2:-"\\S+"}" # [^ ]+
     local _search_word="${3-"sonatype"}"
     local _threads_dir="${4-"./_threads"}"
-    local _cpu_pct_regex="${5-"${_CPU_PCT_REGEX:-"[6-9]\d\.\d+"}"}"
+    local _cpu_pct_regex="${5-"${_CPU_PCT_REGEX:-"[6-9]\\d\.\\d+"}"}"
     local _n="${6:-20}"
     echo "# Overview from top ${_n} (check long 'TIME+')"
     if [ -f "${_file}" ]; then
@@ -909,7 +909,7 @@ function f_hexTids_from_topH() {
     fi | rg "^(top|\s*\d+\s+${_user}\s.+\s.[^ ]+)" | tee /tmp/${FUNCNAME[0]}_$$.tmp || return $?
     echo ""
     echo "# Converting suspicious PIDs to hex"
-    cat /tmp/${FUNCNAME[0]}_$$.tmp | rg "^\s*(\d+) +${_user} +[^ ]+ +[^ ]+ +[^ ]+ +[^ ]+ +[^ ]+ +[^ ]+ +(\d\d\d+\.\d+|${_cpu_pct_regex})" -o -r '$1' | sort | uniq -c | sort -nr | head -n${_n} | while read -r _l; do
+    cat /tmp/${FUNCNAME[0]}_$$.tmp | rg "^\s*(\d+) +${_user} +\S+ +\S+ +\S+ +\S+ +\S+ +\S+ +(\d\d\d+|${_cpu_pct_regex})" -o -r '$1' | sort | uniq -c | sort -nr | head -n${_n} | while read -r _l; do
         if [[ "${_l}" =~ ([0-9]+)[[:space:]]+([0-9]+) ]]; then
             local _cnt="${BASH_REMATCH[1]}"
             local _pid="${BASH_REMATCH[2]}"
