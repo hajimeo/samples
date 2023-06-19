@@ -1369,6 +1369,10 @@ function f_dnsmasq() {
     #fi
     _warn "You might need to edit /etc/resolv.conf to add 'nameserver 127.0.0.1'"
 
+    # NOTE: For local test, append below lines into /etc/dnsmasq.conf
+    #address=/#/127.0.0.1
+    #server=/sonatype.com/8.8.8.8
+
     touch /etc/banner_add_hosts || return $?
     chmod 664 /etc/banner_add_hosts
     which docker &>/dev/null && chown root:docker /etc/banner_add_hosts
