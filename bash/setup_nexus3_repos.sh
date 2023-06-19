@@ -2598,7 +2598,13 @@ main() {
 
 if [ "$0" = "$BASH_SOURCE" ]; then
     if [[ "$1" == "-h" ]] || [[ "$1" == "--help" ]] || [[ "$1" == "help" ]]; then
-        usage | less
+        if [[ "$2" =~ ^f_ ]] && type _help &>/dev/null; then
+            _help "$2" | less
+        elif [ "$2" == "list" ] && type _list &>/dev/null; then
+            _list | less
+        else
+            usage | less
+        fi
         exit 0
     fi
     
