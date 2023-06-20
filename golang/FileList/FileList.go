@@ -5,11 +5,11 @@ goBuild ./FileList.go file-list
 
 echo 3 > /proc/sys/vm/drop_caches
 
-$HOME/IdeaProjects/samples/misc/file-list_$(uname)_$(uname -m) -b <workingDirectory>/blobs/default/content -p "vol-" -c1 10
-$HOME/IdeaProjects/samples/misc/file-list_$(uname)_$(uname -m) -b <workingDirectory>/blobs/default/content -p "vol-" -c1 10
+$HOME/IdeaProjects/samples/misc/filelist_$(uname)_$(uname -m) -b <workingDirectory>/blobs/default/content -p "vol-" -c1 10
+$HOME/IdeaProjects/samples/misc/filelist_$(uname)_$(uname -m) -b <workingDirectory>/blobs/default/content -p "vol-" -c1 10
 
 cd /opt/sonatype/sonatype-work/nexus3/blobs/default/
-/var/tmp/share/file-list_Linux -b ./content -p vol- -c 4 -db /opt/sonatype/sonatype-work/nexus3/etc/fabric/nexus-store.properties -RF -bsName default > ./$(date '+%Y-%m-%d') 2> ./file-list_$(date +"%Y%m%d").log &
+file-list -b ./content -p vol- -c 4 -db /opt/sonatype/sonatype-work/nexus3/etc/fabric/nexus-store.properties -RF -bsName default > ./$(date '+%Y-%m-%d') 2> ./file-list_$(date +"%Y%m%d").log &
 */
 
 package main
@@ -72,7 +72,6 @@ var _WITH_BLOB_SIZE *bool
 var _DB_CON_STR *string
 var _TRUTH *string
 var _BS_NAME *string
-var _NODE_ID *string
 var _DEL_DATE_FROM *string
 var _DEL_DATE_FROM_ts int64
 var _DEL_DATE_TO *string
@@ -133,8 +132,7 @@ func _setGlobals() {
 	// Reconcile related
 	_TRUTH = flag.String("src", "BS", "Reconcile: Using database or blobstore as source [BS|DB]") // TODO: not implemented "DB" type yet
 	_DB_CON_STR = flag.String("db", "", "Reconcile: DB connection string or path to properties file")
-	_BS_NAME = flag.String("bsName", "", "Reconcile: eg. 'default'. If provided, the SQL query will be faster")
-	_NODE_ID = flag.String("nodeId", "", "Reconcile: Nexus node Id used in the blob ref (old version)")
+	_BS_NAME = flag.String("bsName", "", "Reconcile: eg. 'default'. If provided, the SQL query will be much faster")
 	_RECON_FMT = flag.Bool("RF", false, "Reconcile: Output for the Reconcile task (datetime,blob_ref). -P will be ignored")
 	_REMOVE_DEL = flag.Bool("RDel", false, "Reconcile: Remove 'deleted=true' from .properties. Requires -dF")
 	_DEL_DATE_FROM = flag.String("dF", "", "Reconcile: Deleted date YYYY-MM-DD (from). Used to search deletedDateTime")
@@ -175,15 +173,6 @@ func _setGlobals() {
 		*_FILTER = _PROP_EXT
 		//*_WITH_PROPS = false
 		_REPO_TO_FMT = genRepoFmtMap()
-
-		// TODO: blobRef no longer contains NODE_ID from around 3.47?
-		if len(*_NODE_ID) > 0 {
-			if !validateNodeId(*_NODE_ID) {
-				_log("ERROR", fmt.Sprintf("_NODE_ID: %s may not be correct.", *_NODE_ID))
-				_log("ERROR", fmt.Sprintf("Ctrl + c to cancel now ..."))
-				time.Sleep(8 * time.Second)
-			}
-		}
 	}
 	_START_TIME_ts = time.Now().Unix()
 	_R_DEL_DT, _ = regexp.Compile("[^#]?deletedDateTime=([0-9]+)")
@@ -584,8 +573,8 @@ func _printLineExtra(output string, path string, modTimeTs int64, db *sql.DB, cl
 	}*/
 	// NOTE: Not doing same for _DEL_DATE_TO_ts as some task may touch.
 
-	// If _NODE_ID is given and no deleted date from/to, should not need to open a file
-	if len(*_DB_CON_STR) > 0 && len(*_TRUTH) > 0 && len(*_NODE_ID) > 0 && _DEL_DATE_FROM_ts == 0 && _DEL_DATE_TO_ts == 0 {
+	// no deleted date from/to, should not need to open a file
+	if len(*_DB_CON_STR) > 0 && len(*_TRUTH) > 0 && _DEL_DATE_FROM_ts == 0 && _DEL_DATE_TO_ts == 0 {
 		if *_TRUTH == "BS" && !isBlobMissingInDB("", path, db) {
 			_log("DEBUG2", "path:"+path+" exists in Database. Skipping.")
 			return ""
@@ -593,11 +582,16 @@ func _printLineExtra(output string, path string, modTimeTs int64, db *sql.DB, cl
 			_log("DEBUG2", "path:"+path+" exists in Blobstore. Skipping.")
 			return ""
 		}
-		reconOutput, _, reconErr := genOutputForReconcile("", path, _DEL_DATE_FROM_ts, _DEL_DATE_TO_ts, true, client)
-		if reconErr != nil {
-			_log("DEBUG", reconErr.Error())
+
+		if *_RECON_FMT {
+			reconOutput, _, reconErr := genOutputForReconcile("", path, _DEL_DATE_FROM_ts, _DEL_DATE_TO_ts, true, client)
+			if reconErr != nil {
+				_log("DEBUG", reconErr.Error())
+			}
+			return reconOutput
+		} else {
+			return output
 		}
-		return reconOutput
 	}
 
 	// Excluding above special condition, usually needs to read the file
@@ -611,6 +605,7 @@ func _printLineExtra(output string, path string, modTimeTs int64, db *sql.DB, cl
 		_log("WARN", "getContents for "+path+" returned 0 size.")
 	}
 
+	// If 'contents' is given, utilise the repository name.
 	if len(*_DB_CON_STR) > 0 && len(*_TRUTH) > 0 {
 		if *_TRUTH == "BS" {
 			// Script is asked to output if this blob is missing in DB
@@ -789,15 +784,11 @@ func genAssetBlobUnionQuery(tableNames []string, columns string, where string, i
 
 func genBlobIdCheckingQuery(path string, tableNames []string) string {
 	blobId := getBaseNameWithoutExt(path)
-	where := "blob_ref LIKE '%:" + blobId + "@%'"
+	// Just in case, supporting older version by using "%'"
+	where := "blob_ref LIKE '%" + blobId + "%'"
 	if len(*_BS_NAME) > 0 {
-		if len(*_NODE_ID) > 0 {
-			// NOTE: node-id or deployment id can be anything...
-			where = "blob_ref = '" + *_BS_NAME + ":" + blobId + "@" + *_NODE_ID + "'"
-		} else {
-			// PostgreSQL still uses index for 'like' with forward search, so much faster than above
-			where = "blob_ref like '" + *_BS_NAME + ":" + blobId + "%'"
-		}
+		// Supporting only 3.47 and higher for performance. blobRef no longer contains NODE_ID.
+		where = "blob_ref = '" + *_BS_NAME + "@" + blobId + "'"
 	}
 	query := genAssetBlobUnionQuery(tableNames, "asset_id", where, false)
 	return query

@@ -169,7 +169,7 @@ func TestGenBlobIdCheckingQuery(t *testing.T) {
 	*_BS_NAME = "testtest"
 	query := genBlobIdCheckingQuery(DUMMY_FILE_PATH, tableNames)
 	// Could not test without DB || !strings.Contains(query, " helm_asset_blob ") || !strings.Contains(query, " helm_asset ")
-	if !strings.Contains(query, " UNION ALL ") || !strings.Contains(query, ":00000000-abcd-ef00-12345-123456789abc") {
+	if !strings.Contains(query, " UNION ALL ") || !strings.Contains(query, "00000000-abcd-ef00-12345-123456789abc") {
 		t.Errorf("Generated query:%s might be incorrect", query)
 	}
 }

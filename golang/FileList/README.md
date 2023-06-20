@@ -30,7 +30,7 @@ find ${_content_dir%/}/vol-* -type f -name '*.properties' -mtime -${_days} -prin
 
 ## DOWNLOAD and INSTALL:
 ```bash
-curl -o /usr/local/bin/file-list -L https://github.com/hajimeo/samples/raw/master/misc/file-list_$(uname)_$(uname -m)
+curl -o /usr/local/bin/file-list -L https://github.com/hajimeo/samples/raw/master/misc/filelist_$(uname)_$(uname -m)
 chmod a+x /usr/local/bin/file-list
 ```
 
@@ -91,8 +91,6 @@ Usage of file-list:
         Reconcile: File modification date YYYY-MM-DD to
   -n int
         Return first N lines (0 = no limit). (TODO: may return more than N)
-  -nodeId string
-        Reconcile: Nexus node Id used in the blob ref (old version)
   -p string
         Prefix of sub directories (eg: 'vol-') This is not recursive
   -src string
@@ -106,7 +104,8 @@ echo 3 > /proc/sys/vm/drop_caches
 ```
 ### List all files under the ./sonatype-work/nexus3/blobs/default
 ```
-file-list -b ./sonatype-work/nexus3/blobs/default/content
+cd ./sonatype-work/nexus3/blobs/default;
+file-list -b ./content
 ... (snip) ...
 "sonatype-work/nexus3/blobs/default/content/vol-43/chap-29/3488648f-d5f8-45f8-8314-10681fcaf0ce.properties","2021-09-17 08:35:03.907951265 +1000 AEST",352
 "sonatype-work/nexus3/blobs/default/metadata.properties","2021-09-17 08:34:00.625028548 +1000 AEST",73
@@ -116,52 +115,52 @@ file-list -b ./sonatype-work/nexus3/blobs/default/content
 
 ### Listing blob store items with .properties file contents (-P) with 10 concurrency (-c 10):
 ```
-file-list -b ./sonatype-work/nexus3/blobs/default/content -p 'vol-' -P -c 10 > /tmp/default_with_props.tsv
+file-list -b ./content -p 'vol-' -P -c 10 > /tmp/default_with_props.tsv
 ```
 Exclude .bytes files, so that .properties file only:
 ```
-file-list -b ./sonatype-work/nexus3/blobs/default/content -p 'vol-' -P -f ".properties" -c 10 > /tmp/default_props_only.tsv
+file-list -b ./content -p 'vol-' -P -f ".properties" -c 10 > /tmp/default_props_only.tsv
 ```
 
 ### Finding first 1 'deleted=true' (-fP "\<expression\>")
 ```
-file-list -b ./sonatype-work/nexus3/blobs/default/content -p 'vol-' -fP "deleted=true" -n 1 -c 10 > /tmp/default_soft_deleted.tsv
+file-list -b ./content -p 'vol-' -fP "deleted=true" -n 1 -c 10 > /tmp/default_soft_deleted.tsv
 ```
 
 ### Check the total count and size of all .bytes files
 This would be useful to compare with the counters in the Blobstore page.
 ```
-$ file-list -b ./sonatype-work/nexus3/blobs/default/content -p 'vol-' -f ".bytes" >/dev/null
+$ file-list -b ./content -p 'vol-' -f ".bytes" >/dev/null
 2021/12/31 14:24:15 INFO: Generating list with ./sonatype-work/nexus3/blobs/default ...
 ... (snip) ...
-13:52:46.972949 INFO  Printed 136895 of 136895 (size:2423593014) in ./sonatype-work/nexus3/blobs/default/content and sub-dir starts with vol- (elapsed:26s)
+13:52:46.972949 INFO  Printed 136895 of 136895 (size:2423593014) in ./content and sub-dir starts with vol- (elapsed:26s)
 ```
 
 ### List all objects which properties contain 'repo-name=docker-proxy' and 'deleted=true'
 ```
-file-list -b ./sonatype-work/nexus3/blobs/default/content -p "vol-" -c 10 -f ".properties" -P -fP "@Bucket\.repo-name=docker-proxy.+deleted=true" -R > docker-proxy_soft_deleted.tsv
+file-list -b ./content -p "vol-" -c 10 -f ".properties" -P -fP "@Bucket\.repo-name=docker-proxy.+deleted=true" -R > docker-proxy_soft_deleted.tsv
 ```
 NOTE: the attributes in a .properties file are sorted in memory, so that attributes start with "@" comes before "deleted=true" line.
 
 ### List all objects which does NOT contain 'maven-metadata.xml'
 ```
-file-list -b ./sonatype-work/nexus3/blobs/default/content -p "vol-" -c 10 -f ".properties" -P -fPX "BlobStore\.blob-name=.+/maven-metadata.xml.*" -R > all_excluding_maven-metadata.tsv
+file-list -b ./content -p "vol-" -c 10 -f ".properties" -P -fPX "BlobStore\.blob-name=.+/maven-metadata.xml.*" -R > all_excluding_maven-metadata.tsv
 ```
 NOTE: the attributes in a .properties file are sorted in memory, so that attributes start with "@" comes before "deleted=true" line.
 
 ### Output lines for the reconciliation (blobstore.rebuildComponentDB) YYYY-MM-DD text (-RF) and for the files which were modified since 1 day ago (-mF "\<date\>")
 ```
-file-list -b ./sonatype-work/nexus3/blobs/default/content -p "vol-" -c 10 -RF -mF "$(date -d "1 day ago" +%Y-%m-%d)" > ./$(date '+%Y-%m-%d')
+file-list -b ./content -p "vol-" -c 10 -RF -mF "$(date -d "1 day ago" +%Y-%m-%d)" > ./$(date '+%Y-%m-%d')
 ```
 
 ### Output lines for the reconciliation (blobstore.rebuildComponentDB) YYYY-MM-DD text (-RF) and deleted from one day ago (-dF "\<date\>")
 ```
-file-list -b ./sonatype-work/nexus3/blobs/default/content -p "vol-" -c 10 -RF -dF "$(date -d "1 day ago" +%Y-%m-%d)" > ./$(date '+%Y-%m-%d')
+file-list -b ./content -p "vol-" -c 10 -RF -dF "$(date -d "1 day ago" +%Y-%m-%d)" > ./$(date '+%Y-%m-%d')
 ```
 
 ### Remove 'deleted=true' (-RDel), then outputs lines for the reconciliation YYYY-MM-DD text
 ```
-file-list -b ./sonatype-work/nexus3/blobs/default/content -p "vol-" -c 10 -RF -dF "$(date -d "1 day ago" +%Y-%m-%d)" -RDel > ./$(date '+%Y-%m-%d')
+file-list -b ./content -p "vol-" -c 10 -RF -dF "$(date -d "1 day ago" +%Y-%m-%d)" -RDel > ./$(date '+%Y-%m-%d')
 ```
 ### Remove 'deleted=true' (-RDel) against S3, then outputs the contents of .properties file (before editing), and with DRY-RUN mode
 ```
@@ -170,16 +169,16 @@ file-list -S3 -b apac-support-bucket -p "node-nxrm-ha1/content/vol-" -c 10 -R -f
 
 ### Check orphaned files by querying against PostgreSQL (-db "\<conn string or nexus-store.properties file path) with max 10 DB connections (-c 10)
 ```
-file-list -b ./sonatype-work/nexus3/blobs/default/content -p vol- -c 10 -db "host=localhost port=5432 user=nxrm3pg password=nxrm3pg dbname=nxrm3pg"
+file-list -b ./content -p vol- -c 10 -db "host=localhost port=5432 user=nxrm3pg password=nxrm3pg dbname=nxrm3pg"
 ```
 or
 ```
-file-list -b ./sonatype-work/nexus3/blobs/default/content -p vol- -c 10 -db /nexus-data/etc/fabric/nexus-store.properties
+file-list -b ./content -p vol- -c 10 -db /nexus-data/etc/fabric/nexus-store.properties
 ```
 NOTE: Above outputs blobs which are not in <format>_asset table, which includes assets which have not soft-deleted by Cleanup unused asset blobs task.
 
 ### Check orphaned files, and with the reconciliation YYYY-MM-DD format output (-RF), and deleted after 1 day ago (-dF)
 ```
-$ file-list -b ./sonatype-work/nexus3/blobs/default/content -p vol- -c 10 -db /nexus-data/etc/fabric/nexus-store.properties -RF -dF "$(date -d "1 day ago" +%Y-%m-%d)" > ./$(date '+%Y-%m-%d') 2> ./file-list_$(date +"%Y%m%d%H%M%S").log
+$ file-list -b ./content -p vol- -c 10 -db /nexus-data/etc/fabric/nexus-store.properties -RF -dF "$(date -d "1 day ago" +%Y-%m-%d)" > ./$(date '+%Y-%m-%d') 2> ./file-list_$(date +"%Y%m%d%H%M%S").log
 ```
 NOTE: If using -RDel to delete "deleted=true", recommend to save the STDERR into a file like above.
