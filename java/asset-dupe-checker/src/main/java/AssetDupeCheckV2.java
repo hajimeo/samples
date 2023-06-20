@@ -306,8 +306,8 @@ public class AssetDupeCheckV2 {
         } catch (IOException ioe) {
             log("[WARN] Ignoring TRUNCATE browse_node exception: " + ioe.getMessage());
         }
-
-        String exportName = "component-export";
+        String url = db.getURL().split("\\s+")[0].replaceFirst("/$", "");
+        String exportName = url.substring(url.lastIndexOf('/')+1, url.length()) + "-export";
         String exportTo = "." + File.separatorChar + exportName;
         if (!EXTRACT_DIR.isEmpty()) {
             exportTo = EXTRACT_DIR + File.separatorChar + exportName;
@@ -332,12 +332,12 @@ public class AssetDupeCheckV2 {
 
     private static Boolean setTableName(ODatabaseDocumentTx db, String indexName) {
         if (indexName.isEmpty() || indexName.equals("*")) {
-            log("[ERROR] Can't assume table name from indexName:" + indexName);
+            log("[WARN] Can't assume table name from indexName:" + indexName);
             return false;
         }
         String[] words = indexName.split("_", 3);
         if (words.length == 0) {
-            log("[ERROR] No table name specified in indexName:" + indexName);
+            log("[WARN] No table name specified in indexName:" + indexName);
             return false;
         }
         if (db.getMetadata().getSchema().getClass(words[0]) != null) {
@@ -345,7 +345,7 @@ public class AssetDupeCheckV2 {
         } else if (words.length > 1 && db.getMetadata().getSchema().getClass(words[0] + "_" + words[1]) != null) {
             TABLE_NAME = words[0] + "_" + words[1];
         } else {
-            log("[ERROR] No table name specified for indexName:" + indexName);
+            log("[WARN] No table name specified for indexName:" + indexName);
             return false;
         }
         log("Using TABLE_NAME:" + TABLE_NAME);
@@ -653,7 +653,11 @@ public class AssetDupeCheckV2 {
         debug("noCheckIndex: " + IS_NO_INDEX_CHECK);
         TABLE_NAME = System.getProperty("tableName", "");
         debug("tableName: " + TABLE_NAME);
-        INDEX_NAME = System.getProperty("indexName", SUPPORTED_INDEX_NAMES.get(0));
+        String defaultIndexName = "";
+        if (!IS_NO_INDEX_CHECK) {
+            defaultIndexName = SUPPORTED_INDEX_NAMES.get(0);
+        }
+        INDEX_NAME = System.getProperty("indexName", defaultIndexName);
         debug("indexName: " + INDEX_NAME);
         String dropTables = System.getProperty("dropTables", "");
         debug("dropTables: " + dropTables);
@@ -729,7 +733,7 @@ public class AssetDupeCheckV2 {
                     exportImportDb(db);
                 }
 
-                if (SUPPORTED_INDEX_NAMES.contains(INDEX_NAME)) {
+                if (!IS_NO_INDEX_CHECK && SUPPORTED_INDEX_NAMES.contains(INDEX_NAME)) {
                     log("Validating indexName: " + INDEX_NAME);
                     if (!validateIndex(db, INDEX_NAME)) {
                         log("[ERROR] Validating indexName: " + INDEX_NAME + " failed");
