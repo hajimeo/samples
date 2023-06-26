@@ -384,57 +384,10 @@ function iqConfigUpdate() {
 # To upgrade (from ${_dirname}/): mv -v ./config.yml{,.bak} && tar -xvf $HOME/.nexus_executable_cache/nexus-iq-server-1.162.0-01-bundle.tar.gz
 # NOTE: Above will overwrite config.yml
 function iqInstall() {
-    local _ver="$1" #1.142.0-02
-    local _dbname="$2"
-    local _dbusr="${3:-"${_dbname}"}"
-    local _dbpwd="${4:-"${_dbusr}123"}"
-    local _port="${5:-"${_IQ_INSTALL_PORT:-"8070"}"}"
-    local _download_dir="${6:-"$HOME/.nexus_executable_cache"}"
-
-    local _dirname="nxiq_${_ver}"
-    [ -n "${_dbname}" ] && _dirname="${_dirname}_${_dbname}"
-    _prepare_install "${_dirname}" "${_download_dir%/}/nexus-iq-server-${_ver}-bundle.tar.gz" "${_download_dir}" || return $?
-
-    local _jar_file="$(find . -maxdepth 2 -type f -name 'nexus-iq-server*.jar' 2>/dev/null | sort | tail -n1)"
-    [ -z "${_jar_file}" ] && return 11
-    local _cfg_file="$(find . -maxdepth 2 -type f -name 'config.yml' 2>/dev/null | sort | tail -n1)"
-    [ -z "${_cfg_file}" ] && return 12
-
-    # NOTE: From v138, most of configs need to use API: https://help.sonatype.com/iqserver/automating/rest-apis/configuration-rest-api---v2
-    #       So changing minimum and use iqStart.
-    grep -qE '^hdsUrl:' "${_cfg_file}" || echo -e "hdsUrl: https://clm-staging.sonatype.com/\n$(cat "${_cfg_file}")" > "${_cfg_file}"
-    grep -qE '^licenseFile' "${_cfg_file}" || echo -e "licenseFile: ${_download_dir%/}/license/nexus.lic\n$(cat "${_cfg_file}")" > "${_cfg_file}"
-    grep -qE '^\s*port: 8070' "${_cfg_file}" && sed -i.tmp 's/port: 8070/port: '${_port}'/g' "${_cfg_file}"
-    grep -qE '^\s*port: 8071' "${_cfg_file}" && sed -i.tmp 's/port: 8071/port: '$((${_port} + 1))'/g' "${_cfg_file}"
-
-    if [ -n "${_dbname}" ]; then
-        # TODO: currently assuming "database:" is the end of file
-        [ -s "${_cfg_file}" ] && cp -v -f -p ${_cfg_file} ${_cfg_file}_$$
-        cat << EOF > ${_cfg_file}
-$(sed -n '/^database:/q;p' ${_cfg_file})
-database:
-  type: postgresql
-  hostname: $(hostname -f)
-  port: 5432
-  name: ${_dbname}
-  username: ${_dbusr}
-  password: ${_dbpwd}
-EOF
-        [ -s ${_cfg_file}_$$ ] && diff -wu ${_cfg_file}_$$ ${_cfg_file}
-
-        local _util_dir="$(dirname "$(dirname "$BASH_SOURCE")")/bash"
-        if [ -s "${_util_dir}/utils_db.sh" ]; then
-            source ${_util_dir}/utils.sh
-            source ${_util_dir}/utils_db.sh
-            _postgresql_create_dbuser "${_dbusr}" "${_dbpwd}" "${_dbname}"
-        else
-            echo "WARN Not creating database"
-        fi
+    if [ -s "$HOME/IdeaProjects/samples/bash/setup_nexus3_repos.sh" ]; then
+        source "$HOME/IdeaProjects/samples/bash/setup_nexus3_repos.sh" || return $?
+        f_install_iq "$@"
     fi
-
-    [ ! -d ./log ] && mkdir -m 777 ./log
-    echo "To start: java -jar ${_jar_file} server ${_cfg_file} 2>./log/iq-server.err"
-    type iqStart &>/dev/null && echo "      Or: iqStart"
 }
 
 #iqDocker "nxiq-test" "1.146.0" "8170" "8171" "8544" #"--read-only -v /tmp/nxiq-test:/tmp"
