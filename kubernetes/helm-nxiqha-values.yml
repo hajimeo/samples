@@ -1,7 +1,8 @@
 #$ cd ~/IdeaProjects/nexus-iq-server-ha/
 #$ helm template nxiqha . -f ~/IdeaProjects/samples/kubernetes/helm-nxiqha-values.yml -n sonatype-ha >~/IdeaProjects/samples/kubernetes/helm-nxiqha-deployed.yaml
+#$ helm uninstall nxiqha -n sonatype-ha
+#$ helm install  nxiqha ./chart -f ~/IdeaProjects/samples/kubernetes/helm-nxiqha-values.yml -n sonatype-ha
 #$ helm upgrade nxiqha ./chart -f ~/IdeaProjects/samples/kubernetes/helm-nxiqha-values.yml -n sonatype-ha --version 1.162.0 --dry-run
-
 
 # Default values for nexus-iq-server-ha.
 # This is a YAML-formatted file.
