@@ -91,7 +91,8 @@ Just get the repositories setting:
 : ${_DOCKER_NETWORK_NAME:="nexus"}
 : ${_SHARE_DIR:="/var/tmp/share"}
 : ${_IS_NXRM2:="N"}
-: ${_NO_DATA:="N"}
+: ${_NO_DATA:="N"}          # To just create repositories
+: ${_ASYNC_CURL:="N"}   # _get_asset won't wait for the result
 : ${_BLOBTORE_NAME:=""}     # eg: default. Empty means auto
 : ${_IS_NEWDB:=""}
 : ${_DATASTORE_NAME:=""}    # If Postgres (or H2), needs to add attributes.storage.dataStoreName = "nexus"
@@ -133,8 +134,12 @@ function f_install_nexus3() {
     if [ -z "${_dirpath}" ]; then
         _dirpath="./nxrm_${_ver}"
         [ -n "${_dbname}" ] && _dirpath="${_dirpath}_${_dbname}"
+        [ "${_port}" != "8081" ] && _dirpath="${_dirpath}_${_port}"
     fi
-    _prepare_install "${_dirpath}" "${_ver}" || return $?
+    local _tgz_name="nexus-${_ver}-unix.tar.gz"
+    [ "`uname`" = "Darwin" ] && _tgz_name="nexus-${_ver}-mac.tgz"
+    _prepare_install "${_dirpath}" "https://download.sonatype.com/nexus/${_ver%%.*}/${_tgz_name}" "${r_NEXUS_LICENSE_FILE}" || return $?
+    local _license_path="${_LICENSE_PATH}"
 
     if [ ! -d ${_dirpath%/}/sonatype-work/nexus3/etc/fabric ]; then
         mkdir -v -p ${_dirpath%/}/sonatype-work/nexus3/etc/fabric || return $?
@@ -142,15 +147,6 @@ function f_install_nexus3() {
     local _prop="${_dirpath%/}/sonatype-work/nexus3/etc/nexus.properties"
     if [ ! -f "${_prop}" ]; then
         touch "${_prop}" || return $?
-    fi
-
-    local _license_path="${r_NEXUS_LICENSE_FILE}"
-    if [ ! -f "${_license_path}" ]; then
-        if [ -f "${HOME%/}/.nexus_executable_cache/license/nexus.lic" ]; then
-            _license_path="${HOME%/}/.nexus_executable_cache/license/nexus.lic"
-        else
-            _license_path="$(find ${_SHARE_DIR%/}/sonatype -maxdepth 1 -name '*.lic' -print | head -n1)"
-        fi
     fi
 
     _upsert "${_prop}" "application-port" "${_port}" || return $?
@@ -175,7 +171,7 @@ maximumPoolSize=40
 advanced=maxLifetime\=600000
 EOF
             if ! _postgresql_create_dbuser "${_dbusr}" "${_dbpwd}" "${_dbname}" "${_schema}"; then
-                _log "WARN" "Failed to create database/user"
+                _log "WARN" "Failed to create ${_dbusr} or ${_dbname}"
             fi
         fi
     fi
@@ -188,14 +184,87 @@ EOF
         type nxrmStart &>/dev/null && echo "      Or: nxrmStart"
     fi
 }
+function f_install_iq() {
+    local __doc__="Install specific NXRM3 version"
+    local _ver="${1}"     # 'latest'
+    local _dbname="${2}"
+    local _dbusr="${3:-"nxrm"}"     # Specifying default as do not want to create many users/roles
+    local _dbpwd="${4:-"${_dbusr}123"}"
+    local _port="${5:-"${_IQ_INSTALL_PORT}"}"      # If not specified, checking from 8070
+    local _dirpath="${6}"    # If not specified, create a new dir under current dir
+    local _download_dir="${7}"
+    local _starting="${_NEXUS_START}"
+    if [ -z "${_ver}" ] || [ "${_ver}" == "latest" ]; then
+        local _location="$(curl -sSf -I "https://download.sonatype.com/clm/server/latest.tar.gz" | grep -i '^location:')"
+        if [[ "${_location}" =~ nexus-iq-server-([0-9.]+-[0-9]+)-bundle.tar.gz ]]; then
+            _ver="${BASH_REMATCH[1]}"
+        fi
+    fi
+    [ -z "${_ver}" ] && return 1
+    if [ -z "${_port}" ]; then
+        _port="$(_find_port "8070")"
+        [ -z "${_port}" ] && return 1
+        _log "INFO" "Using port: ${_port}" >&2
+    fi
+    # I think PostgreSQL doesn't work with mixed case.
+    _dbname="$(echo "${_dbname}" | tr '[:upper:]' '[:lower:]')"
+    if [ -z "${_dirpath}" ]; then
+        _dirpath="./nxiq_${_ver}"
+        [ -n "${_dbname}" ] && _dirpath="${_dirpath}_${_dbname}"
+        [ "${_port}" != "8070" ] && _dirpath="${_dirpath}_${_port}"
+    fi
+    _prepare_install "${_dirpath}" "https://download.sonatype.com/clm/server/nexus-iq-server-${_ver}-bundle.tar.gz" "${r_NEXUS_LICENSE_FILE}" || return $?
+    local _license_path="${_LICENSE_PATH}"
+
+    local _jar_file="$(find ${_dirpath%/} -maxdepth 2 -type f -name 'nexus-iq-server*.jar' 2>/dev/null | sort | tail -n1)"
+    [ -z "${_jar_file}" ] && return 11
+    local _cfg_file="$(find ${_dirpath%/} -maxdepth 2 -type f -name 'config.yml' 2>/dev/null | sort | tail -n1)"
+    [ -z "${_cfg_file}" ] && return 12
+
+    if [ ! -f "${_cfg_file}.orig" ]; then
+        cp -p "${_cfg_file}" "${_cfg_file}.orig"
+    fi
+    # TODO: From v138, most of configs need to use API: https://help.sonatype.com/iqserver/automating/rest-apis/configuration-rest-api---v2
+    grep -qE '^hdsUrl:' "${_cfg_file}" || echo -e "hdsUrl: https://clm-staging.sonatype.com/\n$(cat "${_cfg_file}")" > "${_cfg_file}"
+    grep -qE '^licenseFile' "${_cfg_file}" || echo -e "licenseFile: ${_license_path%/}\n$(cat "${_cfg_file}")" > "${_cfg_file}"
+    grep -qE '^\s*port: 8070' "${_cfg_file}" && sed -i.tmp 's/port: 8070/port: '${_port}'/g' "${_cfg_file}"
+    grep -qE '^\s*port: 8071' "${_cfg_file}" && sed -i.tmp 's/port: 8071/port: '$((${_port} + 1))'/g' "${_cfg_file}"
+
+    if [ -n "${_dbname}" ]; then
+        # NOTE: currently assuming "database:" is the end of file
+        cat << EOF > ${_cfg_file}
+$(sed -n '/^database:/q;p' ${_cfg_file})
+database:
+  type: postgresql
+  hostname: $(hostname -f)
+  port: 5432
+  name: ${_dbname}
+  username: ${_dbusr}
+  password: ${_dbpwd}
+EOF
+        if ! _postgresql_create_dbuser "${_dbusr}" "${_dbpwd}" "${_dbname}"; then
+            _log "WARN" "Failed to create ${_dbusr} or ${_dbname}"
+        fi
+    fi
+
+    [ ! -d ./log ] && mkdir -m 777 ./log
+    if _isYes "${_starting}"; then
+        echo "Starting with: java -jar ${_jar_file} server ${_cfg_file} >./log/iq-server.out 2>./log/iq-server.err &"; sleep 3
+        eval "java -jar ${_jar_file} server ${_cfg_file} >./log/iq-server.out 2>./log/iq-server.err &"
+    else
+        cd "${_dirpath%/}" || return $?
+        echo "To start: java -jar ${_jar_file} server ${_cfg_file} 2>./log/iq-server.err"
+        type iqStart &>/dev/null && echo "      Or: iqStart"
+    fi
+}
+_LICENSE_PATH=""
 function _prepare_install() {
     local _extract_path="$1"
-    local _ver="$2"
-    local _download_dir="${3}"
+    local _url="$2"
+    local _def_license_path="${3}"
+    local _download_dir="${4}"
 
-    local _tgz_name="nexus-${_ver}-unix.tar.gz"
-    [ "`uname`" = "Darwin" ] && _tgz_name="nexus-${_ver}-mac.tgz"
-    local _url="${_REPO_URL%/}/nexus/${_ver%%.*}/${_name_ver}-unix.tar.gz"
+    local _tgz_name="$(basename "${_url}")"
     local _tgz="${_download_dir:-"."}/${_tgz_name}"
     if [ ! -s "${_tgz}" ]; then
         if [ -s "${HOME%/}/.nexus_executable_cache/${_tgz_name}" ]; then
@@ -212,15 +281,23 @@ function _prepare_install() {
         return
     fi
     if [ ! -s "${_tgz}" ]; then
-        local _filename="$(basename "${_tgz}")"
-        local _url="https://download.sonatype.com/nexus/3/${_filename}"
-        [[ "${_filename}" =~ ^nexus-iq ]] && _url="https://download.sonatype.com/clm/server/${_filename}"
         echo "no ${_tgz}. Downloading from ${_url} ..."
         curl -o "/tmp/${_filename}" -L "${_url}" || return $?
         mv -v -f /tmp/${_filename} ${_tgz} || return $?
     fi
     mkdir -v -p "${_extract_path}" || return $?
-    tar -C ${_extract_path%/} -xf ${_tgz}
+    tar -C ${_extract_path%/} -xf ${_tgz} || return $?
+
+    # NOTE: can't use 'echo' as there are other outputs in this function
+    if [ -f "${_def_license_path}" ]; then
+        _LICENSE_PATH="${_def_license_path}"
+    elif [ -f "${HOME%/}/.nexus_executable_cache/license/nexus.lic" ]; then
+        _LICENSE_PATH="${HOME%/}/.nexus_executable_cache/license/nexus.lic"
+    else
+        _LICENSE_PATH="$(find ${_SHARE_DIR%/}/sonatype -maxdepth 1 -name '*.lic' -print | head -n1)"
+        # should return 0, i guess?
+        return 0
+    fi
 }
 
 ### Repository setup functions ################################################################################
@@ -258,8 +335,10 @@ function f_setup_maven() {
         f_apiS '{"action":"coreui_Repository","method":"create","data":[{"attributes":{"maven":{"versionPolicy":"MIXED","layoutPolicy":"PERMISSIVE"},"storage":{"blobStoreName":"'${_bs_name}'","writePolicy":"ALLOW_ONCE","strictContentTypeValidation":true'${_extra_sto_opt}'},"cleanup":{"policyName":[]}},"name":"'${_prefix}'-hosted","format":"","type":"","url":"","online":true,"recipe":"maven2-hosted"}],"type":"rpc"}' || return $?
     fi
     # add some data for xxxx-hosted
-    #mvn deploy:deploy-file -DgroupId=junit -DartifactId=junit -Dversion=4.21 -DgeneratePom=true -Dpackaging=jar -DrepositoryId=nexus -Durl=${r_NEXUS_URL}/repository/${_prefix}-hosted -Dfile=${_TMP%/}/junit-4.12.jar
-    f_upload_asset "${_prefix}-hosted" -F maven2.groupId=junit -F maven2.artifactId=junit -F maven2.version=4.21 -F maven2.asset1=@${_TMP%/}/junit-4.12.jar -F maven2.asset1.extension=jar
+    if [ -s "${_TMP%/}/junit-4.12.jar" ]; then
+        #mvn deploy:deploy-file -DgroupId=junit -DartifactId=junit -Dversion=4.21 -DgeneratePom=true -Dpackaging=jar -DrepositoryId=nexus -Durl=${r_NEXUS_URL}/repository/${_prefix}-hosted -Dfile=${_TMP%/}/junit-4.12.jar
+        _ASYNC_CURL="Y" f_upload_asset "${_prefix}-hosted" -F maven2.groupId=junit -F maven2.artifactId=junit -F maven2.version=4.21 -F maven2.asset1=@${_TMP%/}/junit-4.12.jar -F maven2.asset1.extension=jar
+    fi
 
     # If no xxxx-group, create it
     if ! _is_repo_available "${_prefix}-group"; then
@@ -267,7 +346,7 @@ function f_setup_maven() {
         f_apiS '{"action":"coreui_Repository","method":"create","data":[{"attributes":{"storage":{"blobStoreName":"'${_bs_name}'","strictContentTypeValidation":true'${_extra_sto_opt}'},"group":{"memberNames":["'${_prefix}'-hosted","'${_prefix}'-proxy"]}},"name":"'${_prefix}'-group","format":"","type":"","url":"","online":true,"recipe":"maven2-group"}],"type":"rpc"}' || return $?
     fi
     # add some data for xxxx-group ("." in groupdId should be changed to "/")
-    f_get_asset "${_prefix}-group" "org/apache/httpcomponents/httpclient/4.5.12/httpclient-4.5.12.jar"
+    _ASYNC_CURL="Y" f_get_asset "${_prefix}-group" "org/apache/httpcomponents/httpclient/4.5.12/httpclient-4.5.12.jar"
 }
 
 function f_setup_pypi() {
@@ -284,14 +363,20 @@ function f_setup_pypi() {
         f_apiS '{"action":"coreui_Repository","method":"create","data":[{"attributes":{"proxy":{"remoteUrl":"https://pypi.org","contentMaxAge":1440,"metadataMaxAge":1440},"httpclient":{"blocked":false,"autoBlock":true,"connection":{"useTrustStore":false}},"storage":{"blobStoreName":"'${_bs_name}'","strictContentTypeValidation":true'${_extra_sto_opt}'},"negativeCache":{"enabled":true,"timeToLive":1440},"cleanup":{"policyName":[]}},"name":"'${_prefix}'-proxy","format":"","type":"","url":"","online":true,"routingRuleId":"","authEnabled":false,"httpRequestSettings":false,"recipe":"pypi-proxy"}],"type":"rpc"}' || return $?
     fi
     # add some data for xxxx-proxy
-    f_get_asset "${_prefix}-proxy" "packages/unit/0.2.2/Unit-0.2.2.tar.gz" "${_TMP%/}/Unit-0.2.2.tar.gz"
+    _ASYNC_CURL="Y" f_get_asset "${_prefix}-proxy" "packages/unit/0.2.2/Unit-0.2.2.tar.gz"
 
     # If no xxxx-hosted, create it
     if ! _is_repo_available "${_prefix}-hosted"; then
         f_apiS '{"action":"coreui_Repository","method":"create","data":[{"attributes":{"storage":{"blobStoreName":"'${_bs_name}'","writePolicy":"ALLOW_ONCE","strictContentTypeValidation":true'${_extra_sto_opt}'},"cleanup":{"policyName":[]}},"name":"'${_prefix}'-hosted","format":"","type":"","url":"","online":true,"recipe":"pypi-hosted"}],"type":"rpc"}' || return $?
     fi
     # add some data for xxxx-hosted
-    f_upload_asset "${_prefix}-hosted" -F "pypi.asset=@${_TMP%/}/Unit-0.2.2.tar.gz"
+    if [ -s "${_TMP%/}/mydummyproject-3.0.0.tar.gz" ] || curl -sf -o ${_TMP%/}/mydummyproject-3.0.0.tar.gz -L "https://github.com/hajimeo/samples/raw/master/misc/mydummyproject-3.0.0.tar.gz"; then
+        _ASYNC_CURL="Y" f_upload_asset "${_prefix}-hosted" -F "pypi.asset=@${_TMP%/}/mydummyproject-3.0.0.tar.gz"
+    fi
+    # add some data for xxxx-hosted
+    if [ -s "${_TMP%/}/mydummyproject-3.0.0-py3-none-any.whl" ] || curl -sf -o ${_TMP%/}/mydummyproject-3.0.0-py3-none-any.whl -L "https://github.com/hajimeo/samples/raw/master/misc/mydummyproject-3.0.0-py3-none-any.whl"; then
+        _ASYNC_CURL="Y" f_upload_asset "${_prefix}-hosted" -F "pypi.asset=@${_TMP%/}/mydummyproject-3.0.0-py3-none-any.whl"
+    fi
 
     # If no xxxx-group, create it
     if ! _is_repo_available "${_prefix}-group"; then
@@ -299,7 +384,7 @@ function f_setup_pypi() {
         f_apiS '{"action":"coreui_Repository","method":"create","data":[{"attributes":{"storage":{"blobStoreName":"'${_bs_name}'","strictContentTypeValidation":true'${_extra_sto_opt}'},"group":{"memberNames":["'${_prefix}'-hosted","'${_prefix}'-proxy"]}},"name":"'${_prefix}'-group","format":"","type":"","url":"","online":true,"recipe":"pypi-group"}],"type":"rpc"}' || return $?
     fi
     # add some data for xxxx-group
-    f_get_asset "${_prefix}-group" "packages/pyyaml/5.3.1/PyYAML-5.3.1.tar.gz"
+    _ASYNC_CURL="Y" f_get_asset "${_prefix}-group" "packages/pyyaml/5.3.1/PyYAML-5.3.1.tar.gz"
 }
 
 function f_setup_p2() {
@@ -316,8 +401,8 @@ function f_setup_p2() {
         f_apiS '{"action":"coreui_Repository","method":"create","data":[{"attributes":{"proxy":{"remoteUrl":"https://download.eclipse.org/releases/2019-09/","contentMaxAge":1440,"metadataMaxAge":1440},"httpclient":{"blocked":false,"autoBlock":false,"connection":{"useTrustStore":false}},"storage":{"dataStoreName":"nexus","blobStoreName":"'${_bs_name}'","strictContentTypeValidation":true'${_extra_sto_opt}'},"negativeCache":{"enabled":true,"timeToLive":1440},"cleanup":{"policyName":[]}},"name":"'${_prefix}'-proxy","format":"","type":"","url":"","online":true,"routingRuleId":"","authEnabled":false,"httpRequestSettings":false,"recipe":"'${_prefix}'-proxy"}],"type":"rpc"}' || return $?
     fi
     # add some data for xxxx-proxy
-    f_get_asset "${_prefix}-proxy" "p2.index"
-    f_get_asset "${_prefix}-proxy" "compositeContent.jar"
+    _ASYNC_CURL="Y" f_get_asset "${_prefix}-proxy" "p2.index"
+    _ASYNC_CURL="Y" f_get_asset "${_prefix}-proxy" "compositeContent.jar"
 }
 
 function f_setup_npm() {
@@ -335,8 +420,8 @@ function f_setup_npm() {
         f_apiS '{"action":"coreui_Repository","method":"create","data":[{"attributes":{"proxy":{"remoteUrl":"https://registry.npmjs.org","contentMaxAge":1440,"metadataMaxAge":1440},"httpclient":{"blocked":false,"autoBlock":true,"connection":{"useTrustStore":false}},"storage":{"blobStoreName":"'${_bs_name}'","strictContentTypeValidation":true'${_extra_sto_opt}'},"negativeCache":{"enabled":true,"timeToLive":1440},"cleanup":{"policyName":[]}},"name":"'${_prefix}'-proxy","format":"","type":"","url":"","online":true,"routingRuleId":"","authEnabled":false,"httpRequestSettings":false,"recipe":"npm-proxy"}],"type":"rpc"}' || return $?
     fi
     # add some data for xxxx-proxy
-    f_get_asset "${_prefix}-proxy" "lodash/-/lodash-4.17.19.tgz"
-    f_get_asset "${_prefix}-proxy" "@sonatype/policy-demo/-/policy-demo-2.0.0.tgz"
+    _ASYNC_CURL="Y" f_get_asset "${_prefix}-proxy" "lodash/-/lodash-4.17.19.tgz"
+    _ASYNC_CURL="Y" f_get_asset "${_prefix}-proxy" "@sonatype/policy-demo/-/policy-demo-2.0.0.tgz"
 
     if [ -n "${_source_nexus_url}" ] && [ -n "${_extra_sto_opt}" ] && ! _is_repo_available "${_prefix}-repl-proxy"; then
         f_apiS '{"action":"coreui_Repository","method":"create","data":[{"attributes":{"npm":{"removeNonCataloged":false,"removeQuarantinedVersions":false},"proxy":{"remoteUrl":"'${_source_nexus_url%/}'/repository/'${_prefix}'-hosted/","contentMaxAge":60,"metadataMaxAge":60},"replication":{"preemptivePullEnabled":true,"assetPathRegex":""},"httpclient":{"blocked":false,"autoBlock":true,"connection":{"useTrustStore":true}},"storage":{"blobStoreName":"'${_bs_name}'","strictContentTypeValidation":true'${_extra_sto_opt}'},"negativeCache":{"enabled":true,"timeToLive":1440},"cleanup":{"policyName":[]}},"name":"'${_prefix}'-repl-proxy","format":"","type":"","url":"","online":true,"routingRuleId":"","authEnabled":false,"httpRequestSettings":false,"recipe":"npm-proxy"}],"type":"rpc","tid"' || return $?
@@ -348,7 +433,7 @@ function f_setup_npm() {
     fi
     # add some data for xxxx-hosted
     curl -sSf -o "${_TMP%/}/sonatype-policy-demo-2.1.0.tgz" -L "https://registry.npmjs.org/@sonatype/policy-demo/-/policy-demo-2.1.0.tgz"
-    f_upload_asset "${_prefix}-hosted" -F "npm.asset=@${_TMP%/}/sonatype-policy-demo-2.1.0.tgz"
+    _ASYNC_CURL="Y" f_upload_asset "${_prefix}-hosted" -F "npm.asset=@${_TMP%/}/sonatype-policy-demo-2.1.0.tgz"
 
     # If no xxxx-prop-hosted (proprietary), create it (from 3.30)
     # https://help.sonatype.com/integrations/iq-server-and-repository-management/iq-server-and-nxrm-3.x/preventing-namespace-confusion
@@ -366,7 +451,7 @@ function f_setup_npm() {
     fi
     # add some data for xxxx-group
     #f_get_asset "${_prefix}-group" "grunt/-/grunt-1.1.0.tgz"
-    f_get_asset "${_prefix}-proxy" "@sonatype/policy-demo/-/policy-demo-2.3.0.tgz"
+    _ASYNC_CURL="Y" f_get_asset "${_prefix}-proxy" "@sonatype/policy-demo/-/policy-demo-2.3.0.tgz"
 }
 
 function f_setup_nuget() {
@@ -382,7 +467,7 @@ function f_setup_nuget() {
     if ! _is_repo_available "${_prefix}-v2-proxy"; then
         f_apiS '{"action":"coreui_Repository","method":"create","data":[{"attributes":{"nugetProxy":{"nugetVersion":"V2","queryCacheItemMaxAge":3600},"proxy":{"remoteUrl":"https://www.nuget.org/api/v2/","contentMaxAge":1440,"metadataMaxAge":1440},"httpclient":{"blocked":false,"autoBlock":true,"connection":{"useTrustStore":false}},"storage":{"blobStoreName":"'${_bs_name}'","strictContentTypeValidation":true'${_extra_sto_opt}'},"negativeCache":{"enabled":true,"timeToLive":1440},"cleanup":{"policyName":[]}},"name":"'${_prefix}'-v2-proxy","format":"","type":"","url":"","online":true,"routingRuleId":"","authEnabled":false,"httpRequestSettings":false,"recipe":"nuget-proxy"}],"type":"rpc"}'
     fi
-    f_get_asset "${_prefix}-v2-proxy" "/HelloWorld/1.3.0.15" "${_TMP%/}/helloworld.1,3.0.15.nupkg"
+    _ASYNC_CURL="Y" f_get_asset "${_prefix}-v2-proxy" "/HelloWorld/1.3.0.15"
     if ! _is_repo_available "${_prefix}-v3-proxy"; then
         f_apiS '{"action":"coreui_Repository","method":"create","data":[{"attributes":{"nugetProxy":{"nugetVersion":"V3","queryCacheItemMaxAge":3600},"proxy":{"remoteUrl":"https://api.nuget.org/v3/index.json","contentMaxAge":1440,"metadataMaxAge":1440},"httpclient":{"blocked":false,"autoBlock":true,"connection":{"useTrustStore":false}},"storage":{"blobStoreName":"'${_bs_name}'","strictContentTypeValidation":true'${_extra_sto_opt}'},"negativeCache":{"enabled":true,"timeToLive":1440},"cleanup":{"policyName":[]}},"name":"'${_prefix}'-v3-proxy","format":"","type":"","url":"","online":true,"routingRuleId":"","authEnabled":false,"httpRequestSettings":false,"recipe":"nuget-proxy"}],"type":"rpc"}'
     fi
@@ -405,7 +490,9 @@ function f_setup_nuget() {
         f_apiS '{"action":"coreui_Repository","method":"create","data":[{"attributes":{"storage":{"blobStoreName":"'${_bs_name}'","writePolicy":"ALLOW","strictContentTypeValidation":true'${_extra_sto_opt}'},"cleanup":{"policyName":[]}},"name":"'${_prefix}'-hosted","format":"","type":"","url":"","online":true,"recipe":"nuget-hosted"}],"type":"rpc"}' || return $?
     fi
     # add some data for xxxx-hosted
-    f_upload_asset "${_prefix}-hosted" -F "nuget.asset=@${_TMP%/}/test.2.0.1.1.nupkg"
+    if [ -s "${_TMP%/}/test.2.0.1.1.nupkg" ]; then
+        _ASYNC_CURL="Y" f_upload_asset "${_prefix}-hosted" -F "nuget.asset=@${_TMP%/}/test.2.0.1.1.nupkg"
+    fi
 
     # If no xxxx-group, create it
     if ! _is_repo_available "${_prefix}-v3-group"; then
@@ -413,7 +500,7 @@ function f_setup_nuget() {
         f_apiS '{"action":"coreui_Repository","method":"create","data":[{"attributes":{"storage":{"blobStoreName":"'${_bs_name}'","strictContentTypeValidation":true'${_extra_sto_opt}'},"group":{"memberNames":["'${_prefix}'-hosted","'${_prefix}'-v3-proxy"]}},"name":"'${_prefix}'-v3-group","format":"","type":"","url":"","online":true,"recipe":"nuget-group"}],"type":"rpc"}' || return $?
     fi
     # add some data for xxxx-group
-    f_get_asset "${_prefix}-v3-group" "/v3/content/nlog/3.1.0/nlog.3.1.0.nupkg" "${_TMP%/}/nlog.3.1.0.nupkg"  # this one may fail on some Nexus version
+    _ASYNC_CURL="Y" f_get_asset "${_prefix}-v3-group" "/v3/content/nlog/3.1.0/nlog.3.1.0.nupkg"  # this one may fail on some Nexus version
 }
 
 #_NEXUS_URL=http://node3281.standalone.localdomain:8081/ f_setup_docker
@@ -576,7 +663,7 @@ function f_setup_yum() {
     fi
     if [ -s "${_upload_file}" ]; then
         #curl -D/dev/stderr -u admin:admin123 -X PUT "${_NEXUS_URL%/}/repository/${_prefix}-hosted/7/os/x86_64/Packages/$(basename ${_upload_file})" -T ${_upload_file}
-        f_upload_asset "${_prefix}-hosted" -F "yum.asset=@${_upload_file}" -F "yum.asset.filename=$(basename ${_upload_file})" -F "yum.directory=7/os/x86_64/Packages"
+        _ASYNC_CURL="Y" f_upload_asset "${_prefix}-hosted" -F "yum.asset=@${_upload_file}" -F "yum.asset.filename=$(basename ${_upload_file})" -F "yum.directory=7/os/x86_64/Packages"
     fi
     #curl -u 'admin:admin123' --upload-file /etc/pki/rpm-gpg/RPM-GPG-KEY-pmanager ${r_NEXUS_URL%/}/repository/yum-hosted/RPM-GPG-KEY-pmanager
 
@@ -633,14 +720,14 @@ function f_setup_rubygem() {
     fi
     # add some data for xxxx-hosted
     if [ -s "${_TMP%/}/loudmouth-0.2.4.gem" ]; then
-        f_upload_asset "${_prefix}-hosted" -F rubygem.asset=@${_TMP%/}/loudmouth-0.2.4.gem
+        _ASYNC_CURL="Y" f_upload_asset "${_prefix}-hosted" -F rubygem.asset=@${_TMP%/}/loudmouth-0.2.4.gem
     fi
 
     # If no xxxx-group, create it
     if ! _is_repo_available "${_prefix}-group"; then
         f_apiS '{"action":"coreui_Repository","method":"create","data":[{"attributes":{"storage":{"blobStoreName":"'${_bs_name}'","strictContentTypeValidation":true'${_extra_sto_opt}'},"group":{"memberNames":["'${_prefix}'-hosted","'${_prefix}'-proxy"]}},"name":"'${_prefix}'-group","format":"","type":"","url":"","online":true,"recipe":"rubygems-group"}],"type":"rpc"}' > ${_TMP%/}/f_apiS_last.out || return $?
     fi
-    f_get_asset "${_prefix}-group" "gems/CFPropertyList-3.0.3.gem" "${_TMP%/}/CFPropertyList-3.0.3.gem"
+    _ASYNC_CURL="Y" f_get_asset "${_prefix}-group" "gems/CFPropertyList-3.0.3.gem"
 }
 function _gen_gemrc() {
     local _repo_url="${1}"
@@ -719,7 +806,7 @@ function f_setup_bower() {
         f_apiS '{"action":"coreui_Repository","method":"create","data":[{"attributes":{"bower":{"rewritePackageUrls":true},"proxy":{"remoteUrl":"https://registry.bower.io","contentMaxAge":1440,"metadataMaxAge":1440},"httpclient":{"blocked":false,"autoBlock":true,"connection":{"useTrustStore":false}},"storage":{"blobStoreName":"'${_bs_name}'","strictContentTypeValidation":true'${_extra_sto_opt}'},"negativeCache":{"enabled":true,"timeToLive":1440},"cleanup":{"policyName":[]}},"name":"'${_prefix}'-proxy","format":"","type":"","url":"","online":true,"routingRuleId":"","authEnabled":false,"httpRequestSettings":false,"recipe":"bower-proxy"}],"type":"rpc"}' || return $?
     fi
     # add some data for xxxx-proxy
-    f_get_asset "${_prefix}-proxy" "/jquery/versions.json" "${_TMP%/}/bowser_jquery_versions.json"
+    _ASYNC_CURL="Y" f_get_asset "${_prefix}-proxy" "/jquery/versions.json"
     # TODO: hosted and group
 }
 
@@ -837,7 +924,7 @@ print(\"Specs/%s/%s/%s/%s/%s/%s.podspec.json\" % (h[0],h[1],h[2],n,v,n))")"
     if [ -n "${_url_tar_gz}" ]; then
         curl -sf -u "${r_ADMIN_USER:-"${_ADMIN_USER}"}:${r_ADMIN_PWD:-"${_ADMIN_PWD}"}" -I "${_url_tar_gz}"
     else
-        f_get_asset "${_prefix}-proxy" "pods/${_name}/${_ver}/${_ver}.tar.gz"
+        _ASYNC_CURL="Y" f_get_asset "${_prefix}-proxy" "pods/${_name}/${_ver}/${_ver}.tar.gz"
     fi
 }
 
@@ -877,7 +964,7 @@ function f_setup_apt() {
         f_apiS '{"action":"coreui_Repository","method":"create","data":[{"attributes":{"apt":{"distribution":"ubuntu","flat":false},"proxy":{"remoteUrl":"http://archive.ubuntu.com/ubuntu/","contentMaxAge":1440,"metadataMaxAge":1440},"httpclient":{"blocked":false,"autoBlock":true},"storage":{"blobStoreName":"'${_bs_name}'","strictContentTypeValidation":true'${_extra_sto_opt}'},"negativeCache":{"enabled":true,"timeToLive":1440},"cleanup":{"policyName":[]}},"name":"'${_prefix}'-proxy","format":"","type":"","url":"","online":true,"routingRuleId":"","authEnabled":false,"httpRequestSettings":false,"recipe":"apt-proxy"}],"type":"rpc"}' || return $?
     fi
     # add some data for xxxx-proxy
-    f_get_asset "apt-proxy" "pool/main/a/appstream/appstream_0.9.4-1_amd64.deb"
+    _ASYNC_CURL="Y" f_get_asset "apt-proxy" "pool/main/a/appstream/appstream_0.9.4-1_amd64.deb"
 
     if ! _is_repo_available "${_prefix}-debian-proxy"; then
         # distribution should be focal, bionic, etc, but it seems any string is OK.
@@ -895,7 +982,7 @@ function f_setup_apt() {
         fi
     fi
     if [ -s "${_TMP%/}/hello-world_1.0.0.deb" ] || curl -sf -o ${_TMP%/}/hello-world_1.0.0.deb -L "https://github.com/hajimeo/samples/raw/master/misc/hello-world_1.0.0_unsigned.deb"; then
-        f_upload_asset "${_prefix}-hosted" -F apt.asset=@${_TMP%/}/hello-world_1.0.0.deb
+        _ASYNC_CURL="Y" f_upload_asset "${_prefix}-hosted" -F apt.asset=@${_TMP%/}/hello-world_1.0.0.deb
     fi
 }
 
@@ -975,7 +1062,7 @@ function f_setup_raw() {
     fi
     dd if=/dev/zero of=${_TMP%/}/test_1k.img bs=1 count=0 seek=1024
     if [ -s "${_TMP%/}/test_1k.img" ]; then
-        f_upload_asset "${_prefix}-hosted" -F raw.directory=test -F raw.asset1=@${_TMP%/}/test_1k.img -F raw.asset1.filename=test_1k.img
+        _ASYNC_CURL="Y" f_upload_asset "${_prefix}-hosted" -F raw.directory=test -F raw.asset1=@${_TMP%/}/test_1k.img -F raw.asset1.filename=test_1k.img
     fi
     # Quicker way: --limit-rate=4k
     # curl -D- -u 'admin:admin123' -T <(echo 'test') "${_NEXUS_URL%/}/repository/raw-hosted/test/test.txt"
@@ -985,7 +1072,7 @@ function f_setup_raw() {
         f_apiS '{"action":"coreui_Repository","method":"create","data":[{"attributes":{"storage":{"blobStoreName":"'${_bs_name}'","strictContentTypeValidation":false'${_extra_sto_opt}'},"group":{"memberNames":["'${_prefix}'-hosted"]}},"name":"'${_prefix}'-group","format":"","type":"","url":"","online":true,"recipe":"raw-group"}],"type":"rpc"}' || return $?
     fi
     # add some data for xxxx-group
-    f_get_asset "${_prefix}-group" "test/test_1k.img"
+    #_ASYNC_CURL="Y" f_get_asset "${_prefix}-group" "test/test_1k.img"
 }
 
 function f_branding() {
@@ -1164,10 +1251,11 @@ function f_get_asset() {
         _get_asset "$@"
     fi
 }
+#NOTE: using _ASYNC_CURL and _NO_DATA
 function _get_asset() {
     local _repo="$1"
     local _path="$2"
-    local _out_path="${3:-"/dev/null"}"
+    local _out_path="${3}"
     local _base_url="${4:-"${r_NEXUS_URL:-"${_NEXUS_URL}"}"}"
     local _user="${5:-"${r_ADMIN_USER:-"${_ADMIN_USER}"}"}"
     local _pwd="${6:-"${r_ADMIN_PWD:-"${_ADMIN_PWD}"}"}"
@@ -1179,7 +1267,19 @@ function _get_asset() {
     fi
     local _curl="curl -sf"
     ${_DEBUG} && _curl="curl -fv"
-    ${_curl} -D ${_TMP%/}/_proxy_test_header_$$.out -o ${_out_path} -u ${_user}:${_pwd} -k "${_base_url%/}/repository/${_repo%/}/${_path#/}"
+    if [ -n "${_out_path}" ]; then
+        _curl="${_curl} -D ${_TMP%/}/_proxy_test_header_$$.out -o ${_out_path}"
+    else
+        cat /dev/null > ${_TMP%/}/_proxy_test_header_$$.out
+        _curl="${_curl} -I" # NOTE: this is NOT same as '-X HEAD'
+    fi
+    _curl="${_curl} -u ${_user}:${_pwd} -k \"${_base_url%/}/repository/${_repo%/}/${_path#/}\""
+    if [[ "${_ASYNC_CURL}" =~ ^[yY] ]]; then
+        # bash -c is different from eval
+        bash -c "nohup ${_curl} >/dev/null 2>&1 &" &>/dev/null
+        return $?
+    fi
+    eval "${_curl}"
     local _rc=$?
     if [ ${_rc} -ne 0 ]; then
         _log "ERROR" "Failed to get ${_base_url%/}/repository/${_repo%/}/${_path#/} (${_rc})"
@@ -1211,6 +1311,7 @@ function _get_asset_NXRM2() {
 }
 
 # Same way as using Upload UI
+#NOTE: using _ASYNC_CURL env variable
 function f_upload_asset() {
     local __doc__="Upload an asset with Upload API"
     local _repo="$1"
@@ -1224,7 +1325,13 @@ function f_upload_asset() {
     fi
     local _curl="curl -sf"
     ${_DEBUG} && _curl="curl -fv"
-    ${_curl} -D ${_TMP%/}/_upload_test_header_$$.out -w "%{http_code} '${_forms}' (%{time_total}s)\n" -u ${_usr}:${_pwd} -H "accept: application/json" -H "Content-Type: multipart/form-data" -X POST -k "${_base_url%/}/service/rest/v1/components?repository=${_repo}" ${_forms}
+    _curl="${_curl} -D ${_TMP%/}/_upload_test_header_$$.out -w \"%{http_code} ${_forms} (%{time_total}s)\n\" -u ${_usr}:${_pwd} -H \"accept: application/json\" -H \"Content-Type: multipart/form-data\" -X POST -k \"${_base_url%/}/service/rest/v1/components?repository=${_repo}\" ${_forms}"
+    if [[ "${_ASYNC_CURL}" =~ ^[yY] ]]; then
+        # bash -c is different from eval
+        bash -c "nohup ${_curl} >/dev/null 2>&1 &" &>/dev/null
+        return $?
+    fi
+    eval "${_curl}"
     local _rc=$?
     if [ ${_rc} -ne 0 ]; then
         if grep -qE '^HTTP/1.1 [45]' ${_TMP%/}/_upload_test_header_$$.out; then
@@ -1236,15 +1343,6 @@ function f_upload_asset() {
             cat ${_TMP%/}/_upload_test_header_$$.out >&2
         fi
     fi
-    # If going to migrate from NXRM2 or some exported repository
-    #_sample=maven-hosted/com/example/nexus-proxy/1.0.1-SNAPSHOT/maven-metadata.xml
-    #if [[ "${_sample}" =~ ^\.?/?([^/]+)/(.+)/([^/]+)/([^/]+)/(.+)$ ]]; then
-    #    echo ${BASH_REMATCH[1]}   # repo name
-    #    echo ${BASH_REMATCH[2]} | sed 's|/|.|g'   # group id
-    #    echo ${BASH_REMATCH[3]}   # artifact id
-    #    echo ${BASH_REMATCH[4]}   # version string
-    #    echo ${BASH_REMATCH[5]}   # filename
-    #fi
 }
 
 
