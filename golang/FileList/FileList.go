@@ -574,7 +574,7 @@ func _printLineExtra(output string, path string, modTimeTs int64, db *sql.DB, cl
 	// NOTE: Not doing same for _DEL_DATE_TO_ts as some task may touch.
 
 	// no deleted date from/to, should not need to open a file
-	if len(*_DB_CON_STR) > 0 && len(*_TRUTH) > 0 && _DEL_DATE_FROM_ts == 0 && _DEL_DATE_TO_ts == 0 {
+	if (*_RECON_FMT || !*_WITH_PROPS) && len(*_DB_CON_STR) > 0 && len(*_TRUTH) > 0 && _DEL_DATE_FROM_ts == 0 && _DEL_DATE_TO_ts == 0 {
 		if *_TRUTH == "BS" && !isBlobMissingInDB("", path, db) {
 			_log("DEBUG2", "path:"+path+" exists in Database. Skipping.")
 			return ""
@@ -589,7 +589,7 @@ func _printLineExtra(output string, path string, modTimeTs int64, db *sql.DB, cl
 				_log("DEBUG", reconErr.Error())
 			}
 			return reconOutput
-		} else {
+		} else if !*_WITH_PROPS {
 			return output
 		}
 	}
