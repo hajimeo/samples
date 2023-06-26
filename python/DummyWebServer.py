@@ -1,6 +1,5 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
-# @see https://gist.github.com/kainam00/39c8d5876027e38f112d6f07c785bb56
 import sys
 import time
 from http.server import HTTPServer
