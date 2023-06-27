@@ -392,8 +392,10 @@ function _user_by_port() {
 function _find_port() {
     local _starting_port="${1}"
     local _how_many_try="${2:-10}"
+    local _skip_regex="${3}"
     for i in $(seq 0 ${_how_many_try}); do
         local _port=$((${_starting_port} + ${i}))
+        [ -n "${_skip_regex}" ] && [[ "${_port}" =~ ${_skip_regex} ]] && continue
         local _pid=$(_pid_by_port "${_port}") || return $?
         if [ -z "${_pid}" ]; then
             echo "${_port}"
