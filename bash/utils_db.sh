@@ -243,8 +243,8 @@ function _postgresql_create_role_and_db() {
             ${_psql_as_admin} -d template1 -c "CREATE DATABASE ${_dbname} WITH OWNER ${_dbusr} ENCODING 'UTF8';"
         fi
         # NOTE: Below two lines are NOT needed because of 'WITH OWNER'. Just for testing purpose to avoid unnecessary permission errors.
-        ${_psql_as_admin} -d template1 -c "GRANT ALL ON DATABASE ${_dbname} TO \"${_dbusr}\";" || return $?
-        ${_psql_as_admin} -d ${_dbname} -c "GRANT ALL ON SCHEMA public TO \"${_dbusr}\";"
+        ${_psql_as_admin} -d template1 -c "GRANT ALL ON DATABASE ${_dbname} TO \"${_dbusr}\";" >/dev/null || return $?
+        ${_psql_as_admin} -d ${_dbname} -c "GRANT ALL ON SCHEMA public TO \"${_dbusr}\";" >/dev/null
 
         if [ -n "${_schema}" ]; then
             local _search_path="${_dbusr},public"
