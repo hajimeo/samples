@@ -153,6 +153,14 @@ function kBash() {
     fi
     kubectl exec "$1" -n "${_ns}" -t -i -- bash
 }
+function kConfMerge() {
+    local _append="${1}"
+    local _orig="${2:-"$HOME/.kube/config"}"
+    local _merged="${3:-"./merged_kube_config"}"
+    [ -s "${_append}" ] || return 1
+    KUBECONFIG=${_orig}:${_append} kubectl config view --flatten > ${_merged} || return $?
+    echo "Created ${_merged}"
+}
 if type aws-vault &>/dev/null && [ -s "$HOME/.kube/support_test_config" ]; then
     alias awsSpt='aws-vault exec support -- aws'
     alias kcSpt='aws-vault exec support -- kubectl'
@@ -658,11 +666,15 @@ function ncWeb() {
 function goBuild() {
     local _goFile="$1"
     local _name="$2"
-    local _destDir="${3:-"$HOME/IdeaProjects/samples/misc"}"
+    local _winAsWell="$3"
+    local _destDir="${4:-"$HOME/IdeaProjects/samples/misc"}"
     [ -z "${_name}" ] && _name="$(basename "${_goFile}" ".go" | tr '[:upper:]' '[:lower:]')"
     env GOOS=linux GOARCH=amd64 go build -o "${_destDir%/}/${_name}_Linux_x86_64" ${_goFile} && \
     env GOOS=darwin GOARCH=amd64 go build -o "${_destDir%/}/${_name}_Darwin_x86_64" ${_goFile} && \
     env GOOS=darwin GOARCH=arm64 go build -o "${_destDir%/}/${_name}_Darwin_arm64" ${_goFile} || return $?
+    if [[ "${_winAsWell}" =~ ^[yY] ]]; then
+        env GOOS=windows GOARCH=amd64 go build -o "${_destDir%/}/${_name}_Windows_x86_64" ${_goFile}
+    fi
     ls -l ${_destDir%/}/${_name}_* || return $?
     echo "curl -o /usr/local/bin/${_name} -L \"https://github.com/hajimeo/samples/raw/master/misc/${_name}_\$(uname)_\$(uname -m)\""
     date
