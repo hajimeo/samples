@@ -21,7 +21,7 @@
 : ${_PWD:=""}       # admin123
 : ${_IMAGE:="ratelimitpreview/test"}
 : ${_TAG="latest"}
-: ${_PATH="/v2/library/python/blobs/sha256:18264500740dfbb825d075853637a67404c1da0089bf54f2a5a4d37220da7be2"}
+: ${_PATH="/v2/ratelimitpreview/test/blobs/sha256:edabd795951a0baa224f156b81ab1afa71c64c3cf10b1ded9225c2a6810f4a3d"}    # This path can be diff from Nexus's path
 #: ${_DOCKER_REGISTRY_URL:="http://localhost:8081/repository/docker-proxy/"}
 #: ${_TOKEN_SERVER_URL:="${_DOCKER_REGISTRY_URL%/}/v2/token"}
 : ${_DOCKER_REGISTRY_URL:="https://registry-1.docker.io"}
@@ -80,7 +80,7 @@ main() {
         decode_jwt "${_TOKEN}" || return $?
 
         # NOTE: curl with -I (HEAD) does not return RateLimit-Limit or RateLimit-Remaining
-        if [ -z "${_PATH#/}" ] && [ -n "${_IMAGE}" ] && [ -n "${_TAG}" ]; then
+        if [ -n "${_IMAGE}" ] && [ -n "${_TAG}" ]; then
             echo "### Requesting '${_DOCKER_REGISTRY_URL%/}/v2/${_IMAGE}/manifests/${_TAG}'" >&2
             ${_CURL} -H "Authorization: Bearer ${_TOKEN}" -H "Accept: application/json" "${_DOCKER_REGISTRY_URL%/}/v2/${_IMAGE}/manifests/${_TAG}"
         fi
