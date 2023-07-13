@@ -1,7 +1,7 @@
 /*
 #go mod init github.com/hajimeo/samples/golang/FileList
 #go mod tidy
-goBuild ./FileList.go file-list
+goBuild ./FileList.go
 
 echo 3 > /proc/sys/vm/drop_caches
 
