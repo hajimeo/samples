@@ -96,10 +96,10 @@ main() {
         if [ -n "${_PATH#/}" ]; then
             echo "### Requesting '${_DOCKER_REGISTRY_URL%/}/${_PATH#/}'" >&2
             # -H "Accept-Encoding: gzip,deflate"
-            ${_CURL} -H "Authorization: Bearer ${_TOKEN}" -o ${_TMP%/}/layer_result.out "${_DOCKER_REGISTRY_URL%/}/${_PATH#/}"
-            if [ -s ${_TMP%/}/layer_result.out ]; then
+            ${_CURL} -H "Authorization: Bearer ${_TOKEN}" -o ${_TMP%/}/path_result.out "${_DOCKER_REGISTRY_URL%/}/${_PATH#/}"
+            if [ -s ${_TMP%/}/path_result.out ]; then
                 echo "### sha256 of ${_PATH#/}" >&2
-                sha256sum ${_TMP%/}/layer_result.out
+                sha256sum ${_TMP%/}/path_result.out
             fi
         fi
     fi

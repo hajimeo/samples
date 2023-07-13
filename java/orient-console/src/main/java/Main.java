@@ -456,7 +456,7 @@ public class Main {
     }
 
     private static boolean isSpecialQueryAndProcess(ODatabaseDocumentTx db, String input) {
-        if (input.startsWith("--")) {
+        if (input.trim().startsWith("--")) {
             return true;
         }
         if (input.toLowerCase().startsWith("set pretty true")) { // TODO: not property implementing my own 'set'

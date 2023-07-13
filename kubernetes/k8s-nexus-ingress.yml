@@ -1,6 +1,6 @@
 # kubectl create secret tls nexus-tls -n sonatype --key ~/IdeaProjects/samples/misc/standalone.localdomain.key --cert ~/IdeaProjects/samples/misc/standalone.localdomain.crt
 # kubectl apply -n sonatype -f ./k8s-nexus-ingress.yml
-# To check: kubectl exec -n ingress nginx-ingress-microk8s-controller-tlg6c cat /etc/ingress-nginx.conf
+# To check: kubectl exec -n ingress nginx-ingress-microk8s-controller-***** cat /etc/ingress-nginx.conf
 
 apiVersion: networking.k8s.io/v1
 kind: IngressClass

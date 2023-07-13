@@ -451,7 +451,6 @@ public class AssetDupeCheckV2 {
         } else if (index != null && IS_REPAIRING) {
             // If index exists and repairing, just clear, then it will be rebuilt later
             index.clear();
-            IS_REBUILDING = false;  // no need to re-rebuild
             log("Index: " + indexName + " is cleared (= do not terminate this script in the middle)");
         } else {
             // If no index or not repairing, create a dummy index
@@ -723,7 +722,7 @@ public class AssetDupeCheckV2 {
 
                 if (IS_REBUILDING) {
                     if (!result) {
-                        log("Index rebuild is requested but not rebuilding as checkIndex returned false (maybe dupes or missing index)");
+                        log("[WARN] Index rebuild is skipped as checkIndex returned false (maybe dupes or missing index)");
                     } else {
                         rebuildIndex(db, INDEX_NAME);
                     }

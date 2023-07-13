@@ -65,7 +65,7 @@ spec:
           # NOTE: 'echo nameserver ...' line is my personal hack as i do not want to use coreDNS
           #       When recreating, please manually remove /nexus-data/etc/fabric/nexus-store.properties (because of HA) in case JDBC setting was changed.
           #       Also, it seems the exit code needs to be 0
-          #       '/nexus-data/bin/tar' for broken kubectl cp from 3.42.0
+          #       '/nexus-data/bin/tar' for broken kubectl cp from 3.42.0, and fixed from 3.53
           #       https://vault.centos.org/centos/8/BaseOS/x86_64/os/Packages/tar-1.30-5.el8.x86_64.rpm
           command: ['sh', '-c', 'id;[ -n \"${_DNS}\" ] && echo nameserver \"${_DNS}\" > /etc/resolv.conf; mkdir -v -p /nexus-data/etc/ssl; [ -s /nexus-data/etc/nexus.properties ] || chown -R -v ${_RUNAS_USR:-200}:${_RUNAS_USR:-200} /nexus-data; [ ! -d /nexus-data/bin ] && mkdir /nexus-data/bin; [ ! -f /nexus-data/bin/tar ] && wget -q https://github.com/hajimeo/samples/raw/master/misc/tar-1.30-5.el8.x86_64.bin -O /nexus-data/bin/tar && chmod -v a+x /nexus-data/bin/tar; echo \"Completed.\"']
           volumeMounts:

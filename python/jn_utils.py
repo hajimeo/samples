@@ -29,6 +29,8 @@ Reload jn_utils.py after modifying the code (but anyway you lose loaded sqlite t
     importlib.reload(ju)
 
 == Sqlite tips (which I often forget) ==================================
+Show the values of affected ID in group by
+    GROUP_CONCAT(rid, ',') as rids
 Convert Unix timestamp with milliseconds to datetime
     DATETIME(ROUND(dateColumn / 1000), 'unixepoch')
 Get date_hour

@@ -1100,27 +1100,27 @@ function f_microk8s() {
     # https://stackoverflow.com/questions/63803171/how-to-change-microk8s-kubernetes-storage-location
     # edit /var/snap/microk8s/current/args/containerd
 
-    ufw allow in on cni0 && ufw allow out on cni0
-    ufw default allow routed
+    #ufw allow in on cni0 && ufw allow out on cni0
+    #ufw default allow routed
+    microk8s.start || return $?
     # surprisingly ingress seems to work without coredns
-    microk8s enable helm3 ingress dns ${dashboard} # dashboard prometheus   # 'storage' is deprecated
+    microk8s enable ingress ${dashboard} # helm3 dns are already enabled # 'storage' is deprecated
     #microk8s disable metallb; microk8s enable metallb:192.168.1.200-192.168.1.240
     echo "To replace nginx SSL/HTTPS certificate
     microk8s kubectl -n ingress create secret tls standalone.localdomain --key /var/tmp/share/cert/standalone.localdomain.key --cert /var/tmp/share/cert/standalone.localdomain.crt
     microk8s kubectl edit -n ingress daemonsets nginx-ingress-microk8s-controller
-    # then add below line in the containers.args:
+    # then add below line in the spec.template.spec.containers.args:
     #        - --default-ssl-certificate=ingress/standalone.localdomain
     "
-    microk8s.start || return $?
 
     # get all from all namespace (a kind of test)
     microk8s kubectl get all -A || return $?
     # If above test works, update firewall. at this moment, only for ufw
-    if type ufw &>/dev/null; then
-        ufw allow in on vxlan.calico || return $?
-        ufw allow out on vxlan.calico || return $?
-        ufw default allow routed || return $?
-    fi
+    #if type ufw &>/dev/null; then
+    #    ufw allow in on vxlan.calico || return $?
+    #    ufw allow out on vxlan.calico || return $?
+    #    ufw default allow routed || return $?
+    #fi
 
     # If Pods restart every 20 minutes. As per https://github.com/canonical/microk8s/issues/506 and https://github.com/canonical/microk8s/issues/2790
     #systemctl stop snap.microk8s.daemon-apiserver-kicker.service

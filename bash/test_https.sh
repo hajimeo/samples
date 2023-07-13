@@ -261,6 +261,7 @@ function test_https() {
     local _ca_cert="$2"
     local _cert_with_pwd="$3"
     local _cert_type="${4:-"p12"}"
+    # curl --trace ./curl_trace_$(date -u +'%Y%m%d%H%M%SZ').out -o ./curl_result.out -k "https://${_host_port}/"
 
     if curl -sf -L "http://${_host_port}" > /dev/null; then
         echo "INFO: http (not https) works on ${_host_port}" >&2

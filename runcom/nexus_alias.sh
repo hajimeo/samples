@@ -35,6 +35,28 @@ if [ -z "${_WORK_DIR%/}" ]; then
     fi
 fi
 
+function _get_rm_url() {
+    local _rm_url="${1:-${_NEXUS_URL}}"
+    if [ -z "${_rm_url}" ]; then
+        for _url in "http://localhost:8081/" "http://dh1:8081/"; do
+            if curl -f -s -I "${_url%/}/" &>/dev/null; then
+                echo "${_url%/}/"
+                _NEXUS_URL="${_url%/}/"
+                return
+            fi
+        done
+        return 1
+    fi
+    if [[ ! "${_rm_url}" =~ ^https?://.+ ]]; then
+        if [[ ! "${_rm_url}" =~ .+:[0-9]+ ]]; then   # Provided hostname only
+            _rm_url="http://${_rm_url%/}:8081/"
+        else
+            _rm_url="http://${_rm_url%/}/"
+        fi
+    fi
+    echo "${_rm_url}"
+    _NEXUS_URL="${_rm_url%/}/"
+}
 function _get_iq_url() {
     local _iq_url="${1:-${_IQ_URL}}"
     if [ -z "${_iq_url}" ]; then
@@ -200,20 +222,23 @@ function nxrmStart() {
 
 function _updateNexusProps() {
     local _cfg_file="$1"
-    touch ${_cfg_file}
-    grep -qE '^\s*nexus.security.randompassword' "${_cfg_file}" || echo "nexus.security.randompassword=false" >> "${_cfg_file}"
-    grep -qE '^\s*nexus.onboarding.enabled' "${_cfg_file}" || echo "nexus.onboarding.enabled=false" >> "${_cfg_file}"
-    grep -qE '^\s*nexus.scripts.allowCreation' "${_cfg_file}" || echo "nexus.scripts.allowCreation=true" >> "${_cfg_file}"
-    grep -qE '^\s*nexus.browse.component.tree.automaticRebuild' "${_cfg_file}" || echo "nexus.browse.component.tree.automaticRebuild=false" >> "${_cfg_file}"
+    if [ -s "${_cfg_file}" ] && [ ! -f "${_cfg_file}.orig" ]; then
+        cp -p "${_cfg_file}" "${_cfg_file}.orig"
+    fi
+    touch "${_cfg_file}" || return $?
+    grep -qE '^#?nexus.security.randompassword' "${_cfg_file}" || echo "nexus.security.randompassword=false" >> "${_cfg_file}"
+    grep -qE '^#?nexus.onboarding.enabled' "${_cfg_file}" || echo "nexus.onboarding.enabled=false" >> "${_cfg_file}"
+    grep -qE '^#?nexus.scripts.allowCreation' "${_cfg_file}" || echo "nexus.scripts.allowCreation=true" >> "${_cfg_file}"
+    grep -qE '^#?nexus.browse.component.tree.automaticRebuild' "${_cfg_file}" || echo "nexus.browse.component.tree.automaticRebuild=false" >> "${_cfg_file}"
     # NOTE: this would not work if elasticsearch directory is empty
-    grep -qE '^\s*nexus.elasticsearch.autoRebuild' "${_cfg_file}" || echo "nexus.elasticsearch.autoRebuild=false" >> "${_cfg_file}"
+    grep -qE '^#?nexus.elasticsearch.autoRebuild' "${_cfg_file}" || echo "nexus.elasticsearch.autoRebuild=false" >> "${_cfg_file}"
     # ${nexus.h2.httpListenerPort:-8082} jdbc:h2:file:./nexus (no username)
-    grep -qE '^\s*nexus.h2.httpListenerEnabled' "${_cfg_file}" || echo "nexus.h2.httpListenerEnabled=true" >> "${_cfg_file}"
+    grep -qE '^#?nexus.h2.httpListenerEnabled' "${_cfg_file}" || echo "nexus.h2.httpListenerEnabled=true" >> "${_cfg_file}"
     # Binary (or HA-C) for 'connect remote:hostname/component admin admin'
-    grep -qE '^\s*nexus.orient.binaryListenerEnabled' "${_cfg_file}" || echo "nexus.orient.binaryListenerEnabled=true" >> "${_cfg_file}"
+    grep -qE '^#?nexus.orient.binaryListenerEnabled' "${_cfg_file}" || echo "nexus.orient.binaryListenerEnabled=true" >> "${_cfg_file}"
     # For OrientDB studio (hostname:2480/studio/index.html)
-    grep -qE '^\s*nexus.orient.httpListenerEnabled' "${_cfg_file}" || echo "nexus.orient.httpListenerEnabled=true" >> "${_cfg_file}"
-    grep -qE '^\s*nexus.orient.dynamicPlugins' "${_cfg_file}" || echo "nexus.orient.dynamicPlugins=true" >> "${_cfg_file}"
+    grep -qE '^#?nexus.orient.httpListenerEnabled' "${_cfg_file}" || echo "nexus.orient.httpListenerEnabled=true" >> "${_cfg_file}"
+    grep -qE '^#?nexus.orient.dynamicPlugins' "${_cfg_file}" || echo "nexus.orient.dynamicPlugins=true" >> "${_cfg_file}"
 }
 
 # https://issues.sonatype.org/browse/NEXUS-29730 java.lang.NoClassDefFoundError: com/sun/jna/Platform
@@ -264,7 +289,7 @@ function _prepare_install() {
 }
 
 # To install 2nd instance: _NXRM3_INSTALL_PORT=8082 _NXRM3_INSTALL_DIR=./nxrm_3.42.0-01_test nxrm3Install 3.42.0-01
-# To upgrade (from ${_dirname}/): tar -xvf $HOME/.nexus_executable_cache/nexus-3.54.1-01-mac.tgz
+# To upgrade (from ${_dirname}/): tar -xvf $HOME/.nexus_executable_cache/nexus-3.56.0-01-mac.tgz
 function nxrm3Install() {
     if [ -s "$HOME/IdeaProjects/samples/bash/setup_nexus3_repos.sh" ]; then
         source "$HOME/IdeaProjects/samples/bash/setup_nexus3_repos.sh" || return $?
@@ -842,12 +867,13 @@ function nxrm3Scripting() {
     fi
 }
 
-# Convert the DeadBlobsFinder result to a simple list
-function nxrm3DBF2list() {
+# Convert the DeadBlobsFinder result (deadBlobResult-YYYYMMDD-hhmmss.json) to a simple list
+function nxrm3DBF2csv() {
     local _json_file="$1"
-    python3 -c "import sys,json;js=json.load(open('${_json_file}'))
+    python3 -c "import sys,json,re;js=json.load(open('${_json_file}'))
 for k in js:
     for i in js[k]:
-        print('%-28s %s' % (k, i[1]))"
+        print('\"%s\",\"%s\",\"%s\",\"%s\"' % (k, i[1], re.search(r'blob_ref:([^,\}]+)', i[0]).group(1), re.search(r'name=([^,\}]+)', i[0]).group(1)))"
 }
+#nxrm3DBF2csv deadBlobResult-20230707-220054.json | rg -o '[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}' | xargs -I {} blobpath {} "" "/data/nexus/blobs/default/content/"
 #cat nxrm3DBF2list.out | awk '{print $1}' | sort | uniq | while read -r _repo; do rg "\"name\": \"${_repo}\"" --no-filename -g db_repos.json ; done

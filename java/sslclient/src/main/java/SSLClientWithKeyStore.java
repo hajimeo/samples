@@ -4,6 +4,7 @@
  * java -Djavax.net.debug=ssl,keymanager -Djavax.net.ssl.trustStore=some_truststore_to_trust_remote.jks \
  *      -Ddebug=true -DkeyStore=./some_test_keystore.jks -DkeyStoreType=JKS -DkeyStorePassword=password \
  *      SSLSocketClientWithClientAuth https://127.0.0.1:6182/path/to/request [ignore]
+ * NOTE: not using '-Djavax.net.ssl.keyStore'
  */
 
 import java.io.FileInputStream;

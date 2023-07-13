@@ -107,7 +107,7 @@ _RESP_FILE=""
 
 
 ### Nexus installation functions ##############################################################################
-# To install 2nd instance: _NXRM3_INSTALL_PORT=8082 _NXRM3_INSTALL_DIR=./nxrm_3.42.0-01_test f_install_nexus3 3.42.0-01
+# To install 1st/2nd instance: r_NEXUS_ENABLE_HA=Y f_install_nexus3 "" "nxrmha"
 # To upgrade (from ${_dirpath}/): tar -xvf $HOME/.nexus_executable_cache/nexus-3.54.1-01-mac.tgz
 function f_install_nexus3() {
     local __doc__="Install specific NXRM3 version"
@@ -125,7 +125,7 @@ function f_install_nexus3() {
     fi
     [ -z "${_ver}" ] && return 1
     if [ -z "${_port}" ]; then
-        _port="$(_find_port "8081")"
+        _port="$(_find_port "8081" "" "^8082$")"
         [ -z "${_port}" ] && return 1
         _log "INFO" "Using port: ${_port}" >&2
     fi
@@ -175,6 +175,9 @@ EOF
             fi
         fi
     fi
+    if [ "${_port}" != "8081" ]; then
+        echo "May need to execute 'export _NEXUS_URL=\"http://localhost:${_port}/\"'"
+    fi
     if _isYes "${_starting}"; then
         echo "Starting with: ${_dirpath%/}/nexus-${_ver}/bin/nexus start"; sleep 3
         eval "${_dirpath%/}/nexus-${_ver}/bin/nexus start"
@@ -202,7 +205,7 @@ function f_install_iq() {
     fi
     [ -z "${_ver}" ] && return 1
     if [ -z "${_port}" ]; then
-        _port="$(_find_port "8070")"
+        _port="$(_find_port "8070" "" "^8071$")"
         [ -z "${_port}" ] && return 1
         _log "INFO" "Using port: ${_port}" >&2
     fi
@@ -265,16 +268,14 @@ function _prepare_install() {
     local _download_dir="${4}"
 
     local _tgz_name="$(basename "${_url}")"
-    local _tgz="${_download_dir:-"."}/${_tgz_name}"
-    if [ ! -s "${_tgz}" ]; then
-        if [ -s "${HOME%/}/.nexus_executable_cache/${_tgz_name}" ]; then
-            _tgz="${HOME%/}/.nexus_executable_cache/${_tgz_name}"
-            [ -z "${_download_dir}" ] && _download_dir="${HOME%/}/.nexus_executable_cache"
-        elif [ -s "${_SHARE_DIR%/}/sonatype/${_tgz_name}" ]; then
-            _tgz="${_SHARE_DIR%/}/sonatype/${_tgz_name}"
-            [ -z "${_download_dir}" ] && _download_dir="${_SHARE_DIR%/}/sonatype"
+    if [ -z "${_download_dir%/}" ]; then
+        if [ -d "${HOME%/}/.nexus_executable_cache" ]; then
+            _download_dir="${HOME%/}/.nexus_executable_cache"
+        elif [ -d "${_SHARE_DIR%/}/sonatype" ]; then
+            _download_dir="${_SHARE_DIR%/}/sonatype"
         fi
     fi
+    local _tgz="${_download_dir:-"."}/${_tgz_name}"
     local _extractTar=true
     if [ -d "${_extract_path}" ]; then
         echo "WARN ${_extract_path} exists, so not extracting ${_tgz}"
@@ -282,8 +283,8 @@ function _prepare_install() {
     fi
     if [ ! -s "${_tgz}" ]; then
         echo "no ${_tgz}. Downloading from ${_url} ..."
-        curl -o "/tmp/${_filename}" -L "${_url}" || return $?
-        mv -v -f /tmp/${_filename} ${_tgz} || return $?
+        curl -o "/tmp/${_tgz_name}" -L "${_url}" || return $?
+        mv -v -f /tmp/${_tgz_name} ${_tgz} || return $?
     fi
     mkdir -v -p "${_extract_path}" || return $?
     tar -C ${_extract_path%/} -xf ${_tgz} || return $?
