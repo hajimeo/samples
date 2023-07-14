@@ -338,7 +338,10 @@ function f_setup_maven() {
     # add some data for xxxx-hosted
     if [ -s "${_TMP%/}/junit-4.12.jar" ]; then
         #mvn deploy:deploy-file -DgroupId=junit -DartifactId=junit -Dversion=4.21 -DgeneratePom=true -Dpackaging=jar -DrepositoryId=nexus -Durl=${r_NEXUS_URL}/repository/${_prefix}-hosted -Dfile=${_TMP%/}/junit-4.12.jar
-        _ASYNC_CURL="Y" f_upload_asset "${_prefix}-hosted" -F maven2.groupId=junit -F maven2.artifactId=junit -F maven2.version=4.21 -F maven2.asset1=@${_TMP%/}/junit-4.12.jar -F maven2.asset1.extension=jar
+        _ASYNC_CURL="Y" f_upload_asset "${_prefix}-hosted" -F maven2.groupId=com.example -F maven2.artifactId=junit -F maven2.version=4.21 -F maven2.asset1=@${_TMP%/}/junit-4.12.jar -F maven2.asset1.extension=jar
+        if curl -sf -o ${_TMP%/}/junit-4.12-sources.jar "https://repo1.maven.org/maven2/junit/junit/4.12/junit-4.12-sources.jar"; then
+            _ASYNC_CURL="Y" f_upload_asset "${_prefix}-hosted" -F maven2.groupId=com.example -F maven2.artifactId=junit -F maven2.version=4.21 -F maven2.asset1=@${_TMP%/}/junit-4.12-sources.jar -F maven2.asset1.extension=jar -F maven2.asset1.classifier=sources
+        fi
     fi
 
     # If no xxxx-group, create it
