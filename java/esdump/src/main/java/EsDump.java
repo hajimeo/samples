@@ -74,6 +74,7 @@ public class EsDump {
 
         Directory index = openIndex(luceneIndiesPath, repoNameOrIndexHash);
         if (index == null) {
+            //System.err.printf("No index under %s for %s.%n", luceneIndiesPath, repoNameOrIndexHash);
             return;
         }
         IndexReader reader = DirectoryReader.open(index);
@@ -81,6 +82,7 @@ public class EsDump {
             StandardAnalyzer analyzer = new StandardAnalyzer();
             QueryParser queryParser = new QueryParser(queryField, analyzer);
             Query q = queryParser.parse(queryStr);
+            System.err.printf("Querying field:%s with '%s'%n", queryField, queryStr);
             //Query q = new MatchAllDocsQuery();
             IndexSearcher indexSearcher = new IndexSearcher(reader);
             long printedNum = searchAndPrintResults(indexSearcher, q);
@@ -96,21 +98,23 @@ public class EsDump {
     }
 
     public static Directory openIndex(String luceneIndiesPath, String repoName) throws IOException {
+        String indexHash = repoName2IndexHash(repoName);
+        System.err.printf("%s = %s%n", repoName, indexHash);
+        if (luceneIndiesPath.isEmpty()) {
+            // Just converting repoName to hash
+            return null;
+        }
+
         File probablyDir = new File(luceneIndiesPath, repoName);
         if (!probablyDir.isDirectory()) {
-            String indexHash = repoName2IndexHash(repoName);
-            System.err.printf("%s = %s%n", repoName, indexHash);
             probablyDir = new File(luceneIndiesPath, indexHash + File.separator + "0/index");
         }
-        if (!probablyDir.isDirectory() || Files.isWritable(probablyDir.toPath())) {
-            //System.err.printf("%s does not exist or not writable.%n", probablyDir);
+        if (!probablyDir.isDirectory()) {
+            // ' || Files.isWritable(probablyDir.toPath())' doesn't work with my SSD
+            System.err.printf("%s does not exist or not writable.%n", probablyDir);
             return null;
         }
         return FSDirectory.open(probablyDir.toPath());
-    }
-
-    public static void printDoc(Document doc) {
-        System.out.printf("%s%n", doc.getBinaryValue(FIELD_NAME).utf8ToString());
     }
 
     public static long searchAndPrintResults(IndexSearcher indexSearcher, Query query) throws IOException {
@@ -119,6 +123,7 @@ public class EsDump {
         long totalHits = topDocs.totalHits; // 5.5.2
         //long totalHits = topDocs.totalHits.value; // 8.11.2
         System.err.printf("Found %d hits.%n", totalHits);
+        System.out.printf("[%n");
         while (topDocs.scoreDocs.length != 0) {
             ScoreDoc[] results = topDocs.scoreDocs;
             for (ScoreDoc scoreDoc : results) {
@@ -126,15 +131,21 @@ public class EsDump {
                 Document doc = indexSearcher.doc(docId);
                 i++;
                 System.err.printf("# Doc %d:%n", i);
-                printDoc(doc);
+                System.out.printf("%s", doc.getBinaryValue(FIELD_NAME).utf8ToString());
                 if (MAX_LIMIT > 0 && MAX_LIMIT <= i) {
+                    System.out.printf("%n");
+                    System.out.printf("]%n");
                     return i;
+                }
+                if (i < totalHits) {
+                    System.out.printf(",%n");
                 }
             }
             //Get next 10 documents after lastDoc. This gets us the next page of search results.
             ScoreDoc lastDoc = results[results.length - 1];
             topDocs = indexSearcher.searchAfter(lastDoc, query, RETRIEVE_NUM);
         }
+        System.out.printf("]%n");
         return i;
     }
 }
