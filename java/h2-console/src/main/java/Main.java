@@ -1,6 +1,7 @@
 /**
  * https://www.codejava.net/java-se/jdbc/connect-to-h2-database-examples
  */
+
 import org.h2.jdbc.JdbcSQLException;
 import org.json.JSONObject;
 import org.jline.reader.*;
@@ -46,6 +47,8 @@ public class Main {
 
     public static final Pattern describeNamePtn =
             Pattern.compile("(info|describe|desc) (table|class|index) ([^;]+)", Pattern.CASE_INSENSITIVE);
+    public static final Pattern exportNamePtn =
+            Pattern.compile("export (.+) to (.+)", Pattern.CASE_INSENSITIVE);
     public static final Pattern setPagingPtn =
             Pattern.compile("(set) (page|paging|offset) ([0-9]+)", Pattern.CASE_INSENSITIVE);
 
@@ -273,7 +276,7 @@ public class Main {
     }
 
     private static boolean isSpecialQueryAndProcess(String input) throws SQLException {
-        if (input.startsWith("--")) {
+        if (input.trim().startsWith("--")) {
             return true;
         }
         if (input.toLowerCase().startsWith("set autocommit true")) {
@@ -345,6 +348,17 @@ public class Main {
             execQuery(query, false);
             return true;
         }
+        if (input.toLowerCase().startsWith("export")) {
+            Matcher matcher = exportNamePtn.matcher(input);
+            if (matcher.find()) {
+                String[] names = matcher.group(1).replace("*", "%").split("\\.", 2);
+                String exportTo = matcher.group(2);
+                exportTables(names, exportTo);
+            } else {
+                log("No match found from " + input, isDebug);
+            }
+            return true;
+        }
         return false;
     }
 
@@ -370,6 +384,36 @@ public class Main {
                 System.err.println("^D");
                 return;
             }
+        }
+    }
+
+    private static void exportTables(String[] schema_and_table, String exportToPath) {
+        String query = "SELECT TABLE_SCHEMA, TABLE_NAME FROM INFORMATION_SCHEMA.TABLES";
+        String where = " WHERE TABLE_NAME LIKE '" + schema_and_table[0] + "'";
+        if (schema_and_table.length > 1) {
+            if (schema_and_table[1].equals("%")) {
+                where = " WHERE TABLE_SCHEMA like '" + schema_and_table[0] + "'";
+            } else {
+                where = " WHERE TABLE_SCHEMA like '" + schema_and_table[0] + "' AND TABLE_NAME like '" + schema_and_table[1] + "'";
+            }
+        }
+
+        ResultSet rs;
+        try {
+            if (stat.execute(query + where)) {
+                rs = stat.getResultSet();
+                while (rs.next()) {
+                    String export_query = "SCRIPT SIMPLE TO '" + exportToPath + "/tbl_" + rs.getString(1) + "_" + rs.getString(2) + ".sql' TABLE " + rs.getString(1) + "." + rs.getString(2) + ";";
+                    try {
+                        log(export_query);
+                        stat.execute(export_query);
+                    } catch (SQLException e) {
+                        log(e.getMessage());
+                    }
+                }
+            }
+        } catch (SQLException e) {
+            log(e.getMessage());
         }
     }
 
@@ -485,7 +529,7 @@ public class Main {
             path = path.replaceAll("\\.(h2|mv)\\.db", "");
         }
         String h2Opt = H2_DEFAULT_OPTS;
-        if (! h2ExtraOpts.isEmpty()) {
+        if (!h2ExtraOpts.isEmpty()) {
             h2Opt = h2Opt + ";" + h2ExtraOpts;
         }
         try {
