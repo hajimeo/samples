@@ -680,11 +680,13 @@ function goBuild() {
     date
 }
 
-# backup & cleanup (backing up files smaller than 10MB only)
+# backup & cleanup Cases (backing up files smaller than 10MB only)
 function backupC() {
-    local _src="${1:-"$HOME/Documents/cases"}"
-    local _dst="${2-"/Volumes/D512/hajime/cases"}"  # if not specified, delete only
-    #local _dst="${2-"hosako@z230:/cygdrive/h/hajime/cases"}"
+    local _src="${1:-"/Volumes/Samsung_T5/hajime/cases"}"
+    local _ext_backup="${2:-"/Volumes/Samsung_T5/hajime/backups"}"
+
+    local _find="find"
+    type gfind &>/dev/null && _find="gfind"
 
     if which code && [ -d "$HOME/backup" ]; then
         code --list-extensions | xargs -L 1 echo code --install-extension >$HOME/backup/vscode_install_extensions.sh || return $?
@@ -717,42 +719,32 @@ function backupC() {
     # NOTE: xargs may not work with very long file name 'mv: rename {} to /Users/hosako/.Trash/{}: No such file or directory', so not using.
     _src="$(realpath "${_src}")"    # because find -L ... -delete does not work
     [ -z "${_src%/}" ] && return 12
-    find ${_src%/} -type f -mtime +7 -size 0 \( ! -name "._*" \) -print -delete 2>/dev/null &
-    find ${_src%/} -type d -mtime +14 -name '*_tmp' -print -delete 2>/dev/null &
-    find ${_src%/} -type f -mtime +14 -name '*.tmp' -print -delete 2>/dev/null &
-    find ${_src%/} -type f -mtime +60 -name "*.log" -print -delete 2>/dev/null &
-    find ${_src%/} -type f -mtime +90 -size +128000k -print -delete 2>/dev/null &
-    find ${_src%/} -type f -mtime +180 -print -delete 2>/dev/null &
-    wait
-    # Wait then deleting empty directories. NOTE: this find command requires "/*"
-    if [ "Darwin" = "$(uname)" ]; then
-        gfind ${_src%/}/* -type d -mtime +2 -empty -print -delete 2>/dev/null &
-    else
-        find ${_src%/}/* -type d -mtime +2 -empty -print -delete 2>/dev/null &
-    fi
+    ${_find} ${_src%/} -type f -mtime +7 -size 0 \( ! -name "._*" \) -print -delete 2>/dev/null &
+    ${_find} ${_src%/} -type d -mtime +14 -name '*_tmp' -print -delete 2>/dev/null &
+    ${_find} ${_src%/} -type f -mtime +14 -name '*.tmp' -print -delete 2>/dev/null &
+    ${_find} ${_src%/} -type f -mtime +60 -name "*.log" -print -delete 2>/dev/null &
+    ${_find} ${_src%/} -type f -mtime +90 -size +128000k -print -delete 2>/dev/null &
+    ${_find} ${_src%/} -type f -mtime +180 -print -delete 2>/dev/null &
 
     #[ ! -d "$HOME/.Trash" ] && return 13
     #local _mv="mv --backup=t"
     #[ "Darwin" = "$(uname)" ] && _mv="gmv --backup=t"
-    #find ${_src%/} -type f -mtime +360 -size +100k -print0 | xargs -0 -n1 -I {} ${_mv} "{}" $HOME/.Trash/ &
-    #find ${_src%/} -type f -mtime +270 -size +10240k -print0 | xargs -0 -n1 -I {} ${_mv} "{}" $HOME/.Trash/ &
-    #find ${_src%/} -type f -mtime +180 -size +1024000k -print0 | xargs -0 -n1 -I {} ${_mv} "{}" $HOME/.Trash/ &
-    #find ${_src%/} -type f -mtime +90  -size +2048000k -print0 | xargs -0 -n1 -I {} ${_mv} "{}" $HOME/.Trash/ &
-    #find ${_src%/} -type f -mtime +45 -size +4048000k -print0 | xargs -0 -n1 -I {} ${_mv} "{}" $HOME/.Trash/ &
-    #wait
+    #${_find} ${_src%/} -type f -mtime +360 -size +100k -print0 | xargs -0 -n1 -I {} ${_mv} "{}" $HOME/.Trash/ &
+    #${_find} ${_src%/} -type f -mtime +270 -size +10240k -print0 | xargs -0 -n1 -I {} ${_mv} "{}" $HOME/.Trash/ &
+    #${_find} ${_src%/} -type f -mtime +180 -size +1024000k -print0 | xargs -0 -n1 -I {} ${_mv} "{}" $HOME/.Trash/ &
+    #${_find} ${_src%/} -type f -mtime +90  -size +2048000k -print0 | xargs -0 -n1 -I {} ${_mv} "{}" $HOME/.Trash/ &
+    #${_find} ${_src%/} -type f -mtime +45 -size +4048000k -print0 | xargs -0 -n1 -I {} ${_mv} "{}" $HOME/.Trash/ &
 
-    # Sync all files smaller than _size (10MB), means *NO* backup for files over 10MB.
-    if [ -n "${_dst}" ]; then
-        if [[ "${_dst}" =~ @ ]]; then
-            rsync -Pvaz --bwlimit=10240 --max-size=10000k --modify-window=1 --exclude '*_tmp' --exclude '_*' ${_src%/}/ ${_dst%/}/
-        elif [ "${_dst:0:1}" == "/" ]; then
-            #mkdir -p "${_dst%/}"
-            if [ -d "${_dst%/}" ]; then
-                # if (looks like) local disk, slightly larger size, and no -z, no --bwlimit
-                rsync -Pva --max-size=30000k --modify-window=1 --exclude '*_tmp' --exclude '_*' ${_src%/}/ ${_dst%/}/
-            fi
-        fi
+    wait
+    # Wait then deleting empty directories. NOTE: this find command requires "/*"
+    ${_find} ${_src%/}/* -type d -mtime +2 -empty -delete &
+
+    if [ -d "${_ext_backup}" ]; then
+        # Should backup something to the external backup location?
+        #rsync -Pvaz --bwlimit=10240 --max-size=10000k --modify-window=1 --exclude '*_tmp' --exclude '_*' ${_src%/}/ ${_dst%/}/
+        ${_find} "${_ext_backup%/}" -type d -maxdepth 1 -name "*_wal" -print0 | xargs -0 -P4 -I{} -t ${_find} {} -type f -mtime +30 -delete
     fi
+    wait
 
     if [ "Darwin" = "$(uname)" ]; then
         echo "#mdfind 'kMDItemFSSize > 209715200 && kMDItemContentModificationDate < \$time.now(-2419200)' | LC_ALL=C sort"   # -onlyin "${_src}"
