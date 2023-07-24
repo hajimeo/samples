@@ -1,11 +1,12 @@
 #$ cd ~/IdeaProjects/nexus-iq-server-ha/
 #$ helm template nxiqha . -f ~/IdeaProjects/samples/kubernetes/helm-nxiqha-values.yml -n sonatype-ha >~/IdeaProjects/samples/kubernetes/helm-nxiqha-deployed.yaml
 #$ helm uninstall nxiqha -n sonatype-ha
-#$ helm install nxiqha ./chart -f ~/IdeaProjects/samples/kubernetes/helm-nxiqha-values.yml --set-file iq_server.license=/var/tmp/share/sonatype/sonatype-license.lic -n sonatype-ha
+#$ helm install nxiqha ./chart -f ~/IdeaProjects/samples/kubernetes/helm-nxiqha-values.yml --set-file iq_server.license=/var/tmp/share/sonatype/sonatype-license.lic -n sonatype-ha #--set global.imageRegistry=MY_NXRM
 #$ helm upgrade nxiqha ./chart -f ~/IdeaProjects/samples/kubernetes/helm-nxiqha-values.yml -n sonatype-ha --version 1.162.0 --dry-run
 
 iq_server:
   # Sonatype official public image (can be changed to a Nexus docker repo
+  imageRegistry: # Container image registry, if not specified the Docker public registry will be used
   image: "sonatype/nexus-iq-server"
   tag: "latest"
   imagePullPolicy: "Always"
