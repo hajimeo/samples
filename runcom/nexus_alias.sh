@@ -180,7 +180,6 @@ function nxrmStart() {
     fi
     local _nexus_ver="$(basename "$(dirname "$(dirname "$(realpath "${_nexus_file}")")")")"
     local _jetty_https="$(find ${_base_dir%/} -maxdepth 4 -path '*/etc/*' -type f -name 'jetty-https.xml' 2>/dev/null | sort | tail -n1)"
-    local _logback_overrides="$(find ${_base_dir%/} -maxdepth 4 -path '*/etc/logback/*' -type f -name 'logback-overrides.xml' 2>/dev/null | sort | tail -n1)"
     local _cfg_file="${_sonatype_work%/}/etc/nexus.properties"
     if [ -n "${_nexus_vmopt}" ]; then   # This means NXRM3
         # To avoid 'Caused by: java.lang.IllegalStateException: Insufficient configured threads' https://support.sonatype.com/hc/en-us/articles/360000744687-Understanding-Eclipse-Jetty-9-4-Thread-Allocation#ReservedThreadExecutor
@@ -196,7 +195,7 @@ function nxrmStart() {
             # @see: https://issues.sonatype.org/browse/NEXUS-24867
             sed -i.bak 's@class="org.eclipse.jetty.util.ssl.SslContextFactory"@class="org.eclipse.jetty.util.ssl.SslContextFactory$Server"@g' ${_jetty_https}
         fi
-        if [[ "${_nexus_ver}" =~ nexus-3\.3 ]]; then
+        if [[ "${_nexus_ver}" =~ nexus-3\.[23] ]]; then
             # https://issues.sonatype.org/browse/NEXUS-29730 java.lang.NoClassDefFoundError: com/sun/jna/Platform
             _nexus29730 "${_base_dir%/}"
         fi
@@ -208,12 +207,6 @@ function nxrmStart() {
         # jvm 1    | Caused by: java.lang.ClassNotFoundException: org.codehaus.janino.ScriptEvaluator
         #./sonatype-work/nexus/conf/logback-nexus.xml
         #[ -n "${_java_opts}" ] && export JAVA_TOOL_OPTIONS="${_java_opts}"
-    fi
-    # Currently i'm not using.
-    if false && [ -s "${_logback_overrides}" ]; then
-        echo "$(grep -vE "(org.sonatype.nexus.orient.explain|</included>)" ${_logback_overrides})
-  <logger name='org.sonatype.nexus.orient.explain' level='TRACE'/>
-</included>" > ${_logback_overrides}
     fi
     # For java options, latter values are used, so appending
     INSTALL4J_ADD_VM_PARAMS="-XX:-MaxFDLimit ${INSTALL4J_ADD_VM_PARAMS} ${_java_opts}" ${_nexus_file} ${_mode}
@@ -239,6 +232,11 @@ function _updateNexusProps() {
     # For OrientDB studio (hostname:2480/studio/index.html)
     grep -qE '^#?nexus.orient.httpListenerEnabled' "${_cfg_file}" || echo "nexus.orient.httpListenerEnabled=true" >> "${_cfg_file}"
     grep -qE '^#?nexus.orient.dynamicPlugins' "${_cfg_file}" || echo "nexus.orient.dynamicPlugins=true" >> "${_cfg_file}"
+
+    #TODO: change the port automatically
+    #_port="$(_find_port "8081" "" "^8082$")"
+    #_upsert "${_prop}" "application-port" "${_port}" || return $?
+    #echo "INFO Using port: ${_port}" >&2; sleep 5
 }
 
 # https://issues.sonatype.org/browse/NEXUS-29730 java.lang.NoClassDefFoundError: com/sun/jna/Platform
@@ -392,9 +390,13 @@ $(sed -n "/^  loggers:/,\$p" ${_cfg_file} | grep -v '^  loggers:')" > "${_cfg_fi
 function _iqConfigAPI() {
     local _d="$1"
     local _iq_url="$2"
-    local _cmd="curl -D- -u admin:admin123 -X PUT -H \"Content-Type: application/json\" \"${_iq_url%/}/api/v2/config\""
-    echo "${_cmd} -d '${_d}'"
-    eval "${_cmd} -d '${_d}'" || return $?
+    _iq_url="$(_get_iq_url "${_iq_url}")" || return $?
+    local _cmd="curl -D- -u \"admin:admin123\" \"${_iq_url%/}/api/v2/config\""
+    if [ -n "${_d}" ]; then
+        _cmd="${_cmd} -H \"Content-Type: application/json\" -X PUT -d '${_d}'"
+    fi
+    echo "${_cmd}"
+    eval "${_cmd}" || return $?
 }
 
 function iqConfigUpdate() {
@@ -557,8 +559,9 @@ function mvn-deploy() {
 }
 
 #mvn-arch-gen
+#_get_rm_url
 #mvn-get-file "org.apache.httpcomponents:httpclient:4.5.13"
-#mvn-dep-file httpclient-4.5.13.jar "com.example:my-app:1.0" "http://dh1.standalone.localdomain:8081/repository/maven-hosted/" "" "-Dclassifier=bin"
+#mvn-dep-file httpclient-4.5.13.jar "com.example:my-app:1.0" "http://dh1.standalone.localdomain:8081/repository/maven-hosted/" "" "-Dclassifier=bin -Dorg.slf4j.simpleLogger.showDateTime=true -Dorg.slf4j.simpleLogger.dateTimeFormat=HH:mm:ss,SSS -U -X"
 #Test: get_by_gav "com.example:my-app:1.0" "http://local.standalone.localdomain:8081/repository/repo_maven_hosted/"
 function mvn-dep-file() {
     local __doc__="Wrapper of mvn deploy:deploy-file"
