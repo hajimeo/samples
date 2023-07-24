@@ -371,7 +371,6 @@ function _pid_by_port() {
     local _port="$1"
     [ -z "${_port}" ] && return 1
     # Some Linux doesn't have 'lsof' + no root user can't see all, but Mac's netstat is very different so using only if Mac...
-    # Also mac's lsof doesn't have  -sTCP:LISTEN
     if [ "`uname`" = "Darwin" ]; then
         lsof -ti:${_port} -sTCP:LISTEN | head -n1   # should be tail?
     else
