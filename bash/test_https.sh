@@ -289,11 +289,13 @@ function test_https() {
     fi
 }
 
-# Test email server's connectivity with openssl
-function test_smtp() {
-    # https://halon.io/blog/how-to-test-smtp-servers-using-the-command-line
+# Test email server's (SMTP) connectivity for STARTTLS
+# Below are not perfect as it won't send STARTTLS
+#curl -v -sf -k --ssl-reqd "smtps://localhost:25"
+#keytool -J-Djavax.net.debug=ssl:record:plaintext -printcert -sslserver localhost:25
+function test_smtps() {
     local _host_port="${1}" # smtp.office365.com:587
-    echo -n | openssl s_client -connect ${_host_port} -starttls smtp
+    echo -n | openssl s_client -connect ${_host_port} -starttls smtp # -debug
     # If postgresql
     #echo -n | openssl s_client -connect localhost:5432 -starttls postgres
 }
@@ -350,7 +352,8 @@ function get_cert_from_https() {
     local _port="${2:-443}"
     local _import_truststore="$3"   # If provided, import the cert into this store
     local _export_pem_path="$4"
-    # To DEBUG, -J-Djavax.net.debug=help, -J-Djavax.net.debug=ssl,keymanager,handshake or -J-Djavax.net.debug=ssl:record:plaintext, and without system proxy: -J-Djava.net.useSystemProxies=true
+    # To DEBUG, -J-Djavax.net.debug=help, -J-Djavax.net.debug=ssl,keymanager,handshake or -J-Djavax.net.debug=ssl:record:plaintext
+    # Without system proxy: -J-Djava.net.useSystemProxies=true
 
     [ -z "${_export_pem_path}" ] && _export_pem_path=./${_host}_${_port}.pem
     local _keytool="$(which keytool 2>/dev/null)"
@@ -380,21 +383,34 @@ function get_cert_from_https() {
             fi
         fi
     fi
-    # Trying keytool first as some https server doesn't return cert with openssl (CONNECT_CR_SRVR_HELLO:wrong version number)
-    if [ -n "${_keytool}" ]; then
-        # NOTE: It seems exporting cert with keytool may not work in Windows PowerShell
-        keytool ${_proxy_opt} -printcert -rfc -sslserver ${_host}:${_port}  # -rfc to get PEM format
-    else
-        # NOTE: openssl is better than keytool as it shows cert and more information
-        echo -n | openssl s_client -showcerts ${_proxy_opt} -connect ${_host}:${_port}
-    fi > /tmp/${_host}_${_port}.tmp || return $?
-    #gcsplit -f cert -s /tmp/${_host}_${_port}.tmp '/BEGIN CERTIFICATE/' '{*}'
+    # NOTE: Exporting cert with keytool *may* not work in Windows PowerShell (not sure)
+    ${_keytool} ${_proxy_opt} -printcert -rfc -sslserver ${_host}:${_port} > ${_export_pem_path} || return $?
+    # NOTE: openssl might be better than keytool as it shows cert and more information
+    #echo -n | openssl s_client -showcerts ${_proxy_opt} -connect ${_host}:${_port}
+    # But if openssl need to remove unnecessary lines
+    #sed -ne '/-BEGIN CERTIFICATE-/,/-END CERTIFICATE-/p' /tmp/${_host}_${_port}.tmp | tee ${_export_pem_path} || return $?
+
     if [ -z "${_import_truststore}" ]; then
-        cat /tmp/${_host}_${_port}.tmp
+        cat ${_export_pem_path}
     fi
-    sed -ne '/-BEGIN CERTIFICATE-/,/-END CERTIFICATE-/p' /tmp/${_host}_${_port}.tmp | tee ${_export_pem_path} || return $?
-    echo "${_keytool} -import -alias \"${_host}_${_port}\" -keystore \"${_import_truststore}\" -file \"${_export_pem_path}\""
-    ${_keytool} -import -alias "${_host}_${_port}" -keystore "${_import_truststore}" -file "${_export_pem_path}"
+    #gcsplit -f cert -s /tmp/${_host}_${_port}.tmp '/BEGIN CERTIFICATE/' '{*}'
+    # Below didn't work on Mac
+    #openssl crl2pkcs7 -nocrl -certfile ${_export_pem_path} -out ${_pfx}.p7b
+    # To check: openssl pkcs7 -print_certs -in ${_pfx}.p7b
+    #local _cmd="${_keytool} -import -alias \"${_alias}\" -trustcacerts -keystore \"${_import_truststore}\" -file ${_pfx}.p7b"
+    # Below nearly works but 'n' is not working
+    #cat ${_export_pem_path} | awk 'split_after==1{n++;split_after=0} /-----END CERTIFICATE-----/ {split_after=1} {print > ("'${_pfx}_'" n ".pem")}'
+
+    local _pfx="/tmp/${_host}_${_port}"
+    rm -f ${_pfx}_*.pem || return $?
+    grep -nwE '(BEGIN|END)' ${_export_pem_path} | grep -Eo '^[0-9]+' | paste - - | sed -E 's@([0-9]+)[[:space:]]+([0-9]+)@sed -n "\1,\2p" '${_export_pem_path}' > '${_pfx}'_\1.pem@' | xargs -t -I{} bash -c "{}"
+
+    for _f in $(ls -1 ${_pfx}_*.pem); do
+        local _alias="$(basename "${_f}" .pem)"
+        local _cmd="${_keytool} -import -alias \"${_alias}\" -keystore \"${_import_truststore}\" -file \"${_f}\"" #-storepass changeit -noprompt
+        echo "${_cmd}"
+        eval "${_cmd}"
+    done
 }
 
 # for X509Certificate. basically 'base64 -d' or 'base64 -D' (Mac)
