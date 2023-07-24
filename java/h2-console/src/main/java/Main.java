@@ -526,8 +526,8 @@ public class Main {
         if (new File(path).isFile()) {
             // TODO: not perfect to avoid "A file path that is implicitly relative to the current working directory is not allowed in the database UR"
             path = new File(path).getAbsolutePath();
-            path = path.replaceAll("\\.(h2|mv)\\.db", "");
         }
+        path = path.replaceAll("\\.(h2|mv)\\.db", "");
         String h2Opt = H2_DEFAULT_OPTS;
         if (!h2ExtraOpts.isEmpty()) {
             h2Opt = h2Opt + ";" + h2ExtraOpts;
