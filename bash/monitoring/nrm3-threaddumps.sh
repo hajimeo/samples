@@ -205,6 +205,7 @@ function takeDumps() {
 # miscChecks &> "${_outFile}"
 function miscChecks() {
     local __doc__="Gather Misc. information"
+    local _pid="$1"
     set -x
     # OS / kernel related
     uname -a
@@ -227,7 +228,7 @@ function miscChecks() {
     if [ -n "${_pid}" ]; then
         cat /proc/${_pid}/limits
         cat /proc/locks | grep -w "${_pid}"
-        ls -li /proc/${_pid}/fd/*
+        #ls -li /proc/${_pid}/fd/*
         pmap -x ${_pid}
     fi
     set +x
@@ -256,11 +257,11 @@ main() {
     local _outDir="${_OUT_DIR:-"${_WORD_DIR%/}/log/tasks"}"
     _OUT_DIR="${_outDir}"
     if [ -z "${_INSTALL_DIR}" ]; then
-        echo "Could not find install directory." >&2
+        echo "Could not find install directory (_INSTALL_DIR)." >&2
         return 1
     fi
     if [ -z "${_WORD_DIR}" ]; then
-        echo "Could not find work directory." >&2
+        echo "Could not find work directory (_WORD_DIR)." >&2
         return 1
     fi
     if [ -z "${_STORE_FILE}" ] && [ -d "${_WORD_DIR%/}" ]; then
