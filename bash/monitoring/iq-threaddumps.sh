@@ -33,7 +33,7 @@ EOF
 : "${_WORK_DIR:=""}"
 _INTERVAL=2
 _COUNT=5
-_STORE_FILE=""
+_STORE_FILE=""  # currently not in use
 _LOG_FILE=""
 _REGEX=""
 _PID=""
@@ -129,7 +129,7 @@ function takeDumps() {
         local _wpid_in_for=""
         if [ -s "${_storeProp}" ]; then
             # TODO: If _storeProp is given, do extra check for IQ
-            _wpid_in_for="$!"
+            _wpid_in_for="" #$!
         fi
         if [ -n "${_jstack}" ]; then
             ${_jstack} -l ${_pid} >> "${_outPfx}000.log"
@@ -212,7 +212,7 @@ main() {
         return 1
     fi
     if [ -z "${_STORE_FILE}" ] && [ -d "${_WORK_DIR%/}" ]; then
-        _STORE_FILE="${_WORK_DIR%/}/etc/fabric/nexus-store.properties"
+        _STORE_FILE="${_INSTALL_DIR%/}/config.yml"  # TODO: for k8s, no DB connection in this file
     fi
     local _misc_start=$(date +%s)
     miscChecks "${_PID}" &> "${_outDir%/}/${_pfx}900.log"
