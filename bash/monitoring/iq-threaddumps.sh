@@ -56,7 +56,7 @@ function detectDirs() {    # Best effort. may not return accurate dir path
         fi
         [ -d "${_INSTALL_DIR}" ] || return 1
     fi
-    if [ ! -d "${_WORD_DIR}" ] && [ -d "${_INSTALL_DIR%/}" ]; then
+    if [ ! -d "${_WORK_DIR}" ] && [ -d "${_INSTALL_DIR%/}" ]; then
         local _config
         if [ -s "${_STORE_FILE}" ]; then
             _config="${_STORE_FILE}"
@@ -66,9 +66,9 @@ function detectDirs() {    # Best effort. may not return accurate dir path
         fi
         [ -z "${_config}" ] && return 1
         #_STORE_FILE="$(readlink -f "${_config}")"
-        _WORD_DIR="$(sed -n -E 's/sonatypeWork[[:space:]]*:[[:space:]]*(.+)/\1/p' "${_config}")"
-        [[ ! "${_WORD_DIR}" =~ ^/ ]] && _WORD_DIR="${_INSTALL_DIR%/}/${_WORD_DIR}"
-        [ -d "${_WORD_DIR}" ] || return 1
+        _WORK_DIR="$(sed -n -E 's/sonatypeWork[[:space:]]*:[[:space:]]*(.+)/\1/p' "${_config}")"
+        [[ ! "${_WORK_DIR}" =~ ^/ ]] && _WORK_DIR="${_INSTALL_DIR%/}/${_WORK_DIR}"
+        [ -d "${_WORK_DIR}" ] || return 1
     fi
 }
 
@@ -207,12 +207,12 @@ main() {
         echo "Could not find install directory (_INSTALL_DIR)." >&2
         return 1
     fi
-    if [ -z "${_WORD_DIR}" ]; then
-        echo "Could not find work directory (_WORD_DIR)." >&2
+    if [ -z "${_WORK_DIR}" ]; then
+        echo "Could not find work directory (_WORK_DIR)." >&2
         return 1
     fi
-    if [ -z "${_STORE_FILE}" ] && [ -d "${_WORD_DIR%/}" ]; then
-        _STORE_FILE="${_WORD_DIR%/}/etc/fabric/nexus-store.properties"
+    if [ -z "${_STORE_FILE}" ] && [ -d "${_WORK_DIR%/}" ]; then
+        _STORE_FILE="${_WORK_DIR%/}/etc/fabric/nexus-store.properties"
     fi
     local _misc_start=$(date +%s)
     miscChecks "${_PID}" &> "${_outDir%/}/${_pfx}900.log"

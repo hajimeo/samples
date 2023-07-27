@@ -117,10 +117,10 @@ function detectDirs() {    # Best effort. may not return accurate dir path
         _INSTALL_DIR="$(ps wwwp ${_pid} | sed -n -E '/org.sonatype.nexus.karaf.NexusMain/ s/.+-Dexe4j.moduleName=([^ ]+)\/bin\/nexus .+/\1/p' | head -1)"
         [ -d "${_INSTALL_DIR}" ] || return 1
     fi
-    if [ ! -d "${_WORD_DIR}" ] && [ -d "${_INSTALL_DIR%/}" ]; then
-        _WORD_DIR="$(ps wwwp ${_pid} | sed -n -E '/org.sonatype.nexus.karaf.NexusMain/ s/.+-Dkaraf.data=([^ ]+) .+/\1/p' | head -n1)"
-        [[ ! "${_WORD_DIR}" =~ ^/ ]] && _WORD_DIR="${_INSTALL_DIR%/}/${_WORD_DIR}"
-        [ -d "${_WORD_DIR}" ] || return 1
+    if [ ! -d "${_WORK_DIR}" ] && [ -d "${_INSTALL_DIR%/}" ]; then
+        _WORK_DIR="$(ps wwwp ${_pid} | sed -n -E '/org.sonatype.nexus.karaf.NexusMain/ s/.+-Dkaraf.data=([^ ]+) .+/\1/p' | head -n1)"
+        [[ ! "${_WORK_DIR}" =~ ^/ ]] && _WORK_DIR="${_INSTALL_DIR%/}/${_WORK_DIR}"
+        [ -d "${_WORK_DIR}" ] || return 1
     fi
 }
 
@@ -254,18 +254,18 @@ main() {
     local _pfx="${1:-"script-$(date +"%Y%m%d%H%M%S")"}"
     detectDirs "${_PID}"
 
-    local _outDir="${_OUT_DIR:-"${_WORD_DIR%/}/log/tasks"}"
+    local _outDir="${_OUT_DIR:-"${_WORK_DIR%/}/log/tasks"}"
     _OUT_DIR="${_outDir}"
     if [ -z "${_INSTALL_DIR}" ]; then
         echo "Could not find install directory (_INSTALL_DIR)." >&2
         return 1
     fi
-    if [ -z "${_WORD_DIR}" ]; then
-        echo "Could not find work directory (_WORD_DIR)." >&2
+    if [ -z "${_WORK_DIR}" ]; then
+        echo "Could not find work directory (_WORK_DIR)." >&2
         return 1
     fi
-    if [ -z "${_STORE_FILE}" ] && [ -d "${_WORD_DIR%/}" ]; then
-        _STORE_FILE="${_WORD_DIR%/}/etc/fabric/nexus-store.properties"
+    if [ -z "${_STORE_FILE}" ] && [ -d "${_WORK_DIR%/}" ]; then
+        _STORE_FILE="${_WORK_DIR%/}/etc/fabric/nexus-store.properties"
     fi
     genDbConnTest || return $?
     local _misc_start=$(date +%s)

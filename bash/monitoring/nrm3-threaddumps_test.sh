@@ -35,7 +35,7 @@ function test_detectDirs() {
 
     unset _PID
     unset _INSTALL_DIR
-    unset _WORD_DIR
+    unset _WORK_DIR
     #set -x
     if ! detectDirs >/dev/null; then
         _error
@@ -47,20 +47,20 @@ function test_detectDirs() {
     if [ "${_INSTALL_DIR%/}" != "/tmp" ]; then
         _error "_INSTALL_DIR: ${_INSTALL_DIR%/} != /tmp"
     fi
-    if [ "${_WORD_DIR%/}" != "$HOME" ]; then
-        _error "_WORD_DIR: ${_WORD_DIR%/} != $HOME"
+    if [ "${_WORK_DIR%/}" != "$HOME" ]; then
+        _error "_WORK_DIR: ${_WORK_DIR%/} != $HOME"
     fi
     wait
 
-    export _INSTALL_DIR="/var/tmp" _WORD_DIR="."
+    export _INSTALL_DIR="/var/tmp" _WORK_DIR="."
     if ! detectDirs "9999" >/dev/null; then
         _error
     fi
     if [ "${_INSTALL_DIR%/}" != "/var/tmp" ]; then
         _error "_INSTALL_DIR: ${_INSTALL_DIR%/} != /var/tmp"
     fi
-    if [ "${_WORD_DIR%/}" != "." ]; then
-        _error "_WORD_DIR: ${_WORD_DIR%/} != '.'"
+    if [ "${_WORK_DIR%/}" != "." ]; then
+        _error "_WORK_DIR: ${_WORK_DIR%/} != '.'"
     fi
     wait
 }
