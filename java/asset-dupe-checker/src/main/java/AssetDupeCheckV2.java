@@ -713,16 +713,20 @@ public class AssetDupeCheckV2 {
         long start = System.nanoTime();
         try (ODatabaseDocumentTx db = new ODatabaseDocumentTx(connStr)) {
             try {
+                boolean newlyCreated = false;
                 if (IS_REUSING_EXPORTED) {
                     try {
                         // Not executing drop to be safe (you can just create an empty dir)
                         //db.drop();
                         db.create();
                         log("Created " + connStr);
+                        newlyCreated = true;
                     } catch (Exception e) {
                         log("db.create to " + connStr + " failed but ignoring...");
                     }
-                } else {
+                }
+
+                if (!newlyCreated) {
                     db.open("admin", "admin");
                     log("Connected to " + connStr);
                 }
