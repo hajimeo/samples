@@ -114,6 +114,7 @@ public class AssetDupeCheckV2 {
         System.out.println("  -DexportOnly=true                   # DB Export to current (or extractDir)");
         System.out.println("  -DimportReuse=true                  # If 'true', reuse the component-export.gz if exists");
         System.out.println("  -DexportImport=true                 # DB Export to current (or extractDir), then import");
+        System.out.println("                                        May require larger -XX:MaxDirectMemorySize");
         System.out.println("  -DnoCheckIndex=true                 # Does not check index...");
         System.out.println("  -DindexName=component_bucket_group_name_version_idx   # or '*'");
         System.out.println("  -DtableName=component               # NOTE: be careful of repairing component");
@@ -307,7 +308,7 @@ public class AssetDupeCheckV2 {
             log("[WARN] Ignoring TRUNCATE browse_node exception: " + ioe.getMessage());
         }
         String url = db.getURL().split("\\s+")[0].replaceFirst("/$", "");
-        String exportName = url.substring(url.lastIndexOf('/')+1, url.length()) + "-export";
+        String exportName = url.substring(url.lastIndexOf('/') + 1, url.length()) + "-export";
         String exportTo = "." + File.separatorChar + exportName;
         if (!EXTRACT_DIR.isEmpty()) {
             exportTo = EXTRACT_DIR + File.separatorChar + exportName;
@@ -634,8 +635,6 @@ public class AssetDupeCheckV2 {
 
     private static void setGlobals() {
         IS_DEBUG = Boolean.getBoolean("debug");
-        IS_REBUILDING = Boolean.getBoolean("rebuildIndex");
-        debug("rebuildIndex: " + IS_REBUILDING);
         IS_EXPORTING = Boolean.getBoolean("exportOnly");
         debug("exportOnly: " + IS_EXPORTING);
         IS_REUSING_EXPORTED = Boolean.getBoolean("importReuse");
@@ -648,7 +647,14 @@ public class AssetDupeCheckV2 {
             IS_REPAIRING = Boolean.getBoolean("repair");
         }
         debug("repair: " + IS_REPAIRING);
-        IS_NO_INDEX_CHECK = Boolean.getBoolean("noCheckIndex");
+        if (IS_REUSING_EXPORTED) {
+            IS_NO_INDEX_CHECK = true;
+            IS_REBUILDING = false;
+        } else {
+            IS_REBUILDING = Boolean.getBoolean("rebuildIndex");
+            IS_NO_INDEX_CHECK = Boolean.getBoolean("noCheckIndex");
+        }
+        debug("rebuildIndex: " + IS_REBUILDING);
         debug("noCheckIndex: " + IS_NO_INDEX_CHECK);
         TABLE_NAME = System.getProperty("tableName", "");
         debug("tableName: " + TABLE_NAME);
@@ -707,8 +713,19 @@ public class AssetDupeCheckV2 {
         long start = System.nanoTime();
         try (ODatabaseDocumentTx db = new ODatabaseDocumentTx(connStr)) {
             try {
-                db.open("admin", "admin");
-                log("Connected to " + connStr);
+                if (IS_REUSING_EXPORTED) {
+                    try {
+                        // Not executing drop to be safe (you can just create an empty dir)
+                        //db.drop();
+                        db.create();
+                        log("Created " + connStr);
+                    } catch (Exception e) {
+                        log("db.create to " + connStr + " failed but ignoring...");
+                    }
+                } else {
+                    db.open("admin", "admin");
+                    log("Connected to " + connStr);
+                }
                 getIndexFields(db, INDEX_NAME);
 
                 // Doing drop tables first
