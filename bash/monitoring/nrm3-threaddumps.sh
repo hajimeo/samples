@@ -237,7 +237,7 @@ function miscChecks() {
 function _stopping() {
     echo -n -e "\nStopping "
     local _pid="$(cat /tmp/.tailStdout.run 2>/dev/null)"
-    [ -z "${_pid}" ] && return
+    [ -z "${_pid}" ] && exit
     for _i in $(seq 1 10); do
         sleep 1
         if ! ps -p "${_pid}" &>/dev/null ; then
