@@ -129,7 +129,7 @@ function takeDumps() {
     fi
 
     for _i in $(seq 1 ${_count}); do
-        echo "[$(date +'%Y-%m-%d %H:%M:%S')] taking dump ${_i}/${_count} ..." >&2
+        echo "[$(date +'%Y-%m-%d %H:%M:%S')] taking dump ${_i}/${_count} into '${_outPfx}*' ..." >&2
         local _wpid_in_for=""
         if [ -s "${_storeProp}" ]; then
             # TODO: If _storeProp is given, do extra check for IQ
