@@ -44,15 +44,19 @@ function detectDirs() {    # Best effort. may not return accurate dir path
     local __doc__="Populate PID and directory path global variables"
     local _pid="${1:-"${_PID}"}"
     if [ -z "${_pid}" ]; then
-        _pid="$(ps auxwww | grep -E 'nexus-iq-server-.+\.jar server' | grep -vw grep | awk '{print $2}' | tail -n1)"
+        _pid="$(ps auxwww | grep -E 'nexus-iq-server.*\.jar server' | grep -vw grep | awk '{print $2}' | tail -n1)"
         _PID="${_pid}"
         [ -z "${_pid}" ] && return 1
     fi
     if [ ! -d "${_INSTALL_DIR}" ]; then
         _INSTALL_DIR="$(readlink -f /proc/${_pid}/cwd 2>/dev/null)"
         if [ -z "${_INSTALL_DIR}" ]; then
-            local _jarpath="$(ps wwwp ${_pid} 2>/dev/null | grep -m1 -E -o '[^ ]+/nexus-iq-server-.+\.jar')"
-            _INSTALL_DIR="$(dirname "${_jarpath}")"
+            if type lsof &>/dev/null; then  # eg. Mad (Darwin)
+                _INSTALL_DIR="$(lsof -a -d cwd -p ${_pid} | grep 'java' | awk '{print $9}')"
+            else
+                local _jarpath="$(ps wwwp ${_pid} 2>/dev/null | grep -m1 -E -o 'nexus-iq-server.*\.jar')"
+                _INSTALL_DIR="$(dirname "${_jarpath}")"
+            fi
         fi
         [ -d "${_INSTALL_DIR}" ] || return 1
     fi
