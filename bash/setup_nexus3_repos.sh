@@ -549,12 +549,12 @@ function f_setup_docker() {
 
     # If no xxxx-group, create it
     if ! _is_repo_available "${_prefix}-group"; then
-        # Using "httpPort":4999 - 5000
-        f_apiS '{"action":"coreui_Repository","method":"create","data":[{"attributes":{"docker":{"httpPort":4999,"httpsPort":5000,"forceBasicAuth":true,"v1Enabled":true},"storage":{"blobStoreName":"'${_bs_name}'","strictContentTypeValidation":true'${_extra_sto_opt}'},"group":{"groupWriteMember":"'${_prefix}'-hosted","memberNames":["'${_prefix}'-hosted","'${_prefix}'-proxy"]}},"name":"'${_prefix}'-group","format":"","type":"","url":"","online":true,"undefined":[false,false],"recipe":"docker-group"}],"type":"rpc"}' || return $?
+        # Using "httpPort":4999, httpsPort: 15000
+        f_apiS '{"action":"coreui_Repository","method":"create","data":[{"attributes":{"docker":{"httpPort":4999,"httpsPort":15000,"forceBasicAuth":true,"v1Enabled":true},"storage":{"blobStoreName":"'${_bs_name}'","strictContentTypeValidation":true'${_extra_sto_opt}'},"group":{"groupWriteMember":"'${_prefix}'-hosted","memberNames":["'${_prefix}'-hosted","'${_prefix}'-proxy"]}},"name":"'${_prefix}'-group","format":"","type":"","url":"","online":true,"undefined":[false,false],"recipe":"docker-group"}],"type":"rpc"}' || return $?
     fi
     # add some data for xxxx-group
     _log "INFO" "Populating ${_prefix}-group repository with some image via docker proxy repo ..."
-    _populate_docker_proxy "hello-world" "${r_DOCKER_GROUP}" "5000 4999"
+    _populate_docker_proxy "hello-world" "${r_DOCKER_GROUP}" "15000 4999"
 }
 
 #_populate_docker_proxy "" "nxrm3ha-docker-k8s.standalone.localdomain"
@@ -579,7 +579,7 @@ function _populate_docker_proxy() {
 #ssh -2CNnqTxfg -L18182:localhost:18182 node3250    #ps aux | grep 2CNnqTxfg
 #_populate_docker_hosted "" "localhost:18182"
 function _populate_docker_hosted() {
-    local _base_img="${1:-"alpine:latest"}"    # dh1.standalone.localdomain:5000/alpine:3.7
+    local _base_img="${1:-"alpine:latest"}"    # dh1.standalone.localdomain:15000/alpine:3.7
     local _host_port="${2:-"${r_DOCKER_PROXY:-"${r_DOCKER_GROUP:-"${r_NEXUS_URL:-"${_NEXUS_URL}"}"}"}"}"
     local _backup_ports="${3-"18182 18181"}"
     local _cmd="${4-"${r_DOCKER_CMD}"}"
@@ -1315,21 +1315,31 @@ function _get_asset_NXRM2() {
 }
 
 # Same way as using Upload UI
-#NOTE: using _ASYNC_CURL env variable
+#NOTE: Using _ASYNC_CURL env variable. using _IS_NXRM2.
+#      If NXRM2, below curl also works:
+#curl -D- -u admin:admin123 -T <(echo "test upload") "http://localhost:8081/nexus/content/repositories/raw-hosted/test/test.txt"
 function f_upload_asset() {
     local __doc__="Upload an asset with Upload API"
-    local _repo="$1"
+    local _repo_or_fmt="$1"    # format if NXRM2
     local _forms=${@:2} #-F maven2.groupId=junit -F maven2.artifactId=junit -F maven2.version=4.21 -F maven2.asset1=@${_TMP%/}/junit-4.12.jar -F maven2.asset1.extension=jar
     # NOTE: Because _forms takes all arguments except first one, can't assign any other arguments
     local _usr="${r_ADMIN_USER:-"${_ADMIN_USER}"}"
     local _pwd="${r_ADMIN_PWD:-"${_ADMIN_PWD}"}"   # If explicitly empty string, curl command will ask password (= may hang)
     local _base_url="${r_NEXUS_URL:-"${_NEXUS_URL}"}"
+
     if [[ "${_NO_DATA}" =~ ^[yY] ]]; then
         _log "INFO" "_NO_DATA is set so no action."; return 0
     fi
+
+    local _url="${_base_url%/}/service/rest/v1/components?repository=${_repo_or_fmt}"
+    if [[ "${_IS_NXRM2}" =~ ^[yY] ]]; then
+        _url="${_base_url%/}/nexus/service/local/artifact/${_repo_or_fmt}/content"
+    fi
+
     local _curl="curl -sf"
     ${_DEBUG} && _curl="curl -fv"
-    _curl="${_curl} -D ${_TMP%/}/_upload_test_header_$$.out -w \"%{http_code} ${_forms} (%{time_total}s)\n\" -u ${_usr}:${_pwd} -H \"accept: application/json\" -H \"Content-Type: multipart/form-data\" -X POST -k \"${_base_url%/}/service/rest/v1/components?repository=${_repo}\" ${_forms}"
+    # TODO: not sure if -H \"accept: application/json\" is required
+    _curl="${_curl} -D ${_TMP%/}/_upload_test_header_$$.out -w \"%{http_code} ${_forms} (%{time_total}s)\n\" -u ${_usr}:${_pwd} -H \"accept: application/json\" -H \"Content-Type: multipart/form-data\" -X POST -k \"${_url}\" ${_forms}"
     if [[ "${_ASYNC_CURL}" =~ ^[yY] ]]; then
         # bash -c is different from eval
         bash -c "nohup ${_curl} >/dev/null 2>&1 &" &>/dev/null
@@ -1339,16 +1349,15 @@ function f_upload_asset() {
     local _rc=$?
     if [ ${_rc} -ne 0 ]; then
         if grep -qE '^HTTP/1.1 [45]' ${_TMP%/}/_upload_test_header_$$.out; then
-            _log "ERROR" "Failed to post to ${_base_url%/}/service/rest/v1/components?repository=${_repo} (${_rc})"
+            _log "ERROR" "Failed to post to ${_url} (${_rc})"
             cat ${_TMP%/}/_upload_test_header_$$.out >&2
             return ${_rc}
         else
-            _log "WARN" "Post to ${_base_url%/}/service/rest/v1/components?repository=${_repo} might be failed (${_rc})"
+            _log "WARN" "Post to ${_url} might be failed (${_rc})"
             cat ${_TMP%/}/_upload_test_header_$$.out >&2
         fi
     fi
 }
-
 
 ### Utility/Misc. functions #################################################################
 function f_apiS() {
