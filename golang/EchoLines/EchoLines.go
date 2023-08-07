@@ -31,6 +31,11 @@ func main() {
 	var excRegex *regexp.Regexp
 	var howMany = 0
 
+	if len(os.Args) == 1 || os.Args[1] == "-h" || os.Args[1] == "--help" {
+		usage()
+		return
+	}
+
 	if len(os.Args) > 2 && len(os.Args[2]) > 0 {
 		fromRegex = regexp.MustCompile(os.Args[2])
 	}
