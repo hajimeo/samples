@@ -1002,6 +1002,27 @@ function f_splitTopNetstat() {
     done
 }
 
+function f_wrapper2threads() {
+    local __doc__="Concatenate multiple wrapper.log in correct order"
+    local _wrapper_dir="${1:-"."}"
+    local _output_to="${2:-"./threads.txt"}"
+    local _starting="${3:-"2023-\\d\\d-\\d\\d \\d\\d:\\d\\d:\\d\\d"}"
+    if [ -s "${_output_to}" ]; then
+        echo "${_output_to} exists."
+        return 1
+    fi
+    find ${_wrapper_dir%/} -name 'wrapper.log*' | sort -r | xargs -I{} -t cat {} | sed "s/^jvm 1    | //" >> ${_output_to}
+    if ! type echolines &>/dev/null; then
+        echo 'curl -o /usr/local/bin/echolines -L https://github.com/hajimeo/samples/raw/master/misc/gonetstat_$(uname)_$(uname -m)'
+        return
+    fi
+    echolines ${_output_to} "^\d\d\d\d-\d\d-\d\d \d\d:\d\d:\d\d$" "^  class space" > ${_output_to}.tmp
+    if [ -s ${_output_to}.tmp ]; then
+        mv -v -f ${_output_to}.tmp ${_output_to}
+    fi
+}
+#        rg -l "${_detecting_words}" ${_wrapper_dir%/}
+
 #f_splitByRegex threads.txt "^${_DATE_FORMAT}.+"
 #_THREAD_FILE_GLOB="?-dump.txt" f_threads "."   # Don't use "*" beginning of the file name
 # NOTE: f_last_tid_in_log would be useful.
@@ -1243,29 +1264,30 @@ function _threads_extra_check() {
     if [ ! -f "${_file}" ]; then
         _file="--no-filename -g \"${_file}\""
     fi
-    rg '(DefaultTimelineIndexer|content_digest|findAssetByContentDigest|touchItemLastRequested|preClose0|sun\.security\.util\.MemoryCache|java\.lang\.Class\.forName|CachingDateFormatter|metrics\.health\.HealthCheck\.execute|WeakHashMap|userId\.toLowerCase|MessageDigest|UploadManagerImpl\.startUpload|UploadManagerImpl\.blobsByName|maybeTrimRepositories|getQuarantinedVersions|nonCatalogedVersions|getProxyDownloadNumbers|RepositoryManagerImpl.retrieveConfigurationByName|\.StorageFacetManagerImpl\.|OTransactionRealAbstract\.isIndexKeyMayDependOnRid)' ${_file} | sort | uniq -c > /tmp/$FUNCNAME_$$.out || return $?
+    rg '(DefaultTimelineIndexer|content_digest|findAssetByContentDigest|touchItemLastRequested|preClose0|sun\.security\.util\.MemoryCache|java\.lang\.Class\.forName|CachingDateFormatter|metrics\.health\.HealthCheck\.execute|WeakHashMap|userId\.toLowerCase|MessageDigest|UploadManagerImpl\.startUpload|UploadManagerImpl\.blobsByName|maybeTrimRepositories|getQuarantinedVersions|nonCatalogedVersions|getProxyDownloadNumbers|RepositoryManagerImpl.retrieveConfigurationByName|\.StorageFacetManagerImpl\.|OTransactionRealAbstract\.isIndexKeyMayDependOnRid|AptFacetImpl.put)' ${_file} | sort | uniq -c > /tmp/$FUNCNAME_$$.out || return $?
     if [ -s /tmp/$FUNCNAME_$$.out ]; then
         echo "## Counting:"
         echo "##    'DefaultTimelineIndexer' for NXRM2 System Feeds: timeline-plugin,"
         # https://support.sonatype.com/hc/en-us/articles/213464998-How-to-disable-the-System-Feeds-nexus-timeline-plugin-feature-to-improve-Nexus-performance
-        echo "##    'content_digest' https://issues.sonatype.org/browse/NEXUS-26379 (3.29.x) and NEXUS-25294 (3.27.x and older)"
-        echo "##    'findAssetByContentDigest' https://issues.sonatype.org/browse/NEXUS-26379 / https://issues.sonatype.org/browse/NEXUS-36069"
-        echo "##    'touchItemLastRequested' https://issues.sonatype.org/browse/NEXUS-10372 all NXRM2"
-        echo "##    'preClose0' https://issues.sonatype.org/browse/NEXUS-30865 Jetty, all NXRM2"
+        echo "##    'content_digest' NEXUS-26379 (3.29.x) and NEXUS-25294 (3.27.x and older)"
+        echo "##    'findAssetByContentDigest' NEXUS-26379 / NEXUS-36069"
+        echo "##    'touchItemLastRequested' NEXUS-10372 all NXRM2"
+        echo "##    'preClose0' NEXUS-30865 Jetty, all NXRM2"
         echo "##    'MemoryCache' https://bugs.openjdk.java.net/browse/JDK-8259886 < 8u301"
-        echo "##    'java.lang.Class.forName' https://issues.sonatype.org/browse/NEXUS-28608 up to NXRM 2.14.20"
-        echo "##    'CachingDateFormatter' https://issues.sonatype.org/browse/NEXUS-31564 (logback)"
+        echo "##    'java.lang.Class.forName' NEXUS-28608 up to NXRM 2.14.20"
+        echo "##    'CachingDateFormatter' NEXUS-31564 (logback)"
         echo "##    'com.codahale.metrics.health.HealthCheck.execute' (nexus.healthcheck.refreshInterval)"
-        echo "##    'WeakHashMap' https://issues.sonatype.org/browse/NEXUS-10991"
-        echo "##    'userId\.toLowerCase' https://issues.sonatype.org/browse/NEXUS-31776"
-        echo "##    'UploadManagerImpl.startUpload|.blobsByName' https://issues.sonatype.org/browse/NEXUS-31395"
+        echo "##    'WeakHashMap' NEXUS-10991"
+        echo "##    'userId\.toLowerCase' NEXUS-31776"
+        echo "##    'UploadManagerImpl.startUpload|.blobsByName' NEXUS-31395"
         echo "##    'MessageDigest' (May indicate CPU resource issue?)"
-        echo "##    'maybeTrimRepositories' https://issues.sonatype.org/browse/NEXUS-28891"
-        echo "##    'getQuarantinedVersions|nonCatalogedVersions' https://issues.sonatype.org/browse/NEXUS-31891"
-        echo "##    'getProxyDownloadNumbers' https://issues.sonatype.org/browse/NEXUS-37536"
-        echo "##    'RepositoryManagerImpl.retrieveConfigurationByName' https://issues.sonatype.org/browse/NEXUS-38579"
+        echo "##    'maybeTrimRepositories' NEXUS-28891"
+        echo "##    'getQuarantinedVersions|nonCatalogedVersions' NEXUS-31891"
+        echo "##    'getProxyDownloadNumbers' NEXUS-37536"
+        echo "##    'RepositoryManagerImpl.retrieveConfigurationByName' NEXUS-38579"
         echo "##    'StorageFacetManagerImpl' Storage facet cleanup might might cause performance issue"
         echo "##    'OTransactionRealAbstract.isIndexKeyMayDependOnRid' https://github.com/orientechnologies/orientdb/issues/9396"
+        echo "##    'AptFacetImpl.put' NEXUS-30812 / NEXUS-37102"
         cat /tmp/$FUNCNAME_$$.out
         echo " "
     fi
@@ -1375,7 +1397,7 @@ function f_request2csv() {
         rg --no-filename -N -z "${_pattern}" -o -r "${_pattern_out}" ${_g_opt} "${_glob}"
     fi >> ${_out_file}
     local _rc=$?
-    [ ${_rc} -ne 0 ] && cat /dev/null > "${_out_file}"
+    [ ${_rc} -ne 0 ] && cat /dev/null > "${_out_file}" || echo "Completed. Use 'f_reqsFromCSV \"${_out_file}\"' as well" >&2
     return ${_rc}
 }
 
@@ -1399,18 +1421,22 @@ function f_log2csv() {
     fi
 }
 
+# Accept _REQ_ORDER_BY and _REQ_LIMIT env variables
 function f_reqsFromCSV() {
-    local _csv_filename="${1:-"request.csv"}"
-    local _elapsedTime_gt="${2:-"7000"}"
-    local _since_time="${3-"00:00:00"}"
-    local _limit="${4:-"20"}"
-    local _extra_where="$5"
-    local _file="$(find . -maxdepth 3 -type f -print | grep "/${_csv_filename}$" | sort -r | head -n1)"
+    local _file="${1:-"request.csv"}"
+    local _where="${2}"
+    local _elapsedTime_gt="${3:-"7000"}"
+    if [ -n "${_file}" ] && [ ! -f "${_file}" ]; then
+        _file="$(find . -maxdepth 3 -type f -print | grep "/${_file}$" | sort -r | head -n1)"
+    fi
     [ -z "${_file}" ] && return 1
     local _extra_cols=""
-    local _extra_cols_where=""
-    head -n1 "${_file}" | grep -q "headerContentLength" && _extra_cols=", headerContentLength" && _extra_cols_where="OR (headerContentLength <> '-' AND headerContentLength <> '0')"
-    local _sql="SELECT clientHost, user, date, requestURL, statusCode, bytesSent ${_extra_cols}, elapsedTime, CAST((CAST(bytesSent as INT) / CAST(elapsedTime as INT)) as DECIMAL(10, 2)) as bytes_per_ms, TIME(CAST((julianday(DATE('now')||' '||substr(date,13,8))  - 2440587.5) * 86400.0 - elapsedTime/1000 AS INT), 'unixepoch') as started_time FROM ${_file} WHERE elapsedTime >= ${_elapsedTime_gt} AND started_time >= '${_since_time}' AND (bytes_per_ms < 10240 ${_extra_cols_where}) ${_extra_where} order by elapsedTime DESC limit ${_limit}"
+    #local _extra_cols_where=" AND (headerContentLength <> '-' AND headerContentLength <> '0')"
+    head -n1 "${_file}" | grep -q "headerContentLength" && _extra_cols=", headerContentLength"
+    if [ -n "${_where}" ] && [[ ! "${_where}" =~ [[:space:]]*(AND|and)[[:space:]] ]]; then
+        _where="AND ${_where}"
+    fi
+    local _sql="SELECT clientHost, user, date, requestURL, statusCode, bytesSent ${_extra_cols}, elapsedTime, CAST((CAST(bytesSent as INT) / CAST(elapsedTime as INT)) as DECIMAL(10, 2)) as bytes_per_ms, TIME(CAST((julianday(DATE('now')||' '||substr(date,13,8))  - 2440587.5) * 86400.0 - elapsedTime/1000 AS INT), 'unixepoch') as started_time FROM ${_file} WHERE elapsedTime >= ${_elapsedTime_gt} ${_where} order by ${_REQ_ORDER_BY:-"elapsedTime DESC"} limit ${_REQ_LIMIT:-"40"}"
     echo "# SQL: ${_sql}" >&2
     q -O -d"," -T --disable-double-double-quoting -H "${_sql}"
 }
@@ -1693,6 +1719,30 @@ function f_extractByHours() {
     local _tmp_filename="$(basename "${_file}")"
     [[ "${_tmp_filename}" =~ request ]] && _date_format="${_DATE_FMT_REQ}"
     f_extractFromLog "${_file}" "${_date_format}[: T.]${_start_hour}" "${_date_format}[: T.]${_end_hour}" > "${_tmp_filename%%.*}_extracted_${_start_hour}_${_end_hour}.out"
+}
+function f_logDuration() {
+    local _log_file="$1"
+    local _start_group="$2"
+    local _end_group="$3"   # optional
+    local _datetime_group="$4"  # ^(\d\d\d\d-\d\d-\d\d \d\d:\d\d:\d\d.\d\d\d)'
+    if [ -z "${_start_group}" ]; then
+        echo "No _start_regex"; return 1
+    fi
+    if [ -z "${_datetime_group}" ]; then
+        _datetime_regex="^(\d\d\d\d-\d\d-\d\d \d\d:\d\d:\d\d.\d\d\d).+"
+    fi
+    local _tmp_chars="$(echo "${_datetime_regex}${_start_group}" | tr -d -c '(')"
+    local _num="${#_tmp_chars}"
+    local _pattern_out="\"\$1\""
+    for _i in `seq 2 ${_num}`; do
+        _pattern_out="${_pattern_out},\"\$${_i}\""
+    done
+    rg "${_datetime_regex}${_start_group}" -o -r "${_pattern_out}" ${_log_file} > /tmp/f_logDuration_start.out
+    if [ -n "${_end_group}" ]; then
+        rg "${_datetime_regex}${_end_group}" -o -r "${_pattern_out}" ${_log_file} > /tmp/f_logDuration_end.out
+        cat /tmp/f_logDuration_start.out /tmp/f_logDuration_end.out | sort -n > /tmp/f_logDuration_combined.out
+        cat /tmp/f_logDuration_combined.out > /tmp/f_logDuration_start.out
+    fi
 }
 
 function _date2int() {
