@@ -29,17 +29,11 @@ NOTE: if no capture group is used in the end_regex, the end line is not echoed.
 END`)
 }
 
-// TODO: this is probably slow
-func echoLine(line string, path string) {
-	if len(path) == 0 {
+func echoLine(line string, f *os.File) {
+	if f == nil {
 		fmt.Println(line)
 		return
 	}
-	f, err := os.OpenFile(path, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
-	if err != nil {
-		log.Fatal(err)
-	}
-	defer f.Close()
 	byteLen, err := f.WriteString(line + "\n")
 	if byteLen < 0 || err != nil {
 		log.Fatal(err)
@@ -88,6 +82,7 @@ func main() {
 	foundFromLine := false
 	foundHowMany := 0
 	filePath := ""
+	var f *os.File
 	scanner := bufio.NewScanner(file)
 	for scanner.Scan() {
 		line := scanner.Text()
@@ -101,8 +96,16 @@ func main() {
 					fmt.Printf("[WARN] %s exists.\n", filePath)
 					return
 				}
+				if f != nil {
+					_ = f.Close()
+				}
+				f, err = os.OpenFile(filePath, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+				if err != nil {
+					log.Fatal(err)
+				}
+				//defer f.Close()
 			}
-			echoLine(scanner.Text(), filePath)
+			echoLine(scanner.Text(), f)
 			continue
 		}
 
@@ -112,7 +115,11 @@ func main() {
 				_dlog(matches)
 				foundFromLine = false
 				if len(matches) > 1 {
-					echoLine(strings.Join(matches[1:], ""), filePath)
+					echoLine(strings.Join(matches[1:], ""), f)
+				}
+				if f != nil {
+					_ = f.Close()
+					f = nil
 				}
 				continue
 			}
@@ -124,9 +131,12 @@ func main() {
 		if excRegex != nil && excRegex.MatchString(line) {
 			continue
 		}
-		echoLine(scanner.Text(), filePath)
+		echoLine(scanner.Text(), f)
 	}
 
+	if f != nil {
+		_ = f.Close()
+	}
 	if err := scanner.Err(); err != nil {
 		log.Fatal(err)
 	}
