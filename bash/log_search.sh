@@ -1003,10 +1003,9 @@ function f_splitTopNetstat() {
 }
 
 function f_wrapper2threads() {
-    local __doc__="Concatenate multiple wrapper.log in correct order"
+    local __doc__="Concatenate multiple wrapper.log in correct order and generate threads.txt (if 'echolines' is available)"
     local _wrapper_dir="${1:-"."}"
     local _output_to="${2:-"./threads.txt"}"
-    local _starting="${3:-"2023-\\d\\d-\\d\\d \\d\\d:\\d\\d:\\d\\d"}"
     if [ -s "${_output_to}" ]; then
         echo "${_output_to} exists."
         return 1
@@ -1021,7 +1020,6 @@ function f_wrapper2threads() {
         mv -v -f ${_output_to}.tmp ${_output_to}
     fi
 }
-#        rg -l "${_detecting_words}" ${_wrapper_dir%/}
 
 #f_splitByRegex threads.txt "^${_DATE_FORMAT}.+"
 #_THREAD_FILE_GLOB="?-dump.txt" f_threads "."   # Don't use "*" beginning of the file name
