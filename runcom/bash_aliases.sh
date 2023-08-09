@@ -178,7 +178,7 @@ if [ -d $HOME/IdeaProjects/samples/bash ]; then
     alias ss="bash $HOME/IdeaProjects/samples/bash/setup_standalone.sh"
 fi
 if [ -d $HOME/IdeaProjects/work/bash ]; then
-    alias logS="pyv; source $HOME/IdeaProjects/work/bash/log_search.sh"
+    alias srcLog="pyv; source $HOME/IdeaProjects/work/bash/log_search.sh"
     alias srcRm="logT; source $HOME/IdeaProjects/work/bash/log_tests_nxrm.sh"
     alias srcIq="logT; source $HOME/IdeaProjects/work/bash/log_tests_nxiq.sh"
     alias logRm="pyv;$HOME/IdeaProjects/work/bash/log_tests_nxrm.sh"
@@ -279,6 +279,13 @@ function random_list() {
     eval "IFS=\" \" read -a _list <<< \"${1}\""
     local _rand=$[$RANDOM % ${#_list[@]}]
     echo "${_list[${_rand}]}"
+}
+
+function count_size() {
+    local _path="${1:-"."}"
+    local _filter="${2:-"*"}"
+    # $1/1024/1024 for MB
+    find ${_path%/} -type f -name "${_filter}" -printf '%s\n' | awk '{ c+=1;s+=$1 }; END { print "count:"c", size:"s" bytes" }'
 }
 
 function datems() {
@@ -449,6 +456,16 @@ function grep_logs() {
     local _log_file_glob="${3:-"*.log"}"
     local _grep_opts="${4:-"-IrsP"}"
     grep ${_grep_opts} "${_search_regex}" $(_find_recent "${_log_dir}" "${_log_file_glob}")
+}
+# Extract threads from some stdout log or jvm.log
+function threadsFromLog() {
+    local _files="$1"
+    local _save_to="${2:-"./threads.txt"}"
+    local _end_regex="$3"
+    local _from_regex="$4"
+    [ -z "${_from_regex}" ] && _from_regex="^\d\d\d\d-\d\d-\d\d \d\d:\d\d:\d\d$"
+    [ -z "${_end_regex}" ] && _end_regex="(^\s+class space.+)"  # If not G1GC?
+    HTML_REMOVE=Y echolines "${_files}" "${_from_regex}" "${_end_regex}" > "${_save_to}"
 }
 # prettify any strings by checkinbg braces
 function prettify() {
@@ -712,6 +729,13 @@ function backupC() {
     if [ -s "$HOME/IdeaProjects/m2_settings.xml" ] && [ -d "$HOME/backup" ]; then
         cp -v -f $HOME/IdeaProjects/m2_settings.xml $HOME/backup/IdeaProjects_m2_settings.xml || return $?
     fi
+    if [ -d "$HOME/Documents/tests" ]; then
+        # Blow is bad because extracted files may have old dates
+        #${_find} "$HOME/Documents/tests" -type f -mtime +120 -delete 2>/dev/null
+        #${_find} $HOME/Documents/tests/* -type d -mtime +2 -empty -print -delete
+        ${_find} "$HOME/Documents/tests" -maxdepth 1 -type d | rg '(nxrm|nxiq)_[0-9.-]+_([a-zA-Z].+)' -o -r '$2' | rg -v -i -w 'h2' | xargs -I{} psql -c "DROP DATABASE {}"
+        ${_find} "$HOME/Documents/tests" -maxdepth 1 -type d -mtime +120 -print0 | xargs -0 -I{} -t rm -rf {}
+     fi
 
     [ ! -d "${_src}" ] && return 11
 

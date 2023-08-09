@@ -3,6 +3,7 @@ package main
 import (
 	"bufio"
 	"fmt"
+	"html"
 	"log"
 	"os"
 	"regexp"
@@ -15,21 +16,42 @@ func usage() {
 	fmt.Println(`
 Read one file and output only necessary lines.
 
-# To install:
-curl -o /usr/local/bin/echolines -L https://github.com/hajimeo/samples/raw/master/misc/gonetstat_$(uname)_$(uname -m)
-chmod a+x /usr/local/bin/echolines
+# TO INSTALL:
+	curl -o /usr/local/bin/echolines -L https://github.com/hajimeo/samples/raw/master/misc/gonetstat_$(uname)_$(uname -m)
+	chmod a+x /usr/local/bin/echolines
 
-# How to use:
-echolines some_file from_regex [end_regex] [exclude_regex] [file_prefix]
+# HOW TO USE:
+	echolines some_file1,some_file2 FROM_REGEXP [END_REGEXP] [file_prefix]
 
-echolines wrapper_concat.log "^\d\d\d\d-\d\d-\d\d \d\d:\d\d:\d\d$" "(^\s+class space.+)" > threads.txt
+	echolines "wrapper.log.2,wrapper.log.1,wrapper.log" "^\d\d\d\d-\d\d-\d\d \d\d:\d\d:\d\d$" "(^\s+class space.+)" > threads.txt
+	cat "./jvm.log" | echolines "" "^\d\d\d\d-\d\d-\d\d \d\d:\d\d:\d\d$" "(^\s+class space.+)" "thread_"
 
-NOTE: if no capture group is used in the end_regex, the end line is not echoed.
+	NOTE: if no capture group is used in the END_REGEXP, the end line is not echoed.
 
+# ENV VARIABLES:
+	INCL_REGEX=<some regex strings>
+		If regular expression is specified, it outputs only matching lines.
+	HTML_REMOVE=Y
+		Remove all HTML tags and convert HTML entities
 END`)
 }
 
+var FROM_REGEXP *regexp.Regexp
+var END_REGEXP *regexp.Regexp
+var INCL_REGEX = os.Getenv("INCL_REGEX")
+var INCL_REGEXP *regexp.Regexp
+var HTML_REMOVE = os.Getenv("HTML_REMOVE")
+var TAG_REGEXP = regexp.MustCompile(`<[^>]+>`)
+var IN_FILES []string
+var OUT_PREFIX = ""
+var OUT_FILE *os.File
+var FOUND_FROM_LINE = false
+var FOUND_COUNT = 0
+
 func echoLine(line string, f *os.File) {
+	if len(HTML_REMOVE) > 0 {
+		line = removeHTML(line)
+	}
 	if f == nil {
 		fmt.Println(line)
 		return
@@ -40,9 +62,65 @@ func echoLine(line string, f *os.File) {
 	}
 }
 
+func processFile(inFile *os.File) {
+	scanner := bufio.NewScanner(inFile)
+	var err error
+	for scanner.Scan() {
+		line := scanner.Text()
+		if !FOUND_FROM_LINE && FROM_REGEXP != nil && FROM_REGEXP.MatchString(line) {
+			FOUND_FROM_LINE = true
+			FOUND_COUNT++
+			if len(OUT_PREFIX) > 0 {
+				outFilePath := fmt.Sprintf("%s%d", OUT_PREFIX, FOUND_COUNT)
+				if _, err := os.Stat(outFilePath); err == nil {
+					_, _ = fmt.Fprintf(os.Stderr, "[ERROR] %s exists.\n", outFilePath)
+					return
+				}
+				if OUT_FILE != nil {
+					_ = OUT_FILE.Close()
+				}
+				OUT_FILE, err = os.OpenFile(outFilePath, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+				if err != nil {
+					log.Fatal(err)
+				}
+			}
+			echoLine(line, OUT_FILE)
+			continue
+		}
+
+		if FOUND_FROM_LINE && END_REGEXP != nil {
+			matches := END_REGEXP.FindStringSubmatch(line)
+			if len(matches) > 0 {
+				_dlog(matches)
+				FOUND_FROM_LINE = false
+				if len(matches) > 1 {
+					echoLine(strings.Join(matches[1:], ""), OUT_FILE)
+				}
+				if OUT_FILE != nil {
+					_ = OUT_FILE.Close()
+					OUT_FILE = nil
+				}
+				continue
+			}
+		}
+
+		if !FOUND_FROM_LINE {
+			continue
+		}
+		if INCL_REGEXP != nil && !INCL_REGEXP.MatchString(line) {
+			continue
+		}
+		echoLine(line, OUT_FILE)
+	}
+}
+
+func removeHTML(line string) string {
+	return html.UnescapeString(TAG_REGEXP.ReplaceAllString(line, ``))
+}
+
 func _dlog(message interface{}) {
 	if len(_DEBUG) > 0 {
-		fmt.Fprintf(os.Stderr, "[DEBUG] %v\n", message)
+		_, _ = fmt.Fprintf(os.Stderr, "[DEBUG] %v\n", message)
 	}
 }
 
@@ -50,94 +128,46 @@ func main() {
 	_DEBUG = os.Getenv("_DEBUG")
 	_dlog(_DEBUG)
 
-	var fromRegex *regexp.Regexp
-	var endRegex *regexp.Regexp
-	var excRegex *regexp.Regexp
-	var filesPrefix = ""
-
 	if len(os.Args) == 1 || os.Args[1] == "-h" || os.Args[1] == "--help" {
 		usage()
 		return
 	}
 
+	if len(os.Args) > 1 && len(os.Args[1]) > 0 {
+		IN_FILES = strings.Split(os.Args[1], ",")
+	}
 	if len(os.Args) > 2 && len(os.Args[2]) > 0 {
-		fromRegex = regexp.MustCompile(os.Args[2])
+		FROM_REGEXP = regexp.MustCompile(os.Args[2])
 	}
 	if len(os.Args) > 3 && len(os.Args[3]) > 0 {
-		endRegex = regexp.MustCompile(os.Args[3])
+		END_REGEXP = regexp.MustCompile(os.Args[3])
 	}
 	if len(os.Args) > 4 && len(os.Args[4]) > 0 {
-		excRegex = regexp.MustCompile(os.Args[4])
-	}
-	if len(os.Args) > 5 && len(os.Args[5]) > 0 {
-		filesPrefix = os.Args[5]
+		OUT_PREFIX = os.Args[5]
 	}
 
-	file, err := os.Open(os.Args[1])
-	if err != nil {
-		log.Fatal(err)
+	if len(INCL_REGEX) > 0 {
+		INCL_REGEXP = regexp.MustCompile(INCL_REGEX)
 	}
-	defer file.Close()
 
-	foundFromLine := false
-	foundHowMany := 0
-	filePath := ""
-	var f *os.File
-	scanner := bufio.NewScanner(file)
-	for scanner.Scan() {
-		line := scanner.Text()
-
-		if !foundFromLine && fromRegex != nil && fromRegex.MatchString(line) {
-			foundFromLine = true
-			foundHowMany++
-			if len(filesPrefix) > 0 {
-				filePath = fmt.Sprintf("%s%d", filesPrefix, foundHowMany)
-				if _, err := os.Stat(filePath); err == nil {
-					fmt.Printf("[WARN] %s exists.\n", filePath)
-					return
-				}
-				if f != nil {
-					_ = f.Close()
-				}
-				f, err = os.OpenFile(filePath, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
-				if err != nil {
-					log.Fatal(err)
-				}
-				//defer f.Close()
+	if IN_FILES == nil || len(IN_FILES) == 0 {
+		processFile(os.Stdin)
+	} else {
+		for _, path := range IN_FILES {
+			inFile, err := os.Open(path)
+			if err != nil {
+				log.Fatal(err)
 			}
-			echoLine(scanner.Text(), f)
-			continue
-		}
-
-		if foundFromLine && endRegex != nil {
-			matches := endRegex.FindStringSubmatch(line)
-			if len(matches) > 0 {
-				_dlog(matches)
-				foundFromLine = false
-				if len(matches) > 1 {
-					echoLine(strings.Join(matches[1:], ""), f)
-				}
-				if f != nil {
-					_ = f.Close()
-					f = nil
-				}
-				continue
+			//defer inFile.Close()
+			processFile(inFile)
+			if inFile != nil {
+				_ = inFile.Close()
 			}
 		}
-
-		if !foundFromLine {
-			continue
-		}
-		if excRegex != nil && excRegex.MatchString(line) {
-			continue
-		}
-		echoLine(scanner.Text(), f)
 	}
 
-	if f != nil {
-		_ = f.Close()
-	}
-	if err := scanner.Err(); err != nil {
-		log.Fatal(err)
+	if OUT_FILE != nil {
+		_ = OUT_FILE.Close()
+		OUT_FILE = nil
 	}
 }
