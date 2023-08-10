@@ -3,7 +3,7 @@
  * Start PHP web server and accept GET/PUT/POST requests, and return specific request based on REQUEST_URI.
  * Useful for testing webhook
  *
- * php -S 0.0.0.0:7999 index.php
+ * php -S 0.0.0.0:7999 ./index.php
  * curl -X PUT -T test.txt localhost:7999
  */
 
@@ -45,20 +45,32 @@ function put_handler()
 function get_handler()
 {
     $req = $_SERVER['REQUEST_URI'];
+
+    if (stripos($req, "/manifests/5.3.33-66ddce6") > 0) {
+        header("Docker-Content-Digest: sha256:c46d23046a71f0216a881f6976a67f9f2309d9420d7e0585db5f3dd11dc333dc");
+        header("Content-Type: application/vnd.docker.distribution.manifest.v1+prettyjws");
+        _return_file('./5.3.33-66ddce6-click-path-on-ui.json');
+        _log("    Handled {$req} " . PHP_EOL);
+        return;
+    }
+
     if (stripos($req, "bebde28f893fa9594dadcaa7d6b8e2aa0299df20.tgz") > 0) {
         header("etag: \"b46d217ef54c01c394b798e22f253c19\"");
         header("Content-Type: application/gzip");
-        _return_file('/Volumes/Samsung_T5/hajime/cases/57678/caniuse-lite-1.0.30001159.tgz');
+        _return_file('./caniuse-lite-1.0.30001159.tgz');
         _log("    Handled {$req} " . PHP_EOL);
         return;
     }
 
     if (stripos($req,"/repository/npm-test/caniuse-lite") === 0) {
-        $name = '/Volumes/Samsung_T5/hajime/cases/57678/npmjs-lwc_caniuse-lite_mod.json';
-        //$name = '/Volumes/Samsung_T5/hajime/cases/57678/output3/no-header.json';
+        $name = './npmjs-lwc_caniuse-lite_mod.json';
+
+        // Example of changing header by 'Accept: ' header
+        //$name = './no-header.json';
         //if (stripos($_SERVER['HTTP_ACCEPT'], "application/vnd.npm.install-v1+json") !== false) {
-        //    $name = '/Volumes/Samsung_T5/hajime/cases/57678/output3/with-header.json';
+        //    $name = ./with-header.json';
         //}
+
         header("Content-Type: application/json");
         _return_file($name);
         _log("    Handled {$req} " . PHP_EOL);
