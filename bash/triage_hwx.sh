@@ -63,7 +63,7 @@ function f_check_system() {
     uname -a &> ${_work_dir%/}/uname-a.out
     systemd-analyze &> ${_work_dir%/}/systemd-analyze.out
     systemd-analyze blame 2>&1 >> ${_work_dir%/}/systemd-analyze.out   # then disable and stop
-    lsb_release -a 2>&1 >> ${_work_dir%/}/uname-a.out
+    lsb_release -a 2>&1 >> ${_work_dir%/}/uname-a.out   # or cat /etc/*-release
     localectl status &> ${_work_dir%/}/locale.out
     locale 2>&1 >> ${_work_dir%/}/locale.out
     cat /proc/cpuinfo &> ${_work_dir%/}/cpuinfo.out
@@ -156,7 +156,8 @@ function f_check_process() {
     # https://gist.github.com/jkstill/5095725
     cat /proc/${_p}/net/tcp > ${_work_dir%/}/net_tcp_${_p}.out  # if no netstat
     lsof -nPp ${_p} &> ${_work_dir%/}/lsof_${_p}.out
-    #lsof -nP +D /some/work/directory
+    #lsof -nP +D /check/this/directory/and/under
+    #lsof +aL1 /file_system     # to find (deleted)
 
     if [ -d "$_cmd_dir" ]; then
         local _java_home="$(dirname $_cmd_dir)"
