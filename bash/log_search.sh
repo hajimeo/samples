@@ -1006,6 +1006,7 @@ function f_wrapper2threads() {
     local __doc__="Concatenate multiple wrapper.log in correct order and generate threads.txt (if 'echolines' is available)"
     local _wrapper_dir="${1:-"."}"
     local _output_to="${2:-"./threads.txt"}"
+    local _end_regex="${3:-"^ +class space.+"}"
     if [ -s "${_output_to}" ]; then
         echo "${_output_to} exists."
         return 1
@@ -1015,7 +1016,7 @@ function f_wrapper2threads() {
         echo 'curl -o /usr/local/bin/echolines -L https://github.com/hajimeo/samples/raw/master/misc/gonetstat_$(uname)_$(uname -m)'
         return
     fi
-    echolines ${_output_to} "^\d\d\d\d-\d\d-\d\d \d\d:\d\d:\d\d$" "^  class space" > ${_output_to}.tmp
+    echolines ${_output_to} "^\d\d\d\d-\d\d-\d\d \d\d:\d\d:\d\d$" "(${_end_regex})" > ${_output_to}.tmp
     if [ -s ${_output_to}.tmp ]; then
         mv -v -f ${_output_to}.tmp ${_output_to}
     fi
