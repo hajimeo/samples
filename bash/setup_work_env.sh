@@ -93,7 +93,7 @@ function f_setup_misc() {
     if [ ! -d "${_SOURCE_REPO_BASE%/}/bash" ]; then
         mkdir -p ${_SOURCE_REPO_BASE%/}/bash || return $?
     fi
-    # Need for logS alias
+    # Need for logS/srcLog alias
     _symlink_or_download "bash/log_search.sh" "/usr/local/bin/log_search" || return $?
     chmod u+x ${_SOURCE_REPO_BASE%/}/bash/log_search.sh
 
