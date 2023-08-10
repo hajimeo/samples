@@ -494,8 +494,15 @@ $0 '$1' '$2' '<jar path from above>' '$4' '$5' [Y]"
         fi
 
         if [ "${_EXT}" = "scala" ]; then
-            f_setup_scala
+            if ! type scalac &>/dev/null; then
+                f_setup_scala
+            fi
             _CMD="scalac"
+        elif [ "${_EXT}" = "groovy" ]; then
+            if ! type groovyc &>/dev/null; then
+                f_setup_groovy  # Need to install specific version
+            fi
+            _CMD="groovyc"
         elif [ "${_EXT}" = "java" ]; then
             if [ -n "${_JAR_FILEPATH}" ] && [ -e "${_JAR_FILEPATH}" ]; then
                 # TODO: not sure adding "/" before _CLASS_NAME is OK
