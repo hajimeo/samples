@@ -112,9 +112,9 @@ _RESP_FILE=""
 function f_install_nexus3() {
     local __doc__="Install specific NXRM3 version"
     local _ver="${1:-"${r_NEXUS_VERSION}"}"     # 'latest'
-    local _dbname="${2:-"${r_NEXUS_DBNAME}"}"   # If h2, use H2
-    local _dbusr="${3:-"nxrm"}"     # Specifying default as do not want to create many users/roles
-    local _dbpwd="${4:-"${_dbusr}123"}"
+    local _dbname="${2-"${r_NEXUS_DBNAME}"}"   # If h2, use H2
+    local _dbusr="${3-"nxrm"}"     # Specifying default as do not want to create many users/roles
+    local _dbpwd="${4-"${_dbusr}123"}"
     local _port="${5-"${r_NEXUS_INSTALL_PORT:-"${_NXRM3_INSTALL_PORT}"}"}"      # If not specified, checking from 8081
     local _dirpath="${6-"${r_NEXUS_INSTALL_PATH:-"${_NXRM3_INSTALL_DIR}"}"}"    # If not specified, create a new dir under current dir
     local _download_dir="${7}"
@@ -129,8 +129,14 @@ function f_install_nexus3() {
         [ -z "${_port}" ] && return 1
         _log "INFO" "Using port: ${_port}" >&2
     fi
-    # I think PostgreSQL doesn't work with mixed case.
-    _dbname="$(echo "${_dbname}" | tr '[:upper:]' '[:lower:]')"
+    if [ -n "${_dbname}" ]; then
+        if [[ "${_dbname}" =~ _ ]]; then
+            _log "WARN" "PostgreSQL allows '_' but not this function, so removing"
+            _dbname="$(echo "${_dbname}" | tr -d '_')"
+        fi
+        # I think PostgreSQL doesn't work with mixed case.
+        _dbname="$(echo "${_dbname}" | tr '[:upper:]' '[:lower:]')"
+    fi
     if [ -z "${_dirpath}" ]; then
         _dirpath="./nxrm_${_ver}"
         [ -n "${_dbname}" ] && _dirpath="${_dirpath}_${_dbname}"
@@ -209,8 +215,14 @@ function f_install_iq() {
         [ -z "${_port}" ] && return 1
         _log "INFO" "Using port: ${_port}" >&2
     fi
-    # I think PostgreSQL doesn't work with mixed case.
-    _dbname="$(echo "${_dbname}" | tr '[:upper:]' '[:lower:]')"
+    if [ -n "${_dbname}" ]; then
+        if [[ "${_dbname}" =~ _ ]]; then
+            _log "WARN" "PostgreSQL allows '_' but not this function, so removing"
+            _dbname="$(echo "${_dbname}" | tr -d '_')"
+        fi
+        # I think PostgreSQL doesn't work with mixed case.
+        _dbname="$(echo "${_dbname}" | tr '[:upper:]' '[:lower:]')"
+    fi
     if [ -z "${_dirpath}" ]; then
         _dirpath="./nxiq_${_ver}"
         [ -n "${_dbname}" ] && _dirpath="${_dirpath}_${_dbname}"
@@ -338,9 +350,9 @@ function f_setup_maven() {
     # add some data for xxxx-hosted
     if [ -s "${_TMP%/}/junit-4.12.jar" ]; then
         #mvn deploy:deploy-file -DgroupId=junit -DartifactId=junit -Dversion=4.21 -DgeneratePom=true -Dpackaging=jar -DrepositoryId=nexus -Durl=${r_NEXUS_URL}/repository/${_prefix}-hosted -Dfile=${_TMP%/}/junit-4.12.jar
-        _ASYNC_CURL="Y" f_upload_asset "${_prefix}-hosted" -F maven2.groupId=com.example -F maven2.artifactId=junit -F maven2.version=4.21 -F maven2.asset1=@${_TMP%/}/junit-4.12.jar -F maven2.asset1.extension=jar
+        _ASYNC_CURL="Y" f_upload_asset "${_prefix}-hosted" -F maven2.groupId=com.example -F maven2.artifactId=my-test-junit -F maven2.version=4.21 -F maven2.asset1=@${_TMP%/}/junit-4.12.jar -F maven2.asset1.extension=jar
         if curl -sf -o ${_TMP%/}/junit-4.12-sources.jar "https://repo1.maven.org/maven2/junit/junit/4.12/junit-4.12-sources.jar"; then
-            _ASYNC_CURL="Y" f_upload_asset "${_prefix}-hosted" -F maven2.groupId=com.example -F maven2.artifactId=junit -F maven2.version=4.21 -F maven2.asset1=@${_TMP%/}/junit-4.12-sources.jar -F maven2.asset1.extension=jar -F maven2.asset1.classifier=sources
+            _ASYNC_CURL="Y" f_upload_asset "${_prefix}-hosted" -F maven2.groupId=com.example -F maven2.artifactId=my-test-junit -F maven2.version=4.21 -F maven2.asset1=@${_TMP%/}/junit-4.12-sources.jar -F maven2.asset1.extension=jar -F maven2.asset1.classifier=sources
         fi
     fi
 
@@ -1202,8 +1214,7 @@ function f_iq_quarantine() {
     local _repo_name="$1"
     local _iq_url="${2:-"${_IQ_URL}"}"
     if [ -z "${_iq_url}" ] || ! curl -sfI "${_iq_url}" &>/dev/null ; then
-        _log "WARN" "IQ ${_iq_url} is not reachable capability"
-        return
+        _log "WARN" "IQ ${_iq_url} is not reachable, but try creating the capability."
     fi
     f_apiS '{"action":"clm_CLM","method":"update","data":[{"enabled":true,"url":"'${_iq_url}'","authenticationType":"USER","username":"'${_ADMIN_USER}'","password":"'${_ADMIN_PWD}'","timeoutSeconds":null,"properties":"","showLink":true}],"type":"rpc"}' || return $?
     # To create IQ: Audit and Quarantine for this repository:
