@@ -1,7 +1,3 @@
-/**
- * https://www.codejava.net/java-se/jdbc/connect-to-h2-database-examples
- */
-
 import org.h2.jdbc.JdbcSQLException;
 import org.json.JSONObject;
 import org.jline.reader.*;
@@ -48,7 +44,9 @@ public class Main {
     public static final Pattern describeNamePtn =
             Pattern.compile("(info|describe|desc) (table|class|index) ([^;]+)", Pattern.CASE_INSENSITIVE);
     public static final Pattern exportNamePtn =
-            Pattern.compile("export (.+) to (.+)", Pattern.CASE_INSENSITIVE);
+            Pattern.compile("export ([^ ]+) to ([^;]+)", Pattern.CASE_INSENSITIVE);
+    public static final Pattern importNamePtn =
+            Pattern.compile("import (.+)", Pattern.CASE_INSENSITIVE);
     public static final Pattern setPagingPtn =
             Pattern.compile("(set) (page|paging|offset) ([0-9]+)", Pattern.CASE_INSENSITIVE);
 
@@ -329,11 +327,11 @@ public class Main {
             if (matcher.find()) {
                 // Not in use as not sure how to do 'desc <non table>'
                 //String descType = matcher.group(2);
-                String[] names = matcher.group(3).split("\\.", 2);
+                String[] names = matcher.group(3).toLowerCase().split("\\.", 2);
                 String query = "SELECT SQL FROM INFORMATION_SCHEMA.TABLES";
-                String where = " WHERE TABLE_NAME = '" + names[0] + "'";
+                String where = " WHERE LOWER(TABLE_NAME) = '" + names[0] + "'";
                 if (names.length > 1) {
-                    where = " WHERE TABLE_SCHEMA = '" + names[0] + "' AND TABLE_NAME = '" + names[1] + "'";
+                    where = " WHERE LOWER(TABLE_SCHEMA) = '" + names[0] + "' AND LOWER(TABLE_NAME) = '" + names[1] + "'";
                 }
                 execute(query + where);
                 query = "SELECT SQL FROM INFORMATION_SCHEMA.CONSTRAINTS";
@@ -355,7 +353,17 @@ public class Main {
                 String exportTo = matcher.group(2);
                 exportTables(names, exportTo);
             } else {
-                log("No match found from " + input, isDebug);
+                log("No match found from " + input);
+            }
+            return true;
+        }
+        if (input.toLowerCase().startsWith("import")) {
+            Matcher matcher = importNamePtn.matcher(input);
+            if (matcher.find()) {
+                String importFrom = matcher.group(1);
+                importFromFile(importFrom);
+            } else {
+                log("No match found from " + input);
             }
             return true;
         }
@@ -373,8 +381,6 @@ public class Main {
                 input = reader.readLine(PROMPT);
             } catch (SQLException e) {
                 log(e.getMessage());
-                removeLineFromHistory(input);
-                history.load();
                 input = "";
             } catch (UserInterruptException e) {
                 // User hit ctrl-C, just clear the current line and try again.
@@ -389,32 +395,47 @@ public class Main {
 
     private static void exportTables(String[] schema_and_table, String exportToPath) {
         String query = "SELECT TABLE_SCHEMA, TABLE_NAME FROM INFORMATION_SCHEMA.TABLES";
-        String where = " WHERE TABLE_NAME LIKE '" + schema_and_table[0] + "'";
-        if (schema_and_table.length > 1) {
-            if (schema_and_table[1].equals("%")) {
-                where = " WHERE TABLE_SCHEMA like '" + schema_and_table[0] + "'";
-            } else {
-                where = " WHERE TABLE_SCHEMA like '" + schema_and_table[0] + "' AND TABLE_NAME like '" + schema_and_table[1] + "'";
+        String where = " WHERE LOWER(TABLE_SCHEMA) NOT IN ('information_schema')";
+        if (schema_and_table.length == 1) {
+            if (!schema_and_table[1].equals("%")) {
+                where += " AND LOWER(TABLE_SCHEMA) like LOWER('" + schema_and_table[0] + "')";
             }
+        } else if (schema_and_table.length == 2) {
+            where += " AND LOWER(TABLE_SCHEMA) like LOWER('" + schema_and_table[0] + "') AND LOWER(TABLE_NAME) like LOWER('" + schema_and_table[1] + "')";
+        } else {
+            log("Incorrect schema_and_table:" + schema_and_table.toString());
+            return;
         }
 
         ResultSet rs;
         try {
+            Boolean probablyExported = false;
             if (stat.execute(query + where)) {
                 rs = stat.getResultSet();
+                Statement _stat = conn.createStatement();
                 while (rs.next()) {
-                    String export_query = "SCRIPT SIMPLE TO '" + exportToPath + "/tbl_" + rs.getString(1) + "_" + rs.getString(2) + ".sql' TABLE " + rs.getString(1) + "." + rs.getString(2) + ";";
+                    String export_query = "SCRIPT SIMPLE TO '" + exportToPath + "/tbl_" + rs.getString(1).toLowerCase() + "_" + rs.getString(2).toLowerCase() + ".sql' TABLE " + rs.getString(1) + "." + rs.getString(2) + ";";
                     try {
                         log(export_query);
-                        stat.execute(export_query);
+                        _stat.execute(export_query);
+                        probablyExported = true;
                     } catch (SQLException e) {
-                        log(e.getMessage());
+                        log(e.getMessage());    // but keep going
                     }
                 }
+            }
+            if (!probablyExported) {
+                log("Nothing to export for " + schema_and_table.toString());
             }
         } catch (SQLException e) {
             log(e.getMessage());
         }
+    }
+
+    private static void importFromFile(String importFromPath) {
+        // -continueOnError
+        //org.h2.tools.RunScript rs = new org.h2.tools.RunScript();
+        log("TODO: not implemented. " + importFromPath);
     }
 
     private static Set<String> genAutoCompWords(String fileName) {

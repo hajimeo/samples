@@ -30,6 +30,10 @@ echo "SQL SELECT statement" | java -jar ./h2-console.jar <DB file path> [<H2 opt
 # Pagenation for extreamly large result set
 echo "<*SIMPLE* SELECT statement which returns so many rows>" | java -Dpaging=10000 -jar h2-console.jar <DB file path> [<H2 options>]
 ```
+#### Export table(s)
+```
+export public.* to ./export_dir
+```
 ### Recover database:
 Instead of `-jar`, use `-cp`
 ```
@@ -57,7 +61,6 @@ echo "select <PK>, <TEXT_column> from <table_name>" | java -jar ~/IdeaProjects/s
 
 ## My note:
 ```
-mvn clean package && cp -v -p ./target/h2-console-1.0-SNAPSHOT.jar ../../misc/h2-console.jar;
-sed -i .bak 's/>1.4.196</>1.4.200</' ./pom.xml && mvn clean package && cp -v -p ./target/h2-console-1.0-SNAPSHOT.jar ../../misc/h2-console_v200.jar; mv -f -v ./pom.xml.bak ./pom.xml
+mvn clean package && cp -v -p ./target/h2-console-1.0-SNAPSHOT.jar ../../misc/h2-console.jar; sed -i .bak 's/>1.4.196</>1.4.200</' ./pom.xml && mvn clean package && cp -v -p ./target/h2-console-1.0-SNAPSHOT.jar ../../misc/h2-console_v200.jar; mv -f -v ./pom.xml.bak ./pom.xml
 ```
 
