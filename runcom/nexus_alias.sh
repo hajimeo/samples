@@ -206,10 +206,12 @@ function nxrmStart() {
         echo "NOTE: May need to 'unzip -d ${_base_dir%/}/sonatype-work/nexus/plugin-repository $HOME/Downloads/unzip-repository-plugin-0.14.0-bundle.zip'"
         # jvm 1    | Caused by: java.lang.ClassNotFoundException: org.codehaus.janino.ScriptEvaluator
         #./sonatype-work/nexus/conf/logback-nexus.xml
-        #[ -n "${_java_opts}" ] && export JAVA_TOOL_OPTIONS="${_java_opts}"
+        [ -n "${_java_opts}" ] && export JAVA_TOOL_OPTIONS="${_java_opts}" && _java_opts=""
     fi
     # For java options, latter values are used, so appending
-    INSTALL4J_ADD_VM_PARAMS="-XX:-MaxFDLimit ${INSTALL4J_ADD_VM_PARAMS} ${_java_opts}" ${_nexus_file} ${_mode}
+    local _cmd="INSTALL4J_ADD_VM_PARAMS=\"-XX:-MaxFDLimit ${INSTALL4J_ADD_VM_PARAMS} ${_java_opts}\" ${_nexus_file} ${_mode}"
+    echo "${_cmd}"; sleep 3
+    eval "${_cmd}"
     # ulimit / Too many open files: https://help.sonatype.com/repomanager3/installation/system-requirements#SystemRequirements-MacOSX
 }
 
@@ -520,6 +522,7 @@ function mvn-package() {
 : <<'EOF'
 mvn-arch-gen
 _REPO_URL="http://localhost:8081/repository/maven-snapshots/"
+#_REPO_URL="http://dh1:8081/nexus/content/repositories/releases/"
 _SNAPSHOT="-SNAPSHOT"
 #mvn-deploy "${_REPO_URL}" "" "nexus"
 for v in {1..3}; do
