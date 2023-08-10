@@ -831,7 +831,7 @@ function _trust_ca() {
     if which update-ca-trust &>/dev/null; then
         _ca_cmd="update-ca-trust"
         _ca_dir="/etc/pki/ca-trust/source/anchors"
-    # If RHEL / CentOS / Debian
+    # If RHEL / CentOS / Debian / Ubuntu 22
     elif which update-ca-certificates &>/dev/null; then
         _ca_cmd="update-ca-certificates"
         _ca_dir="/usr/local/share/ca-certificates/extra"
