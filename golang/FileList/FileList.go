@@ -245,7 +245,7 @@ func writeContentsFile(path string, contents string) error {
 	} else {
 		defer _elapsed(time.Now().UnixMilli(), "WARN  slow file write for path:"+path, 100)
 	}
-	f, err := os.OpenFile(path, os.O_RDWR|os.O_CREATE|os.O_TRUNC, 0666)
+	f, err := os.OpenFile(path, os.O_RDWR|os.O_CREATE|os.O_TRUNC, 0644)
 	if err != nil {
 		return err
 	}
