@@ -4,11 +4,10 @@
 # COMMAND EXAMPLE:
 #   cd ~/IdeaProjects/samples/kubernetes
 #   # Below _DNS is only for my k8s env (don't forget to update /etc/banner_add_hosts). _DB_USER can't contain '-' character.
-#   export _NAMESPACE="sonatype" _ID="nxrm3pg" #_TAG="3.57.0"
-#   export _RUNAS_USR=200 _DNS="192.168.1.31" _DB_HOST_PORT="192.168.1.31:5432" #_METALLB_IP="192.168.1.230"
+#   export _NAMESPACE="sonatype" _ID="nxrm3pg" _DNS="192.168.1.31" _DB_HOST_PORT="192.168.1.31:5432" #_TAG="3.57.0" _METALLB_IP="192.168.1.230"
 #   export _BLOBS_PATH="/var/tmp/share/sonatype/${_ID}/blobs" _JDBC_URL="jdbc:postgresql://${_DB_HOST_PORT}/${_ID}?gssEncMode=disable" _DB_USER="${_ID}" _DB_PWD="${_ID}"
 #
-#  one time only preparation (*after* above "export")
+# ONE TIME ONLY preparation (*after* above "export")
 #  - On *K8s node*, which will be used for blob stores:
 #     mkdir -v -p -m 777 ${_BLOBS_PATH}
 #  - With psql, create DB user and database:
