@@ -78,7 +78,7 @@ spec:
           securityContext:
             runAsUser: ${_RUNAS_USR:-200}
           image: sonatype/nexus3:${_TAG:-latest}
-          imagePullPolicy: IfNotPresent
+          #imagePullPolicy: IfNotPresent
           resources:
             requests:
               # Make sure blow works with INSTALL4J_ADD_VM_PARAMS
