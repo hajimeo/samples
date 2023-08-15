@@ -125,6 +125,9 @@ function takeDumps() {
         _jstack="jstack"
     fi
     if [ -z "${_jstack}" ]; then
+        if [ ! -f /proc/${_pid}/fd/1 ]; then
+            echo "[$(date +'%Y-%m-%d %H:%M:%S')] WARN  No 'jstack' and no stdout file (so best effort)" >&2
+        fi
         tailStdout "${_pid}" "$((${_count} * ${_interval} + 4))" "${_outPfx}000.log" "${_installDir}"
     fi
 
