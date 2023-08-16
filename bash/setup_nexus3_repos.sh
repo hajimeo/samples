@@ -107,7 +107,7 @@ _RESP_FILE=""
 
 
 ### Nexus installation functions ##############################################################################
-# To install 1st/2nd instance: r_NEXUS_ENABLE_HA=Y f_install_nexus3 "" "nxrmha"
+# To install 1st/2nd instance: _NEXUS_ENABLE_HA=Y f_install_nexus3 "" "nxrmha"
 # To upgrade (from ${_dirpath}/): tar -xvf $HOME/.nexus_executable_cache/nexus-3.54.1-01-mac.tgz
 function f_install_nexus3() {
     local __doc__="Install specific NXRM3 version"
@@ -148,7 +148,7 @@ function f_install_nexus3() {
     local _license_path="${_LICENSE_PATH}"
 
     if [ ! -d ${_dirpath%/}/sonatype-work/nexus3/etc/fabric ]; then
-        mkdir -v -p ${_dirpath%/}/sonatype-work/nexus3/etc/fabric || return $?
+        mkdir -p ${_dirpath%/}/sonatype-work/nexus3/etc/fabric || return $?
     fi
     local _prop="${_dirpath%/}/sonatype-work/nexus3/etc/nexus.properties"
     if [ ! -f "${_prop}" ]; then
@@ -157,7 +157,8 @@ function f_install_nexus3() {
 
     _upsert "${_prop}" "application-port" "${_port}" || return $?
     _upsert "${_prop}" "nexus.licenseFile" "${_license_path}" || return $?
-    if _isYes "${r_NEXUS_ENABLE_HA}"; then
+    if _isYes "${_NEXUS_ENABLE_HA:-"${r_NEXUS_ENABLE_HA}"}"; then
+        _log "INFO" "nexus.datastore.clustered.enabled=true"
         _upsert "${_prop}" "nexus.datastore.clustered.enabled" "true" || return $?
     fi
     # optional
@@ -176,6 +177,7 @@ schema=${_schema:-"public"}
 maximumPoolSize=40
 advanced=maxLifetime\=600000
 EOF
+            _log "INFO" "Creating database with \"${_dbusr}\" \"********\" \"${_dbname}\" \"${_schema}\""
             if ! _postgresql_create_dbuser "${_dbusr}" "${_dbpwd}" "${_dbname}" "${_schema}"; then
                 _log "WARN" "Failed to create ${_dbusr} or ${_dbname}"
             fi
@@ -2311,9 +2313,51 @@ function f_upload_dummies_helm() {
         if [ -n "${_pkg_name}" ] && ! echo "${_name}" | grep -qE "\b${_pkg_name}\b"; then
             continue
         fi
+        # Helm doesn't care about the file name
         curl -sf -w "Download: %{http_code} ${_name} (%{time_total}s)\n" "${_url}" -o ${_tmpdir%/}/helm-cart_tmp.tgz || continue
         curl -sf -w "Upload  : %{http_code} ${_name} (%{time_total}s)\n" -T ${_tmpdir%/}/helm-cart_tmp.tgz -u "${_usr}:${_pwd}" "${_repo_url%/}/${_name}" || return $?
         #curl -sf -w "Download: %{http_code} index.yaml (%{time_total}s | %{size_download}b)\n" -o/dev/null "${_repo_url%/}/index.yaml"
+    done
+}
+
+function f_upload_dummies_yum() {
+    local __doc__="Upload rpms from http://mirror.centos.org/centos/7/os/x86_64/Packages/"
+    local _repo_name="${1:-"yum-hosted"}"
+    local _how_many="${2:-"10"}"
+    local _pkg_name="${3}"      # used with grep -E "\b${_pkg_name}\b"
+    local _usr="${4:-"${_ADMIN_USER}"}"
+    local _pwd="${5:-"${_ADMIN_PWD}"}"
+
+    local _repo_url="${_NEXUS_URL%/}/repository/${_repo_name}/"
+    local _seq_start="${_SEQ_START:-1}"
+    local _seq_end="$((${_seq_start} + ${_how_many} - 1))"
+    local _tmpdir="$(mktemp -d)"
+    local _yum_remote_url="${_YUM_REMOTE_URL:-"http://mirror.centos.org/centos/7/os/x86_64/Packages/"}"
+    local _yum_upload_path="${_YUM_UPLOAD_PATH:-"7/os/x86_64/"}"
+
+    # not using _tmpdir as don't want to download always
+    if [ ! -s /tmp/yum_index.yaml ] || [ ! -s /tmp/yum_urls.out ]; then
+        curl -o /tmp/yum_index.yaml -f -L "${_yum_remote_url%/}/" || return $?
+        sed -n -r 's@^.+href="([^"]+\.rpm)".+$@'${_yum_remote_url%/}/'\1@pg' /tmp/yum_index.yaml > /tmp/yum_urls.out
+    fi
+    if [ ! -s /tmp/yum_urls.out ]; then
+        return 1
+    fi
+
+    if [ -n "${_pkg_name}" ]; then
+        grep -E "\b${_pkg_name}\b" /tmp/helm_urls.out
+    else
+        cat /tmp/yum_urls.out
+    fi | sed -n "${_seq_start},${_seq_end}p" | sort -R | while read -r _url; do
+        _name="$(basename "${_url}")"
+        if [ -n "${_pkg_name}" ] && ! echo "${_name}" | grep -qE "\b${_pkg_name}\b"; then
+            continue
+        fi
+        curl -sf -w "Download: %{http_code} ${_name} (%{time_total} secs, %{size_download} bytes)\n" "${_url}" -o ${_tmpdir%/}/${_name} || continue
+        curl -sf -w "Upload  : %{http_code} ${_name} (%{time_total} secs, %{size_download} bytes)\n" -T ${_tmpdir%/}/${_name} -u "${_usr}:${_pwd}" "${_repo_url%/}/${_yum_upload_path%/}/Packages/${_name}" || return $?
+        rm -f ${_tmpdir%/}/${_name}
+        #sleep 60
+        #curl -sf -w "Download: %{http_code} ${_YUM_GROUP_REPO} repomd.xml (%{time_total} secs, %{size_download} bytes)\n" -o/dev/null "${_NEXUS_URL%/}/repository/${_YUM_GROUP_REPO}/${_yum_upload_path%/}/repodata/repomd.xml"
     done
 }
 
