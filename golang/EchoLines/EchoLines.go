@@ -30,7 +30,9 @@ Read one file and output only necessary lines.
 
 # ENV VARIABLES:
 	INCL_REGEX=<some regex strings>
-		If regular expression is specified, it outputs only matching lines.
+		If regular expression is specified, only matching lines are included.
+	EXCL_REGEX=<some regex strings>
+		If regular expression is specified, matching lines are excluded.
 	HTML_REMOVE=Y
 		Remove all HTML tags and convert HTML entities
 END`)
@@ -40,6 +42,8 @@ var FROM_REGEXP *regexp.Regexp
 var END_REGEXP *regexp.Regexp
 var INCL_REGEX = os.Getenv("INCL_REGEX")
 var INCL_REGEXP *regexp.Regexp
+var EXCL_REGEX = os.Getenv("EXCL_REGEX")
+var EXCL_REGEXP *regexp.Regexp
 var HTML_REMOVE = os.Getenv("HTML_REMOVE")
 var TAG_REGEXP = regexp.MustCompile(`<[^>]+>`)
 var IN_FILES []string
@@ -110,6 +114,9 @@ func processFile(inFile *os.File) {
 		if INCL_REGEXP != nil && !INCL_REGEXP.MatchString(line) {
 			continue
 		}
+		if EXCL_REGEXP != nil && EXCL_REGEXP.MatchString(line) {
+			continue
+		}
 		echoLine(line, OUT_FILE)
 	}
 }
@@ -148,6 +155,10 @@ func main() {
 
 	if len(INCL_REGEX) > 0 {
 		INCL_REGEXP = regexp.MustCompile(INCL_REGEX)
+	}
+
+	if len(EXCL_REGEX) > 0 {
+		EXCL_REGEXP = regexp.MustCompile(EXCL_REGEX)
 	}
 
 	if IN_FILES == nil || len(IN_FILES) == 0 {

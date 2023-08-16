@@ -88,7 +88,6 @@ function pyvTest() {
 }
 #alias pyv='pyenv activate mypyvenv'    # I felt pyenv is slow, so not using
 alias pyv='source $HOME/.pyvenv/bin/activate'
-alias pyv39='source $HOME/.pyvenv39/bin/activate'
 alias urlencode='python3 -c "import sys;from urllib import parse; print(parse.quote(sys.stdin.read()))"'
 #alias urlencode='python2 -c "import sys, urllib as ul; print(ul.quote(sys.stdin.read()))"'
 alias urldecode='python3 -c "import sys;from urllib import parse; print(parse.unquote(sys.stdin.read()))"'
@@ -192,7 +191,7 @@ fi
 alias kvm='virt-manager -c "qemu+ssh://virtuser@dh1/system?socket=/var/run/libvirt/libvirt-sock" &>/tmp/virt-manager.out &'
 
 # Java / jar related
-#alias mb='java -jar $HOME/Apps/metabase.jar &>/tmp/metabase.out &'    # port is 3000
+alias mb='${JAVA_HOME_11%/}/bin/java -jar $HOME/Apps/metabase.jar'    # port is 3000
 alias vnc='java -Xmx2g -jar $HOME/Apps/tightvnc-jviewer.jar &>/tmp/vnc-java-viewer.out &'
 #alias vnc='java -jar $HOME/Applications/VncViewer-1.9.0.jar &>/tmp/vnc-java-viewer.out &'
 alias samurai='java -Xmx4g -jar $HOME/Apps/samurali/samurai.jar &>/tmp/samurai.out &'
@@ -459,13 +458,14 @@ function grep_logs() {
 }
 # Extract threads from some stdout log or jvm.log
 function threadsFromLog() {
+    local __doc__="curl -o /usr/local/bin/echolines -L https://github.com/hajimeo/samples/raw/master/misc/gonetstat_\$(uname)_\$(uname -m)"
     local _files="$1"
     local _save_to="${2:-"./threads.txt"}"
     local _end_regex="$3"
     local _from_regex="$4"
     [ -z "${_from_regex}" ] && _from_regex="^\d\d\d\d-\d\d-\d\d \d\d:\d\d:\d\d$"
-    [ -z "${_end_regex}" ] && _end_regex="(^\s+class space.+)"  # If not G1GC?
-    HTML_REMOVE=Y echolines "${_files}" "${_from_regex}" "${_end_regex}" > "${_save_to}"
+    [ -z "${_end_regex}" ] && _end_regex="(^\s+(class space|Metaspace).+)"  # If not G1GC?
+    HTML_REMOVE=Y EXCL_REGEX="^\d\d\d\d-\d\d-\d\dT\d\d:\d\d:\d\d\.\d+" echolines "${_files}" "${_from_regex}" "${_end_regex}" > "${_save_to}"
 }
 # prettify any strings by checkinbg braces
 function prettify() {
