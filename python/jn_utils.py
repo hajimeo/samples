@@ -96,7 +96,7 @@ _LOAD_UDFS = True
 _LAST_CONN = None
 _DB_TYPE = 'sqlite'
 # TODO: DB name should be changeable
-_DB_CONN_STR = 'file:jnutils?mode=memory&cache=shared'  #&uri=true
+_DB_CONN_STR = 'file:jnutils?mode=memory&cache=shared'  # &uri=true
 _DB_SCHEMA = 'public'
 _SIZE_REGEX = r"[sS]ize ?= ?([0-9]+)"
 _TIME_REGEX = r"\b([0-9.,]+) ([km]?s)\b"
@@ -746,7 +746,7 @@ def _db(conn_str=_DB_CONN_STR, dbtype='sqlite', isolation_level=None, use_sqlalc
     global _DB_TYPE
     _DB_TYPE = dbtype
     if use_sqlalchemy is False and dbtype == 'sqlite':
-        return sqlite3.connect("file:"+conn_str, uri=True, isolation_level=isolation_level)
+        return sqlite3.connect("file:" + conn_str, uri=True, isolation_level=isolation_level)
     if dbtype == 'sqlite':
         conn_str = dbtype + ':///' + conn_str
     elif dbtype == 'hive':
@@ -1182,22 +1182,36 @@ def _save_query(sql, limit=1000):
     df2csv(df.tail(limit), query_history_csv, mode="w", header=False)
 
 
-def _autocomp_matcher(text):
+def autocomp_matcher(self, text):
     """
-    This function is supposed to be a custom matcher for IPython Completer
-    TODO: doesn't work (can't register/append in matchers from 'ju' name space)
-    :param text:
-    :return:
+    Read from autocomp file and search text
+    :param text: search text
+    :return: list of matching words
     """
-    global _LAST_CONN
-    conn = _LAST_CONN
-    # Currently only searching table object
-    sql_and = " and tbl_name like '" + str(text) + "%'"
-    # TODO: does not work with PostgreSQL
-    rs = execute("select distinct name from sqlite_master where type = 'table'%s" % (sql_and))
-    if bool(rs) is False:
-        return
-    return _get_col_vals(rs.fetchall(), 0)
+    rtn = []
+    with open("/tmp/.autocomps", "r") as f:
+        lines = f.read().splitlines()
+    for line in lines:
+        if text.startswith("t_") and "." not in text and "." in line:
+            continue
+        if line.startswith(text):
+            rtn.append(line)
+    return rtn
+
+
+def autocomplete():
+    """
+    Enable Jupyter custom autocomplete
+    """
+    _autocomp_inject()
+    try:
+        # Completer.matchers.append
+        get_ipython().set_custom_completer(autocomp_matcher)
+    except:
+        pass
+
+
+ac = autocomplete
 
 
 def _autocomp_inject(tablename=None):
@@ -1209,20 +1223,26 @@ def _autocomp_inject(tablename=None):
     """
     if bool(tablename):
         tables = [tablename]
+        mode = "a"
     else:
         tables = describe().name.to_list()
+        mode = "w"
 
-    for t in tables:
-        cols = describe(t).name.to_list()
-        tbl_cls = _gen_class(t, cols)
-        try:
-            get_ipython().user_global_ns[t] = tbl_cls
-            # globals()[t] = tbl_cls
-            # locals()[t] = tbl_cls
-            # _info("added %s with %s" % (t, str(globals()[t])))
-        except:
-            _debug("get_ipython().user_global_ns failed")
-            pass
+    with open("/tmp/.autocomps", mode) as f:
+        for t in tables:
+            f.write("%s\n" % t)
+            cols = describe(t).name.to_list()
+            for c in cols:
+                f.write("%s.%s\n" % (t, c))
+            tbl_cls = _gen_class(t, cols)
+            try:
+                get_ipython().user_global_ns[t] = tbl_cls
+                # globals()[t] = tbl_cls
+                # locals()[t] = tbl_cls
+                # _info("added %s with %s" % (t, str(globals()[t])))
+            except:
+                _debug("get_ipython().user_global_ns failed")
+                pass
 
 
 def _gen_class(name, attrs=None, def_value=True):

@@ -339,6 +339,7 @@ def etl(path="", log_suffix=".log", dist="./_filtered", max_file_size=(1024 * 10
     except:
         raise
     finally:
+        ju.autocomplete()
         os.chdir(cur_dir)
         if tmpObj:
             tmpObj.cleanup()
