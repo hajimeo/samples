@@ -34,13 +34,16 @@ function f_prepare() {
     fi
     #python@3.7: The x86_64 architecture is required for this software.
     #https://diewland.medium.com/how-to-install-python-3-7-on-macbook-m1-87c5b0fcb3b5
-    if type ibrew &>/dev/null; then
-      ibrew install python@3.7
-      ibrew install python@3.7-dev
-    else
-      _install python3.7 && _install python3.7-dev
-      _install python3.7-venv   # it's probably OK if this fails
+    if type python3 &>/dev/null; then
+        _log "WARN" "No python3 installed. You might want to install python3.7"
+        return 1
     fi
+    #if type ibrew &>/dev/null; then
+    #    ibrew install python@3.7 && ibrew install python@3.7-dev
+    #else
+    #    _install python3.7 && _install python3.7-dev
+    #    _install python3.7-venv   # it's probably OK if this fails
+    #fi
     # Below is for pyenv and not using at this moment
     #_install make build-essential libssl-dev zlib1g-dev libbz2-dev libreadline-dev libsqlite3-dev wget curl llvm libncurses5-dev libncursesw5-dev xz-utils tk-dev libffi-dev liblzma-dev python-openssl git
     f_install_rg
@@ -53,8 +56,8 @@ function f_prepare() {
         # For python 2.7 https://bootstrap.pypa.io/pip/2.7/get-pip.py
         curl -s -f "https://bootstrap.pypa.io/get-pip.py" -o /tmp/get-pip.py || return $?
         # @see https://github.com/pypa/get-pip/issues/43
-        _install python3.7-distutils
-        sudo python3.7 /tmp/get-pip.py || return $?
+        _install python3-distutils
+        sudo python3 /tmp/get-pip.py || return $?
     fi
     # NOTE: python 3.7 may not have virtualenv but venv
     #python3.7 -m pip install -U virtualenv venv
@@ -204,10 +207,11 @@ function f_setup_golang() {
     sudo chmod a+x /var/tmp/share/dlv
 }
 
-# Currently NOT using as it cause some slowness in the shell
 function f_setup_pyenv() {
+    _log "WARN" "Currently NOT using as it cause some slowness in the shell"
+    return
     # @see: https://github.com/pyenv/pyenv/wiki/Common-build-problems
-    local _ver="${1:-"3.7.9"}"
+    local _ver="${1-"3.7.9"}"
     # At this moment, not sure if below is needed
     #if [ "$(uname)" = "Darwin" ]; then
     #    sudo installer -pkg /Library/Developer/CommandLineTools/Packages/macOS_SDK_headers_for_macOS_10.14.pkg -target /
@@ -216,7 +220,7 @@ function f_setup_pyenv() {
         curl https://pyenv.run | bash || return $?
     fi
     if grep -q -w pyenv $HOME/.bashrc || grep -q -w pyenv $HOME/.bash_profile; then
-        echo "Seems pyenv is configured (or intentionally disabled in .bashrc / .bash_profile)"
+        _log "WARN" "Seems pyenv is already configured (or intentionally disabled in .bashrc / .bash_profile)"
     else
         cat << EOF >> $HOME/.bashrc
 export PATH="\$HOME/.pyenv/bin:\$PATH"
@@ -237,88 +241,81 @@ EOF
 
 function f_setup_python() {
     local _pypi_proxy_url="$1"
-    local _no_venv="$2"
-    if ! which python3.7 &>/dev/null; then
-        echo "FIXME: Due to Jupyter autocomplete bug, python 3.7 is required (use f_prepare to install)"
-        return 1
-    fi
+    local _venv_path="${2-"${HOME%/}/.pyvenv"}"
     # Currently expecting anonymous is allowed.
     local _i_opt=""
     if _isUrl "${_pypi_proxy_url}" "Y" && [[ "${_pypi_proxy_url}" =~ ^https?://([^:/]+) ]]; then
         _i_opt="-i ${_pypi_proxy_url%/}/simple --trusted-host ${BASH_REMATCH[1]}"
     fi
 
-    if [[ ! "${_no_venv}" =~ ^(y|Y) ]]; then
+    if [ -n "${_venv_path}" ]; then
         deactivate &>/dev/null
         # NOTE: when python version is changed, need to switch to venv
-        #echo "Activating virtualenv: ${HOME%/}/.pyvenv (https://virtualenv.pypa.io/en/latest/user_guide.html) ..."
-        #if ! python3.7 -m virtualenv -p python3.7 $HOME/.pyvenv; then
-            python3.7 -m venv ${HOME%/}/.pyvenv || return $?
+        #echo "Activating virtualenv: ${_venv_path%/} (https://virtualenv.pypa.io/en/latest/user_guide.html) ..."
+        #if ! python3 -m virtualenv -p python3 ${_venv_path%/}; then
+            python3 -m venv ${_venv_path%/} || return $?
         #fi
-        source $HOME/.pyvenv/bin/activate || return $?
-        # NOTE: Currently not using pyenv (below) as it makes shell slower
-        #pyenv deactivate &>/dev/null    # Or pyenv local system
-        #f_setup_pyenv
-        #pyenv virtualenv ${_ver} mypyvenv || return $?
-        #pyenv activate mypyvenv || return $?
+        source ${_venv_path%/}/bin/activate || return $?
+        _log "INFO" "Using venv: ${_venv_path%/}"
     fi
 
     ### pip3 (not pip) from here ############################################################
-    #python3.7 -m pip install -U pip ${_i_opt} &>/dev/null
+    #python3 -m pip install -U pip ${_i_opt} &>/dev/null
     # outdated list
-    python3.7 -m pip list -o ${_i_opt} | tee /tmp/pip_$$.log
+    python3 -m pip list -o ${_i_opt} | tee /tmp/pip_$$.log
     #python -m pip list -o --format=freeze ${_i_opt} | cut -d'=' -f1 | xargs python -m pip install -U
 
     # My favourite/essential python packages (except jupyter and pandas related)
-    python3.7 -m pip install -U ${_i_opt} wheel lxml xmltodict pyyaml markdown memory_profiler
+    python3 -m pip install -U ${_i_opt} wheel lxml xmltodict pyyaml markdown memory_profiler
     #   %load_ext memory_profiler
     #   %mprun -f al.etl al.analyse_logs()
-    python3.7 -m pip install -U ${_i_opt} pyjq 2>/dev/null # TODO: as of this typing, this fails against python 3.8 (3.7 looks OK)
+    python3 -m pip install -U ${_i_opt} pyjq 2>/dev/null # TODO: as of this typing, this fails against python 3.8 (3.7 looks OK)
 
     # Important packages (Jupyter and pandas)
     # TODO: Autocomplete doesn't work with Lab and NB if different version is used. @see https://github.com/ipython/ipython/issues/11530
-    #       However, using 7.1.1 with python 3.8 may cause TypeError: required field "type_ignores" missing from Module
-    python3.7 -m pip install -U ${_i_opt} ipython==7.1.1 || return $?  #prettytable==0.7.2
-    #python3.7 -m pip install -U ${_i_opt} modin[ray] --log /tmp/pip_$$.log    # it's OK if fails
-    python3.7 -m pip install -U ${_i_opt} jupyter jupyterlab pandas dfsql --log /tmp/pip_$$.log || return $?   #ipython
-    # Reinstall: python3.7 -m pip uninstall -y jupyterlab && python3.7 -m pip install jupyterlab
+    #python3 -m pip install -U ${_i_opt} ipython==7.1.1 || return $?  #prettytable==0.7.2
+    python3 -m pip install -U ${_i_opt} ipython || return $?  #prettytable==0.7.2
+    #python3 -m pip install -U ${_i_opt} modin[ray] --log /tmp/pip_$$.log    # it's OK if fails
+    python3 -m pip install -U ${_i_opt} jupyter jupyterlab pandas dfsql --log /tmp/pip_$$.log || return $?   #ipython
+    # Reinstall: python3 -m pip uninstall -y jupyterlab && python3 -m pip install jupyterlab
 
     # Must-have packages. NOTE: Initially I thought pandasql looked good but it's actually using sqlite, and slow, and doesn't look like maintained any more.
-    python3.7 -m pip install -U ${_i_opt} jupyter_kernel_gateway sqlalchemy ipython-sql pivottablejs matplotlib --log /tmp/pip_$$.log
-    python3.7 -m pip install -U ${_i_opt} psycopg2-binary --log /tmp/pip_$$.log
+    python3 -m pip install -U ${_i_opt} jupyter_kernel_gateway sqlalchemy ipython-sql pivottablejs matplotlib --log /tmp/pip_$$.log
+    python3 -m pip install -U ${_i_opt} psycopg2-binary --log /tmp/pip_$$.log
     # pandas_profiling may fail to install. pixiedust works only with jupyter-notebook
-    #python3.7 -m pip install -U ${_i_opt} pandas_profiling pixiedust --log /tmp/pip_$$.log
+    #python3 -m pip install -U ${_i_opt} pandas_profiling pixiedust --log /tmp/pip_$$.log
     #   import pandas_profiling as pdp
     #   pdp.ProfileReport(df)
     # NOTE: In case I might use jupyter notebook, still installing this
-    python3.7 -m pip install -U ${_i_opt} bash_kernel --log /tmp/pip_$$.log && python3.7 -m bash_kernel.install
-    # For Spark etc., BeakerX http://beakerx.com/ NOTE: this works with only python3.7
-    #python3.7 -m pip install -U ${_i_opt} beakerx && beakerx-install
+    python3 -m pip install -U ${_i_opt} bash_kernel --log /tmp/pip_$$.log && python3 -m bash_kernel.install
+    # For Spark etc., BeakerX http://beakerx.com/ NOTE: this works with only python3
+    #python3 -m pip install -U ${_i_opt} beakerx && beakerx-install
 
     # Enable jupyter *Notebook* extensions NOTE: somehow this uses /usr/local/share/jupyter so may need sudo
-    #sudo python3.7 -m pip install -U ${_i_opt} jupyter-contrib-nbextensions jupyter-nbextensions-configurator
+    #sudo python3 -m pip install -U ${_i_opt} jupyter-contrib-nbextensions jupyter-nbextensions-configurator
     #jupyter contrib nbextension install && jupyter nbextensions_configurator enable && jupyter nbextension enable spellchecker/main
     # Spellchecker for Jupyter Lab but not working...?
     #jupyter labextension install @ijmbarr/jupyterlab_spellchecker
 
     # Enable Holloviews http://holoviews.org/user_guide/Installing_and_Configuring.html
     # Ref: http://holoviews.org/reference/index.html
-    #python3.7 -m pip install ${_i_opt} 'holoviews[recommended]'
+    #python3 -m pip install ${_i_opt} 'holoviews[recommended]'
     #jupyter labextension install @pyviz/jupyterlab_pyviz
     # NOTE: Above causes ValueError: Please install nodejs 5+ and npm before continuing installation.
     # Not so useful? (may need sudo if installing)
-    #python3.7 -m pip install ${_i_opt} jupyterlab_templates
+    #python3 -m pip install ${_i_opt} jupyterlab_templates
     #jupyter labextension install jupyterlab_templates && jupyter serverextension enable --py jupyterlab_templates
 
     # For SASL test
     #_install libsasl2-dev
-    #python3.7 -m pip install ${_i_opt} sasl thrift thrift-sasl PyHive
+    #python3 -m pip install ${_i_opt} sasl thrift thrift-sasl PyHive
 
     # JDBC wrapper. "0.6.3" is for using Java 1.8 also this requires GCC
-    #python3.7 -m pip install ${_i_opt} JPype1==0.6.3 JayDeBeApi
+    #python3 -m pip install ${_i_opt} JPype1==0.6.3 JayDeBeApi
     # For Google BigQuery (actually one of below)
-    #python3.7 -m pip install ${_i_opt} google-cloud-bigquery pandas-gbq
+    #python3 -m pip install ${_i_opt} google-cloud-bigquery pandas-gbq
 
+    _log "INFO" "Customising Jupyter with f_jupyter_util..."
     f_jupyter_util
 }
 
@@ -359,6 +356,8 @@ EOF
     #   How-to: pp.ProfileReport(df)
     # How to get the startup directory location:
     #   get_ipython().profile_dir.startup_dir
+    # How to add custom autocompletion
+    #   get_ipython().set_custom_completer(ju.autocomp_matcher)
     cat << EOF > "$HOME/.ipython/profile_default/startup/import_ju.py"
 import sys
 if "${_dir%/}" not in sys.path:
