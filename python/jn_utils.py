@@ -487,7 +487,8 @@ def json2df(filename, tablename=None, conn=None, chunksize=1000, if_exists='repl
                     if type(first_row[k]) is dict or type(first_row[k]) is list:
                         json_cols.append(k)
             except IndexError as ie:
-                _err(str(ie))
+                _info("%s is NOT importable due to: %s" % (str(file_path), str(ie)))
+                return df
         if bool(tablename) is False:
             tablename = _pick_new_key(os.path.basename(files[0]), {}, using_1st_char=False, prefix='t_')
         # Temp workaround: "<table>: Error binding parameter <N> - probably unsupported type."
@@ -1199,11 +1200,12 @@ def autocomp_matcher(self, text):
     return rtn
 
 
-def autocomplete():
+def autocomplete(reload=False):
     """
     Enable Jupyter custom autocomplete
     """
-    _autocomp_inject()
+    if reload:
+        _autocomp_inject()
     try:
         # Completer.matchers.append
         get_ipython().set_custom_completer(autocomp_matcher)
@@ -2300,7 +2302,7 @@ def df2table(df, tablename, conn=None, chunksize=1000, if_exists='replace', sche
             schema = _DB_SCHEMA
         df.to_sql(name=tablename, con=conn, chunksize=chunksize, if_exists=if_exists, schema=schema, index=False)
     except OperationalError as e:
-        _err("OperationalError: %s for %s" % (str(e), tablename))
+        _info("NOT importable into %s due to: %s" % (tablename, str(e)))
         return False
     except InterfaceError as e:
         res = re.search('Error binding parameter ([0-9]+) - probably unsupported type', str(e))
