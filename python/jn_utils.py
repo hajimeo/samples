@@ -95,6 +95,8 @@ _LOAD_UDFS = True
 
 _LAST_CONN = None
 _DB_TYPE = 'sqlite'
+# TODO: DB name should be changeable
+_DB_CONN_STR = 'file:jnutils?mode=memory&cache=shared'  #&uri=true
 _DB_SCHEMA = 'public'
 _SIZE_REGEX = r"[sS]ize ?= ?([0-9]+)"
 _TIME_REGEX = r"\b([0-9.,]+) ([km]?s)\b"
@@ -729,7 +731,7 @@ def _avoid_unsupported(df, json_cols=[], all_str=False, name=None, max_row_size=
 
 ### Database/DataFrame processing functions
 # NOTE: without sqlalchemy is faster
-def _db(conn_str=':memory:', dbtype='sqlite', isolation_level=None, use_sqlalchemy=False, echo=False):
+def _db(conn_str=_DB_CONN_STR, dbtype='sqlite', isolation_level=None, use_sqlalchemy=False, echo=False):
     """
     Create a DB object. For performance purpose, currently not using sqlalchemy if dbtype is sqlite
     :param conn_str: Database connection string after "//"
@@ -744,7 +746,7 @@ def _db(conn_str=':memory:', dbtype='sqlite', isolation_level=None, use_sqlalche
     global _DB_TYPE
     _DB_TYPE = dbtype
     if use_sqlalchemy is False and dbtype == 'sqlite':
-        return sqlite3.connect(conn_str, isolation_level=isolation_level)
+        return sqlite3.connect("file:"+conn_str, uri=True, isolation_level=isolation_level)
     if dbtype == 'sqlite':
         conn_str = dbtype + ':///' + conn_str
     elif dbtype == 'hive':
@@ -968,7 +970,7 @@ def _register_udfs(conn):
     """
     global _LOAD_UDFS
     if _LOAD_UDFS:
-        # UDF_REGEX(regex, column, integer)
+        # TODO: create_function does not exist in sqlalchemy
         conn.create_function("UDF_REGEX", 3, udf_regex)
         conn.create_function("UDF_COUNT_CHAR", 2, udf_count_char)
         conn.create_function("UDF_STR2SQLDT", 1, udf_str2sqldt)
@@ -980,7 +982,7 @@ def _register_udfs(conn):
     return conn
 
 
-def connect(conn_str=':memory:', dbtype='sqlite', isolation_level=None, use_sqlalchemy=False, echo=False):
+def connect(conn_str=_DB_CONN_STR, dbtype='sqlite', isolation_level=None, use_sqlalchemy=False, echo=False):
     """
     Connect to a database (SQLite)
     :param conn_str: Database name
