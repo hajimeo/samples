@@ -65,14 +65,11 @@ from sqlite3 import OperationalError
 from time import time
 from datetime import datetime
 from dateutil import parser
-
 # At this moment, many pandas functions do not work with modin.
-# import modin.pandas as pd
+#import modin.pandas as pd
 import pandas as pd
-
 from sqlalchemy import create_engine
 import matplotlib.pyplot as plt
-
 from sqlite3.dbapi2 import InterfaceError
 from json.decoder import JSONDecodeError
 
@@ -90,9 +87,9 @@ try:
 except ImportError:
     from urllib2 import urlopen, Request
 
+
 _DEBUG = False
 _LOAD_UDFS = True
-
 _LAST_CONN = None
 _DB_TYPE = 'sqlite'
 # TODO: DB name should be changeable
@@ -1236,15 +1233,15 @@ def _autocomp_inject(tablename=None):
             cols = describe(t).name.to_list()
             for c in cols:
                 f.write("%s.%s\n" % (t, c))
-            tbl_cls = _gen_class(t, cols)
-            try:
-                get_ipython().user_global_ns[t] = tbl_cls
-                # globals()[t] = tbl_cls
-                # locals()[t] = tbl_cls
-                # _info("added %s with %s" % (t, str(globals()[t])))
-            except:
-                _debug("get_ipython().user_global_ns failed")
-                pass
+            #tbl_cls = _gen_class(t, cols)
+            #try:
+            #    get_ipython().user_global_ns[t] = tbl_cls
+            #    globals()[t] = tbl_cls
+            #    locals()[t] = tbl_cls
+            #    _info("added %s with %s" % (t, str(globals()[t])))
+            #except:
+            #    _debug("get_ipython().user_global_ns failed")
+            #    pass
 
 
 def _gen_class(name, attrs=None, def_value=True):
