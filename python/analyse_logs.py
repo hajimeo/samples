@@ -154,7 +154,7 @@ def _create_t_log_elastic_monitor_jvm(tablename='t_log_elastic_monitor_jvm'):
 def _save_json(file_regex, save_path="", search_props=None, key_name=None, rtn_attrs=None, find_all=False):
     file_paths = ju._globr(file_regex, useRegex=True)
     if bool(file_paths) is False:
-        ju._info("No file found by using regex:%s" % file_regex)
+        ju._debug("No file found by using regex:%s" % file_regex)
         return False
     js_obj = gj.get_json(file_paths[0], search_props=search_props, key_name=key_name, rtn_attrs=rtn_attrs,
                          find_all=find_all)
