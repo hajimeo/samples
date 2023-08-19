@@ -17,7 +17,7 @@ func usage() {
 Read one file and output only necessary lines.
 
 # TO INSTALL:
-	curl -o /usr/local/bin/echolines -L https://github.com/hajimeo/samples/raw/master/misc/gonetstat_$(uname)_$(uname -m)
+	curl -o /usr/local/bin/echolines -L https://github.com/hajimeo/samples/raw/master/misc/echolines_$(uname)_$(uname -m)
 	chmod a+x /usr/local/bin/echolines
 
 # HOW TO USE:
