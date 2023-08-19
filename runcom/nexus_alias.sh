@@ -370,7 +370,7 @@ function iqStart() {
 
     grep -qE '^\s*port: 8443$' "${_cfg_file}" && sed -i.tmp 's/port: 8443/port: 8470/g' "${_cfg_file}"
     grep -qE '^\s*threshold:\s*INFO$' "${_cfg_file}" && sed -i.tmp 's/threshold: INFO/threshold: ALL/g' "${_cfg_file}"
-    grep -qE '^\s*level:\s*DEBUG$' "${_cfg_file}" || sed -i.tmp -E 's/level: .+/level: DEBUG/g' "${_cfg_file}"
+    grep -qE '^\s*level:\s*(DEBUG|TRACE)$' "${_cfg_file}" || sed -i.tmp -E 's/level: .+/level: DEBUG/g' "${_cfg_file}"
     cd "${_base_dir}"
     if ! grep -qE '^\s+"?com.sonatype.insight.policy.violation' "${_cfg_file}"; then
         # Mac's sed doesn't work with '/a'
