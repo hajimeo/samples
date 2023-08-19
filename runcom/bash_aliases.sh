@@ -88,6 +88,7 @@ function pyvTest() {
 }
 #alias pyv='pyenv activate mypyvenv'    # I felt pyenv is slow, so not using
 alias pyv='source $HOME/.pyvenv/bin/activate'
+alias pyvN='source $HOME/.pyvenv_new/bin/activate'
 alias urlencode='python3 -c "import sys;from urllib import parse; print(parse.quote(sys.stdin.read()))"'
 #alias urlencode='python2 -c "import sys, urllib as ul; print(ul.quote(sys.stdin.read()))"'
 alias urldecode='python3 -c "import sys;from urllib import parse; print(parse.unquote(sys.stdin.read()))"'
@@ -129,8 +130,8 @@ alias xml_path='python -c "import sys,pprint;from lxml import etree;t=etree.pars
 # Strip XML / HTML to get text. NOTE: using sys.stdin.read. (TODO: maybe </br> without new line should add new line)
 alias strip_tags='python3 -c "import sys,html,re;rx=re.compile(r\"<[^>]+>\");print(html.unescape(rx.sub(\"\",sys.stdin.read())))"'
 alias escape4json='python3 -c "import sys,json;print(json.dumps(sys.stdin.read()))"'
-alias jp='pyv && jupyter-lab &> /tmp/jupyter-lab.out'   # not using & as i forget to stop
-alias jn='pyv && jupyter-notebook &> /tmp/jupyter-notebook.out'
+alias jp='pyvN && jupyter-lab &> /tmp/jupyter-lab.out'   # not using & as i forget to stop
+alias jn='pyvN && jupyter-notebook &> /tmp/jupyter-notebook.out'
 alias startWeb='python3 -m http.server' # specify port (default:8000) if python2: python -m SimpleHTTPServer 8000
 
 ## Common software/command but need to install #######################################################################
@@ -171,17 +172,17 @@ type zsh &>/dev/null && alias ibrew="arch -x86_64 /usr/local/bin/brew"
 # Load/source my own searching utility functions / scripts
 #mkdir -p $HOME/IdeaProjects/samples/bash; curl -o $HOME/IdeaProjects/samples/bash/log_search.sh https://raw.githubusercontent.com/hajimeo/samples/master/bash/log_search.sh
 if [ -d $HOME/IdeaProjects/samples/bash ]; then
-    alias logT="pyv; source $HOME/IdeaProjects/samples/bash/log_tests.sh"
-    alias logTest="pyv;$HOME/IdeaProjects/samples/bash/log_tests.sh"
+    alias logT="pyvN; source $HOME/IdeaProjects/samples/bash/log_tests.sh"
+    alias logTest="pyvN;$HOME/IdeaProjects/samples/bash/log_tests.sh"
     alias setupNexus3="source $HOME/IdeaProjects/samples/bash/setup_nexus3_repos.sh"
     alias ss="bash $HOME/IdeaProjects/samples/bash/setup_standalone.sh"
 fi
 if [ -d $HOME/IdeaProjects/work/bash ]; then
-    alias srcLog="pyv; source $HOME/IdeaProjects/work/bash/log_search.sh"
+    alias srcLog="pyvN; source $HOME/IdeaProjects/work/bash/log_search.sh"
     alias srcRm="logT; source $HOME/IdeaProjects/work/bash/log_tests_nxrm.sh"
     alias srcIq="logT; source $HOME/IdeaProjects/work/bash/log_tests_nxiq.sh"
-    alias logRm="pyv;$HOME/IdeaProjects/work/bash/log_tests_nxrm.sh"
-    alias logIq="pyv;$HOME/IdeaProjects/work/bash/log_tests_nxiq.sh"
+    alias logRm="pyvN;$HOME/IdeaProjects/work/bash/log_tests_nxrm.sh"
+    alias logIq="pyvN;$HOME/IdeaProjects/work/bash/log_tests_nxiq.sh"
     alias instSona="source $HOME/IdeaProjects/work/bash/install_sonatype.sh"
 fi
 #alias xmldiff="python $HOME/IdeaProjects/samples/python/xml_parser.py" # this is for Hadoop xml files
@@ -223,7 +224,7 @@ alias winchrome='/opt/google/chrome/chrome --user-data-dir=$HOME/.chromep --prox
 alias hwxS3='s3cmd ls s3://private-repo-1.hortonworks.com/HDP/centos7/2.x/updates/'
 # TODO: public-repo-1.hortonworks.com private-repo-1.hortonworks.com
 # Slack API Search
-[ -s $HOME/IdeaProjects/samples/python/SimpleWebServer.py ] && alias slackS="pyv && cd $HOME/IdeaProjects/samples/python/ && python3 ./SimpleWebServer.py &> /tmp/SimpleWebServer.out &"
+[ -s $HOME/IdeaProjects/samples/python/SimpleWebServer.py ] && alias slackS="pyvN && cd $HOME/IdeaProjects/samples/python/ && python3 ./SimpleWebServer.py &> /tmp/SimpleWebServer.out &"
 alias smtpdemo='python -m smtpd -n -c DebuggingServer localhost:2500'
 
 ### Functions (some command syntax does not work with alias eg: sudo) ##################################################
@@ -457,8 +458,9 @@ function grep_logs() {
     grep ${_grep_opts} "${_search_regex}" $(_find_recent "${_log_dir}" "${_log_file_glob}")
 }
 # Extract threads from some stdout log or jvm.log
+#curl -o /usr/local/bin/echolines -L https://github.com/hajimeo/samples/raw/master/misc/echolines_$(uname)_$(uname -m);
+#HTML_REMOVE=Y EXCL_REGEX="^\d\d\d\d-\d\d-\d\dT\d\d:\d\d:\d\d\.\d+" echolines "./sonatype-work/nexus3/log/jvm.log" "^\d\d\d\d-\d\d-\d\d \d\d:\d\d:\d\d$" "(^\s+(class space|Metaspace).+)" > "./threads.txt"
 function threadsFromLog() {
-    local __doc__="curl -o /usr/local/bin/echolines -L https://github.com/hajimeo/samples/raw/master/misc/gonetstat_\$(uname)_\$(uname -m)"
     local _files="$1"
     local _save_to="${2:-"./threads.txt"}"
     local _end_regex="$3"
