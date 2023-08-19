@@ -10,6 +10,7 @@ iq_server:
   image: "sonatype/nexus-iq-server"
   tag: "latest"
   #imagePullPolicy: "Always"
+  javaOpts: "-Xms2g -Xmx4g -Djava.util.prefs.userRoot=/sonatype-work/javaprefs"
   database:
     hostname: "192.168.1.31"
     port: 5432
