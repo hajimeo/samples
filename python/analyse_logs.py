@@ -2,7 +2,8 @@ import jn_utils as ju
 import get_json as gj
 import linecache, re, os, json
 
-isHeaderContentLength=False
+isHeaderContentLength = False
+
 
 def _gen_regex_for_request_logs(filepath="request.log"):
     """
@@ -191,11 +192,13 @@ def request2table(filepath, tablename="t_request", max_file_size=(1024 * 1024 * 
         line_until = ju._linenumber(log_path, "\d\d/.../\d\d\d\d:" + time_until_regex)
     (col_names, line_matching) = _gen_regex_for_request_logs(log_path)
     return ju.logs2table(log_path, tablename=tablename, line_beginning="^.",
-                                 col_names=col_names, line_matching=line_matching,
-                                 max_file_size=max_file_size,
-                                 line_from=line_from, line_until=line_until)
+                         col_names=col_names, line_matching=line_matching,
+                         max_file_size=max_file_size,
+                         line_from=line_from, line_until=line_until)
 
-def applog2table(filepath, tablename="t_applog", max_file_size=(1024 * 1024 * 100), time_from_regex=None, time_until_regex=None):
+
+def applog2table(filepath, tablename="t_applog", max_file_size=(1024 * 1024 * 100), time_from_regex=None,
+                 time_until_regex=None):
     log_path = ju._get_file(filepath)
     if bool(log_path) is False:
         return False
@@ -206,10 +209,12 @@ def applog2table(filepath, tablename="t_applog", max_file_size=(1024 * 1024 * 10
         line_until = ju._linenumber(log_path, "^\d\d\d\d-\d\d-\d\d " + time_until_regex)
     (col_names, line_matching) = _gen_regex_for_app_logs(log_path)
     return ju.logs2table(log_path, tablename=tablename, col_names=col_names,
-                              line_matching=line_matching, max_file_size=max_file_size,
-                              line_from=line_from, line_until=line_until)
+                         line_matching=line_matching, max_file_size=max_file_size,
+                         line_from=line_from, line_until=line_until)
 
-def etl(path="", log_suffix=".log", dist="./_filtered", max_file_size=(1024 * 1024 * 100), time_from_regex=None, time_until_regex=None):
+
+def etl(path="", log_suffix=".log", dist="./_filtered", max_file_size=(1024 * 1024 * 100), time_from_regex=None,
+        time_until_regex=None, add_startTime=True):
     """
     Extract data, transform and load (to DB)
     :param path: To specify a zip file
@@ -218,6 +223,7 @@ def etl(path="", log_suffix=".log", dist="./_filtered", max_file_size=(1024 * 10
     :param max_file_size: Larger than this size will be skipped (default 100MB)
     :param time_from_regex: Regex for 'time' for logs2table's line_from (eg "(0[5-9]|1[0-3]]):\d\d:\d\d")
     :param time_until_regex: Regex for 'time' for logs2table's line_until
+    :param add_startTime: In the table, add 'startedTime' from 'date_time' and 'elapsedTime'. Requires col_names
     :return: void
     """
     global isHeaderContentLength
@@ -243,10 +249,10 @@ def etl(path="", log_suffix=".log", dist="./_filtered", max_file_size=(1024 * 10
         # Somehow Jupyter started as service uses 'sh', so forcing 'bash'
         ju._system(
             ju._SH_EXECUTABLE + " -c '[ ! -s /tmp/log_search.sh ] && curl -s --compressed https://raw.githubusercontent.com/hajimeo/samples/master/bash/log_search.sh -o /tmp/log_search.sh; [ ! -d \"%s\" ] && mkdir \"%s\"'" % (
-            dist, dist))
+                dist, dist))
         ju._system(
             ju._SH_EXECUTABLE + " -c '%s[ -d \"%s\" ] && . /tmp/log_search.sh && f_request2csv \"\" \"%s\" 2>/dev/null && f_audit2json \"\" \"%s\"'" % (
-            "cd %s;" % extracted_dir if extracted_dir else "", dist, dist, dist))
+                "cd %s;" % extracted_dir if extracted_dir else "", dist, dist, dist))
         # system-filestores from sysinfo.json
         _save_json("sysinfo\.json", "%s/system-filestores.json" % dist, "system-filestores")
         # extracting from DB export.json files
@@ -273,14 +279,15 @@ def etl(path="", log_suffix=".log", dist="./_filtered", max_file_size=(1024 * 10
 
         ### Transform & Load ###################################################
         # Loading db_xxxxx.json
-        _ = ju.load_jsons(src=dist, include_ptn="db_*.json", flatten=True, max_file_size=(max_file_size * 2), conn=ju.connect())
+        _ = ju.load_jsons(src=dist, include_ptn="db_*.json", flatten=True, max_file_size=(max_file_size * 2),
+                          conn=ju.connect())
         # If audit.json file exists and no time_xxxx_regex
         if os.path.isfile(
                 dist + "/audit.json"):  # and bool(time_from_regex) is False and bool(time_until_regex) is False
             _ = ju.json2df(dist + "/audit.json", tablename="t_audit_logs", flatten=True, max_file_size=max_file_size)
         else:
             # TODO: currently below is too slow, so not using "max_file_size=max_file_size,"
-            log_path = ju._get_file("audit"+log_suffix)
+            log_path = ju._get_file("audit" + log_suffix)
             if bool(log_path):
                 line_from = line_until = 0
                 if bool(time_from_regex):
@@ -294,23 +301,42 @@ def etl(path="", log_suffix=".log", dist="./_filtered", max_file_size=(1024 * 10
         _ = ju.load_csvs(src="./_filtered/", include_ptn="*.csv", max_file_size=(max_file_size * 5), conn=ju.connect())
 
         # ./work/db/xxxxx.json (new DB)
-        _ = ju.load_jsons(".", include_ptn=".+/db/.+\.json", exclude_ptn='(samlConfigurationExport\.json|export\.json)', useRegex=True, conn=ju.connect())
+        _ = ju.load_jsons(".", include_ptn=".+/db/.+\.json", exclude_ptn='(samlConfigurationExport\.json|export\.json)',
+                          useRegex=True, conn=ju.connect())
 
         # If request.*csv* exists, use that (should be already created by load_csvs and should be loaded by above load_csvs (because it's faster), if not, logs2table, which is slower.
         if ju.exists("t_request") is False:
             _ = request2table("request"+log_suffix)
+
         if ju.exists("t_request"):
             try:
                 _ = ju.execute(sql="UPDATE t_request SET headerContentLength = 0 WHERE headerContentLength = '-'")
-                isHeaderContentLength=True
+                isHeaderContentLength = True
             except:
-                isHeaderContentLength=False
+                isHeaderContentLength = False
                 # non NXRM3 request.log wouldn't have headerContentLength
                 pass
+            if add_startTime:
+                try:
+                    _ = ju.execute(sql="ALTER TABLE t_request ADD COLUMN startTime timestamp DEFAULT NULL")
+                except Exception as e:
+                    ju._err(str(e))
+                try:
+                    _ = ju.execute(sql="ALTER TABLE t_request ADD COLUMN endTime timestamp DEFAULT NULL")
+                except Exception as e:
+                    ju._err(str(e))
+                try:
+                    _ = ju.execute(sql="UPDATE t_request SET endTime = UDF_STRFTIME('%Y-%m-%d %H:%M:%S', `date`)")
+                except Exception as e:
+                    ju._err(str(e))
+                try:
+                    _ = ju.execute(sql="UPDATE t_request SET startTime = UDF_STARTED_TIME(`date`, elapsedTime)")
+                except Exception as e:
+                    ju._err(str(e))
 
         # Loading application log file(s) into database.
-        nxrm_logs = applog2table("nexus"+log_suffix, "t_nxrm_logs")
-        _ = applog2table("clm-server"+log_suffix, "t_iq_logs")
+        nxrm_logs = applog2table("nexus" + log_suffix, "t_nxrm_logs")
+        _ = applog2table("clm-server" + log_suffix, "t_iq_logs")
 
         # Hazelcast health monitor
         if ju.exists("t_log_hazelcast_monitor") is False and bool(nxrm_logs):
@@ -331,7 +357,7 @@ def etl(path="", log_suffix=".log", dist="./_filtered", max_file_size=(1024 * 10
             _create_t_log_elastic_monitor_jvm('t_log_elastic_monitor_jvm')
 
         # Thread dump
-        threads = ju.logs2table(filename="threads.txt", tablename="t_threads", conn=ju.connect(),
+        _ = ju.logs2table(filename="threads.txt", tablename="t_threads", conn=ju.connect(),
                                 col_names=['thread_name', 'id', 'state', 'stacktrace'],
                                 line_beginning="^[^ ]",
                                 line_matching='^"?([^"]+)"? id=([^ ]+) state=(\w+)(.*)',
@@ -341,10 +367,11 @@ def etl(path="", log_suffix=".log", dist="./_filtered", max_file_size=(1024 * 10
     finally:
         ju.autocomplete()
         os.chdir(cur_dir)
-        if tmpObj:
+        if tmpObj is not None:
             tmpObj.cleanup()
 
     ju.display(ju.desc(), name="Available_Tables")
+
 
 def analyze_log_table(log_table_name, where_sql="", tail_num=10000):
     # analyse t_logs table (eg: count ERROR|WARN)
@@ -368,7 +395,9 @@ def analyze_log_table(log_table_name, where_sql="", tail_num=10000):
     GROUP BY 1""" % (log_table_name, where_sql)
     ju.draw(ju.q(query).tail(tail_num), name=display_name, desc=query, is_x_col_datetime=False)
 
-def analyse_logs(path="", log_suffix=".log", tail_num=10000, max_file_size=(1024 * 1024 * 100), skip_etl=False, useHeaderContentLength=False):
+
+def analyse_logs(path="", log_suffix=".log", tail_num=10000, max_file_size=(1024 * 1024 * 100), skip_etl=False,
+                 add_startTime=True, use_headerContentLength=False):
     """
     A prototype / demonstration function for extracting then analyse log files
     :param path: File (including zip) path
@@ -376,27 +405,29 @@ def analyse_logs(path="", log_suffix=".log", tail_num=10000, max_file_size=(1024
     :param tail_num: How many rows/records to display. Default is 10K
     :param max_file_size: File smaller than this size will be skipped.
     :param skip_etl: Skip etl() function
+    :param add_startTime: In the table, add 'startedTime' from 'date' and 'elapsedTime' (for request.log, not request.csv)
+    :param use_headerContentLength: In the report, Add a few aggregate collumns which use headerContentLength column
     :return: void
     >>> pass    # test should be done in each function
     """
     global isHeaderContentLength
-    if useHeaderContentLength:
-        isHeaderContentLength=useHeaderContentLength
+    if use_headerContentLength:
+        isHeaderContentLength = use_headerContentLength
     if bool(skip_etl) is False:
-        etl(path=path, log_suffix=log_suffix, max_file_size=max_file_size)
+        etl(path=path, log_suffix=log_suffix, max_file_size=max_file_size, add_startTime=add_startTime)
 
     where_sql = "WHERE 1=1"
 
-    headerContentLengthAgg=""
-    avgMsPerByteAgg="CAST(SUM(CAST(elapsedTime AS INT)) / SUM(CAST(bytesSent AS INT)) AS INT)  AS avgMsPerByte,"
-    avgBytesPerMsAgg="CAST(SUM(CAST(bytesSent AS INT)) / SUM(CAST(elapsedTime AS INT)) AS INT)  AS avgBytesPerMs,"
+    headerContentLengthAgg = ""
+    avgMsPerByteAgg = "CAST(SUM(CAST(elapsedTime AS INT)) / SUM(CAST(bytesSent AS INT)) AS INT)  AS avgMsPerByte,"
+    avgBytesPerMsAgg = "CAST(SUM(CAST(bytesSent AS INT)) / SUM(CAST(elapsedTime AS INT)) AS INT)  AS avgBytesPerMs,"
     where_sql2 = "WHERE 1=1"
     if isHeaderContentLength:
-        #where_sql2 = "WHERE (CAST(bytesSent AS INT) + CAST(headerContentLength AS INT) > 0)" # TODO: POST has 0 and 0
+        # where_sql2 = "WHERE (CAST(bytesSent AS INT) + CAST(headerContentLength AS INT) > 0)" # TODO: POST has 0 and 0
         # NOTE: Don't forget to append a comma in the end of line.
-        headerContentLengthAgg="AVG(CAST(headerContentLength AS INTEGER)) AS bytesReceived,"
-        avgMsPerByteAgg="CAST(SUM(CAST(elapsedTime AS INTEGER)) / SUM(CAST(bytesSent AS INT) + CAST(headerContentLength AS INT)) AS INT) AS avgMsPerByte,"
-        avgBytesPerMsAgg="CAST(SUM(CAST(bytesSent AS INT) + CAST(headerContentLength AS INT)) / SUM(CAST(elapsedTime AS INTEGER)) AS INT) AS avgBytesPerMs,"
+        headerContentLengthAgg = "AVG(CAST(headerContentLength AS INTEGER)) AS bytesReceived,"
+        avgMsPerByteAgg = "CAST(SUM(CAST(elapsedTime AS INTEGER)) / SUM(CAST(bytesSent AS INT) + CAST(headerContentLength AS INT)) AS INT) AS avgMsPerByte,"
+        avgBytesPerMsAgg = "CAST(SUM(CAST(bytesSent AS INT) + CAST(headerContentLength AS INT)) / SUM(CAST(elapsedTime AS INTEGER)) AS INT) AS avgBytesPerMs,"
 
     if ju.exists("t_request"):
         display_name = "RequestLog_StatusCode_Hourly_aggs"
@@ -467,7 +498,7 @@ LEFT JOIN (SELECT thread, date_time as end_dt, UDF_REGEX('(\d+) ms\.', message, 
   ON t_scan_start.thread = t_scan_end.thread and t_scan_start.start_dt < t_scan_end.end_dt
 ORDER BY start_dt"""
         # TODO: not accurate
-        #ju.display(ju.q(query).tail(tail_num), name=display_name, desc=query)
+        # ju.display(ju.q(query).tail(tail_num), name=display_name, desc=query)
 
         display_name = "NxiqLog_HDS_Client_Requests"
         query = """SELECT date_time, 

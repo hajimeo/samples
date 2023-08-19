@@ -60,7 +60,7 @@ Kind of joining two tables with UDF_REGEX:
 """
 
 # TODO: When you add a new pip package, don't forget to update setup_work_env.sh
-import sys, os, io, fnmatch, gzip, re, json, sqlite3, ast
+import sys, os, io, fnmatch, gzip, re, json, sqlite3, ast, tempfile
 from sqlite3 import OperationalError
 from time import time
 from datetime import datetime
@@ -98,6 +98,7 @@ _DB_SCHEMA = 'public'
 _SIZE_REGEX = r"[sS]ize ?= ?([0-9]+)"
 _TIME_REGEX = r"\b([0-9.,]+) ([km]?s)\b"
 _SH_EXECUTABLE = "/bin/bash"
+_MULTI_PROC = False
 
 # If the HTML string contains '$', Jupyter renders as Italic.
 pd.options.display.html.use_mathjax = False
@@ -804,7 +805,7 @@ def udf_str2sqldt(date_time):
 def udf_strftime(format, date_time):
     """
     Sqlite STRFTIME does not have Month abbribiation (almost same as udf_str2sqldt but 2 arguments)
-    eg: SELECT UDF_STRFTIME('14/Oct/2019:00:00:05 +0800', '%d/%b/%Y:%H:%M:%S %z') as request_datetime, ...
+    eg: SELECT UDF_STRFTIME('%d/%b/%Y:%H:%M:%S %z', '14/Oct/2019:00:00:05 +0800') as request_datetime, ...
     :param format:      String - Date and Time format supported by python's strftime
     :param date_time:   String - Date and Time string
     :return:            String - Formatted date time string
@@ -860,6 +861,8 @@ def udf_started_time(date_time, elapsed_ms):
     :param date_time: ISO date string (or Date/Time column but SQLite doesn't have date/time columns)
     :param elapsed_ms: Integer (elapsed time in millisecond)
     :return:          Integer of Unix Timestamp
+    >>> udf_started_time("11/Aug/2023:00:00:00 +0000", 500000)
+    '2023-08-10 23:51:40'
     """
     global RE_STARTED
     ts_sec = udf_timestamp(date_time)
@@ -1165,19 +1168,18 @@ def _save_query(sql, limit=1000):
     >>> pass    # Testing in qhistory()
     """
     query_history_csv = os.getenv('JN_UTILS_QUERY_HISTORY', os.getenv('HOME') + os.path.sep + ".ju_qhistory")
-    # removing spaces and last ';'
-    sql = sql.strip().rstrip(';')
-    df_new = pd.DataFrame([[_timestamp(format="%Y%m%d%H%M%S"), sql]], columns=["datetime", "query"])
     df_hist = csv2df(query_history_csv, header=None, max_file_size=0)
     if df_hist is None or df_hist is False or df_hist.empty:
-        df = df_new
+        # removing spaces and last ';'
+        sql = sql.strip().rstrip(';')
+        df_hist = pd.DataFrame([[_timestamp(format="%Y%m%d%H%M%S"), sql]], columns=["datetime", "query"])
     else:
         # If not empty (= same query exists), drop/remove old dupe row(s), so that time will be new.
         df_hist.columns = ["datetime", "query"]
         df_hist_new = df_hist[df_hist['query'].str.lower().isin([sql.lower()]) == False]
-        df = df_hist_new.append(df_new, ignore_index=True, sort=False)
-    # Currently not appending but overwriting whole file.
-    df2csv(df.tail(limit), query_history_csv, mode="w", header=False)
+        df_hist = pd.concat([df_hist, df_hist_new], ignore_index=True, sort=False)
+    # Might be slower but, not appending but overwriting whole file as per 'limit'
+    df2csv(df_hist.tail(limit), query_history_csv, mode="w", header=False)
 
 
 def autocomp_matcher(self, text):
@@ -1308,8 +1310,9 @@ def display(df, name="", desc="", tail=1000):
             ])
             # pd.options.display.html.use_mathjax = False    # Now this is set in global
             _display(name_html + '\n' + df_styler.render())
-        except Exception as e:
+        except AttributeError:
             _display(name_html + '\n' + df.to_html())
+        except Exception as e:
             _err(e)
     else:
         df2csv(df=df, file_path="%s.csv" % (str(name)))
@@ -1809,8 +1812,8 @@ def _insert2table(conn, tablename, tpls, chunk_size=4000):
         tpls = [tpls]
     chunked_list = _chunks(tpls, chunk_size)
     placeholders = ','.join('?' * len(first_obj))
-    for l in chunked_list:
-        res = conn.executemany("INSERT INTO " + tablename + " VALUES (" + placeholders + ")", l)
+    for values in chunked_list:
+        res = conn.executemany("INSERT INTO " + tablename + " VALUES (" + placeholders + ")", values)
         if bool(res) is False:
             return res
     return res
@@ -2005,7 +2008,7 @@ def logs2table(filename, tablename=None, conn=None,
                size_regex=None, time_regex=None,
                line_from=0, line_until=0,
                max_file_num=10, max_file_size=(1024 * 1024 * 100),
-               appending=False, multiprocessing=False):
+               appending=False, multiprocessing=None):
     """
     Insert multiple log files into *one* table
     :param filename: a file name (or path) or *simple* glob regex
@@ -2043,6 +2046,7 @@ def logs2table(filename, tablename=None, conn=None,
     """
     global _SIZE_REGEX
     global _TIME_REGEX
+    global _MULTI_PROC
     if bool(tablename) and conn is None:
         conn = connect()
     # NOTE: as python dict does not guarantee the order, col_def_str is using string
@@ -2057,31 +2061,33 @@ def logs2table(filename, tablename=None, conn=None,
         return None
     if len(files) > max_file_num:
         raise ValueError('Glob: %s returned too many files (%s)' % (filename, str(len(files))))
+    if multiprocessing is None:
+        multiprocessing = _MULTI_PROC
 
     if bool(conn):
         col_def_str = ""
         if isinstance(col_names, dict):
-            for k, v in col_names.iteritems():
+            for cn, dt in col_names.iteritems():
                 if col_def_str != "":
                     col_def_str += ", "
-                if v == "":
-                    v = "TEXT"
-                col_def_str += "%s %s" % (k, v)
+                if dt == "":
+                    dt = "TEXT"
+                col_def_str += "%s %s" % (cn, dt)
         else:
-            for v in col_names:
+            for cn in col_names:
                 if col_def_str != "":
                     col_def_str += ", "
                 # the column name 'jsonstr' is currently not in use.
-                if v == 'jsonstr':
-                    col_def_str += "%s json" % (v)
-                elif v in ('bytesSent', 'elapsedTime'):  # Not elegant but for now, for request.log
-                    col_def_str += "%s INTEGER" % (v)
-                elif v == 'size' and size_regex == _SIZE_REGEX:
-                    col_def_str += "%s INTEGER" % (v)
-                elif v == 'time' and time_regex == _TIME_REGEX:
-                    col_def_str += "%s REAL" % (v)
+                if cn == 'jsonstr':
+                    col_def_str += "%s json" % (cn)
+                elif cn in ('bytesSent', 'elapsedTime'):  # Not elegant but for now, for request.log
+                    col_def_str += "%s INTEGER" % (cn)
+                elif cn == 'size' and size_regex == _SIZE_REGEX:
+                    col_def_str += "%s INTEGER" % (cn)
+                elif cn == 'time' and time_regex == _TIME_REGEX:
+                    col_def_str += "%s REAL" % (cn)
                 else:
-                    col_def_str += "%s TEXT" % (v)
+                    col_def_str += "%s TEXT" % (cn)
         if bool(tablename) is False:
             first_filename = os.path.basename(files[0])
             tablename = _pick_new_key(first_filename, {}, using_1st_char=False, prefix='t_')
@@ -2110,6 +2116,7 @@ def logs2table(filename, tablename=None, conn=None,
                 _info("%s is too small (%d) as log. Skipping ..." % (str(f), fs))
                 continue
         if multiprocessing:
+            _debug("Preparing args_list for multiprocessing for %s ..." % (str(filename)))
             # concurrent.futures.ProcessPoolExecutor hangs in Jupyter, so can't use kwargs
             args_list.append(
                 (f, line_beginning, line_matching, size_regex, time_regex, num_cols, True, line_from, line_until))
@@ -2120,6 +2127,7 @@ def logs2table(filename, tablename=None, conn=None,
                                            replace_comma=True, line_from=line_from, line_until=line_until)
             inserted_num += _log2tables_inner(tuples, conn, tablename, col_names, dfs)
     if multiprocessing:
+        _info("multiprocessing %s with CPUs/2 ..." % (str(filename)))
         rs = _mexec(_read_file_and_search, args_list)
         for tuples in rs:
             inserted_num += _log2tables_inner(tuples, conn, tablename, col_names, dfs)
