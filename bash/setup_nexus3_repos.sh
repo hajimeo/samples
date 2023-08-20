@@ -2411,7 +2411,7 @@ function f_delete_all_assets() {
     rm -f ${_TMP%/}/${FUNCNAME}_*.out || return $?
     local _path="/service/rest/v1/search/assets"
     local _query=""
-    local _base_query="?"
+    local _base_query=""
     [ -n "${_repo}" ] && _base_query="?repository=${_repo}"
     cat /dev/null > ${_TMP%/}/${FUNCNAME}_$$.out
     for i in $(seq "1" "${_max_loop}"); do
@@ -2419,7 +2419,11 @@ function f_delete_all_assets() {
         grep -E '^            "id":' -h ${_TMP%/}/${FUNCNAME}.json | sort | uniq >> ${_TMP%/}/${FUNCNAME}_$$.out || return $?
         grep -qE '"continuationToken": *"[0-9a-f]+' ${_TMP%/}/${FUNCNAME}.json || break
         local cToken="$(cat ${_TMP%/}/${FUNCNAME}.json | python -c 'import sys,json;a=json.loads(sys.stdin.read());print(a["continuationToken"])')"
-        _query="&continuationToken=${cToken}"
+        if [ -z "${_base_query}" ]; then
+            _query="?continuationToken=${cToken}"
+        else
+            _query="&continuationToken=${cToken}"
+        fi
     done
     local _line_num="$(cat ${_TMP%/}/${FUNCNAME}_$$.out | wc -l | tr -d '[:space:]')"
     if [[ ! "${_force}" =~ ^[yY] ]]; then
