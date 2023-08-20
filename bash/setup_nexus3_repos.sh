@@ -196,7 +196,7 @@ EOF
     fi
 }
 function f_install_iq() {
-    local __doc__="Install specific NXRM3 version"
+    local __doc__="Install specific IQ version"
     local _ver="${1}"     # 'latest'
     local _dbname="${2}"
     local _dbusr="${3:-"nxrm"}"     # Specifying default as do not want to create many users/roles
@@ -2743,8 +2743,8 @@ main() {
         echo "Starting Nexus installation..." >&2
         _NEXUS_START="Y" f_install_nexus3 || return $?
     fi
-    if [ -z "${r_NEXUS_URL}" ] || ! _wait_url "${r_NEXUS_URL}"; then
-        _log "ERROR" "${r_NEXUS_URL} is unreachable"
+    if [ -z "${r_NEXUS_URL:-"${_NEXUS_URL}"}" ] || ! _wait_url "${r_NEXUS_URL:-"${_NEXUS_URL}"}"; then
+        _log "ERROR" "${r_NEXUS_URL:-"${_NEXUS_URL}"} is unreachable"
         return 1
     fi
 
@@ -2797,7 +2797,7 @@ if [ "$0" = "$BASH_SOURCE" ]; then
     while getopts "ADf:r:v:d:" opts; do
         case $opts in
             A)
-                _AUTO=true
+                f_install_nexus3
                 ;;
             D)
                 _DEBUG=true
