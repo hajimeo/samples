@@ -1963,6 +1963,7 @@ function f_start_saml_server() {
     local _sp_meta_file="${2:-"./metadata.xml"}"
     local _sp_meta_url="${3-"http://localhost:8081/service/rest/v1/security/saml/metadata"}"
     local _sp_meta_cred="${4-"admin:admin123"}"
+    local _users_json="${5:-"./simple-saml-idp.json"}"
     if [ -z "${_sp_meta_file}" ]; then
         echo "Please specify _sp_meta_file"; return 1
     fi
@@ -1974,8 +1975,8 @@ function f_start_saml_server() {
         fi
         _cmd="${_SHARE_DIR%/}/simplesamlidp"
     fi
-    if [ ! -s ./simple-saml-idp.json ]; then
-        curl -O -L "https://raw.githubusercontent.com/hajimeo/samples/master/misc/simple-saml-idp.json" --compressed  || return $?
+    if [ ! -s "${_users_json}" ]; then
+        curl -o "${_users_json}" -L "https://raw.githubusercontent.com/hajimeo/samples/master/misc/simple-saml-idp.json" --compressed  || return $?
     fi
     # Not implemented to use credential, so for now using _sp_meta_file
     if [ -n "${_sp_meta_url}" ] && [ ! -s "${_sp_meta_file}" ]; then
@@ -1984,7 +1985,7 @@ function f_start_saml_server() {
     if [ ! -s ./myidp.key ]; then
         openssl req -x509 -newkey rsa:2048 -keyout ./myidp.key -out ./myidp.crt -days 365 -nodes -subj "/CN=$(hostname -f)" || return $?
     fi
-    export IDP_KEY=./myidp.key IDP_CERT=./myidp.crt USER_JSON=./simple-saml-idp.json IDP_BASE_URL="${_idp_base_url}" SERVICE_METADATA_URL="${_sp_meta_file}"
+    export IDP_KEY="./myidp.key" IDP_CERT="./myidp.crt" USER_JSON="${_users_json}" IDP_BASE_URL="${_idp_base_url}" SERVICE_METADATA_URL="${_sp_meta_file}"
     eval "${_cmd}" &> ./simplesamlidp_$$.log &
     local _pid="$!"
     sleep 2
@@ -1994,6 +1995,8 @@ function f_start_saml_server() {
     echo "       IdP metadata: ./idp_metadata.xml"
     echo "       Sp metadata: ${_sp_meta_file}"
     echo "       Example Attr: {uid=[samluser], eduPersonPrincipalName=[samluser@standalone.localdomain], eduPersonAffiliation=[users], givenName=[saml], sn=[user], cn=[Saml User]}"
+    echo "       curl -D- -X PUT -u admin:admin123 http://localhost:8070/api/v2/roleMemberships/global/role/b9646757e98e486da7d730025f5245f8/group/ipausers"
+
 }
 
 function f_start_ldap_server() {
