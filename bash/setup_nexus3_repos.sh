@@ -1957,6 +1957,7 @@ nexus.scripts.allowCreation=true' > ${_sonatype_work%/}/etc/nexus.properties || 
 # SAML server: https://github.com/hajimeo/samples/blob/master/golang/SamlTester/README.md
 # friendly attributes {uid=[samluser], eduPersonAffiliation=[users], givenName=[saml], eduPersonPrincipalName=[samluser@standalone.localdomain], cn=[Saml User], sn=[user]}
 # NXRM3 meta: curl -o ${_sp_meta_file} -u "admin:admin123" "http://localhost:8081/service/rest/v1/security/saml/metadata"
+# If IQ: f_start_saml_server "" "" "http://localhost:8070/api/v2/config/saml/metadata"
 function f_start_saml_server() {
     local _idp_base_url="${1:-"http://localhost:2080/"}"
     local _sp_meta_file="${2:-"./metadata.xml"}"
@@ -1991,6 +1992,7 @@ function f_start_saml_server() {
     echo "[INFO] Running simplesamlidp in background ..."
     echo "       PID: ${_pid}  Log: ./simplesamlidp_$$.log"
     echo "       IdP metadata: ./idp_metadata.xml"
+    echo "       Sp metadata: ${_sp_meta_file}"
     echo "       Example Attr: {uid=[samluser], eduPersonPrincipalName=[samluser@standalone.localdomain], eduPersonAffiliation=[users], givenName=[saml], sn=[user], cn=[Saml User]}"
 }
 
@@ -2801,7 +2803,7 @@ if [ "$0" = "$BASH_SOURCE" ]; then
     while getopts "ADf:r:v:d:" opts; do
         case $opts in
             A)
-                f_install_nexus3
+                _AUTO=true
                 ;;
             D)
                 _DEBUG=true
