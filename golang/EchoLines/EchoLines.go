@@ -33,7 +33,7 @@ NOTE: If no capture group is used in the END_REGEXP, the end line is not echoed.
 	cat "./jvm.log" | echolines "" "^\d\d\d\d-\d\d-\d\d \d\d:\d\d:\d\d$" "(^\s+class space.+)" "thread_"
 
 ## Get duration of query
-	cat ./nexus.log | ELAPSED_REGEX="^(\d\d\d\d-\d\d-\d\d.\d\d:\d\d:\d\d.\d\d\d)" echolines "" "Preparing:" "Total:"
+	cat ./nexus.log | ELAPSED_REGEX="^(\d\d\d\d-\d\d-\d\d.\d\d:\d\d:\d\d.\d\d\d)" echolines "" "Preparing:" "(^.+Total:.+)"
 
 # ENV VARIABLES:
 	HTML_REMOVE=Y
@@ -124,20 +124,20 @@ func processFile(inFile *os.File) {
 				_dlog(matches)
 				FOUND_FROM_LINE = false
 
-				if ELAPSED_REGEXP != nil {
-					elapsedEndMatches := ELAPSED_REGEXP.FindStringSubmatch(line)
-					if len(elapsedEndMatches) > 0 {
-						_dlog(elapsedEndMatches)
-						_ = timeStrDuration(FROM_DATETIME_STR, elapsedEndMatches[0], true)
-					}
-				}
-
 				if len(matches) > 1 {
 					echoLine(strings.Join(matches[1:], ""), OUT_FILE)
 				}
 				if OUT_FILE != nil {
 					_ = OUT_FILE.Close()
 					OUT_FILE = nil
+				}
+
+				if ELAPSED_REGEXP != nil {
+					elapsedEndMatches := ELAPSED_REGEXP.FindStringSubmatch(line)
+					if len(elapsedEndMatches) > 0 {
+						_dlog(elapsedEndMatches)
+						_ = timeStrDuration(FROM_DATETIME_STR, elapsedEndMatches[0], true)
+					}
 				}
 				continue
 			}
