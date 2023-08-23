@@ -6,7 +6,9 @@ import (
 	"html"
 	"log"
 	"os"
+	"path/filepath"
 	"regexp"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -22,20 +24,23 @@ Read one file and output only necessary lines.
 	chmod a+x /usr/local/bin/echolines
 
 # HOW TO USE:
-	echolines some_file1,some_file2 FROM_REGEXP [END_REGEXP] [file_prefix]
+	echolines some_file1,some_file2 FROM_REGEXP [END_REGEXP] [OUT_DIR]
 
 NOTE: If no capture group is used in the END_REGEXP, the end line is not echoed.
 
-## NXRM2 thread dumps
+## NXRM2 thread dumps:
 	echolines "wrapper.log.2,wrapper.log.1,wrapper.log" "^\d\d\d\d-\d\d-\d\d \d\d:\d\d:\d\d$" "(^\s+class space.+)" > threads.txt
-
-## NXRM3 thread dumps
+## NXRM3 thread dumps:
 	cat "./jvm.log" | echolines "" "^\d\d\d\d-\d\d-\d\d \d\d:\d\d:\d\d$" "(^\s+class space.+)" "thread_"
 
-## Get duration of query
+## Get duration of each line:
+	cat ./nexus.log | ELAPSED_REGEX="^(\d\d\d\d-\d\d-\d\d.\d\d:\d\d:\d\d.\d\d\d)" echolines "" "^\d\d\d\d-\d\d-\d\d.\d\d:\d\d:\d\d.\d\d\d" "^\d\d\d\d-\d\d-\d\d.\d\d:\d\d:\d\d.\d\d\d"
+## Get duration of NXRM3 queries:
 	cat ./nexus.log | ELAPSED_REGEX="^(\d\d\d\d-\d\d-\d\d.\d\d:\d\d:\d\d.\d\d\d)" echolines "" "Preparing:" "(^.+Total:.+)"
 
 # ENV VARIABLES:
+	SPLIT_FILE=Y
+		Save the result into multiple files (if OUT_DIR is given, this becomes Y automatically)
 	HTML_REMOVE=Y
 		Remove all HTML tags and convert HTML entities
 	INCL_REGEX=<some regex strings>
@@ -60,15 +65,17 @@ var ELAPSED_REGEXP *regexp.Regexp
 var ELAPSED_FORMAT = os.Getenv("ELAPSED_FORMAT")
 var FROM_DATETIME_STR = ""
 var HTML_REMOVE = os.Getenv("HTML_REMOVE")
+var SPLIT_FILE = os.Getenv("SPLIT_FILE")
+var REM_CHAR_REGEXP = regexp.MustCompile(`[/\\?%*:|"<>]`)
 var TAG_REGEXP = regexp.MustCompile(`<[^>]+>`)
 var IN_FILES []string
-var OUT_PREFIX = ""
+var OUT_DIR = ""
 var OUT_FILE *os.File
-var FOUND_FROM_LINE = false
+var FROM_LINE_PFX = ""
 var FOUND_COUNT = 0
 
 func echoLine(line string, f *os.File) {
-	if len(HTML_REMOVE) > 0 {
+	if HTML_REMOVE == "Y" {
 		line = removeHTML(line)
 	}
 	if f == nil {
@@ -87,63 +94,77 @@ func processFile(inFile *os.File) {
 	for scanner.Scan() {
 		line := scanner.Text()
 
-		if !FOUND_FROM_LINE && FROM_REGEXP != nil && FROM_REGEXP.MatchString(line) {
-			FOUND_FROM_LINE = true
-			FOUND_COUNT++
+		// Need to check the end line first, before checking from line.
+		if len(FROM_LINE_PFX) > 0 && END_REGEXP != nil && END_REGEXP.MatchString(line) {
+			FROM_LINE_PFX = ""
 
-			if len(OUT_PREFIX) > 0 {
-				outFilePath := fmt.Sprintf("%s%d", OUT_PREFIX, FOUND_COUNT)
-				if _, err := os.Stat(outFilePath); err == nil {
-					_, _ = fmt.Fprintf(os.Stderr, "[ERROR] %s exists.\n", outFilePath)
-					return
-				}
-				if OUT_FILE != nil {
-					_ = OUT_FILE.Close()
-				}
-				OUT_FILE, err = os.OpenFile(outFilePath, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
-				if err != nil {
-					log.Fatal(err)
-				}
-			}
-
-			if ELAPSED_REGEXP != nil {
-				elapsedStartMatches := ELAPSED_REGEXP.FindStringSubmatch(line)
-				if len(elapsedStartMatches) > 0 {
-					_dlog(elapsedStartMatches)
-					FROM_DATETIME_STR = elapsedStartMatches[0]
-				}
-			}
-
-			echoLine(line, OUT_FILE)
-			continue
-		}
-
-		if FOUND_FROM_LINE && END_REGEXP != nil {
 			matches := END_REGEXP.FindStringSubmatch(line)
+			// If regex group is used, including that matching characters into current output.
 			if len(matches) > 0 {
 				_dlog(matches)
-				FOUND_FROM_LINE = false
-
 				if len(matches) > 1 {
 					echoLine(strings.Join(matches[1:], ""), OUT_FILE)
 				}
-				if OUT_FILE != nil {
-					_ = OUT_FILE.Close()
-					OUT_FILE = nil
-				}
+			}
 
-				if ELAPSED_REGEXP != nil {
-					elapsedEndMatches := ELAPSED_REGEXP.FindStringSubmatch(line)
-					if len(elapsedEndMatches) > 0 {
-						_dlog(elapsedEndMatches)
-						_ = timeStrDuration(FROM_DATETIME_STR, elapsedEndMatches[0], true)
-					}
+			// If asked to split into multiple files, closing current out file.
+			if OUT_FILE != nil {
+				_ = OUT_FILE.Close()
+				OUT_FILE = nil
+			}
+
+			// If asked to output the elapsed time (duration), processing after outputting the end line.
+			if ELAPSED_REGEXP != nil {
+				elapsedEndMatches := ELAPSED_REGEXP.FindStringSubmatch(line)
+				if len(elapsedEndMatches) > 0 {
+					_dlog(elapsedEndMatches)
+					_ = timeStrDuration(FROM_DATETIME_STR, elapsedEndMatches[0], true)
 				}
+			}
+
+			// below if condition means it already outputted the end line, so no need to process this line
+			if len(matches) > 1 {
 				continue
 			}
 		}
 
-		if !FOUND_FROM_LINE {
+		if len(FROM_LINE_PFX) == 0 && FROM_REGEXP != nil {
+			matches := FROM_REGEXP.FindStringSubmatch(line)
+			if len(matches) > 0 {
+				// echo "${_prev_str}" | sed "s/[ =]/_/g" | tr -cd '[:alnum:]._-\n' | cut -c1-192
+				FROM_LINE_PFX = REM_CHAR_REGEXP.ReplaceAllString(matches[0], "")[:192]
+				FOUND_COUNT++
+
+				if SPLIT_FILE == "Y" {
+					outFilePath := filepath.Join(OUT_DIR, strconv.Itoa(FOUND_COUNT)+"_"+FROM_LINE_PFX+".out")
+					if _, err := os.Stat(outFilePath); err == nil {
+						_, _ = fmt.Fprintf(os.Stderr, "[ERROR] %s exists.\n", outFilePath)
+						return
+					}
+					if OUT_FILE != nil {
+						_ = OUT_FILE.Close()
+					}
+					OUT_FILE, err = os.OpenFile(outFilePath, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+					if err != nil {
+						log.Fatal(err)
+					}
+				}
+
+				if ELAPSED_REGEXP != nil {
+					elapsedStartMatches := ELAPSED_REGEXP.FindStringSubmatch(line)
+					if len(elapsedStartMatches) > 0 {
+						_dlog(elapsedStartMatches)
+						FROM_DATETIME_STR = elapsedStartMatches[0]
+					}
+				}
+
+				echoLine(line, OUT_FILE)
+				continue
+			}
+		}
+
+		// not found the from line yet
+		if len(FROM_LINE_PFX) == 0 {
 			continue
 		}
 		if INCL_REGEXP != nil && !INCL_REGEXP.MatchString(line) {
@@ -170,7 +191,8 @@ func timeStrDuration(startTime string, endTime string, printLine bool) time.Dura
 	}
 	duration := end.Sub(start)
 	if printLine {
-		fmt.Printf("# start:%s, end:%s, ms:%d\n", startTime, endTime, duration.Milliseconds())
+		// As "sec,ms" contains comma, using "|". Also "<num> ms" for easier sorting (it was "ms:<num>")
+		fmt.Printf("# start:%s | end:%s | %d ms\n", startTime, endTime, duration.Milliseconds())
 	}
 	return duration
 }
@@ -201,9 +223,12 @@ func main() {
 	}
 	if len(os.Args) > 3 && len(os.Args[3]) > 0 {
 		END_REGEXP = regexp.MustCompile(os.Args[3])
+	} else if len(os.Args) == 2 && len(os.Args[3]) == 0 {
+		END_REGEXP = FROM_REGEXP
 	}
 	if len(os.Args) > 4 && len(os.Args[4]) > 0 {
-		OUT_PREFIX = os.Args[5]
+		OUT_DIR = os.Args[5]
+		SPLIT_FILE = "Y"
 	}
 
 	if len(INCL_REGEX) > 0 {
