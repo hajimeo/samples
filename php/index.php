@@ -14,6 +14,19 @@ function _log($msg)
     fclose($stderr);
 }
 
+#https://stackoverflow.com/questions/41427359/phpunit-getallheaders-not-work
+if (!function_exists('getallheaders')) {
+    function getallheaders() {
+        $headers = [];
+        foreach ($_SERVER as $name => $value) {
+            if (substr($name, 0, 5) == 'HTTP_') {
+                $headers[str_replace(' ', '-', ucwords(strtolower(str_replace('_', ' ', substr($name, 5)))))] = $value;
+            }
+        }
+        return $headers;
+    }
+}
+
 function _log_headers($header_only = false)
 {
     $headers = getallheaders();
