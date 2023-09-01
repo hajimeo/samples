@@ -97,7 +97,7 @@ var FIRST_START_TIME time.Time
 var ELAPSED_DIVIDE_MS = os.Getenv("ELAPSED_DIVIDE_MS")
 var DISABLE_ASCII = os.Getenv("DISABLE_ASCII")
 var DIVIDE_MS int64 = 0
-var DIVIDE_MS_DEFAULT int64 = 60000 // 1 minute
+var DIVIDE_MS_DEFAULT int64 = 10000 // 10 seconds
 var KEY_PADDING = 0
 var FOUND_COUNT = 0
 
