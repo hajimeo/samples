@@ -25,7 +25,7 @@ func TestAsciiChart(t *testing.T) {
 		t.Errorf("No ascii string generated")
 		return
 	}
-	//t.Log(ascii)
+	//t.Logf(ascii)
 }
 func TestCalcDurationFromStrings(t *testing.T) {
 	duration := calcDurationFromStrings("00:00:00,000", "00:00:00,001")
@@ -39,4 +39,55 @@ func TestCalcDurationFromStrings(t *testing.T) {
 		t.Errorf("Duration should be 24 hours")
 		return
 	}
+}
+func TestEchoDuration(t *testing.T) {
+	echoDuration("end line")
+	t.Log("TODO: not implemented")
+	return
+}
+func TestEechoEndLine(t *testing.T) {
+	echoEndLine("end line", NO_KEY)
+	t.Log("TODO: not implemented")
+	return
+}
+func TestEechoStartLine(t *testing.T) {
+	OUT_FILE = nil
+	echoStartLine("start line", NO_KEY)
+	t.Log("TODO: not implemented")
+	return
+}
+func TestEchoLine(t *testing.T) {
+	shouldBeTrue := echoLine("end line", nil)
+	if !shouldBeTrue {
+		t.Errorf("echoLine should be always return true")
+		return
+	}
+}
+func TestGetKey(t *testing.T) {
+	shouldBeNoKey := getKey("end line")
+	if shouldBeNoKey != NO_KEY {
+		t.Errorf("NO_KEY should be returned")
+		return
+	}
+}
+func TestRemoveHTML(t *testing.T) {
+	noHTMLLine := removeHTML("no html line")
+	if noHTMLLine != "no html line" {
+		t.Errorf("line should not be changed")
+		return
+	}
+	HTMLLine := removeHTML("<html> line")
+	//t.Logf(HTMLLine)
+	if HTMLLine != " line" {
+		t.Errorf("line should be changed")
+		return
+	}
+}
+func TestSetStartDatetimeFromLine(t *testing.T) {
+	t.Log("TODO: not implemented")
+	return
+}
+func TestProcessFile(t *testing.T) {
+	t.Log("TODO: not implemented")
+	return
 }
