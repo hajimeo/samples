@@ -58,6 +58,7 @@ function _postgresql_configure() {
 
     _log "INFO" "Updating ${_postgresql_conf} ..."
     ### Performance tuning (so not mandatory). Expecting the server has at least 4GB RAM
+    _upsert ${_postgresql_conf} "max_connections" "200" "#max_connections"   # NOTE: work_mem * max_conn < shared_buffers.
     # @see: https://pgtune.leopard.in.ua/#/ and https://pgpedia.info/index.html
     _upsert ${_postgresql_conf} "shared_buffers" "1024MB" "#shared_buffers" # Default 8MB. RAM * 25%. Make sure enough kernel.shmmax (ipcs -l) and /dev/shm if very old Linux or BSD
     _upsert ${_postgresql_conf} "work_mem" "8MB" "#work_mem"    # Default 4MB. RAM * 25% / max_connections (200) + extra a few MB. NOTE: I'm not expecting my PG uses 200 though
@@ -72,7 +73,6 @@ function _postgresql_configure() {
     _upsert ${_postgresql_conf} "max_wal_size" "4GB" "#max_wal_size"    # Default 1GB
     #_upsert ${_postgresql_conf} "max_slot_wal_keep_size" "100GB" "#max_slot_wal_keep_size"    # Default -1 and probably from v13?
     ### End of tuning ###
-    _upsert ${_postgresql_conf} "max_connections" "200" "#max_connections"   # This is for NXRM3 as it uses 100 per datastore NOTE: work_mem * max_conn < shared_buffers.
     _upsert ${_postgresql_conf} "listen_addresses" "'*'" "#listen_addresses"
     [ -d /var/log/postgresql ] || mkdir -p -m 777 /var/log/postgresql
     [ -d /var/log/postgresql ] && _upsert ${_postgresql_conf} "log_directory" "'/var/log/postgresql' " "#log_directory"
@@ -193,7 +193,7 @@ function _postgresql_create_dbuser() {
 
     # NOTE: Use 'hostssl all all 0.0.0.0/0 cert clientcert=1' for 2-way | client certificate authentication
     #       To do that, also need to utilise database.parameters.some_key:value in config.yml
-    if ! grep -E "host\s+${_dbname:-"all"}\s+${_dbusr}\s+" "${_pg_hba_conf}"; then
+    if ! grep -E "host\s+(${_dbname:-"all"}|all)\s+${_dbusr}\s+" "${_pg_hba_conf}"; then
         echo "host ${_dbname:-"all"} ${_dbusr} 0.0.0.0/0 md5" >> "${_pg_hba_conf}" || return $?
         ${_psql_as_admin} -tAc 'SELECT pg_reload_conf()' || return $?
         #${_psql_as_admin} -tAc 'SELECT pg_read_file('pg_hba.conf');'
