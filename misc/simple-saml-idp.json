@@ -13,10 +13,10 @@
     "groups": ["users", "ipausers"],
     "email": "samluser@standalone.localdomain",
     "common_name": "Saml User",
+    "username": "samluser",
+    "password": "samluser",
     "surname": "user",
     "given_name": "saml",
-    "password": "samluser",
-    "username": "samluser",
     "firstName": "Saml",
     "lastName": "User"
   }
