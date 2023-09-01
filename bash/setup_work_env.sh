@@ -253,6 +253,7 @@ function f_setup_python() {
         # NOTE: when python version is changed, need to switch to venv
         #echo "Activating virtualenv: ${_venv_path%/} (https://virtualenv.pypa.io/en/latest/user_guide.html) ..."
         #if ! python3 -m virtualenv -p python3 ${_venv_path%/}; then
+            #python3 -m venv --upgrade ${_venv_path%/}
             python3 -m venv ${_venv_path%/} || return $?
         #fi
         source ${_venv_path%/}/bin/activate || return $?
