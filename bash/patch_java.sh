@@ -392,13 +392,14 @@ function f_scala() {
     ${_cded} && cd -
 }
 
+#f_groovy "./nexus-3.58.1-02/system/"
 function f_groovy() {
     local _port="${1}"
     local _cded=false
     # If NXRM3:
     #java -jar $installDirectory/system/org/codehaus/groovy/groovy-all/2.4.17/groovy-all-2.4.17.jar test.groovy
     f_setup_groovy
-    if [[ "${_port}" =~ ^[0-9]+$ ]]; then
+    if [[ "${_port}" =~ ^[0-9]+$ ]] || [ -d "${_port%/}" ]; then
         f_javaenvs "${_port}"
         cd "${_CWD}" && _cded=true
     else
