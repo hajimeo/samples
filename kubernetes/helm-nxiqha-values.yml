@@ -1,4 +1,5 @@
 #$ cd ~/IdeaProjects/nexus-iq-server-ha/
+#$ git pull && git fetch
 #$ helm template nxiqha . -f ~/IdeaProjects/samples/kubernetes/helm-nxiqha-values.yml -n sonatype-ha >~/IdeaProjects/samples/kubernetes/helm-nxiqha-deployed.yaml
 #$ helm uninstall nxiqha -n sonatype-ha
 #$ helm install nxiqha ./chart -f ~/IdeaProjects/samples/kubernetes/helm-nxiqha-values.yml --set-file iq_server.license=/var/tmp/share/sonatype/sonatype-license.lic -n sonatype-ha
@@ -9,7 +10,7 @@ iq_server:
   imageRegistry: # Container image registry, if not specified the Docker public registry will be used
   image: "sonatype/nexus-iq-server"
   tag: "latest"
-  #imagePullPolicy: "Always"
+  imagePullPolicy: "Always"
   javaOpts: "-Xms2g -Xmx4g -Djava.util.prefs.userRoot=/sonatype-work/javaprefs"
   database:
     hostname: "192.168.1.31"
