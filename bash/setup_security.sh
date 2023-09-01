@@ -29,7 +29,7 @@ function f_ssl_setup() {
 
     if [ ! -s "${_openssl_cnf}" ]; then
         curl -s -f -o "${_openssl_cnf}" https://raw.githubusercontent.com/hajimeo/samples/master/misc/openssl.cnf || return $?
-    echo "
+        echo "
 [ alt_names ]
 DNS.1 = ${_domain_suffix#.}
 DNS.2 = *.${_domain_suffix#.}" >> ${_openssl_cnf}
@@ -73,6 +73,31 @@ DNS.2 = *.${_domain_suffix#.}" >> ${_openssl_cnf}
     openssl pkcs12 -export -in ./wild.${_domain_suffix#.}.crt -inkey ./wild.${_domain_suffix#.}.key -certfile ./wild.${_domain_suffix#.}.crt -out ./wild.${_domain_suffix#.}.p12 -passin "pass:${_password}" -passout "pass:${_password}" || return $?
     [ -s ./wild.${_domain_suffix#.}.jks ] && mv -v -f ./wild.${_domain_suffix#.}.jks ./wild.${_domain_suffix#.}.jks.$$.bak
     keytool -importkeystore -srckeystore ./wild.${_domain_suffix#.}.p12 -srcstoretype pkcs12 -srcstorepass ${_password} -destkeystore ./wild.${_domain_suffix#.}.jks -deststoretype JKS -deststorepass ${_password} || return $?
+}
+
+function f_intermediate() {
+    #https://mailing.openssl.users.narkive.com/yiqMobIu/how-to-create-intermediate-ca-certificate-with-openssl
+    local _inter_key="${1:-"./intermediateCA.key"}"
+    local _root_key="${2:-"./rootCA.key"}"
+    local _root_crt="${3:-"./rootCA.crt"}"
+    local _openssl_cnf="${4:-"./openssl.cnf"}"
+    local _password="${5:-${g_OTHER_DEFAULT_PWD}}"
+
+    if [ ! -s "${_openssl_cnf}" ]; then
+        # TODO: may need to use openssl_inter.tmpl.cnf?
+        curl -s -f -o "${_openssl_cnf}" https://raw.githubusercontent.com/hajimeo/samples/master/misc/openssl.cnf || return $?
+    fi
+    [ -r "${_root_key}" ] || return 1
+    [ -r "${_root_crt}" ] || return 1
+
+    local _dirname="$(dirname "${_inter_key}")"
+    local _filepath="${_dirname%/}/$(basename "${_inter_key}" ".key")"
+    openssl genrsa -aes256 -passout "pass:${_password}" -out "${_inter_key}" 2048 || return $?
+    openssl req -config ${_openssl_cnf} -passin pass:${_password} -new -sha1 -key ${_inter_key} -out ${_filepath}.csr -batch || return $?
+    openssl x509 -req -days 3653 -in "${_filepath}.csr" -CA "${_root_crt}" -CAkey "${_root_key}" -set_serial 01 -out "${_filepath}.crt" || return $?
+    echo "EXAMPLE: sign server certificate (sign request: .csr) file:"
+    echo "openssl req -config ${_openssl_cnf} -subj '/C=AU/ST=QLD/O=HajimeTest/CN=*.standalone.localdmoain' -extensions v3_req -sha256 -new -key ./wild.standalone.localdomain.key -out ./wild.standalone.localdomain.csr"
+    echo "openssl x509 -req -extensions v3_req -days 3650 -sha256 -CA ${_filepath}.crt -CAkey ${_filepath}.key -CAcreateserial -extfile ${_openssl_cnf} -passin \"pass:$_password\" -in ./wild.standalone.localdomain.csr -out ./wild.standalone.localdomain.crt"
 }
 
 function f_kdc_install() {
