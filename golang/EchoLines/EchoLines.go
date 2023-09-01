@@ -101,96 +101,38 @@ var DIVIDE_MS_DEFAULT int64 = 10000 // 10 seconds
 var KEY_PADDING = 0
 var FOUND_COUNT = 0
 
-func echoLine(line string, f *os.File) {
+func echoLine(line string, f *os.File) bool {
 	if HTML_REMOVE == "Y" {
 		line = removeHTML(line)
 	}
 	if f == nil {
 		fmt.Println(line)
-		return
+		return true
 	}
 	byteLen, err := f.WriteString(line + "\n")
 	if byteLen < 0 || err != nil {
 		log.Fatal(err)
 	}
+	return true
 }
 
 func processFile(inFile *os.File) {
 	scanner := bufio.NewScanner(inFile)
-	var err error
 	for scanner.Scan() {
 		line := scanner.Text()
 		//_dlog(line)
 		key := getKey(line)
-		// Need to check the end line first, before checking the start line.
-		_, ok := START_LINE_PFXS[key]
-		if ok && len(START_LINE_PFXS[key]) > 0 && END_REGEXP != nil {
-			matches := END_REGEXP.FindStringSubmatch(line)
-			if len(matches) > 0 {
-				START_LINE_PFXS[key] = ""
-
-				// If regex group is used, including that matching characters into current output.
-				if len(matches) > 1 {
-					echoLine(strings.Join(matches[1:], ""), OUT_FILE)
-				}
-
-				// If asked to split into multiple files, closing current out file.
-				if OUT_FILE != nil {
-					_ = OUT_FILE.Close()
-					OUT_FILE = nil
-				}
-
-				// If asked to output the elapsed time (duration), processing after outputting the end line.
-				echoDuration(line)
-
-				// Already outputted the end line, so no need to process this line
-				if len(matches) > 1 {
-					_dlog(strconv.Itoa(FOUND_COUNT) + " end line echoed")
-					continue
-				}
-			}
+		// Need to check the end line first before checking the start line.
+		if echoEndLine(line, key) {
+			continue
 		}
-
-		if len(START_LINE_PFXS[key]) == 0 && START_REGEXP != nil {
-			matches := START_REGEXP.FindStringSubmatch(line)
-			if len(matches) > 0 {
-				FOUND_COUNT++
-				// echo "${_prev_str}" | sed "s/[ =]/_/g" | tr -cd '[:alnum:]._-\n' | cut -c1-192
-				START_LINE_PFXS[key] = REM_CHAR_REGEXP.ReplaceAllString(matches[len(matches)-1], "_")
-				START_LINE_PFXS[key] = REM_CHAR_REGEXP2.ReplaceAllString(START_LINE_PFXS[key], "_")
-				if len(START_LINE_PFXS[key]) > 192 {
-					_dlog("Trimmed " + START_LINE_PFXS[key])
-					START_LINE_PFXS[key] = START_LINE_PFXS[key][:192]
-				} else {
-					_dlog("START_LINE_PFX: " + START_LINE_PFXS[key])
-				}
-
-				if SPLIT_FILE == "Y" {
-					outFilePath := filepath.Join(OUT_DIR, strconv.Itoa(FOUND_COUNT)+"_"+START_LINE_PFXS[key]+".out")
-					if _, err := os.Stat(outFilePath); err == nil {
-						_, _ = fmt.Fprintf(os.Stderr, "[ERROR] %s exists.\n", outFilePath)
-						return
-					}
-					// If previous file is still open, close it
-					if OUT_FILE != nil {
-						_ = OUT_FILE.Close()
-					}
-					OUT_FILE, err = os.OpenFile(outFilePath, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
-					if err != nil {
-						log.Fatal(err)
-					}
-				}
-
-				findFromDatetime(line)
-				echoLine(line, OUT_FILE)
-				_dlog(strconv.Itoa(FOUND_COUNT) + " start lines echoed")
-				continue
-			}
+		if echoStartLine(line, key) {
+			continue
 		}
 
 		// not found the start line yet
 		if len(START_LINE_PFXS[key]) == 0 {
-			_dlog(strconv.Itoa(FOUND_COUNT) + " No START_LINE_PFX")
+			//_dlog("No START_LINE_PFX for " + key)
 			continue
 		}
 		if INCL_REGEXP != nil && !INCL_REGEXP.MatchString(line) {
@@ -203,6 +145,79 @@ func processFile(inFile *os.File) {
 		}
 		echoLine(line, OUT_FILE)
 	}
+}
+
+func echoStartLine(line string, key string) bool {
+	// if no START_REGEXP, immediately stop
+	if START_REGEXP == nil {
+		return false
+	}
+	// If the start line of this key is already found, no need to check
+	if len(START_LINE_PFXS[key]) > 0 {
+		return false
+	}
+	matches := START_REGEXP.FindStringSubmatch(line)
+	if len(matches) == 0 {
+		return false
+	}
+
+	FOUND_COUNT++
+	// echo "${_prev_str}" | sed "s/[ =]/_/g" | tr -cd '[:alnum:]._-\n' | cut -c1-192
+	START_LINE_PFXS[key] = REM_CHAR_REGEXP.ReplaceAllString(matches[len(matches)-1], "_")
+	START_LINE_PFXS[key] = REM_CHAR_REGEXP2.ReplaceAllString(START_LINE_PFXS[key], "_")
+	if len(START_LINE_PFXS[key]) > 192 {
+		_dlog("Trimmed " + START_LINE_PFXS[key])
+		START_LINE_PFXS[key] = START_LINE_PFXS[key][:192]
+	} else {
+		_dlog("START_LINE_PFX: " + START_LINE_PFXS[key])
+	}
+
+	if SPLIT_FILE == "Y" {
+		var err error
+		outFilePath := filepath.Join(OUT_DIR, strconv.Itoa(FOUND_COUNT)+"_"+START_LINE_PFXS[key]+".out")
+		if _, err = os.Stat(outFilePath); err == nil {
+			log.Fatal(err)
+		}
+		// If previous file is still open, close it
+		if OUT_FILE != nil {
+			_ = OUT_FILE.Close()
+		}
+		OUT_FILE, err = os.OpenFile(outFilePath, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+		if err != nil {
+			log.Fatal(err)
+		}
+	}
+	setStartDatetimeFromLine(line)
+	return echoLine(line, OUT_FILE)
+}
+
+func echoEndLine(line string, key string) bool {
+	// If no END_REGEXP is set, immediately return
+	if END_REGEXP == nil {
+		return false
+	}
+	_, ok := START_LINE_PFXS[key]
+	if !ok || len(START_LINE_PFXS[key]) == 0 {
+		return false
+	}
+	matches := END_REGEXP.FindStringSubmatch(line)
+	if len(matches) == 0 {
+		return false
+	}
+	START_LINE_PFXS[key] = ""
+	isEchoed := false
+	if len(matches) > 1 {
+		// If regex catcher group is used, including that matching characters into current output.
+		isEchoed = echoLine(strings.Join(matches[1:], ""), OUT_FILE)
+	}
+	// If asked to split into multiple files, closing current out file.
+	if OUT_FILE != nil {
+		_ = OUT_FILE.Close()
+		OUT_FILE = nil
+	}
+	// Duration needs to be processed after outputting the end line.
+	echoDuration(line)
+	return isEchoed
 }
 
 func getKey(line string) string {
@@ -220,7 +235,7 @@ func getKey(line string) string {
 	return ""
 }
 
-func findFromDatetime(line string) {
+func setStartDatetimeFromLine(line string) {
 	if ELAPSED_REGEXP == nil {
 		return
 	}
@@ -240,28 +255,32 @@ func findFromDatetime(line string) {
 	START_DATETIMES[key] = elapsedStart
 }
 
-func echoDuration(line string) {
+func echoDuration(endLine string) {
 	if ELAPSED_REGEXP == nil {
+		_dlog("No ELAPSED_REGEX")
 		return
 	}
-	elapsedEndMatches := ELAPSED_REGEXP.FindStringSubmatch(line)
+	elapsedEndMatches := ELAPSED_REGEXP.FindStringSubmatch(endLine)
 	if len(elapsedEndMatches) == 0 {
+		_dlog("No match for '" + ELAPSED_REGEX + "' from " + endLine)
 		return
 	}
-	_dlog(elapsedEndMatches)
+	_dlog("elapsedEndMatches = " + elapsedEndMatches[0])
 	endTimeStr := elapsedEndMatches[len(elapsedEndMatches)-1]
-	key := getKey(line)
+	_dlog("endTimeStr = " + endTimeStr)
+	key := getKey(endLine)
 	if len(key) == 0 {
 		// If ELAPSED_KEY_REGEX is provided, ELAPSED_REGEXP and ELAPSED_KEY_REGEXP both need to match
+		_dlog("ELAPSED_REGEXP matched but not ELAPSED_KEY_REGEXP from " + endLine)
 		return
 	}
-	_dlog(elapsedEndMatches)
 	startTimeStr, ok := START_DATETIMES[key]
 	if ok {
+		_dlog("startTimeStr = " + startTimeStr)
 		duration := calcDurationFromStrings(startTimeStr, endTimeStr)
 		ascii := ""
 		if DISABLE_ASCII != "Y" {
-			ascii = asciiChart(startTimeStr, duration)
+			ascii = asciiChart(startTimeStr, duration.Milliseconds())
 		}
 		if key == NO_KEY {
 			// As "sec,ms" contains comma, using "|". Also "<num> ms" for easier sorting (it was "ms:<num>")
@@ -277,10 +296,9 @@ func echoDuration(line string) {
 	}
 }
 
-func asciiChart(startTimeStr string, duration time.Duration) string {
+func asciiChart(startTimeStr string, durationMs int64) string {
 	var ascii = ""
 	var duraFromFirst time.Duration
-	durationMs := duration.Milliseconds()
 	if durationMs < DIVIDE_MS_DEFAULT {
 		return ascii
 	}
@@ -291,7 +309,7 @@ func asciiChart(startTimeStr string, duration time.Duration) string {
 		duraFromFirst = startTime.Sub(FIRST_START_TIME)
 	}
 	if DIVIDE_MS == 0 {
-		digit := len(strconv.FormatInt(durationMs, 10)) - 2
+		digit := len(strconv.FormatInt(durationMs, 10)) - 1
 		DIVIDE_MS = int64(math.Pow(10, float64(digit)))
 	}
 	if DIVIDE_MS < DIVIDE_MS_DEFAULT {
@@ -374,19 +392,19 @@ func main() {
 	if len(INCL_REGEX) > 0 {
 		INCL_REGEXP = regexp.MustCompile(INCL_REGEX)
 	}
-
 	if len(EXCL_REGEX) > 0 {
 		EXCL_REGEXP = regexp.MustCompile(EXCL_REGEX)
 	}
-
 	if len(ELAPSED_REGEX) > 0 {
 		ELAPSED_REGEXP = regexp.MustCompile(ELAPSED_REGEX)
 	}
-
 	if len(ELAPSED_KEY_REGEX) > 0 {
+		if SPLIT_FILE == "Y" {
+			// TODO: single OUT_FILE does not work with KEY
+			log.Fatal("Using SPLIT_FILE and ELAPSED_KEY_REGEX both are not implemented.")
+		}
 		ELAPSED_KEY_REGEXP = regexp.MustCompile(ELAPSED_KEY_REGEX)
 	}
-
 	if len(ELAPSED_DIVIDE_MS) > 0 {
 		DIVIDE_MS, _ = strconv.ParseInt(ELAPSED_DIVIDE_MS, 10, 64)
 	}
@@ -407,6 +425,7 @@ func main() {
 		}
 	}
 
+	// Just in case (should be already closed)
 	if OUT_FILE != nil {
 		_ = OUT_FILE.Close()
 		OUT_FILE = nil
