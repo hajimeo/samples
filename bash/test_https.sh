@@ -224,6 +224,8 @@ function change_rsa_key_password() {
     openssl rsa -in "${_new_file}" -passin "pass:${_new_pwd}"
 }
 
+#cat standalone.localdomain_inter_signed.crt ./intermediateCA.crt ./rootCA_standalone.crt > standalone.localdomain.certs.pem
+#start_https ../misc/standalone.localdomain.key ../misc/standalone.localdomain.certs.pem ~/Desktop/temp/
 function start_https() {
     # @see https://docs.python.org/2/library/ssl.html#ssl.SSLContext.wrap_socket
     local _key="$1"
@@ -244,16 +246,16 @@ function start_https() {
     _crt="`realpath "$_crt"`"
 
     echo "Starting ${_host}:${_port} in background, and redirecting outputs to /tmp/start_https.out" >&2
-    cd "$_doc_root" || return $?
-    nohup python -c "import BaseHTTPServer,SimpleHTTPServer,ssl
-httpd = BaseHTTPServer.HTTPServer(('${_host}', ${_port}), SimpleHTTPServer.SimpleHTTPRequestHandler)
+    python -c "from http.server import HTTPServer, BaseHTTPRequestHandler
+import ssl, os
+os.chdir('${_doc_root}')
+httpd = HTTPServer(('${_host}', ${_port}), BaseHTTPRequestHandler)
 try:
   httpd.socket = ssl.wrap_socket(httpd.socket, keyfile='${_key}', certfile='${_crt}', server_side=True, ssl_version=ssl.PROTOCOL_TLSv1_2)
 except AttributeError:
   httpd.socket = ssl.wrap_socket(httpd.socket, keyfile='${_key}', certfile='${_crt}', server_side=True, ssl_version=ssl.PROTOCOL_TLS)
-httpd.serve_forever()" &>/tmp/start_https.out &
-    sleep 1
-    cd - &>/dev/null
+print('Starting https server on ${_host}:${_port}')
+httpd.serve_forever()"
 }
 
 function test_https() {
@@ -301,6 +303,7 @@ function test_smtps() {
 }
 
 # output md5 hash of .key or .crt file
+# If multiple certs (chained cert): keytool -printcert -file ./cacert.pem
 function check_pem_file() {
     local _file=$1
     local _use_pyasn1=$2
