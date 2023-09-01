@@ -173,6 +173,9 @@ function takeDumps() {
         _jstack="jstack"
     fi
     if [ -z "${_jstack}" ]; then
+        if [ ! -f /proc/${_pid}/fd/1 ]; then
+            echo "[$(date +'%Y-%m-%d %H:%M:%S')] WARN  No 'jstack' and no stdout file (so best effort)" >&2
+        fi
         tailStdout "${_pid}" "$((${_count} * ${_interval} + 4))" "${_outPfx}000.log" "${_installDir}"
     fi
 
@@ -198,6 +201,9 @@ function takeDumps() {
     if [ -s /tmp/.tailStdout.run ]; then
         local _wpid="$(cat /tmp/.tailStdout.run)"
         ps -p ${_wpid} &>/dev/null && wait ${_wpid}
+    fi
+    if [ ! -s "${_outPfx}000.log" ]; then
+        echo "[$(date +'%Y-%m-%d %H:%M:%S')] ERROR Failed to take Java thread dumps into ${_outPfx}000.log" >&2
     fi
     return 0
 }

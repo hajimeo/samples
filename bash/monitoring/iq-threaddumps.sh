@@ -153,6 +153,9 @@ function takeDumps() {
         local _wpid="$(cat /tmp/.tailStdout.run)"
         ps -p ${_wpid} &>/dev/null && wait ${_wpid}
     fi
+    if [ ! -s "${_outPfx}000.log" ]; then
+        echo "[$(date +'%Y-%m-%d %H:%M:%S')] ERROR Failed to take Java thread dumps into ${_outPfx}000.log" >&2
+    fi
     return 0
 }
 
