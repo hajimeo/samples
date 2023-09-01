@@ -36,7 +36,7 @@ function f_start_web() {
     fi
 }
 
-alias curld='curl -sf -w "time_namelookup:\t%{time_namelookup}\ntime_connect:\t%{time_connect}\ntime_appconnect:\t%{time_appconnect}\ntime_pretransfer:\t%{time_pretransfer}\ntime_redirect:\t%{time_redirect}\ntime_starttransfer:\t%{time_starttransfer}\n----\ntime_total:\t%{time_total}\nhttp_code:\t%{http_code}\nspeed_download:\t%{speed_download}\nspeed_upload:\t%{speed_upload}\n"'
+alias curld='curl -sf -w "time_namelookup:\t%{time_namelookup}\ntime_connect:\t%{time_connect}\ntime_appconnect:\t%{time_appconnect}\ntime_pretransfer:\t%{time_pretransfer}\ntime_redirect:\t%{time_redirect}\ntime_starttransfer:\t%{time_starttransfer}\n----\nhttp_code:\t%{http_code}\ntime_total:\t%{time_total}\nspeed_download:\t%{speed_download}\nspeed_upload:\t%{speed_upload}\n"'
 function f_upload_download_tests() {
     local workingDirectory="${1:-"/tmp"}"   #/opt/sonatype/sonatype-work/nexus3
     local installDirectory="${2}";          #/opt/sonatype/nexus
