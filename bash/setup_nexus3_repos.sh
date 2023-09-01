@@ -108,7 +108,7 @@ _RESP_FILE=""
 
 ### Nexus installation functions ##############################################################################
 # To install 1st/2nd instance: _NEXUS_ENABLE_HA=Y f_install_nexus3 "" "nxrmha"
-# To upgrade (from ${_dirpath}/): tar -xvf $HOME/.nexus_executable_cache/nexus-3.54.1-01-mac.tgz
+# To upgrade (from ${_dirpath}/): tar -xvf $HOME/.nexus_executable_cache/nexus-3.58.1-02-mac.tgz
 function f_install_nexus3() {
     local __doc__="Install specific NXRM3 version"
     local _ver="${1:-"${r_NEXUS_VERSION}"}"     # 'latest'
@@ -2482,19 +2482,30 @@ function _update_name_resolution() {    # no longer in use but leaving as an exa
     fi
 }
 
+function _export_postgres_config() {
+    local _db_props_file="${1}"
+    # TODO: if no nexus-store.properties, check "cat /proc/${_pid}/environ | tr '\0' '\n'"
+    #local _pid="$(ps auxwww | grep -F 'org.sonatype.nexus.karaf.NexusMain' | grep -vw grep | awk '{print $2}' | tail -n1)"
+    source "${_db_props_file}" || return $?
+    [[ "${jdbcUrl}" =~ jdbc:postgresql://([^:/]+):?([0-9]*)/([^\?]+) ]]
+    export _DBHOST="${BASH_REMATCH[1]}"
+    export _DBPORT="${BASH_REMATCH[2]}"
+    export _DBNAME="${BASH_REMATCH[3]}"
+    export _DBUSER="${username}"
+    if [[ "${password}" =~ [a-zA-Z0-9] ]]; then
+        export PGPASSWORD="${password}"
+    fi
+}
+
 # NOTE: currently this function is tested against support.zip boot-ed then migrated database
 # Example export command (Using --no-owner and --clean, but not using --data-only as needs CREATE statements. -t with * requires PostgreSQL v12 or higher):
 # Other interesting tables: -t "*_browse_node" -t "*deleted_blob*" -t "change_blobstore"
 function f_export_postgresql_component() {
     local _workingDirectory="${1}"
     local _exportTo="${2:-"./component_db_$(date +"%Y%m%d%H%M%S").sql.gz"}"
-    source "${_workingDirectory%/}/etc/fabric/nexus-store.properties" || return $?
-    [[ "${jdbcUrl}" =~ jdbc:postgresql://([^:/]+):?([0-9]*)/([^\?]+) ]]
-    local _dbhost="${BASH_REMATCH[1]}"
-    local _dbport="${BASH_REMATCH[2]}"
-    local _dbname="${BASH_REMATCH[3]}"
+    _export_postgres_config "${_workingDirectory%/}/etc/fabric/nexus-store.properties" || return $?
     local _fmt="*"
-    PGPASSWORD="${password}" PGGSSENCMODE=disable pg_dump -h ${_dbhost} -p ${_dbport:-"5432"} -U ${username} -d ${_dbname} -c -O -t "repository" -t "${_fmt}_content_repository" -t "${_fmt}_component" -t "${_fmt}_component_tag" -t "${_fmt}_asset" -t "${_fmt}_asset_blob" -t "tag" -Z 6 -f "${_exportTo}"
+    PGGSSENCMODE=disable pg_dump -h ${_DBHOST} -p ${_DBPORT:-"5432"} -U ${_DBUSER} -d ${_DBNAME} -c -O -t "repository" -t "${_fmt}_content_repository" -t "${_fmt}_component" -t "${_fmt}_component_tag" -t "${_fmt}_asset" -t "${_fmt}_asset_blob" -t "tag" -Z 6 -f "${_exportTo}"
 }
 
 # How to verify
@@ -2502,18 +2513,30 @@ function f_export_postgresql_component() {
 #SELECT relname, reltuples as row_count_estimate FROM pg_class WHERE relnamespace ='public'::regnamespace::oid AND relkind = 'r' AND relname NOT LIKE '%_browse_%' AND (relname like '%repository%' OR relname like '%component%' OR relname like '%asset%') ORDER BY 2 DESC LIMIT 40;
 function f_restore_postgresql_component() {
     local _workingDirectory="${1}"
-    source "${_workingDirectory%/}/etc/fabric/nexus-store.properties" || return $?
     local _importFrom="${2}"
-    [[ "${jdbcUrl}" =~ jdbc:postgresql://([^:/]+):?([0-9]*)/([^\?]+) ]]
-    local _dbhost="${BASH_REMATCH[1]}"
-    local _dbport="${BASH_REMATCH[2]}"
-    local _dbname="${BASH_REMATCH[3]}"
+    _export_postgres_config "${_workingDirectory%/}/etc/fabric/nexus-store.properties" || return $?
+
     if [ -z "${_importFrom}" ]; then
         _importFrom="$(ls -1 ./component_db_*.sql.gz | tail -n1)"
         [ -z "${_importFrom}" ] && return 1
     fi
-    (gunzip -c "${_importFrom}" | sed -E 's/^DROP TABLE ([^;]+);$/DROP TABLE \1 cascade;/') | PGPASSWORD="${password}" PGGSSENCMODE=disable psql -h ${_dbhost} -p ${_dbport:-"5432"} -U ${username} -d ${_dbname} -L ./psql_restore.log 2>./psql_restore.log
+    (gunzip -c "${_importFrom}" | sed -E 's/^DROP TABLE ([^;]+);$/DROP TABLE \1 cascade;/') | PGGSSENCMODE=disable psql -h ${_DBHOST} -p ${_DBPORT:-"5432"} -U ${_DBUSER} -d ${_DBNAME} -L ./psql_restore.log 2>./psql_restore.log
     grep -w ERROR ./psql_restore.log && return 1
+}
+
+#f_query_postgresql ./sonatype-work/nexus3 "SELECT blob_ref FROM %TABLE%" "%_asset_blob"
+function f_query_postgresql() {
+    local __doc__="Query against all assets or components"
+    local _workingDirectory="${1}"
+    local _query="${2}" # Use '%TABLE%'
+    local _table_name_like="${3:-"%_asset"}"
+    local _psql_opts="${4:-"${_PSQL_OPTS:-"-tA"}"}"
+    _export_postgres_config "${_workingDirectory%/}/etc/fabric/nexus-store.properties" || return $?
+    PGGSSENCMODE=disable psql -h ${_DBHOST} -p ${_DBPORT:-"5432"} -U ${_DBUSER} -d ${_DBNAME} -tA -c "SELECT table_name FROM information_schema.tables WHERE table_name like '${_table_name_like}'" | while read -r _table; do
+        local _q="$(echo "${_query}" | sed "s/%TABLE%/${_table}/g")"
+        echo "# ${_q}" >&2
+        PGGSSENCMODE=disable psql -h ${_DBHOST} -p ${_DBPORT:-"5432"} -U ${_DBUSER} -d ${_DBNAME} ${_psql_opts} -c "${_q}"
+    done
 }
 
 
