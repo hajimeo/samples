@@ -790,13 +790,19 @@ function f_gc_overview() {
     local _datetime_filter="${4:-"${_DATE_FORMAT}.\\d\\d:\\d\\d:\\d\\d.?\\d*"}"
     [ -z "${_saveTo}" ] && _saveTo="$(basename ${_file%.*}).csv"
     # TODO: ([0-9.]+) secs does not work with PrintClassHistogramBeforeFullGC
-    if rg -m1 'Class Histogram' -q ${_file}; then
+    if rg 'Class Histogram' -q ${_file}; then
         rg -z "(^20\d\d-\d\d-\d\d.+(GC pause|Full GC).+$|Heap:\s*[^\]]+|\[Times: .+real=.+$)" -o ${_file} | rg '(GC pause|Full GC)' -A2 | rg -v -- '--' | paste - - - > /tmp/${FUNCNAME[0]}.tmp || return $?
         rg "^(${_datetime_filter}).+(GC pause[^,]+|Full GC.+?\)).+Heap:\s*([0-9.]+)${_size}[\(\)0-9.KMG ]+->\s*([0-9.]+)${_size}.+ real=([0-9.]+) secs.+" -o -r '"${1}",${5},${3},${4},"${2}"' /tmp/${FUNCNAME[0]}.tmp > "${_saveTo}" || return $?
     else
-        # TODO: can't use the _datetime_filter at below rg command. Need to use more complex rg command
-        rg -z '(^20\d\d-\d\d-\d\d.+(GC pause|Full GC).+$|Heap:\s*[^\]]+)' -o ${_file} | paste - - > /tmp/${FUNCNAME[0]}.tmp || return $?
-        rg "^(${_datetime_filter}).+(GC pause[^,]+|Full GC[^,]+).* ([0-9.]+) secs.+Heap:\s*([0-9.]+)${_size}[\(\)0-9.KMG ]+->\s*([0-9.]+)${_size}" -o -r '"${1}",${3},${4},${5},"${2}"' /tmp/${FUNCNAME[0]}.tmp > "${_saveTo}" || return $?
+        if rg '^\s*\[Times:' -q ${_file}; then
+            # TODO: this is not working as too many 'Times':
+            rg -z '(^20\d\d-\d\d-\d\d.+(GC pause|Full GC).+$|Heap:\s*[^\]]+|Times:[^\]]+ secs)' -o ${_file} | paste - - - > /tmp/${FUNCNAME[0]}.tmp || return $?
+            rg "^(${_datetime_filter}).+(GC pause[^,]+|Full GC[^,]+).+\s*Heap:\s*([0-9.]+)${_size}[\(\)0-9.KMG ]+->\s*([0-9.]+)${_size}.*\s* ([0-9.]+) secs" -o -r '"${1}",${5},${3},${4},"${2}"' /tmp/${FUNCNAME[0]}.tmp
+        else
+            # TODO: can't use the _datetime_filter at below rg command. Need to use more complex rg command
+            rg -z '(^20\d\d-\d\d-\d\d.+(GC pause|Full GC).+$|Heap:\s*[^\]]+)' -o ${_file} | paste - - > /tmp/${FUNCNAME[0]}.tmp || return $?
+            rg "^(${_datetime_filter}).+(GC pause[^,]+|Full GC[^,]+).* ([0-9.]+) secs.+Heap:\s*([0-9.]+)${_size}[\(\)0-9.KMG ]+->\s*([0-9.]+)${_size}" -o -r '"${1}",${3},${4},${5},"${2}"' /tmp/${FUNCNAME[0]}.tmp
+         fi > "${_saveTo}" || return $?
     fi
     head -n1 "${_saveTo}" | rg -q '^date_time' || echo "date_time,elapsed_secs,heap_before_${_size},heap_after_${_size},gc_type
 $(cat "${_saveTo}")" > ${_saveTo}
@@ -1013,7 +1019,7 @@ function f_wrapper2threads() {
     fi
     find ${_wrapper_dir%/} -name 'wrapper.log*' | sort -r | xargs -I{} -t cat {} | sed "s/^jvm 1    | //" >> ${_output_to}
     if ! type echolines &>/dev/null; then
-        echo 'curl -o /usr/local/bin/echolines -L https://github.com/hajimeo/samples/raw/master/misc/gonetstat_$(uname)_$(uname -m)'
+        echo 'curl -o /usr/local/bin/echolines -L https://github.com/hajimeo/samples/raw/master/misc/logs2csv_$(uname)_$(uname -m)'
         return
     fi
     echolines ${_output_to} "^\d\d\d\d-\d\d-\d\d \d\d:\d\d:\d\d$" "(${_end_regex})" > ${_output_to}.tmp
@@ -1027,6 +1033,7 @@ function f_wrapper2threads() {
 # NOTE: f_last_tid_in_log would be useful.
 # Full thread dump OpenJDK 64-Bit Server VM (25.352-b08 mixed mode):
 function f_threads() {
+    # TODO: replace the split part to echolines
     local __doc__="Split file to each thread, then output thread count"
     local _file="$1"    # Or dir contains thread_xxxx.txt files
     local _split_search="${2}"  # "^\".+" or if NXRM2, "^[a-zA-Z].+"
@@ -1263,7 +1270,7 @@ function _threads_extra_check() {
     if [ ! -f "${_file}" ]; then
         _file="--no-filename -g \"${_file}\""
     fi
-    rg '(DefaultTimelineIndexer|content_digest|findAssetByContentDigest|touchItemLastRequested|preClose0|sun\.security\.util\.MemoryCache|java\.lang\.Class\.forName|CachingDateFormatter|metrics\.health\.HealthCheck\.execute|WeakHashMap|userId\.toLowerCase|MessageDigest|UploadManagerImpl\.startUpload|UploadManagerImpl\.blobsByName|maybeTrimRepositories|getQuarantinedVersions|nonCatalogedVersions|getProxyDownloadNumbers|RepositoryManagerImpl.retrieveConfigurationByName|\.StorageFacetManagerImpl\.|OTransactionRealAbstract\.isIndexKeyMayDependOnRid|AptFacetImpl.put)' ${_file} | sort | uniq -c > /tmp/$FUNCNAME_$$.out || return $?
+    rg '(DefaultTimelineIndexer|content_digest|findAssetByContentDigest|touchItemLastRequested|preClose0|sun\.security\.util\.MemoryCache|java\.lang\.Class\.forName|CachingDateFormatter|metrics\.health\.HealthCheck\.execute|WeakHashMap|userId\.toLowerCase|MessageDigest|UploadManagerImpl\.startUpload|UploadManagerImpl\.blobsByName|maybeTrimRepositories|getQuarantinedVersions|nonCatalogedVersions|getProxyDownloadNumbers|RepositoryManagerImpl.retrieveConfigurationByName|\.StorageFacetManagerImpl\.|OTransactionRealAbstract\.isIndexKeyMayDependOnRid|AptFacetImpl.put|componentMetadata)' ${_file} | sort | uniq -c > /tmp/$FUNCNAME_$$.out || return $?
     if [ -s /tmp/$FUNCNAME_$$.out ]; then
         echo "## Counting:"
         echo "##    'DefaultTimelineIndexer' for NXRM2 System Feeds: timeline-plugin,"
@@ -1287,6 +1294,7 @@ function _threads_extra_check() {
         echo "##    'StorageFacetManagerImpl' Storage facet cleanup might might cause performance issue"
         echo "##    'OTransactionRealAbstract.isIndexKeyMayDependOnRid' https://github.com/orientechnologies/orientdb/issues/9396"
         echo "##    'AptFacetImpl.put' NEXUS-30812 / NEXUS-37102"
+        echo "##    'componentMetadata' CLM-26850"
         cat /tmp/$FUNCNAME_$$.out
         echo " "
     fi
@@ -1576,6 +1584,29 @@ function f_h2_shell() {
     else
         java -Xmx${_Xmx} -cp $HOME/IdeaProjects/libs/h2-${_h2_ver}.jar org.h2.tools.Shell -url "${_url};TRACE_LEVEL_SYSTEM_OUT=2" -user sa -password "" -driver org.h2.Driver
     fi
+}
+function f_csv2h2() {
+    local _file="${1:-"./request.csv"}"
+    local _saveTo="${2}"
+    local _append="${3}"    # default is replace
+    if [ ! -s /var/tmp/share/java/h2-console.jar ]; then
+        echo "This function requires /var/tmp/share/java/h2-console.jar"
+        return 1
+    fi
+    if [ -z "${_saveTo}" ]; then
+        _saveTo="./$(basename "${_file}" ".csv")"
+    fi
+    local _table="t_$(basename "${_file}" ".csv")"
+    local _sql="CREATE TABLE IF NOT EXISTS ${_table} AS SELECT * FROM CSVREAD('${_file}');"
+    [[ "${_append}" =~ ^[yY] ]] || _sql="DROP TABLE IF EXISTS ${_table};${_sql}"
+
+    # TODO: add startedTime: DATEADD('SECOND', 0 - ("elapsedTime" / 1000), PARSEDATETIME(DATE, 'dd/MMM/yyyy:hh:mm:ss z')), this display's my timezone time which is a bit confusing
+    if [[ "${_table}" =~ request ]]; then
+        _sql="${_sql%;};ALTER TABLE ${_table} ALTER COLUMN bytesSent SET DATA TYPE BIGINT;"
+        _sql="${_sql%;};ALTER TABLE ${_table} ALTER COLUMN elapsedTime SET DATA TYPE BIGINT;"
+    fi
+    echo "${_sql}" | java -jar /var/tmp/share/java/h2-console.jar "${_saveTo}" || return $?
+    # TODO: start H2 service
 }
 
 ### Private functions ##################################################################################################
@@ -1940,7 +1971,8 @@ function _actual_file_size() {
     if ! echo "${_file_cmd_out}" | grep -qi "compress"; then
         wc -c "${_log_path}" | awk '{print $1}'
     else
-        echo "${_file_cmd_out}" | rg "\bsize (\d+)" -o -r '$1'
+        # file ... original size modulo 2^32 2348225
+        echo "${_file_cmd_out}" | rg " (\d+)$" -o -r '$1'
     fi
 }
 
