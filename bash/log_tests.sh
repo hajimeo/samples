@@ -72,7 +72,16 @@ _rg() {
         rg --max-filesize "${_max_filesize}" -z "$@"
     else
         rg -z "$@"
-    fi 2>/tmp/_rg_last.err
+    fi 2>/tmp/._rg_last.err
+    local _rc=$?
+    if [ ${_rc:-0} -ne 0 ] && [ -s /tmp/._rg_last.err ]; then
+         echo "[$(date +'%Y-%m-%d %H:%M:%S')] rg $*" >> /tmp/_rg.log
+         cat /tmp/._rg_last.err >> /tmp/_rg.log
+    fi
+    return ${_rc}
+}
+_bar() {
+    bar_chart.py "$@" | grep -v 'Error: no data'
 }
 _q() {
     q -O -d"," -T --disable-double-double-quoting "$@" 2>/tmp/_q_last.err
@@ -187,9 +196,11 @@ function _extract_configs() {
     _search_json "sysinfo.json" "system-network"
     echo '```'
 
-    _head "CONFIG" "database related (TODO: IQ)"
+    _head "CONFIG" "database related"
     echo '```'
     _find_and_cat "config_ds_info.properties" 2>/dev/null
+    _find_and_cat "db_info.properties" 2>/dev/null
+    _find_and_cat "dbFileInfo.txt" | head -n10 2>/dev/null
     echo '```'
 
     # TODO: add installDirectory and IQ sonatype-work
@@ -254,6 +265,7 @@ function _extract_log_last_start() {
 }
 function _check_log_stop_start() {
     local _log_path="$1"
+    [ -z "${_log_path}" ] && return 1
     [ ! -s "${_log_path}" ] && _log_path="-g \"${_log_path}\""
     # NXRM2 stopping/starting, NXRM3 stopping/starting, IQ stopping/starting (IQ doesn't clearly say stopped so that checking 'Stopping')
     # NXRM2: org.sonatype.nexus.bootstrap.jetty.JettyServer - Stopped
@@ -352,6 +364,7 @@ function _test_tmpl_auto() {
 function _split_log() {
     local _log_path="$1"
     local _start_log_line=""
+    [ -z "${_log_path}" ] && return 1
     if [[ "${_log_path}" =~ (nexus)[^*]*log[^*]* ]]; then
         #_start_log_line=".*org.sonatype.nexus.(webapp.WebappBootstrap|events.EventSubscriberHost) - Initialized"  # NXRM2 (if no DEBUG)
         _start_log_line="(.*org.sonatype.nexus.pax.logging.NexusLogActivator - start|.*org.sonatype.nexus.events.EventSubscriberHost - Initialized)" # NXRM3|NXRM2
@@ -360,9 +373,9 @@ function _split_log() {
     fi
     if [ -n "${_start_log_line}" ]; then
         if _size_check "${_log_path}" "$((${_LOG_THRESHOLD_BYTES} * 10))"; then
-            f_splitByRegex ${_log_path} "${_start_log_line}" "_split_logs"
+            f_splitByRegex "${_log_path}" "${_start_log_line}" "_split_logs"
         else
-            _LOG "INFO" "Not doing f_splitByRegex for '${_log_path}' as the size is larger than $((${_LOG_THRESHOLD_BYTES} * 10))"
+            _LOG "INFO" "Not doing f_splitByRegex for '${_log_path}' as the size is larger than _LOG_THRESHOLD_BYTES:${_LOG_THRESHOLD_BYTES} * 10"
         fi
     fi
 }
@@ -384,12 +397,11 @@ function e_app_logs() {
 }
 function e_requests() {
     local _req_log_path="$(find . -maxdepth 3 -name "${_REQUEST_LOG:-"request.log"}" | sort -r | head -n1 2>/dev/null)"
-    local _req_log_size="$(_actual_file_size "${_req_log_path}")"
     if  _size_check "${_req_log_path}" "$((${_LOG_THRESHOLD_BYTES} * 10))"; then
         f_request2csv "${_req_log_path}" ${_FILTERED_DATA_DIR%/}/request.csv 2>/dev/null &
         _rg "${_DATE_FMT_REQ}:(\d\d).+(/rest/|/api/)([^/ =?]+/?[^/ =?]+/?[^/ =?]+/?[^/ =?]+/?[^/ =?]+/?)" --no-filename -g ${_REQUEST_LOG} -o -r '"$1:" "$2$3"' | _replace_number | sort -k1,2 | uniq -c > ${_FILTERED_DATA_DIR%/}/agg_requests_count_hour_api.ssv &
     else
-        _LOG "WARN" "Not converting '${_req_log_path}' to CSV (and agg_requests_count_hour_api) because no ${_REQUEST_LOG:-"request.log"} or log size (${_req_log_size}) is larger than ${_LOG_THRESHOLD_BYTES}"
+        _LOG "WARN" "Not converting '${_req_log_path}' to CSV (and agg_requests_count_hour_api) because no ${_REQUEST_LOG:-"request.log"} or larger than _LOG_THRESHOLD_BYTES:${_LOG_THRESHOLD_BYTES} * 10"
     fi
 }
 function e_threads() {
@@ -422,7 +434,7 @@ function r_threads() {
 }
 function r_requests() {
     _head "REQUESTS" "Request counts per hour from ${_REQUEST_LOG}"
-    _code "$(_rg "${_DATE_FMT_REQ}:\d\d" -o --no-filename -g ${_REQUEST_LOG} | bar_chart.py)"
+    _code "$(_rg "${_DATE_FMT_REQ}:\d\d" -o --no-filename -g ${_REQUEST_LOG} | _bar)"
     [ -s "${_FILTERED_DATA_DIR%/}/request.csv" ] || return
     # first and end time per user
     #_q -H "select clientHost, user, count(*), min(date), max(date) from ${_FILTERED_DATA_DIR%/}/request.csv group by 1,2"
@@ -444,7 +456,11 @@ function r_list_logs() {
 
 ### Tests ###################################################################
 function t_basic() {
-    _test_template "$(find . -maxdepth 3 -type f -name truncated | grep 'truncated')" "WARN" "'truncated' found under $(realpath .) with maxdepth 3"
+    if ! _test_template "$(find . -maxdepth 3 -type f -name truncated | grep 'truncated')" "WARN" "'truncated' found under $(realpath .) with maxdepth 3"; then
+        echo '```'
+        _rg -l "TRUNCATE" -g '*.log' -g '*.json'
+        echo '```'
+    fi
     if ! find . -maxdepth 5 -type f -name sysinfo.json | grep -q 'sysinfo.json'; then
         _head "ERROR" "No 'sysinfo.json' under $(realpath .) with maxdepth 5"
     fi
@@ -459,7 +475,7 @@ function t_system() {
     _test_template "$(rg 'maxMemory: *(.+ MB|[1-3]\.\d+ GB)' ${_FILTERED_DATA_DIR%/}/extracted_configs.md)" "WARN" "maxMemory (heap|Xmx) might be too low (NEXUS-35218)"
     _test_template "$(rg -g jmx.json -g wrapper.conf -q -- '-XX:\+UseG1GC' || rg -g jmx.json -- '-Xmx')" "WARN" "No '-XX:+UseG1GC' for below Xmx (only for Java 8)" "Also consider using -XX:+ExplicitGCInvokesConcurrent"
     _test_template "$(rg -g jmx.json 'UseCGroupMemoryLimitForHeap')" "WARN" "UseCGroupMemoryLimitForHeap is specified (not required from 8v191)"
-    _test_template "$(rg -- '-Djavax\.net\.ssl..+=' ${_FILTERED_DATA_DIR%/}/extracted_configs.md | rg -v -i 'password')" "WARN" "javax.net.ssl.xxxx is used in jmx.json, java.lang:type=Runtime,InputArguments"
+    _test_template "$(rg -g jmx.json -- '-Djavax\.net\.ssl..+=')" "WARN" "javax.net.ssl.xxxx is used in jmx.json: java.lang:type=Runtime,InputArguments"
     if ! _rg -g jmx.json -q 'x86_64'; then
         _head "WARN" "No 'x86_64' found in jmx.json. Might be 32 bit Java or Windows, check the top of jvm.log)"
     fi
