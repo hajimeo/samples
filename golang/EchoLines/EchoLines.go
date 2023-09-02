@@ -38,13 +38,13 @@ If the first argument is empty, the script accepts the STDIN.
 ### Get duration of each line:
     export ELAPSED_REGEX="^\d\d\d\d-\d\d-\d\d.(\d\d:\d\d:\d\d.\d\d\d)"
 	cat ./nexus.log | echolines "" "^\d\d\d\d-\d\d-\d\d.\d\d:\d\d:\d\d.\d\d\d" "^\d\d\d\d-\d\d-\d\d.\d\d:\d\d:\d\d.\d\d\d"
-### Get duration of NXRM3 queries:
+### Get duration of NXRM3 queries, and sort by the longuest:
     export ELAPSED_REGEX="^\d\d\d\d-\d\d-\d\d.(\d\d:\d\d:\d\d.\d\d\d)"
-	cat ./nexus.log | echolines "" "Preparing:" "(^.+Total:.+)"
-### Get duration of IQ Evaluate a File
+	cat ./nexus.log | echolines "" "Preparing:" "(^.+Total:.+)" | rg '^# \d\d' | sort -t'|' -k2nr
+### Get duration of IQ Evaluate a File, and sort by threadId and time
     rg 'POST /rest/scan/.+Scheduling scan task (\S+)' -o -r '$1' log/clm-server.log | xargs -I{} rg -w "{}" ./log/clm-server.log | sort | uniq > scan_tasks.log
     export ELAPSED_REGEX="^\d\d\d\d-\d\d-\d\d.(\d\d:\d\d:\d\d.\d\d\d)"
-	ELAPSED_KEY_REGEX="\[([^\]]+)" echolines ./scan_tasks.log "Running scan task" "(^.+Completed scan task.+)" | rg '^# s'
+	ELAPSED_KEY_REGEX="\[([^\]]+)" echolines ./scan_tasks.log "Running scan task" "(^.+Completed scan task.+)" | rg '^# \d\d' | sort -t'|' -k3,3 -k1,1
 
 # ENV VARIABLES:
 	SPLIT_FILE=Y
@@ -340,13 +340,13 @@ func echoDurationInner(dura Duration, maxKeyLen int, minDuraMs int64) {
 	ascii := ""
 	if DISABLE_ASCII != "Y" {
 		ascii = asciiChart(dura.startTimeStr, dura.durationMs, DIVIDE_MS)
-		ascii = " | " + ascii
+		ascii = "|" + ascii
 	}
 	if dura.key == NO_KEY {
 		// As "sec,ms" contains comma, using "|". Also "<num> ms" for easier sorting (it was "ms:<num>")
-		fmt.Printf("# s:%s | e:%s | %8d ms%s\n", dura.startTimeStr, dura.endTimeStr, dura.durationMs, ascii)
+		fmt.Printf("# %s-%s|%8dms%s\n", dura.startTimeStr, dura.endTimeStr, dura.durationMs, ascii)
 	} else {
-		fmt.Printf("# s:%s | e:%s | %8d ms | %*s%s\n", dura.startTimeStr, dura.endTimeStr, dura.durationMs, KEY_PADDING, dura.key, ascii)
+		fmt.Printf("# %s-%s|%8dms|%*s%s\n", dura.startTimeStr, dura.endTimeStr, dura.durationMs, KEY_PADDING, dura.key, ascii)
 	}
 }
 
