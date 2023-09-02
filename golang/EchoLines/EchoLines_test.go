@@ -15,12 +15,12 @@ func TestMain(m *testing.M) {
 }
 
 func TestAsciiChart(t *testing.T) {
-	ascii := asciiChart("00:00:00,000", DIVIDE_MS_DEFAULT)
+	ascii := asciiChart("00:00:00,000", 10000, 10000)
 	if len(ascii) > 0 {
 		t.Errorf("With DIVIDE_MS_DEFAULT, should be no ascii")
 		return
 	}
-	ascii = asciiChart("00:00:00,000", DIVIDE_MS_DEFAULT*2)
+	ascii = asciiChart("00:00:00,000", 10000*2, 10000)
 	if len(ascii) == 0 {
 		t.Errorf("No ascii string generated")
 		return
@@ -45,12 +45,20 @@ func TestEchoDuration(t *testing.T) {
 	t.Log("TODO: not implemented")
 	return
 }
-func TestEechoEndLine(t *testing.T) {
+func TestEchoDurationInner(t *testing.T) {
+	t.Log("TODO: not implemented")
+	return
+}
+func TestechoDurations(t *testing.T) {
+	t.Log("TODO: not implemented")
+	return
+}
+func TestEchoEndLine(t *testing.T) {
 	echoEndLine("end line", NO_KEY)
 	t.Log("TODO: not implemented")
 	return
 }
-func TestEechoStartLine(t *testing.T) {
+func TestEchoStartLine(t *testing.T) {
 	OUT_FILE = nil
 	echoStartLine("start line", NO_KEY)
 	t.Log("TODO: not implemented")

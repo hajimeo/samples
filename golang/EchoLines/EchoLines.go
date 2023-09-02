@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"html"
 	"log"
-	"math"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -97,9 +96,18 @@ var FIRST_START_TIME time.Time
 var ELAPSED_DIVIDE_MS = os.Getenv("ELAPSED_DIVIDE_MS")
 var DISABLE_ASCII = os.Getenv("DISABLE_ASCII")
 var DIVIDE_MS int64 = 0
-var DIVIDE_MS_DEFAULT int64 = 10000 // 10 seconds
 var KEY_PADDING = 0
 var FOUND_COUNT = 0
+
+// fmt.Printf("# s:%s | e:%s | %8d ms | %*s | %s\n", startTimeStr, endTimeStr, duration.Milliseconds(), KEY_PADDING, key, ascii)
+type Duration struct {
+	startTimeStr string
+	endTimeStr   string
+	durationMs   int64
+	key          string
+}
+
+var DURATIONS = make([]Duration, 0)
 
 func echoLine(line string, f *os.File) bool {
 	if HTML_REMOVE == "Y" {
@@ -144,6 +152,10 @@ func processFile(inFile *os.File) {
 			continue
 		}
 		echoLine(line, OUT_FILE)
+	}
+
+	if len(DURATIONS) > 0 {
+		echoDurations(DURATIONS)
 	}
 }
 
@@ -278,50 +290,82 @@ func echoDuration(endLine string) {
 	if ok {
 		_dlog("startTimeStr = " + startTimeStr)
 		duration := calcDurationFromStrings(startTimeStr, endTimeStr)
-		ascii := ""
-		if DISABLE_ASCII != "Y" {
-			ascii = asciiChart(startTimeStr, duration.Milliseconds())
+		dura := Duration{
+			startTimeStr: startTimeStr,
+			endTimeStr:   endTimeStr,
+			durationMs:   duration.Milliseconds(),
+			key:          key,
 		}
-		if key == NO_KEY {
-			// As "sec,ms" contains comma, using "|". Also "<num> ms" for easier sorting (it was "ms:<num>")
-			fmt.Printf("# s:%s | e:%s | %8d ms | %s\n", startTimeStr, endTimeStr, duration.Milliseconds(), ascii)
-		} else {
-			if KEY_PADDING == 0 {
-				KEY_PADDING = 0 - (len(key) + 2)
-			}
-			fmt.Printf("# s:%s | e:%s | %8d ms | %*s | %s\n", startTimeStr, endTimeStr, duration.Milliseconds(), KEY_PADDING, key, ascii)
-		}
+		DURATIONS = append(DURATIONS, dura)
 	} else {
 		_, _ = fmt.Fprintf(os.Stderr, "[WARN] No start datetime found for key:%s end datetime:%s.\n", key, endTimeStr)
 	}
 }
 
-func asciiChart(startTimeStr string, durationMs int64) string {
-	var ascii = ""
-	var duraFromFirst time.Duration
-	if durationMs < DIVIDE_MS_DEFAULT {
-		return ascii
+func echoDurations(duras []Duration) {
+	maxKeyLen := 0
+	minDuraMs := int64(0)
+	for _, dura := range duras {
+		if maxKeyLen == 0 || len(dura.key) > maxKeyLen {
+			maxKeyLen = len(dura.key)
+		}
+		if minDuraMs == 0 || dura.durationMs < minDuraMs {
+			minDuraMs = dura.durationMs
+		}
 	}
-	if FIRST_START_TIME.IsZero() {
-		duraFromFirst = 0
-	} else {
-		startTime, _ := time.Parse(ELAPSED_FORMAT, startTimeStr)
-		duraFromFirst = startTime.Sub(FIRST_START_TIME)
+	_dlog("maxKeyLen = " + strconv.Itoa(maxKeyLen))
+	_dlog("minDuraMs = " + strconv.FormatInt(minDuraMs, 10))
+	for _, dura := range duras {
+		echoDurationInner(dura, maxKeyLen, minDuraMs)
+	}
+}
+
+func echoDurationInner(dura Duration, maxKeyLen int, minDuraMs int64) {
+	if KEY_PADDING == 0 {
+		// min 11, max 32 for now
+		KEY_PADDING = 0 - maxKeyLen
+		if KEY_PADDING > -11 {
+			KEY_PADDING = -11
+		} else if KEY_PADDING < -32 {
+			KEY_PADDING = -32
+		}
+		_dlog("KEY_PADDING = " + strconv.Itoa(KEY_PADDING))
 	}
 	if DIVIDE_MS == 0 {
-		digit := len(strconv.FormatInt(durationMs, 10)) - 1
-		DIVIDE_MS = int64(math.Pow(10, float64(digit)))
+		// if not specified, using the smallest duration as unit (one '-')
+		DIVIDE_MS = minDuraMs
+		_dlog("DIVIDE_MS = " + strconv.FormatInt(DIVIDE_MS, 10))
 	}
-	if DIVIDE_MS < DIVIDE_MS_DEFAULT {
-		DIVIDE_MS = DIVIDE_MS_DEFAULT
+
+	ascii := ""
+	if DISABLE_ASCII != "Y" {
+		ascii = asciiChart(dura.startTimeStr, dura.durationMs, DIVIDE_MS)
+		ascii = " | " + ascii
 	}
-	repeat := int(duraFromFirst.Milliseconds() / DIVIDE_MS)
+	if dura.key == NO_KEY {
+		// As "sec,ms" contains comma, using "|". Also "<num> ms" for easier sorting (it was "ms:<num>")
+		fmt.Printf("# s:%s | e:%s | %8d ms%s\n", dura.startTimeStr, dura.endTimeStr, dura.durationMs, ascii)
+	} else {
+		fmt.Printf("# s:%s | e:%s | %8d ms | %*s%s\n", dura.startTimeStr, dura.endTimeStr, dura.durationMs, KEY_PADDING, dura.key, ascii)
+	}
+}
+
+func asciiChart(startTimeStr string, durationMs int64, divideMs int64) string {
+	var duraSinceFirstSTart time.Duration
+	if FIRST_START_TIME.IsZero() {
+		duraSinceFirstSTart = 0
+	} else {
+		startTime, _ := time.Parse(ELAPSED_FORMAT, startTimeStr)
+		duraSinceFirstSTart = startTime.Sub(FIRST_START_TIME)
+	}
+	var ascii = ""
+	repeat := int(duraSinceFirstSTart.Milliseconds() / divideMs)
 	for i := 1; i < repeat; i++ {
 		ascii += " "
 	}
-	repeat = int(durationMs / DIVIDE_MS)
+	repeat = int(durationMs / divideMs)
 	for i := 1; i < repeat; i++ {
-		ascii += "_"
+		ascii += "-"
 	}
 	return ascii
 }
