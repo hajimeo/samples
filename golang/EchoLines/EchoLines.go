@@ -332,8 +332,12 @@ func echoDurationInner(dura Duration, maxKeyLen int, minDuraMs int64) {
 		_dlog("KEY_PADDING = " + strconv.Itoa(KEY_PADDING))
 	}
 	if DIVIDE_MS == 0 {
-		// if not specified, using the smallest duration as unit (one '-')
-		DIVIDE_MS = minDuraMs
+		// if not specified, using the smallest duration as unit (one '-') or 1 second
+		if minDuraMs < 1000 {
+			DIVIDE_MS = 1000
+		} else {
+			DIVIDE_MS = minDuraMs
+		}
 		_dlog("DIVIDE_MS = " + strconv.FormatInt(DIVIDE_MS, 10))
 	}
 
