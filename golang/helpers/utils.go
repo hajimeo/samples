@@ -4,18 +4,21 @@ import (
 	"bufio"
 	"log"
 	"os"
+	"strconv"
 	"strings"
+	"time"
 )
 
 var DEBUG bool
 
-func Log(level string, message string) {
+func Log(level string, message interface{}) {
 	if level != "DEBUG" || DEBUG {
-		log.Printf("%s: %s\n", level, message)
+		log.SetPrefix(time.Now().Format("2006-01-02 15:04:05") + " [" + level + "] ")
+		log.Printf("%s: %v\n", level, message)
 	}
 }
 
-func getEnv(key string, fallback string) string {
+func GetEnv(key string, fallback string) string {
 	value, exists := os.LookupEnv(key)
 	if exists {
 		return value
@@ -23,7 +26,17 @@ func getEnv(key string, fallback string) string {
 	return fallback
 }
 
-func getBoolEnv(key string, fallback bool) bool {
+func GetEnvInt64(key string, fallback int64) int64 {
+	value, exists := os.LookupEnv(key)
+	if exists {
+		i64, err := strconv.ParseInt(value, 10, 64)
+		PanicIfErr(err)
+		return i64
+	}
+	return fallback
+}
+
+func GetBoolEnv(key string, fallback bool) bool {
 	value, exists := os.LookupEnv(key)
 	if exists {
 		switch value {
@@ -55,7 +68,7 @@ func PanicIfErr(err error) {
 
 type StoreProps map[string]string
 
-func readPropertiesFile(path string) (StoreProps, error) {
+func ReadPropertiesFile(path string) (StoreProps, error) {
 	props := StoreProps{}
 	file, err := os.Open(path)
 	if err != nil {
