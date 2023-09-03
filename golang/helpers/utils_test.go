@@ -27,6 +27,10 @@ func TestGetEnv(t *testing.T) {
 	if shouldBe2 != "2" {
 		t.Errorf("Result should be 2")
 	}
+	shouldBeInt := GetEnvInt64("FOO2", 2)
+	if shouldBeInt != 2 {
+		t.Errorf("Result should be 2")
+	}
 	var i64 int64 = 2
 	shouldBeI64 := GetEnvInt64("FOO2", i64)
 	if shouldBeI64 != i64 {

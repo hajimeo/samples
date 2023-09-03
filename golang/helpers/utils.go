@@ -26,6 +26,16 @@ func GetEnv(key string, fallback string) string {
 	return fallback
 }
 
+func GetEnvInt(key string, fallback int) int {
+	value, exists := os.LookupEnv(key)
+	if exists {
+		i64, err := strconv.Atoi(value)
+		PanicIfErr(err)
+		return i64
+	}
+	return fallback
+}
+
 func GetEnvInt64(key string, fallback int64) int64 {
 	value, exists := os.LookupEnv(key)
 	if exists {
