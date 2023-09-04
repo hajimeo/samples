@@ -59,7 +59,6 @@ func TestEchoEndLine(t *testing.T) {
 	return
 }
 func TestEchoStartLine(t *testing.T) {
-	OUT_FILE = nil
 	echoStartLine("start line", NO_KEY)
 	t.Log("TODO: not implemented")
 	return
