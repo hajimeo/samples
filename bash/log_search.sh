@@ -1270,7 +1270,7 @@ function _threads_extra_check() {
     if [ ! -f "${_file}" ]; then
         _file="--no-filename -g \"${_file}\""
     fi
-    rg '(DefaultTimelineIndexer|content_digest|findAssetByContentDigest|touchItemLastRequested|preClose0|sun\.security\.util\.MemoryCache|java\.lang\.Class\.forName|CachingDateFormatter|metrics\.health\.HealthCheck\.execute|WeakHashMap|userId\.toLowerCase|MessageDigest|UploadManagerImpl\.startUpload|UploadManagerImpl\.blobsByName|maybeTrimRepositories|getQuarantinedVersions|nonCatalogedVersions|getProxyDownloadNumbers|RepositoryManagerImpl.retrieveConfigurationByName|\.StorageFacetManagerImpl\.|OTransactionRealAbstract\.isIndexKeyMayDependOnRid|AptFacetImpl.put|componentMetadata)' ${_file} | sort | uniq -c > /tmp/$FUNCNAME_$$.out || return $?
+    rg '(DefaultTimelineIndexer|content_digest|findAssetByContentDigest|touchItemLastRequested|preClose0|sun\.security\.util\.MemoryCache|java\.lang\.Class\.forName|CachingDateFormatter|metrics\.health\.HealthCheck\.execute|WeakHashMap|userId\.toLowerCase|MessageDigest|UploadManagerImpl\.startUpload|UploadManagerImpl\.blobsByName|maybeTrimRepositories|getQuarantinedVersions|nonCatalogedVersions|getProxyDownloadNumbers|RepositoryManagerImpl.retrieveConfigurationByName|\.StorageFacetManagerImpl\.|OTransactionRealAbstract\.isIndexKeyMayDependOnRid|AptFacetImpl.put|componentMetadata|ensureGetUpload)' ${_file} | sort | uniq -c > /tmp/$FUNCNAME_$$.out || return $?
     if [ -s /tmp/$FUNCNAME_$$.out ]; then
         echo "## Counting:"
         echo "##    'DefaultTimelineIndexer' for NXRM2 System Feeds: timeline-plugin,"
@@ -1295,6 +1295,7 @@ function _threads_extra_check() {
         echo "##    'OTransactionRealAbstract.isIndexKeyMayDependOnRid' https://github.com/orientechnologies/orientdb/issues/9396"
         echo "##    'AptFacetImpl.put' NEXUS-30812 / NEXUS-37102"
         echo "##    'componentMetadata' CLM-26850"
+        echo "##    'ensureGetUpload' NEXUS-40177"
         cat /tmp/$FUNCNAME_$$.out
         echo " "
     fi
