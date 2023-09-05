@@ -209,11 +209,48 @@ function nxrmStart() {
         [ -n "${_java_opts}" ] && export JAVA_TOOL_OPTIONS="${_java_opts}" && _java_opts=""
     fi
     # For java options, latter values are used, so appending
+    ulimit -n 65536
     local _cmd="INSTALL4J_ADD_VM_PARAMS=\"-XX:-MaxFDLimit ${INSTALL4J_ADD_VM_PARAMS} ${_java_opts}\" ${_nexus_file} ${_mode}"
     echo "${_cmd}"; sleep 3
     eval "${_cmd}"
     # ulimit / Too many open files: https://help.sonatype.com/repomanager3/installation/system-requirements#SystemRequirements-MacOSX
 }
+
+#_NO_DB_CREATE
+function setDbConn() {
+    local _dbname="${1}"
+    local _isIQ="${2}"
+    local _dbschema="${3:-"public"}"
+    local _dbusr="nexus"
+    local _dbpwd="nexus123"
+    if [ -z "${_dbname%/}" ] || [ -d "${_dbname%/}" ]; then
+        echo "Not doing anything as _dbname is empty or directory" >&2
+        return 0
+    fi
+
+    local _java_opts="-Dnexus.datastore.enabled=true -Dnexus.datastore.nexus.jdbcUrl=\"jdbc:postgresql://$(hostname -f):5432/${_dbname}\" -Dnexus.datastore.nexus.username=\"${_dbusr}\" -Dnexus.datastore.nexus.password=\"${_dbpwd}\" -Dnexus.datastore.nexus.schema=${_dbschema} -Dnexus.datastore.nexus.advanced=maxLifetime=600000 -Dnexus.datastore.nexus.maximumPoolSize=10"
+    if [[ "${_isIQ}" =~ ^[yY] ]]; then
+        _java_opts="-Ddw.database.type=postgresql -Ddw.database.hostname=$(hostname -f) -Ddw.database.port=5432 -Ddw.database.name=${_dbname%/} -Ddw.database.username=${_dbusr} -Ddw.database.password=${_dbpwd} ${_java_opts}"
+    elif find . -maxdepth 5 -type f -name nexus-store.properties | grep nexus-store.properties; then
+        echo "Found nexus-store.properties. Not setting Java options" >&2
+        _java_opts=""
+    fi
+    if echo "${JAVA_TOOL_OPTIONS}" | grep -E "D(dw\.database\.type|nexus\.datastore\.enabled)="; then
+        echo "Found JAVA_TOOL_OPTIONS has DB related options. Not setting Java options" >&2
+        _java_opts=""
+    fi
+    if [ -n "${_java_opts}" ]; then
+        export JAVA_TOOL_OPTIONS="${JAVA_TOOL_OPTIONS} ${_java_opts}"
+    fi
+
+    # if my special script for PostgreSQL exists, create DB user and database
+    if [[ ! "${_NO_DB_CREATE}" =~ ^[yY] ]] && [ -s "$HOME/IdeaProjects/samples/bash/utils_db.sh" ]; then
+        source $HOME/IdeaProjects/samples/bash/utils.sh
+        source $HOME/IdeaProjects/samples/bash/utils_db.sh
+        _postgresql_create_dbuser "${_dbusr}" "${_dbpwd}" "${_dbname}" "${_dbschema}"
+    fi
+}
+
 
 function _updateNexusProps() {
     local _cfg_file="$1"
@@ -231,9 +268,9 @@ function _updateNexusProps() {
     grep -qE '^#?nexus.h2.httpListenerEnabled' "${_cfg_file}" || echo "nexus.h2.httpListenerEnabled=true" >> "${_cfg_file}"
     # Binary (or HA-C) for 'connect remote:hostname/component admin admin'
     grep -qE '^#?nexus.orient.binaryListenerEnabled' "${_cfg_file}" || echo "nexus.orient.binaryListenerEnabled=true" >> "${_cfg_file}"
-    # For OrientDB studio (hostname:2480/studio/index.html)
-    grep -qE '^#?nexus.orient.httpListenerEnabled' "${_cfg_file}" || echo "nexus.orient.httpListenerEnabled=true" >> "${_cfg_file}"
-    grep -qE '^#?nexus.orient.dynamicPlugins' "${_cfg_file}" || echo "nexus.orient.dynamicPlugins=true" >> "${_cfg_file}"
+    # For OrientDB studio (hostname:2480/studio/index.html) (removed)
+    #grep -qE '^#?nexus.orient.httpListenerEnabled' "${_cfg_file}" || echo "nexus.orient.httpListenerEnabled=true" >> "${_cfg_file}"
+    #grep -qE '^#?nexus.orient.dynamicPlugins' "${_cfg_file}" || echo "nexus.orient.dynamicPlugins=true" >> "${_cfg_file}"
 
     #TODO: change the port automatically
     #_port="$(_find_port "8081" "" "^8082$")"
@@ -383,7 +420,11 @@ function iqStart() {
         archivedFileCount: 5
 $(sed -n "/^  loggers:/,\$p" ${_cfg_file} | grep -v '^  loggers:')" > "${_cfg_file}"
     fi
-    local _cmd="java -Xms2g -Xmx4g ${_java_opts} ${_http_proxy} -jar \"${_jar_file}\" server \"${_cfg_file}\" 2>/tmp/iq-server.err"
+    if [[ "${_java_opts}" =~ agentlib:jdwp ]] && [[ "${JAVA_TOOL_OPTIONS}" =~ agentlib:jdwp ]]; then
+        echo "Unsetting JAVA_TOOL_OPTIONS = ${JAVA_TOOL_OPTIONS}"
+        unset JAVA_TOOL_OPTIONS
+    fi
+    local _cmd="java -Xms2g -Xmx4g ${_java_opts} -jar \"${_jar_file}\" server \"${_cfg_file}\" 2>/tmp/iq-server.err"
     echo "${_cmd}"; sleep 2
     eval "${_cmd}"
     cd -
@@ -410,7 +451,7 @@ function iqConfigUpdate() {
     echo "May want to run 'f_api_nxiq_scm_setup _token' as well"
 }
 
-# To upgrade (from ${_dirname}/): mv -v ./config.yml{,.bak} && tar -xvf $HOME/.nexus_executable_cache/nexus-iq-server-1.162.0-01-bundle.tar.gz
+# To upgrade (from ${_dirname}/): mv -v ./config.yml{,.bak} && tar -xvf $HOME/.nexus_executable_cache/nexus-iq-server-1.165.0-01-bundle.tar.gz
 # NOTE: Above will overwrite config.yml
 function iqInstall() {
     if [ -s "$HOME/IdeaProjects/samples/bash/setup_nexus3_repos.sh" ]; then
