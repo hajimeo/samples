@@ -187,11 +187,11 @@ if [ -d $HOME/IdeaProjects/work/bash ]; then
 fi
 #alias xmldiff="python $HOME/IdeaProjects/samples/python/xml_parser.py" # this is for Hadoop xml files
 
-# VM related
+## VM related
 # virt-manager remembers the connections, so normally would not need to start in this way.
 alias kvm='virt-manager -c "qemu+ssh://virtuser@dh1/system?socket=/var/run/libvirt/libvirt-sock" &>/tmp/virt-manager.out &'
 
-# Java / jar related
+## Java / jar related
 alias mb='${JAVA_HOME_11%/}/bin/java -jar $HOME/Apps/metabase.jar'    # port is 3000
 alias vnc='java -Xmx2g -jar $HOME/Apps/tightvnc-jviewer.jar &>/tmp/vnc-java-viewer.out &'
 #alias vnc='java -jar $HOME/Applications/VncViewer-1.9.0.jar &>/tmp/vnc-java-viewer.out &'
@@ -211,7 +211,7 @@ alias jkCli='java -jar $HOME/Apps/jenkins-cli.jar -s http://localhost:8080/ -aut
 # _JAVA_HOME_11 is set in bash_profile.sh
 alias matJ11='/Applications/mat.app/Contents/MacOS/MemoryAnalyzer -vm ${_JAVA_HOME_11%/}/bin'
 
-# Chrome aliases for Mac (URL needs to be IP as hostname wouldn't be resolvable on remote)
+## Chrome aliases for Mac (URL needs to be IP as hostname wouldn't be resolvable on remote)
 #alias shib-local='open -na "Google Chrome" --args --user-data-dir=$HOME/.chromep/local --proxy-server=socks5://localhost:28081'
 #alias shib-dh1='open -na "Google Chrome" --args --user-data-dir=$HOME/.chromep/dh1 --proxy-server=socks5://dh1:28081 http://192.168.1.31:4200/webuser/'
 alias shib-dh1='open -na "Google Chrome" --args --user-data-dir=$HOME/.chromep/dh1 --proxy-server=http://dh1:28080 http://192.168.1.31:4200/webuser/'
@@ -220,7 +220,7 @@ alias hblog='open -na "Google Chrome" --args --user-data-dir=$HOME/.chromep/haji
 # pretending windows chrome on Linux
 alias winchrome='/opt/google/chrome/chrome --user-data-dir=$HOME/.chromep --proxy-server=socks5://localhost:38080  --user-agent="Mozilla/5.0 (Windows NT 10.0; WOW64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/88.0.4324.96 Safari/537.36"'
 
-# Work specific aliases
+## Work specific aliases
 alias hwxS3='s3cmd ls s3://private-repo-1.hortonworks.com/HDP/centos7/2.x/updates/'
 # TODO: public-repo-1.hortonworks.com private-repo-1.hortonworks.com
 # Slack API Search
@@ -228,6 +228,24 @@ alias hwxS3='s3cmd ls s3://private-repo-1.hortonworks.com/HDP/centos7/2.x/update
 alias smtpdemo='python -m smtpd -n -c DebuggingServer localhost:2500'
 
 ### Functions (some command syntax does not work with alias eg: sudo) ##################################################
+# mac doesn't have namei
+function namei_l() {
+    local _path="$1"
+    local _full_path=""
+    #while true; do ls -ld $1; _p="$(dirname "$1")" || break ; [ "$1" = "/" ] && break; done
+    while true; do
+        _full_path="$(readlink -f "${_path}")"
+        if [ -f "${_full_path}" ]; then
+            echo "$(ls -l ${_full_path})"
+        elif [ -d "${_full_path}" ]; then
+            echo "$(ls -ld ${_full_path})"
+        else
+            echo "${_path} - No such file or directory"
+        fi
+        [ "${_path}" == "/" ] && break
+        _path="$(dirname "${_path}")"
+    done
+}
 function fcat() {
     local _name="$1"
     local _find_all="$2"
