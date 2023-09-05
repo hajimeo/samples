@@ -12,7 +12,7 @@
         <configuration>
           <archive>
             <manifest>
-              <mainClass>Main</mainClass>
+              <mainClass>H2Console</mainClass>
             </manifest>
           </archive>
         </configuration>

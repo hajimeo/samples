@@ -19,7 +19,7 @@ import java.util.*;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
-public class Main {
+public class H2Console {
     static final private String H2_DEFAULT_OPTS = "DATABASE_TO_UPPER=FALSE;LOCK_MODE=0;DEFAULT_LOCK_TIMEOUT=600000";
     static final private String PROMPT = "=> ";
     static private String h2ExtraOpts = "";
@@ -38,7 +38,7 @@ public class Main {
     private static Connection conn;
     private static Statement stat;
 
-    private Main() {
+    private H2Console() {
     }
 
     public static final Pattern describeNamePtn =
