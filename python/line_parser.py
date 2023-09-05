@@ -1,6 +1,8 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 #
+# DEPRECATED by echolines
+#
 # Generic python script to parse the log lines with the function (1st argument), to use the result for gantt chart.
 # TODO: tooooooo messy and complicated. Should be refactored
 #
@@ -24,8 +26,10 @@
 #   rg '^(\d\d\d\d-\d\d-\d\d) (\d\d:\d\d:\d\d.\d\d\d)[^ ]+ [^ ]+ +\[([^\]]+)\].+ org.apache.http.impl.conn.PoolingHttpClientConnectionManager - (Connection leased:.+|Connection released:.+)' -o -r '$1 $2 $3 $4' ./log/nexus.log | line_parser.py time_diff "Connection leased" 3 > time_diff_http_conn_leased.csv
 #   rg '^(\d\d\d\d-\d\d-\d\d \d\d:\d\d:\d\d.\d\d\d)[^ ]+ [^ ]+ +\[([^\]]+)\].+ org.apache.ibatis.transaction.jdbc.JdbcTransaction - (Opening JDBC Connection|Closing JDBC Connection.+)' -o -r '$1 $2 $3 $4' ./log/nexus.log | line_parser.py time_diff "Opening JDBC" 3 > time_diff_jdbc_open_close.csv
 #   rg '^(\d\d\d\d-\d\d-\d\d \d\d:\d\d:\d\d.\d\d\d)[^ ]+ [^ ]+ +\[([^\]]+)\].+ com\.sonatype\.nexus\.repository\.[^.]+\.datastore\.store\.([\S]+) - (<==|==>)\s*(Total:\s*\d+|Preparing:)' -o -r '${1} ${2} ${5}${3}' ./log/nexus.log | line_parser.py time_diff "Preparing:" 3 > time_diff_datastore_queries.csv # 'Total:' for finding gap for next query
+#   rg '^(\d\d\d\d-\d\d-\d\d \d\d:\d\d:\d\d.\d\d\d)[^ ]+ DEBUG +\[([^\]]+)\].+ org\.sonatype\.nexus\.content\.raw\.internal\.browse\.RawBrowseNodeDAO\.([\S]+) - (<==|==>)\s*(Total:\s*\d+|Updates:\s*\d+|Preparing: \S+)' -o -r '${1} ${2} ${5}-${3}' ./create.browse.nodes_extracted.log | line_parser.py time_diff "Preparing:" 3 > time_diff_datastore_queries.csv
 #   rg '^(\d\d\d\d-\d\d-\d\d \d\d:\d\d:\d\d.\d\d\d)[^ ]+ [^ ]+ +\[([^\]]+)\].+ org.sonatype.nexus.repository.yum.orient.internal.createrepo.OrientCreateRepoFacetImpl - (Rebuilding yum metadata for .+|Finished rebuilding yum metadata for repository .+)' -o -r '$1 $2 $3' --no-filename | line_parser.py time_diff "Rebuilding yum metadata for" 3 > time_diff_yumRebuild.csv
 #   rg '^(\d\d\d\d-\d\d-\d\d \d\d:\d\d:\d\d.\d\d\d)[^ ]+ DEBUG +\[([^\]]+)\].+ org.sonatype.nexus.repository.content.store.internal.AssetBlobCleanupTask - (Found \d+ unused maven2 blobs in nexus)' -o -r '$1 $2 $3' ./log/nexus.log | line_parser.py time_diff "Found \d+ unused" 3 > time_diff_AssetBlobCleanupTask.csv
+#   rg '^(\d\d\d\d-\d\d-\d\d \d\d:\d\d:\d\d.\d\d\d)[^ ]+ .+ org.sonatype.nexus.repository.docker.internal.orient.DockerGCFacetImpl - (Running GC for v2 .+)' -o -r '$1 $2' ./log/tasks/repository.docker.gc-20230723010000034.log | line_parser.py time_diff "Running" 2 > time_diff_DockerGCFacetImpl.csv
 #
 #   echo -e "start_datetime,end_datetime,diff,message,thread\n$(cat !$)" > !$
 #
