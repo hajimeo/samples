@@ -49,14 +49,11 @@ func GetEnvInt64(key string, fallback int64) int64 {
 func GetBoolEnv(key string, fallback bool) bool {
 	value, exists := os.LookupEnv(key)
 	if exists {
-		switch value {
+		switch strings.ToLower(value) {
 		case
-			"TRUE",
-			"True",
 			"true",
-			"Y",
-			"Yes",
-			"YES":
+			"y",
+			"yes":
 			return true
 		}
 	}

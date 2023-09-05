@@ -27,7 +27,7 @@ func TestGetEnv(t *testing.T) {
 	if shouldBe2 != "2" {
 		t.Errorf("Result should be 2")
 	}
-	shouldBeInt := GetEnvInt64("FOO2", 2)
+	shouldBeInt := GetEnvInt("FOO2", 2)
 	if shouldBeInt != 2 {
 		t.Errorf("Result should be 2")
 	}
@@ -36,7 +36,17 @@ func TestGetEnv(t *testing.T) {
 	if shouldBeI64 != i64 {
 		t.Errorf("Result should be 2")
 	}
-	shouldBeTrue := GetBoolEnv("FOO2", true)
+	shouldBeTrue := GetBoolEnv("FOO_BOOL", true)
+	if !shouldBeTrue {
+		t.Errorf("Result should be true")
+	}
+	os.Setenv("FOO_BOOL", "Y")
+	shouldBeTrue = GetBoolEnv("FOO_BOOL", true)
+	if !shouldBeTrue {
+		t.Errorf("Result should be true")
+	}
+	os.Setenv("FOO_BOOL", "y")
+	shouldBeTrue = GetBoolEnv("FOO_BOOL", true)
 	if !shouldBeTrue {
 		t.Errorf("Result should be true")
 	}
