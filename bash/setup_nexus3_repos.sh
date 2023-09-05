@@ -615,7 +615,7 @@ function _populate_docker_hosted() {
     done
 
     # NOTE: docker build -f does not work (bug?)
-    local _build_dir="${HOME%/}/${FUNCNAME}_build_tmp_dir_$(date +'%Y%m%d%H%M%S')"  # /tmp or /var/tmp fails on Ubuntu
+    local _build_dir="${HOME%/}/${FUNCNAME[0]}_build_tmp_dir_$(date +'%Y%m%d%H%M%S')"  # /tmp or /var/tmp fails on Ubuntu
     if [ ! -d "${_build_dir%/}" ]; then
         mkdir -v -p ${_build_dir} || return $?
     fi
@@ -1107,9 +1107,9 @@ function _get_blobstore_name() {
         echo "${_BLOBTORE_NAME}"
         return
     fi
-    f_api "/service/rest/v1/blobstores" | sed -r -n 's/.*"name" *: *"([^"]+)".*/\1/gp' >${_TMP%/}/${FUNCNAME}_$$.out
-    local _line_num="$(cat ${_TMP%/}/${FUNCNAME}_$$.out | wc -l | tr -d '[:space:]')"
-    if grep -qE "^${_bs_name}$" ${_TMP%/}/${FUNCNAME}_$$.out; then
+    f_api "/service/rest/v1/blobstores" | sed -r -n 's/.*"name" *: *"([^"]+)".*/\1/gp' >${_TMP%/}/${FUNCNAME[0]}_$$.out
+    local _line_num="$(cat ${_TMP%/}/${FUNCNAME[0]}_$$.out | wc -l | tr -d '[:space:]')"
+    if grep -qE "^${_bs_name}$" ${_TMP%/}/${FUNCNAME[0]}_$$.out; then
         _BLOBTORE_NAME="${_bs_name}"
     elif [ "${_line_num}" == "0" ]; then
         _log "INFO" "No blobstore defined. Creating '${_bs_name}' file blobstore ..."; sleep 3
@@ -1117,7 +1117,7 @@ function _get_blobstore_name() {
         _BLOBTORE_NAME="${_bs_name}"
     elif [ "${_line_num}" == "1" ]; then
         # If only one blobstore defined, use it, otherwise return false
-        _BLOBTORE_NAME="$(cat ${_TMP%/}/${FUNCNAME}_$$.out)"
+        _BLOBTORE_NAME="$(cat ${_TMP%/}/${FUNCNAME[0]}_$$.out)"
     else
         return 1
     fi
@@ -1334,7 +1334,7 @@ function _get_asset_NXRM2() {
 function f_upload_asset() {
     local __doc__="Upload an asset with Upload API"
     local _repo_or_fmt="$1"    # format if NXRM2
-    local _forms=${@:2} #-F maven2.groupId=junit -F maven2.artifactId=junit -F maven2.version=4.21 -F maven2.asset1=@${_TMP%/}/junit-4.12.jar -F maven2.asset1.extension=jar
+    local _forms=${@:2} #-F "maven2.groupId=junit" -F "maven2.artifactId=junit" -F "maven2.version=4.21" -F "maven2.asset1=@${_TMP%/}/junit-4.12.jar" -F "maven2.asset1.extension=jar"
     # NOTE: Because _forms takes all arguments except first one, can't assign any other arguments
     local _usr="${r_ADMIN_USER:-"${_ADMIN_USER}"}"
     local _pwd="${r_ADMIN_PWD:-"${_ADMIN_PWD}"}"   # If explicitly empty string, curl command will ask password (= may hang)
@@ -2376,7 +2376,7 @@ function f_delete_asset() {
     local _repo="$3"
     local _search_all="$4"
     local _max_loop="${5:-200}" # 50 * 200 = 10000 max
-    rm -f ${_TMP%/}/${FUNCNAME}_*.out || return $?
+    rm -f ${_TMP%/}/${FUNCNAME[0]}_*.out || return $?
     local _path="/service/rest/v1/assets"
     local _query=""
     local _base_query="?"
@@ -2384,23 +2384,23 @@ function f_delete_asset() {
     [ -z "${_repo}" ] && return 12  # repository is mandatory
     [ -n "${_repo}" ] && _base_query="?repository=${_repo}"
     for i in $(seq "1" "${_max_loop}"); do
-        _API_SORT_KEYS=Y f_api "${_path}${_base_query}${_query}" > ${_TMP%/}/${FUNCNAME}_${i}.json || return $?
-        grep -E '"(id|path)"' ${_TMP%/}/${FUNCNAME}_${i}.json | grep -E "\"${_path_regex}\"" -B1 > ${_TMP%/}/${FUNCNAME}_${i}_matched_IDs.out
+        _API_SORT_KEYS=Y f_api "${_path}${_base_query}${_query}" > ${_TMP%/}/${FUNCNAME[0]}_${i}.json || return $?
+        grep -E '"(id|path)"' ${_TMP%/}/${FUNCNAME[0]}_${i}.json | grep -E "\"${_path_regex}\"" -B1 > ${_TMP%/}/${FUNCNAME[0]}_${i}_matched_IDs.out
         if [ $? -eq 0 ] && [[ ! "${_search_all}" =~ ^[yY] ]]; then
             break
         fi
-        grep -qE '"continuationToken": *"[0-9a-f]+' ${_TMP%/}/${FUNCNAME}_${i}.json || break
-        local cToken="$(cat ${_TMP%/}/${FUNCNAME}_${i}.json | python -c 'import sys,json;a=json.loads(sys.stdin.read());print(a["continuationToken"])')"
+        grep -qE '"continuationToken": *"[0-9a-f]+' ${_TMP%/}/${FUNCNAME[0]}_${i}.json || break
+        local cToken="$(cat ${_TMP%/}/${FUNCNAME[0]}_${i}.json | python -c 'import sys,json;a=json.loads(sys.stdin.read());print(a["continuationToken"])')"
         _query="&continuationToken=${cToken}"
     done
-    grep -E '^            "id":' -h ${_TMP%/}/${FUNCNAME}_*_matched_IDs.out | sort | uniq > ${_TMP%/}/${FUNCNAME}_$$.out || return $?
-    local _line_num="$(cat ${_TMP%/}/${FUNCNAME}_$$.out | wc -l | tr -d '[:space:]')"
+    grep -E '^            "id":' -h ${_TMP%/}/${FUNCNAME[0]}_*_matched_IDs.out | sort | uniq > ${_TMP%/}/${FUNCNAME[0]}_$$.out || return $?
+    local _line_num="$(cat ${_TMP%/}/${FUNCNAME[0]}_$$.out | wc -l | tr -d '[:space:]')"
     if [[ ! "${_force}" =~ ^[yY] ]]; then
         read -p "Are you sure to delete matched (${_line_num}) assets?: " "_yes"
         echo ""
         [[ "${_yes}" =~ ^[yY] ]] || return
     fi
-    cat ${_TMP%/}/${FUNCNAME}_$$.out | while read -r _l; do
+    cat ${_TMP%/}/${FUNCNAME[0]}_$$.out | while read -r _l; do
         if [[ "${_l}" =~ \"id\"[[:space:]]*:[[:space:]]*\"([^\"]+)\" ]]; then
             echo "# ${BASH_REMATCH[1]}"
             f_api "/service/rest/v1/assets/${BASH_REMATCH[1]}" "" "DELETE" || break
@@ -2413,36 +2413,48 @@ function f_delete_all_assets() {
     local _force="$1"
     local _repo="$2"
     local _max_loop="${3:-200}" # 50 * 200 = 10000 max
-    rm -f ${_TMP%/}/${FUNCNAME}_*.out || return $?
+    rm -f ${_TMP%/}/${FUNCNAME[0]}_*.out || return $?
     local _path="/service/rest/v1/search/assets"
     local _query=""
     local _base_query=""
     [ -n "${_repo}" ] && _base_query="?repository=${_repo}"
-    cat /dev/null > ${_TMP%/}/${FUNCNAME}_$$.out
+    cat /dev/null > ${_TMP%/}/${FUNCNAME[0]}_$$.out
     for i in $(seq "1" "${_max_loop}"); do
-        f_api "${_path}${_base_query}${_query}" > ${_TMP%/}/${FUNCNAME}.json || return $?
-        grep -E '^            "id":' -h ${_TMP%/}/${FUNCNAME}.json | sort | uniq >> ${_TMP%/}/${FUNCNAME}_$$.out || return $?
-        grep -qE '"continuationToken": *"[0-9a-f]+' ${_TMP%/}/${FUNCNAME}.json || break
-        local cToken="$(cat ${_TMP%/}/${FUNCNAME}.json | python -c 'import sys,json;a=json.loads(sys.stdin.read());print(a["continuationToken"])')"
+        f_api "${_path}${_base_query}${_query}" > ${_TMP%/}/${FUNCNAME[0]}.json || return $?
+        grep -E '^            "id":' -h ${_TMP%/}/${FUNCNAME[0]}.json | sort | uniq >> ${_TMP%/}/${FUNCNAME[0]}_$$.out || return $?
+        grep -qE '"continuationToken": *"[0-9a-f]+' ${_TMP%/}/${FUNCNAME[0]}.json || break
+        local cToken="$(cat ${_TMP%/}/${FUNCNAME[0]}.json | python -c 'import sys,json;a=json.loads(sys.stdin.read());print(a["continuationToken"])')"
         if [ -z "${_base_query}" ]; then
             _query="?continuationToken=${cToken}"
         else
             _query="&continuationToken=${cToken}"
         fi
     done
-    local _line_num="$(cat ${_TMP%/}/${FUNCNAME}_$$.out | wc -l | tr -d '[:space:]')"
+    local _line_num="$(cat ${_TMP%/}/${FUNCNAME[0]}_$$.out | wc -l | tr -d '[:space:]')"
     if [[ ! "${_force}" =~ ^[yY] ]]; then
         read -p "Are you sure to delete all (${_line_num}) assets?: " "_yes"
         echo ""
         [[ "${_yes}" =~ ^[yY] ]] || return
     fi
-    cat ${_TMP%/}/${FUNCNAME}_$$.out | while read -r _l; do
+    cat ${_TMP%/}/${FUNCNAME[0]}_$$.out | while read -r _l; do
         if [[ "${_l}" =~ \"id\"[[:space:]]*:[[:space:]]*\"([^\"]+)\" ]]; then
             echo "# ${BASH_REMATCH[1]}"
             f_api "/service/rest/v1/assets/${BASH_REMATCH[1]}" "" "DELETE" || break
         fi
     done
     echo "Deleted ${_line_num} assets (run Cleanup unused <format> blobs from <datastore> task)"
+}
+
+function f_run_tasks_by_type() {
+    local _task_type="$1"   #assetBlob.cleanup
+    f_api "/service/rest/v1/tasks?type=${_task_type}" > ${_TMP%/}/${FUNCNAME[0]}.json || return $?
+    cat ${_TMP%/}/${FUNCNAME[0]}.json | python -c 'import sys,json;a=json.loads(sys.stdin.read());
+for t in a["items"]:
+  print(t["id"])' | while read -r _id; do
+        _log "INFO" "/service/rest/v1/tasks/${_id}/run"
+        f_api "/service/rest/v1/tasks/${_id}/run" "" "POST" || return $?
+        cat ${_TMP%/}/_api_header_$$.out
+    done
 }
 
 # K8s related but not in use yet | any more
