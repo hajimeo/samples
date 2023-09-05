@@ -207,6 +207,7 @@ alias mockserver='java -jar $HOME/Apps/mockserver-netty.jar'  #curl -o $HOME/App
 alias jkCli='java -jar $HOME/Apps/jenkins-cli.jar -s http://localhost:8080/ -auth admin:admin123' #curl -o $HOME/Apps/jenkins-cli.jar -L http://localhost:8080/jnlpJars/jenkins-cli.jar
 [ -f /var/tmp/share/java/orient-console.jar ] && alias orient-console="java -jar /var/tmp/share/java/orient-console.jar"
 [ -f /var/tmp/share/java/h2-console.jar ] && alias h2-console="java -jar /var/tmp/share/java/h2-console.jar"
+[ -f /var/tmp/share/java/pg-console.jar ] && alias pg-console="java -jar /var/tmp/share/java/pg-console.jar"
 [ -f /var/tmp/share/java/blobpath.jar ] && alias blobpathJ="java -jar /var/tmp/share/java/blobpath.jar"
 # _JAVA_HOME_11 is set in bash_profile.sh
 alias matJ11='/Applications/mat.app/Contents/MacOS/MemoryAnalyzer -vm ${_JAVA_HOME_11%/}/bin'

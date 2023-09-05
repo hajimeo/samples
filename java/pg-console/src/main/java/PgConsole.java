@@ -9,6 +9,7 @@ import org.postgresql.util.PSQLException;
 
 import java.io.*;
 import java.nio.file.Files;
+import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.sql.*;
 import java.time.Duration;
@@ -30,6 +31,7 @@ public class PgConsole {
     static private Boolean isDebug;
     private static Connection conn;
     private static Statement stat;
+    private static String sep = System.getProperty("file.separator");
 
     private PgConsole() {
     }
@@ -345,7 +347,7 @@ public class PgConsole {
                 rs = stat.getResultSet();
                 Statement _stat = conn.createStatement();
                 while (rs.next()) {
-                    String export_query = "SCRIPT SIMPLE TO '" + exportToPath + "/tbl_" + rs.getString(1).toLowerCase() + "_" + rs.getString(2).toLowerCase() + ".sql' TABLE " + rs.getString(1) + "." + rs.getString(2) + ";";
+                    String export_query = "SCRIPT SIMPLE TO '" + exportToPath + sep + "tbl_" + rs.getString(1).toLowerCase() + "_" + rs.getString(2).toLowerCase() + ".sql' TABLE " + rs.getString(1) + "." + rs.getString(2) + ";";
                     try {
                         log(export_query);
                         _stat.execute(export_query);
@@ -418,7 +420,12 @@ public class PgConsole {
                 .dumb(true)
                 .build();
         history = new DefaultHistory();
-        historyPath = System.getProperty("user.home") + "/.pg-console_history";
+        historyPath = System.getProperty("user.home") + sep + ".pg-console_history";
+        Path path = Paths.get(historyPath);
+        if (!Files.isWritable(path)) {
+            System.err.println("# user.home is not writable for history file. Using java.io.tmpdir.");
+            historyPath = System.getProperty("java.io.tmpdir") + sep + ".pg-console_history";
+        }
         System.err.println("# history path: " + historyPath);
         Set<String> words = genAutoCompWords(historyPath);
         LineReader lr = LineReaderBuilder.builder()
