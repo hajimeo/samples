@@ -33,20 +33,25 @@ If the first argument is empty, the script accepts the STDIN.
 ### NXRM2 thread dumps:
 	echolines "wrapper.log.2,wrapper.log.1,wrapper.log" "^\d\d\d\d-\d\d-\d\d \d\d:\d\d:\d\d$" "(^\s+class space.+)" > threads.txt
 ### NXRM3 thread dumps:
-	echolines "./jvm.log" "^\d\d\d\d-\d\d-\d\d \d\d:\d\d:\d\d$" "(^\s+class space.+)" "_threads"
-### NXRM3 thread dump split per thread:
-	SPLIT_FILE=Y echolines "./info/threads.txt" "^\".+" "" "_threads"
+	HTML_REMOVE=Y echolines "./jvm.log" "^\d\d\d\d-\d\d-\d\d \d\d:\d\d:\d\d$" "(^\s+class space.+)" "threads"
+	# If would like to split per thread:
+	echolines "threads.txt" "^\".+" "" "./threads_per_thread"
+	find ./threads -type f -name '[0-9]*_*.out' | xargs -P3 -t -I{} bash -c '_d="$(basename "{}" ".out")";echolines "{}" "^\".+" "" "./threads_per_thread/${_d}"'
 
 ### Get duration of each line:
     export ELAPSED_REGEX="^\d\d\d\d-\d\d-\d\d.(\d\d:\d\d:\d\d.\d\d\d)"
-	cat ./nexus.log | echolines "" "^\d\d\d\d-\d\d-\d\d.\d\d:\d\d:\d\d.\d\d\d" "^\d\d\d\d-\d\d-\d\d.\d\d:\d\d:\d\d.\d\d\d"
+	echolines "./log/nexus.log" "^\d\d\d\d-\d\d-\d\d.\d\d:\d\d:\d\d.\d\d\d" "^\d\d\d\d-\d\d-\d\d.\d\d:\d\d:\d\d.\d\d\d"
 ### Get duration of NXRM3 queries, and sort by the longuest:
     export ELAPSED_REGEX="^\d\d\d\d-\d\d-\d\d.(\d\d:\d\d:\d\d.\d\d\d)"
-	cat ./nexus.log | echolines "" "Preparing:" "(^.+Total:.+)" | rg '^# \d\d' | sort -t'|' -k2nr
+	echolines "./log/nexus.log" "Preparing:" "(^.+Total:.+)" | rg '^# \d\d' | sort -t'|' -k2nr
+### Get duration of S3 pool (with org.apache.http = DEBUG, also 'Connection leased'):
+	rg -m30 '\[s3-parallel-.+ Connection (request|leased|released):' ./log/nexus.log > connections.out
+    export ELAPSED_REGEX="^\d\d\d\d-\d\d-\d\d.(\d\d:\d\d:\d\d.\d\d\d)" ELAPSED_KEY_REGEX="\[(s3-parallel-[^\]]+)"
+	sed -n "1,30p" connections.out | echolines "" " leased:" "(^.+ released:.+)" | rg '^# '
 ### Get duration of IQ Evaluate a File, and sort by threadId and time
     rg 'POST /rest/scan/.+Scheduling scan task (\S+)' -o -r '$1' log/clm-server.log | xargs -I{} rg -w "{}" ./log/clm-server.log | sort | uniq > scan_tasks.log
     export ELAPSED_REGEX="^\d\d\d\d-\d\d-\d\d.(\d\d:\d\d:\d\d.\d\d\d)"
-	ELAPSED_KEY_REGEX="\[([^\ ]]+)" echolines ./scan_tasks.log "Running scan task" "(^.+Completed scan task.+)" | rg '^# \d\d' | sort -t'|' -k3,3 -k1,1
+	ELAPSED_KEY_REGEX="\[([^ \]]+)" echolines ./scan_tasks.log "Running scan task" "(^.+Completed scan task.+)" | rg '^# \d\d' | sort -t'|' -k3,3 -k1,1
 
 # ENV VARIABLES:
 	SPLIT_FILE=Y
@@ -66,8 +71,10 @@ If the first argument is empty, the script accepts the STDIN.
 		If the log is for multithreading application, provide regex to capture thread Id (eg: "\[([^\]]+)")
 	ELAPSED_DIVIDE_MS=<integer milliseconds>
 		To deside the width of ascii chart
-	DISABLE_ASCII=Y
+	ASCII_DISABLED=Y
 		To disable ascii chart (for slightly faster processing)
+	ASCII_ROTATE_NUM=<num>
+		(experimental) To make ASCII chart width shorter by rotating per <num> lines
 END`)
 }
 
@@ -83,11 +90,12 @@ var ELAPSED_REGEXP *regexp.Regexp
 var ELAPSED_KEY_REGEX = os.Getenv("ELAPSED_KEY_REGEX")
 var ELAPSED_KEY_REGEXP *regexp.Regexp
 var ELAPSED_FORMAT = os.Getenv("ELAPSED_FORMAT")
-var ELAPSED_ASCII_WIDTH = helpers.GetEnvInt64("ELAPSED_ASCII_WIDTH", 100)
+var ASCII_WIDTH = helpers.GetEnvInt64("ASCII_WIDTH", 100)
+var ASCII_ROTATE_NUM = helpers.GetEnvInt("ASCII_ROTATE_NUM", -1)
 var NO_KEY = "no-key"
 var HTML_REMOVE = helpers.GetBoolEnv("HTML_REMOVE", false)
 var SPLIT_FILE = helpers.GetBoolEnv("SPLIT_FILE", false)
-var REM_CHAR_REGEXP = regexp.MustCompile(`[/\\?%*:|"<>@={}() ]`)
+var REM_CHAR_REGEXP = regexp.MustCompile(`[^0-9a-zA-Z_]`)
 var REM_DUPE_REGEXP = regexp.MustCompile(`[_]+`)
 var TAG_REGEXP = regexp.MustCompile(`<[^>]+>`)
 var IN_FILES []string
@@ -97,7 +105,7 @@ var START_DATETIMES = make(map[string]string)
 var FILE_NAME_PFXS = make(map[string]string)
 var FIRST_START_TIME time.Time
 var ELAPSED_DIVIDE_MS = os.Getenv("ELAPSED_DIVIDE_MS")
-var DISABLE_ASCII = helpers.GetBoolEnv("DISABLE_ASCII", false)
+var ASCII_DISABLED = helpers.GetBoolEnv("ASCII_DISABLED", false)
 var DIVIDE_MS int64 = 0
 var KEY_PADDING = 0
 var FOUND_COUNT = 0
@@ -190,8 +198,8 @@ func echoStartLine(line string, key string) bool {
 	}
 	// echo "${_prev_str}" | sed "s/[ =]/_/g" | tr -cd '[:alnum:]._-\n' | cut -c1-192
 	FILE_NAME_PFXS[key] += REM_CHAR_REGEXP.ReplaceAllString(matches[len(matches)-1], "_")
-	FILE_NAME_PFXS[key] = strings.ReplaceAll(FILE_NAME_PFXS[key], " ", "_") // TODO: some how REM_CHAR_REGEXP doesn't replace space
 	FILE_NAME_PFXS[key] = REM_DUPE_REGEXP.ReplaceAllString(FILE_NAME_PFXS[key], "_")
+	//FILE_NAME_PFXS[key] = strings.TrimSuffix(FILE_NAME_PFXS[key], "_")	// To avoid filename_.out
 	if len(FILE_NAME_PFXS[key]) > 192 {
 		_dlog("Trimming " + FILE_NAME_PFXS[key]) // truncating
 		FILE_NAME_PFXS[key] = FILE_NAME_PFXS[key][:192]
@@ -335,19 +343,29 @@ func echoDurations(duras []Duration) {
 	_dlog("minDuraMs = " + strconv.FormatInt(minDuraMs, 10))
 	firstStartTimeStr := duras[0].startTimeStr
 	lastEndTimeStr := duras[len(duras)-1].endTimeStr
-	totalDuration := calcDurationFromStrings(firstStartTimeStr, lastEndTimeStr)
-	divideMs := totalDuration.Milliseconds() / ELAPSED_ASCII_WIDTH
-	if divideMs > minDuraMs {
-		DIVIDE_MS = divideMs
-	} else {
-		DIVIDE_MS = minDuraMs
+	if ASCII_ROTATE_NUM > 0 && ASCII_ROTATE_NUM < len(duras) {
+		lastEndTimeStr = duras[ASCII_ROTATE_NUM-1].endTimeStr
 	}
-	for _, dura := range duras {
-		echoDurationInner(dura, maxKeyLen, minDuraMs)
+	totalDuration := calcDurationFromStrings(firstStartTimeStr, lastEndTimeStr)
+	divideMs := totalDuration.Milliseconds() / ASCII_WIDTH
+	_dlog("totalDuration / ASCII_WIDTH = " + strconv.FormatInt(divideMs, 10))
+	if divideMs < minDuraMs {
+		divideMs = minDuraMs
+	}
+	for i, dura := range duras {
+		if ASCII_ROTATE_NUM > 0 && math.Mod(float64(i), float64(ASCII_ROTATE_NUM)) == 0 {
+			var t time.Time
+			FIRST_START_TIME = t
+			_dlog(FIRST_START_TIME.IsZero())
+			if ASCII_DISABLED == false {
+				fmt.Println("# ")
+			}
+		}
+		echoDurationInner(dura, maxKeyLen, divideMs)
 	}
 }
 
-func echoDurationInner(dura Duration, maxKeyLen int, minDuraMs int64) {
+func echoDurationInner(dura Duration, maxKeyLen int, divideMs int64) {
 	if KEY_PADDING == 0 {
 		// min 11, max 32 for now
 		KEY_PADDING = 0 - maxKeyLen
@@ -358,20 +376,15 @@ func echoDurationInner(dura Duration, maxKeyLen int, minDuraMs int64) {
 		}
 		_dlog("KEY_PADDING = " + strconv.Itoa(KEY_PADDING))
 	}
-	if DIVIDE_MS == 0 {
-		// TODO: should check max and compare
-		// if not specified, using the smallest duration as unit (one '-') or 1 second
-		if minDuraMs < 1000 {
-			DIVIDE_MS = 1000
-		} else {
-			DIVIDE_MS = minDuraMs
-		}
-		_dlog("DIVIDE_MS = " + strconv.FormatInt(DIVIDE_MS, 10))
+	if DIVIDE_MS > 0 {
+		// if DIVIDE_MS is specified, using
+		divideMs = DIVIDE_MS
 	}
+	_dlog("divideMs = " + strconv.FormatInt(divideMs, 10))
 
 	ascii := ""
-	if DISABLE_ASCII == false {
-		ascii = asciiChart(dura.startTimeStr, dura.durationMs, DIVIDE_MS)
+	if ASCII_DISABLED == false {
+		ascii = asciiChart(dura.startTimeStr, dura.durationMs, divideMs)
 		ascii = "|" + ascii
 	}
 	if dura.key == NO_KEY {
@@ -384,21 +397,25 @@ func echoDurationInner(dura Duration, maxKeyLen int, minDuraMs int64) {
 
 func asciiChart(startTimeStr string, durationMs int64, divideMs int64) string {
 	var duraSinceFirstSTart time.Duration
+	startTime, _ := time.Parse(ELAPSED_FORMAT, startTimeStr)
 	if FIRST_START_TIME.IsZero() {
 		duraSinceFirstSTart = 0
+		FIRST_START_TIME = startTime
+		_dlog(startTime)
 	} else {
-		startTime, _ := time.Parse(ELAPSED_FORMAT, startTimeStr)
 		duraSinceFirstSTart = startTime.Sub(FIRST_START_TIME)
 	}
 	var ascii = ""
 	repeat := int(duraSinceFirstSTart.Milliseconds() / divideMs)
-	for i := 1; i < repeat; i++ {
+	for i := 0; i <= repeat; i++ {
 		ascii += " "
 	}
+	_dlog(repeat)
 	repeat = int(math.Ceil(float64(durationMs) / float64(divideMs)))
-	for i := 1; i < repeat; i++ {
+	for i := 0; i <= repeat; i++ {
 		ascii += "-"
 	}
+	_dlog(repeat)
 	return ascii
 }
 
@@ -422,11 +439,6 @@ func calcDurationFromStrings(startTimeStr string, endTimeStr string) time.Durati
 	if startTime.IsZero() {
 		return -1
 	}
-	// special logic for asciiCart()
-	if FIRST_START_TIME.IsZero() {
-		FIRST_START_TIME = startTime
-	}
-
 	endTime := time.Now()
 	if len(endTimeStr) > 0 {
 		endTime = str2time(endTimeStr)
@@ -473,7 +485,7 @@ func main() {
 	}
 	if len(os.Args) > 3 && len(os.Args[3]) > 0 {
 		END_REGEXP = regexp.MustCompile(os.Args[3])
-	} else if len(os.Args) >= 2 && len(os.Args[3]) == 0 {
+	} else if len(os.Args) <= 3 || len(os.Args[3]) == 0 {
 		END_REGEXP = START_REGEXP
 	}
 	if len(os.Args) > 4 && len(os.Args[4]) > 0 {
