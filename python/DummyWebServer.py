@@ -25,11 +25,11 @@ def write_with_delay(s, fp=None, chunk_size=8192,  sec=3, repeat=100, message=""
 
 class SlowserverRequestHandler(BaseHTTPRequestHandler):
     def do_GET(self):
-        path = os.path.join(".", self.path)
+        p = "." + self.path # not supporting all OS
         try:
-            with open(path, "rb") as fp:
+            with open(p, "rb") as fp:
                 self.send_response(200)
-                mtype, _ = mimetypes.guess_type(path)
+                mtype, _ = mimetypes.guess_type(p)
                 if mtype:
                     self.send_header("Content-type", mtype)
                 self.end_headers()
@@ -49,6 +49,7 @@ if __name__ == '__main__':
         listen_port = int(sys.argv[2])
 
     try:
+        print(f"Starting on {listen_host}:{listen_port} ...")
         server = HTTPServer((listen_host, listen_port), SlowserverRequestHandler)
         server.serve_forever()
     except KeyboardInterrupt:
