@@ -8,7 +8,12 @@ from http.server import HTTPServer
 from http.server import BaseHTTPRequestHandler
 
 
-def write_with_delay(s, fp=None, chunk_size=8192,  sec=3, repeat=100, message=""):
+listen_host = "127.0.0.1"
+listen_port = 9999
+delay_sec = 3
+
+
+def write_with_delay(s, fp=None, chunk_size=1024,  sec=3, repeat=100, message=""):
     if fp:
         while True:
             chunk = fp.read(chunk_size)
@@ -33,20 +38,19 @@ class SlowserverRequestHandler(BaseHTTPRequestHandler):
                 if mtype:
                     self.send_header("Content-type", mtype)
                 self.end_headers()
-                write_with_delay(self, fp=fp)
+                write_with_delay(self, fp=fp, sec=delay_sec)
         except IOError:
             self.send_response(404)
             self.end_headers()
 
 
 if __name__ == '__main__':
-    listen_host = "127.0.0.1"
-    listen_port = 9999
-
     if len(sys.argv) > 1:
         listen_host = sys.argv[1]
     if len(sys.argv) > 2:
         listen_port = int(sys.argv[2])
+    if len(sys.argv) > 3:
+        delay_sec = int(sys.argv[3])
 
     try:
         print(f"Starting on {listen_host}:{listen_port} ...")
