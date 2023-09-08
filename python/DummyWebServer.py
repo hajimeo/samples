@@ -7,13 +7,12 @@ import time
 from http.server import HTTPServer
 from http.server import BaseHTTPRequestHandler
 
-
 listen_host = "127.0.0.1"
 listen_port = 9999
 delay_sec = 3
 
 
-def write_with_delay(s, fp=None, chunk_size=1024,  sec=3, repeat=100, message=""):
+def write_with_delay(s, fp=None, chunk_size=1024, sec=3, repeat=100, message=""):
     if fp:
         while True:
             chunk = fp.read(chunk_size)
@@ -32,7 +31,7 @@ def write_with_delay(s, fp=None, chunk_size=1024,  sec=3, repeat=100, message=""
 
 class SlowserverRequestHandler(BaseHTTPRequestHandler):
     def do_GET(self):
-        p = "." + self.path # not supporting all OS
+        p = "." + self.path  # not supporting all OS
         try:
             with open(p, "rb") as fp:
                 self.send_response(200)
