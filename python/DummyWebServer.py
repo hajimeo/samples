@@ -18,13 +18,15 @@ def write_with_delay(s, fp=None, chunk_size=1024,  sec=3, repeat=100, message=""
         while True:
             chunk = fp.read(chunk_size)
             if chunk:
-                time.sleep(float(sec))
+                if sec > 0:
+                    time.sleep(float(sec))
                 s.wfile.write(chunk)
             else:
                 break
     else:
         for x in range(repeat):
-            time.sleep(float(sec))
+            if sec > 0:
+                time.sleep(float(sec))
             s.wfile.write(bytes(message + " " + str(x) + "\n", 'utf-8'))
 
 
