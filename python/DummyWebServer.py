@@ -1,23 +1,42 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
+import mimetypes
+import os
 import sys
 import time
 from http.server import HTTPServer
 from http.server import BaseHTTPRequestHandler
 
 
-def write_with_delay(s, sec=3, repeat=100, message=""):
-    for x in range(repeat):
-        time.sleep(float(sec))
-        s.wfile.write(bytes(message + " " + str(x) + "\n", 'utf-8'))
+def write_with_delay(s, fp=None, chunk_size=8192,  sec=3, repeat=100, message=""):
+    if fp:
+        while True:
+            chunk = fp.read(chunk_size)
+            if chunk:
+                time.sleep(float(sec))
+                s.wfile.write(chunk)
+            else:
+                break
+    else:
+        for x in range(repeat):
+            time.sleep(float(sec))
+            s.wfile.write(bytes(message + " " + str(x) + "\n", 'utf-8'))
 
 
 class SlowserverRequestHandler(BaseHTTPRequestHandler):
     def do_GET(self):
-        self.send_response(200)
-        self.send_header("Content-type", "text/html")
-        self.end_headers()
-        write_with_delay(self)
+        path = os.path.join(".", self.path)
+        try:
+            with open(path, "rb") as fp:
+                self.send_response(200)
+                mtype, _ = mimetypes.guess_type(path)
+                if mtype:
+                    self.send_header("Content-type", mtype)
+                self.end_headers()
+                write_with_delay(self, fp=fp)
+        except IOError:
+            self.send_response(404)
+            self.end_headers()
 
 
 if __name__ == '__main__':
