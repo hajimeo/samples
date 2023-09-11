@@ -433,13 +433,19 @@ function r_threads() {
     _code "$(cat ${_FILTERED_DATA_DIR%/}/f_threads.out)" "" ""
 }
 function r_requests() {
+    local _hour="$1"
+    local _where=""
+    [ -n "${_hour}" ] && _where="WHERE date like '%2023:${_hour}%'"
+    # TODO: RM 3.61 may have some new metrics for unique users 'nexus.analytics.unique_user_authentications_count'
+    _head "REQUESTS" "Counting host_ip + user per hour for last 10 ('-' in user is counted as 1)"
+    _code "$(_q -H "SELECT substr(date,1,14) as hour, count(*), count(distinct clientHost), count(distinct user), count(distinct clientHost||user) from ${_FILTERED_DATA_DIR%/}/request.csv ${_where} group by 1 order by hour desc LIMIT 10")" "" ""
     _head "REQUESTS" "Request counts per hour from ${_REQUEST_LOG}"
-    _code "$(_rg "${_DATE_FMT_REQ}:\d\d" -o --no-filename -g ${_REQUEST_LOG} | _bar)"
+    _code "$(_rg "${_DATE_FMT_REQ}:${_hour:-"\\d\\d"}" -o --no-filename -g ${_REQUEST_LOG} | _bar)"
     [ -s "${_FILTERED_DATA_DIR%/}/request.csv" ] || return
     # first and end time per user
     #_q -H "select clientHost, user, count(*), min(date), max(date) from ${_FILTERED_DATA_DIR%/}/request.csv group by 1,2"
-    _head "REQUESTS" "Counting host_ip + user per hour for last 10 ('-' in user is counted as 1)"
-    _code "$(_q -H "SELECT substr(date,1,14) as hour, count(*), count(distinct clientHost), count(distinct user), count(distinct clientHost||user) from ${_FILTERED_DATA_DIR%/}/request.csv group by 1 order by hour desc LIMIT 10")" "" ""
+    _head "REQUESTS" "Counting repository, method, status code for last 1000 requests and top 20 (NOTE: 200 status does not mean the request completed (especially small bytesSent or headerContentLength)"
+    _code "$(_rg "\[\d\d/[^/]+/20\d\d:(${_hour:-"\\d\\d"}).+ \"(\S+) .*/repository/([^/]+)/\S* HTTP/...\" (\d)" -o -r '${1} ${3} ${2} ${4}**' -g ${_REQUEST_LOG} --no-filename | tail -n1000 | sort | uniq -c | sort -nr | head -n20)"
 }
 function r_list_logs() {
     _head "APP LOG" "max 100 *.log files' start and end (start time, end time, difference(sec), filesize)"
@@ -521,6 +527,7 @@ for key in fsDicts['system-filestores']:
         echo "    time sudo -u <nexus> dd if=/dev/zero of=\${_workingDirectory}/tmp/test.img bs=100M count=1 oflag=dsync
     gzip ${_workingDirectory}/tmp/test.img
     time curl -D- -u admin:admin123 -T \${_workingDirectory}/tmp/test.img.gz http://localhost:8081/repository/\${_rawHosted}/test/ --progress-bar | tee /dev/null
+    # creating a dummy file very quickly with seek=
     sudo -u <nexus> dd if=/dev/zero of=\${installDirectory}/public/test.img bs=1 count=0 seek=104857600
     time curl -D- -o/dev/null http://localhost:8081/test.img"
         echo '```'
