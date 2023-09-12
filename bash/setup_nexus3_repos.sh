@@ -1077,6 +1077,7 @@ function f_setup_raw() {
     if ! _is_repo_available "${_prefix}-hosted"; then
         f_apiS '{"action":"coreui_Repository","method":"create","data":[{"attributes":{"storage":{"blobStoreName":"'${_bs_name}'","writePolicy":"ALLOW","strictContentTypeValidation":false'${_extra_sto_opt}'},"cleanup":{"policyName":[]}},"name":"'${_prefix}'-hosted","format":"","type":"","url":"","online":true,"recipe":"raw-hosted"}],"type":"rpc"}' || return $?
     fi
+    # creating a dummy 1K file (not real 1K file)
     dd if=/dev/zero of=${_TMP%/}/test_1k.img bs=1 count=0 seek=1024
     if [ -s "${_TMP%/}/test_1k.img" ]; then
         _ASYNC_CURL="Y" f_upload_asset "${_prefix}-hosted" -F raw.directory=test -F raw.asset1=@${_TMP%/}/test_1k.img -F raw.asset1.filename=test_1k.img
