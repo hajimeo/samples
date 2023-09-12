@@ -663,7 +663,7 @@ function _isNotEmptyDir() {
     local _dir_path="$1"
     # If path is not directory, treat as eampty
     [ ! -d "${_dir_path}" ] && return 1
-    [ "$(ls -A ${_dir_path})" ]
+    [ -n "$(ls -A ${_dir_path})" ]
 }
 
 function _isUrl() {
