@@ -349,7 +349,7 @@ func echoDurations(duras []Duration) {
 	totalDuration := calcDurationFromStrings(firstStartTimeStr, lastEndTimeStr)
 	divideMs := totalDuration.Milliseconds() / ASCII_WIDTH
 	_dlog("totalDuration / ASCII_WIDTH = " + strconv.FormatInt(divideMs, 10))
-	if divideMs < minDuraMs {
+	if divideMs > minDuraMs {
 		divideMs = minDuraMs
 	}
 	for i, dura := range duras {
@@ -406,13 +406,13 @@ func asciiChart(startTimeStr string, durationMs int64, divideMs int64) string {
 		duraSinceFirstSTart = startTime.Sub(FIRST_START_TIME)
 	}
 	var ascii = ""
-	repeat := int(duraSinceFirstSTart.Milliseconds() / divideMs)
-	for i := 0; i <= repeat; i++ {
+	repeat := int(math.Ceil(float64(duraSinceFirstSTart.Milliseconds()) / float64(divideMs)))
+	for i := 0; i < repeat; i++ {
 		ascii += " "
 	}
 	_dlog(repeat)
 	repeat = int(math.Ceil(float64(durationMs) / float64(divideMs)))
-	for i := 0; i <= repeat; i++ {
+	for i := 0; i < repeat; i++ {
 		ascii += "-"
 	}
 	_dlog(repeat)
@@ -504,9 +504,6 @@ func main() {
 		ELAPSED_REGEXP = regexp.MustCompile(ELAPSED_REGEX)
 	}
 	if len(ELAPSED_KEY_REGEX) > 0 {
-		if SPLIT_FILE {
-			log.Printf("INFO: Using SPLIT_FILE and ELAPSED_KEY_REGEX both are not experimental.")
-		}
 		ELAPSED_KEY_REGEXP = regexp.MustCompile(ELAPSED_KEY_REGEX)
 	}
 	if len(ELAPSED_DIVIDE_MS) > 0 {

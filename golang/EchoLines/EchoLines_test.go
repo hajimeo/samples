@@ -15,17 +15,18 @@ func TestMain(m *testing.M) {
 }
 
 func TestAsciiChart(t *testing.T) {
-	ascii := asciiChart("00:00:00,000", 10000, 10000)
+	ascii := asciiChart("00:00:00,000", 0, 10000)
 	if len(ascii) > 0 {
-		t.Errorf("With DIVIDE_MS_DEFAULT, should be no ascii")
+		t.Errorf("With durationMs = 0 and devideMs 10000, should be no ascii")
+		t.Logf(ascii)
 		return
 	}
 	ascii = asciiChart("00:00:00,000", 10000*2, 10000)
-	if len(ascii) == 0 {
-		t.Errorf("No ascii string generated")
+	if ascii != "--" {
+		t.Errorf("With durationMs = 10000*2 and devideMs 10000, should be two '-'")
+		t.Logf(ascii)
 		return
 	}
-	//t.Logf(ascii)
 }
 func TestCalcDurationFromStrings(t *testing.T) {
 	duration := calcDurationFromStrings("00:00:00,000", "00:00:00,001")
