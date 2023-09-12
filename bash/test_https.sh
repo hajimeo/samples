@@ -6,6 +6,7 @@
 #
 #   -Dcom.sun.jndi.ldap.object.disableEndpointIdentification=true   # for LDAPS
 #   -Djavax.net.ssl.trustStoreType=WINDOWS-ROOT                     # to use Windows OS truststore
+#   -Djavax.net.ssl.trustStore=/path/to/truststore.jks -Djavax.net.ssl.trustStorePassword=changeit -Djavax.net.ssl.keyStoreType=jks
 #   ‑Djdk.tls.client.protocols="TLSv1,TLSv1.1,TLSv1.2"              # to specify client protocol
 #
 #   -Dhttps.proxyHost=<proxy_hostname> -Dhttps.proxyPort=
@@ -175,7 +176,7 @@ function gen_p12_jks() {
     [ -n "${_pass}" ] && _pass_arg="-passin \"pass:${_pass}\""
     local _chain=""
     [ -n "${_full_ca_crt}" ] && _chain="-chain -CAfile ${_full_ca_crt}"
-    # NOTE: If intermediate CA is used, cat root.cer intermediate.cer > full_ca.cer (TODO: does order matter?)
+    # NOTE: If intermediate CA is used, cat root.cer intermediate.cer (sever.cer?) > full_ca.cer (TODO: does order matter?)
     # NOTE: If p7b (pkcs7/pkcs#7): openssl pkcs7 -inform der -print_certs -in certificate.p7b -out certificate.cer
     # TODO: at this moment, the password sets on .key file will be lost.
     local _cmd="openssl pkcs12 -export ${_chain} -in ${_srv_crt} -inkey ${_srv_key} -name ${_name} -out ${_name}.p12 ${_pass_arg} -passout \"pass:${_store_pass}\""
