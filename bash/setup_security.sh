@@ -80,24 +80,36 @@ function f_intermediate() {
     local _inter_key="${1:-"./intermediateCA.key"}"
     local _root_key="${2:-"./rootCA.key"}"
     local _root_crt="${3:-"./rootCA.crt"}"
-    local _openssl_cnf="${4:-"./openssl.cnf"}"
+    local _openssl_cnf="${4:-"./openssl_inter.cnf"}"
     local _password="${5:-${g_OTHER_DEFAULT_PWD}}"
+    local _domain_suffix="${6:-"standalone.localdomain"}"
 
     if [ ! -s "${_openssl_cnf}" ]; then
-        # TODO: may need to use openssl_inter.tmpl.cnf?
-        curl -s -f -o "${_openssl_cnf}" https://raw.githubusercontent.com/hajimeo/samples/master/misc/openssl.cnf || return $?
+        curl -s -f -o "${_openssl_cnf}" https://raw.githubusercontent.com/hajimeo/samples/master/misc/openssl_inter.tmpl.conf || return $?
     fi
     [ -r "${_root_key}" ] || return 1
     [ -r "${_root_crt}" ] || return 1
 
-    local _dirname="$(dirname "${_inter_key}")"
-    local _filepath="${_dirname%/}/$(basename "${_inter_key}" ".key")"
-    openssl genrsa -aes256 -passout "pass:${_password}" -out "${_inter_key}" 2048 || return $?
-    openssl req -config ${_openssl_cnf} -passin pass:${_password} -new -sha1 -key ${_inter_key} -out ${_filepath}.csr -batch || return $?
-    openssl x509 -req -days 3653 -in "${_filepath}.csr" -CA "${_root_crt}" -CAkey "${_root_key}" -set_serial 01 -out "${_filepath}.crt" || return $?
-    echo "EXAMPLE: sign server certificate (sign request: .csr) file:"
-    echo "openssl req -config ${_openssl_cnf} -subj '/C=AU/ST=QLD/O=HajimeTest/CN=*.standalone.localdmoain' -extensions v3_req -sha256 -new -key ./wild.standalone.localdomain.key -out ./wild.standalone.localdomain.csr"
-    echo "openssl x509 -req -extensions v3_req -days 3650 -sha256 -CA ${_filepath}.crt -CAkey ${_filepath}.key -CAcreateserial -extfile ${_openssl_cnf} -passin \"pass:$_password\" -in ./wild.standalone.localdomain.csr -out ./wild.standalone.localdomain.crt"
+    local _filepath="./$(basename "${_inter_key}" ".key")"
+    if [ ! -s "${_inter_key}" ]; then
+        openssl genrsa -aes256 -passout "pass:${_password}" -out "${_inter_key}" 2048 || return $?
+        openssl req -config ${_openssl_cnf} -passin pass:${_password} -new -sha1 -key ${_inter_key} -out ${_filepath}.csr -batch || return $?
+        openssl x509 -req -days 3653 -in "${_filepath}.csr" -CA "${_root_crt}" -CAkey "${_root_key}" -set_serial 01 -out "${_filepath}.crt" || return $?
+    fi
+    if [ ! -s "./openssl.cnf" ]; then
+        curl -s -f -o ./openssl.cnf https://raw.githubusercontent.com/hajimeo/samples/master/misc/openssl.cnf
+        if ! grep -q "${_domain_suffix}" ./openssl.cnf; then
+            echo "
+[ alt_names ]
+DNS.1 = ${_domain_suffix#.}
+DNS.2 = *.${_domain_suffix#.}" >> ./openssl.cnf
+        fi
+    fi
+    local _sample_filename="wild.${_domain_suffix}"
+    echo "EXAMPLE: sign server certificate (sign request: .csr) file by using ${_sample_filename} filename:"
+    echo "openssl genrsa -out ./${_sample_filename}.key 2048"
+    echo "openssl req -config ./openssl.cnf -subj '/C=AU/ST=QLD/O=HajimeTest/CN=*.standalone.localdomain' -extensions v3_req -sha256 -new -key ./${_sample_filename}.key -out ./${_sample_filename}.csr"
+    echo "openssl x509 -req -extensions v3_req -days 3650 -sha256 -CA ${_filepath}.crt -CAkey ${_inter_key} -CAcreateserial -extfile ${_openssl_cnf} -passin \"pass:$_password\" -in ./${_sample_filename}.csr -out ./${_sample_filename}.crt"
 }
 
 function f_kdc_install() {
