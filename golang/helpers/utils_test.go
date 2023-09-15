@@ -1,8 +1,10 @@
 package helpers
 
 import (
+	"fmt"
 	"os"
 	"testing"
+	"time"
 )
 
 func TestMain(m *testing.M) {
@@ -15,6 +17,11 @@ func TestMain(m *testing.M) {
 
 func TestLog(t *testing.T) {
 	Log("DEBUG", "DEBUG logging")
+}
+
+func TestElapsed(t *testing.T) {
+	startMs := time.Now().UnixMilli()
+	Elapsed(startMs, fmt.Sprintf("TEST startMs = %d", startMs), 0)
 }
 
 func TestGetEnv(t *testing.T) {
