@@ -707,7 +707,11 @@ function goBuild() {
     local _winAsWell="$3"
     local _destDir="${4:-"$HOME/IdeaProjects/samples/misc"}"
     [ -z "${_name}" ] && _name="$(basename "${_goFile}" ".go" | tr '[:upper:]' '[:lower:]')"
+    if [ -d /usr/local/opt/go/libexec ]; then
+        export GOROOT=/usr/local/opt/go/libexec
+    fi
     env GOOS=linux GOARCH=amd64 go build -o "${_destDir%/}/${_name}_Linux_x86_64" ${_goFile} && \
+    env GOOS=linux GOARCH=arm64 go build -o "${_destDir%/}/${_name}_Linux_aarch64" ${_goFile} && \
     env GOOS=darwin GOARCH=amd64 go build -o "${_destDir%/}/${_name}_Darwin_x86_64" ${_goFile} && \
     env GOOS=darwin GOARCH=arm64 go build -o "${_destDir%/}/${_name}_Darwin_arm64" ${_goFile} || return $?
     if [[ "${_winAsWell}" =~ ^[yY] ]]; then
@@ -862,11 +866,12 @@ function pubS() {
     [ $HOME/IdeaProjects/samples/bash/_setup_host.sh -nt /tmp/pubS.last ] && scp -C $HOME/IdeaProjects/samples/bash/_setup_host.sh dh1:/var/tmp/share/
     [ $HOME/IdeaProjects/samples/bash/setup_nexus3_repos.sh -nt /tmp/pubS.last ] && scp -C $HOME/IdeaProjects/samples/bash/setup_nexus3_repos.sh dh1:/var/tmp/share/sonatype/ && cp -v -f $HOME/IdeaProjects/samples/bash/setup_nexus3_repos.sh $HOME/share/sonatype/ && cp -v -f $HOME/IdeaProjects/samples/bash/setup_nexus3_repos.sh $HOME/IdeaProjects/nexus-toolbox/scripts/
     [ $HOME/IdeaProjects/work/bash/log_tests_nxrm.sh -nt /tmp/pubS.last ] && cp -v -f $HOME/IdeaProjects/work/bash/log_tests_nxrm.sh $HOME/IdeaProjects/nexus-toolbox/scripts/log_check_scripts/
-    [ $HOME/IdeaProjects/samples/java/asset-dupe-checker/src/main/java/AssetDupeCheckV2.java -nt /tmp/pubS.last ] && cp -v -f $HOME/IdeaProjects/samples/java/asset-dupe-checker/src/main/java/AssetDupeCheckV2.java $HOME/IdeaProjects/nexus-toolbox/asset-dupe-checker/src/main/java/ && cp -v -f $HOME/IdeaProjects/samples/misc/asset-dupe-checker-v2.jar $HOME/IdeaProjects/nexus-toolbox/asset-dupe-checker/
     [ $HOME/IdeaProjects/samples/bash/patch_java.sh -nt /tmp/pubS.last ] && scp -C $HOME/IdeaProjects/samples/bash/patch_java.sh dh1:/var/tmp/share/java/
-    [ $HOME/IdeaProjects/samples/bash/monitoring/nrm3-threaddumps.sh -nt /tmp/pubS.last ] && cp -v -f $HOME/IdeaProjects/samples/bash/monitoring/*-threaddumps*.sh $HOME/IdeaProjects/nexus-monitoring/scripts/
+    [ $HOME/IdeaProjects/samples/bash/monitoring/nrm3-threaddumps.sh -nt /tmp/pubS.last ] && cp -v -f $HOME/IdeaProjects/samples/bash/monitoring/*.sh $HOME/IdeaProjects/nexus-monitoring/scripts/
     #cp -v -f $HOME/IdeaProjects/work/nexus-groovy/src2/TrustStoreConverter.groovy $HOME/IdeaProjects/nexus-toolbox/scripts/
-    scp ~/IdeaProjects/samples/misc/orient-console.jar dh1:/var/tmp/share/java/ &
+    [ $HOME/IdeaProjects/samples/java/asset-dupe-checker/src/main/java/AssetDupeCheckV2.java -nt /tmp/pubS.last ] && cp -v -f $HOME/IdeaProjects/samples/java/asset-dupe-checker/src/main/java/AssetDupeCheckV2.java $HOME/IdeaProjects/nexus-toolbox/asset-dupe-checker/src/main/java/ && cp -v -f $HOME/IdeaProjects/samples/misc/asset-dupe-checker-v2.jar $HOME/IdeaProjects/nexus-toolbox/asset-dupe-checker/
+    [ $HOME/IdeaProjects/samples/misc/orient-console.jar -nt /tmp/pubS.last ] && scp $HOME/IdeaProjects/samples/misc/orient-console.jar dh1:/var/tmp/share/java/
+    [ $HOME/IdeaProjects/samples/misc/filelist_Linux_x86_64 -nt /tmp/pubS.last ] && scp $HOME/IdeaProjects/samples/misc/filelist_Linux_x86_64 dh1:/var/tmp/share/bin/
     sync_nexus_binaries &>/dev/null &
     date | tee /tmp/pubS.last
 }
