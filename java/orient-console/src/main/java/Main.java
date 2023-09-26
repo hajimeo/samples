@@ -33,6 +33,7 @@ import com.fasterxml.jackson.dataformat.smile.SmileFactory;
 
 import java.io.*;
 import java.lang.reflect.InvocationTargetException;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.DirectoryStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -48,6 +49,8 @@ import javax.management.InstanceAlreadyExistsException;
 import javax.management.MBeanRegistrationException;
 import javax.management.MalformedObjectNameException;
 import javax.management.NotCompliantMBeanException;
+
+import static java.lang.String.valueOf;
 
 public class Main {
     static final private String PROMPT = "=> ";
@@ -231,31 +234,30 @@ public class Main {
         terminal.flush();
     }
 
-    private static void printBinary(ODocument oDoc) {
-        if (binaryField.isEmpty()) {
-            return;
-        }
-        if (fieldNames.length == 0) {
-            fieldNames = oDoc.fieldNames();
-        }
-        List<String> fieldList = new ArrayList<>(Arrays.asList(fieldNames));
-        if (fieldList.contains(binaryField)) {
-            System.out.println(bytesToStr(oDoc.field(binaryField)));
-        }
-    }
-
-    private static String bytesToStr(ORecordBytes rawBytes) {
-        String str = "";
+    private static String bytesToStr(Object o) {
         try {
-            //rawBytes.toOutputStream(System.out);
-            final Map<String, Object> raw = objectMapper.readValue(rawBytes.toStream(),
-                    new TypeReference<Map<String, Object>>() {
-                    });
-            str = gson.toJson(raw);
+            if (o instanceof String) {
+                byte[] decodedBytes = Base64.getDecoder().decode(o.toString());
+                String decodedString = new String(decodedBytes);
+                return decodedString;
+            }
+
+            if (o instanceof byte[]) {
+                return new String((byte[]) o, StandardCharsets.UTF_8);
+            }
+
+            if (o instanceof ORecordBytes) {
+                String str = "";
+                //rawBytes.toOutputStream(System.out);
+                final Map<String, Object> raw = objectMapper.readValue(((ORecordBytes) o).toStream(), new TypeReference<Map<String, Object>>() {});
+                str = gson.toJson(raw);
+                return str;
+            }
         } catch (Exception e) {
-            e.printStackTrace();
+            log(e.getMessage(), isDebug);
         }
-        return str;
+        log(valueOf(o.getClass()), isDebug);
+        return o.toString();
     }
 
     private static void writeListAsJson(List<ODocument> oDocs, String exportPath, boolean isPaging) {
@@ -335,7 +337,11 @@ public class Main {
                 e.printStackTrace();
             } catch (OCommandSQLParsingException | OCommandExecutionException ex) {
                 removeLineFromHistory(input);
-                history.load();
+                try {
+                    history.load();
+                } catch (Exception e) {
+                    log("Reloading history failed with " + e.getMessage());
+                }
             } finally {
                 Instant finish = Instant.now();
                 long timeElapsed = Duration.between(start, finish).toMillis();
@@ -379,8 +385,17 @@ public class Main {
                 }
             }
             // Currently using below if the result is only one record.
-            if (((List<ODocument>) oDocs).size() == 1) {
-                printBinary(((List<ODocument>) oDocs).get(0));
+            if (! binaryField.isEmpty() && ((List<ODocument>) oDocs).size() > 0) {
+                for (int i = 1; i <= ((List<ODocument>) oDocs).size(); i++) {
+                    ODocument oDoc = ((List<ODocument>) oDocs).get(i);
+                    if (fieldNames.length == 0) {
+                        fieldNames = oDoc.fieldNames();
+                    }
+                    List<String> fieldList = new ArrayList<>(Arrays.asList(fieldNames));
+                    if (fieldList.contains(binaryField)) {
+                        System.out.println(i + " = " + bytesToStr(oDoc.field(binaryField)));
+                    }
+                }
             }
 
             lastRows = ((List<ODocument>) oDocs).size();
