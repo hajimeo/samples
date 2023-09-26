@@ -211,21 +211,53 @@ public class H2Console {
     }
 
     private static void execute(String query) {
+        // NOTE: this method is not for large result set
         log(query, isDebug);
         try {
             ResultSet rs;
             if (stat.execute(query)) {
                 rs = stat.getResultSet();
                 List<String> columns = getColumns(rs);
+                List<Hashtable<String, String>> result = new ArrayList();
+                Hashtable<String, Integer> maxLen = new Hashtable<>();
                 while (rs.next()) {
+                    Hashtable<String, String> row = new Hashtable<>();
                     for (String label : columns) {
-                        String value = rs.getObject(label).toString();
+                        Object obj = rs.getObject(label);
+                        String value = "null";
+                        if (obj != null) {
+                            value = obj.toString();
+                        }
                         log(label + " = " + value, isDebug);
-                        terminal.writer().println(value);
+                        if (!maxLen.containsKey(label)) {
+                            maxLen.put(label, label.length());
+                        }
+                        if (maxLen.get(label) < value.length()) {
+                            maxLen.put(label, value.length());
+                        }
+                        row.put(label, value);
                     }
+                    result.add(row);
                 }
+                StringBuilder header = new StringBuilder();
+                for (String label : columns) {
+                    header.append(String.format("%-" + (maxLen.get(label) + 1) + "s", label.toUpperCase()));
+                }
+                terminal.writer().println(header);
                 terminal.flush();
+                for (Hashtable<String, String> row : result) {
+                    StringBuilder line = new StringBuilder();
+                    for (String label : columns) {
+                        line.append(String.format("%-" + (maxLen.get(label) + 1) + "s", row.get(label)));
+                    }
+                    terminal.writer().println(line);
+                    terminal.flush();
+                }
             }
+        } catch (JdbcSQLException e) {
+            System.out.println();
+            log("ERROR: " + e.getMessage());
+            throw new RuntimeException(e);
         } catch (SQLException e) {
             throw new RuntimeException(e);
         }
