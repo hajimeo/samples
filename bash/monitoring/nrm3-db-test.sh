@@ -6,8 +6,8 @@ USAGE:
 
     bash ./nrm3-db-test.sh [-q "query"] [-s /path/to/nexus-store.properties]
 
-    export username="nexus" password="nexus123" jdbcUrl="jdbc:postgresql://localhost:5432/nexus"
-    bash ./nrm3-db-test.sh [-q "query"]
+    export username="nxrm" password="nxrm123" jdbcUrl="jdbc:postgresql://localhost:5432/nxrm"
+    bash ./nrm3-db-test.sh -i "./nexus-3.59.0-01" [-q "query"]
 EOF
 }
 
@@ -15,6 +15,7 @@ EOF
 _STORE_FILE=""
 _DB_CONN_TEST_FILE="/tmp/DbConnTest.groovy"
 _PID=""
+# Also username, password, jdbcUrl
 
 function genDbConnTest() {
     local __doc__="Generate a DB connection script file"
@@ -96,7 +97,7 @@ function setGlobals() { # Best effort. may not return accurate dir path
         fi
         [ -d "${_INSTALL_DIR}" ] || echo "[WARN] no install directory found"
     fi
-    if [ ! -s "${_STORE_FILE}" ] && [ -n "${_pid}" ]; then
+    if [ ! -s "${_STORE_FILE}" ] && [ -z "${jdbcUrl}" ] && [ -n "${_pid}" ]; then
         if [ -e "/proc/${_pid}/environ" ]; then
             if grep -q 'NEXUS_DATASTORE_NEXUS_' "/proc/${_pid}/environ"; then
                 eval "$(cat "/proc/${_pid}/environ" | tr '\0' '\n' | grep -E '^NEXUS_DATASTORE_NEXUS_.+=')"
@@ -133,8 +134,11 @@ if [ "$0" = "${BASH_SOURCE[0]}" ]; then
         usage
         exit 0
     fi
-    while getopts "s:q:" opts; do
+    while getopts "i:q:s:" opts; do
         case $opts in
+        i)
+            _INSTALL_DIR="$OPTARG"
+            ;;
         q)
             _QUERY="$OPTARG"
             ;;
