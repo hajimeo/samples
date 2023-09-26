@@ -9,24 +9,24 @@ from http.server import BaseHTTPRequestHandler
 
 listen_host = "127.0.0.1"
 listen_port = 9999
-delay_sec = 3
+delay_sec = 1
 
 
-def write_with_delay(s, fp=None, chunk_size=1024, sec=3, repeat=100, message=""):
+def write_with_delay(s, fp=None, chunk_size=32768, sec=1, repeat=100, message=""):
     if fp:
         while True:
             chunk = fp.read(chunk_size)
             if chunk:
+                s.wfile.write(chunk)
                 if sec > 0:
                     time.sleep(float(sec))
-                s.wfile.write(chunk)
             else:
                 break
     else:
         for x in range(repeat):
+            s.wfile.write(bytes(message + " " + str(x) + "\n", 'utf-8'))
             if sec > 0:
                 time.sleep(float(sec))
-            s.wfile.write(bytes(message + " " + str(x) + "\n", 'utf-8'))
 
 
 class SlowserverRequestHandler(BaseHTTPRequestHandler):
