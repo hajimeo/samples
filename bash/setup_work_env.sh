@@ -74,14 +74,10 @@ function f_prepare() {
 }
 
 function f_install_misc() {
-  if type brew &>/dev/null; then
-    # 'q' is installable with brew
-    if type ibrew &>/dev/null; then
-      ibrew install gnu-sed grep q coreutils findutils #Not installable on ARM
-    else
-      brew install gnu-sed grep q coreutils findutils
+    if type brew &>/dev/null; then
+        # 'q' is installable with brew
+        arch -x86_64 /usr/local/bin/brew install gnu-sed grep q coreutils findutils graphviz
     fi
-  fi
 }
 
 function f_setup_misc() {
