@@ -29,7 +29,7 @@ import java.time.Instant
 def elapse(Instant start, String word) {
     Instant end = Instant.now()
     Duration d = Duration.between(start, end)
-    println("# Elapsed ${d}: ${word}")
+    java.lang.System.err.println("# Elapsed ${d}: ${word}")
 }
 
 def p = new Properties()
@@ -39,7 +39,7 @@ if (args.length > 1 && !args[1].empty) {
 } else {
     p = System.getenv()  //username, password, jdbcUrl
 }
-def query = (args.length > 0 && !args[0].empty) ? args[0] : "SELECT version()"
+def query = (args.length > 0 && !args[0].empty) ? args[0] : "SELECT 'ok' as test"
 def driver = Class.forName('org.postgresql.Driver').newInstance() as Driver
 def dbP = new Properties()
 dbP.setProperty("user", p.username)
@@ -89,13 +89,13 @@ function setGlobals() { # Best effort. may not return accurate dir path
     if [ -z "${_pid}" ]; then
         _pid="$(ps auxwww | grep -F 'org.sonatype.nexus.karaf.NexusMain' | grep -vw grep | awk '{print $2}' | tail -n1)"
         _PID="${_pid}"
-        [ -z "${_pid}" ] && echo "[WARN] no PID found"
+        [ -z "${_pid}" ] && echo "[WARN] no PID found" >&2
     fi
     if [ ! -d "${_INSTALL_DIR}" ]; then
         if [ -n "${_pid}" ]; then
             _INSTALL_DIR="$(ps wwwp ${_pid} | sed -n -E '/org.sonatype.nexus.karaf.NexusMain/ s/.+-Dexe4j.moduleName=([^ ]+)\/bin\/nexus .+/\1/p' | head -1)"
         fi
-        [ -d "${_INSTALL_DIR}" ] || echo "[WARN] no install directory found"
+        [ -d "${_INSTALL_DIR}" ] || echo "[WARN] no install directory found" >&2
     fi
     if [ ! -s "${_STORE_FILE}" ] && [ -z "${jdbcUrl}" ] && [ -n "${_pid}" ]; then
         if [ -e "/proc/${_pid}/environ" ]; then
@@ -116,7 +116,6 @@ function setGlobals() { # Best effort. may not return accurate dir path
 
 main() {
     local query="$1"
-    local storeProp="$2"
 
     setGlobals "${_PID}"
     if [ -z "${_INSTALL_DIR}" ]; then
@@ -125,7 +124,20 @@ main() {
         return 1
     fi
 
-    runDbQuery "${query}" "${storeProp}"
+    #
+    if [ -z "${query}" ]; then
+        runDbQuery "SELECT version()"
+        # check the estimate count and size
+        runDbQuery "SELECT distinct REGEXP_REPLACE(recipe_name, '-.+', '') AS fmt FROM repository" 2>/dev/null | while read -r _fmt; do
+            if [[ "${_fmt}" =~ \[fmt:([^\]]+)\] ]]; then
+                local _format="${BASH_REMATCH[1]}"
+                local _sql="SELECT r.name as repo_name, count(*) as count, SUM(ab.blob_size) as bytes FROM ${_format}_asset_blob ab INNER JOIN ${_format}_asset a USING (asset_blob_id) INNER JOIN ${_format}_content_repository cr USING (repository_id) INNER JOIN repository r on cr.config_repository_id = r.id GROUP BY 1"
+                runDbQuery "${_sql}"
+            fi
+        done
+    else
+        runDbQuery "${query}"
+    fi
 }
 
 if [ "$0" = "${BASH_SOURCE[0]}" ]; then
@@ -151,5 +163,5 @@ if [ "$0" = "${BASH_SOURCE[0]}" ]; then
         esac
     done
 
-    main "${_QUERY}" "${_STORE_FILE}" #"$@"
+    main "${_QUERY}" #"$@"
 fi
