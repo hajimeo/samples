@@ -1,32 +1,5 @@
 # File List
-Demo script to list all objects from a File type blob store with tab delimiter format (not csv).  
-Basically rewriting below bash function and command:
-```bash
-function f_blobs_csv() {
-    local __doc__="Generate CSV for Path,LastModified,Size + properties"
-    local _dir="$1"         # "blobs/default/content/vol-*"
-    local _with_props="$2"  # Y to check properties file, but extremely slow
-    local _filter="${3}"    # "*.properties"
-    local _P="${4}"         #
-    printf "Path,LastModified,Size"
-    local _find="find ${_dir%/} -type f"
-    [ -n "${_filter}" ] && _find="${_find} -name '${_filter}'"
-    if [[ "${_with_props}" =~ ^(y|Y) ]]; then
-        printf ",Properties\n"
-        # without _o=, it may output empty "" line.
-        eval "${_find} -print0" | xargs -0 -P${_P:-"3"} -I {} sh -c '[ -f {} ] && _o="$(find {} -printf "\"%p\",\"%t\",%s," && printf "\"%s\"\n" "$(echo "{}" | grep -q ".properties" && cat {} | tr "\n" "," | sed "s/,$//")")" && echo ${_o}'
-    else
-        printf "\n"
-        eval "${_find} -printf '\"%p\",\"%t\",%s\n'"
-    fi
-}
-```
-```
-#echo -n > ./'${_output_date}'; # Only first time, otherwise optional in case you might want to append
-#touch /tmp/checker;            # Only first time, otherwise optional in case of continuing 
-# TODO: is using `????????-????-????-????-????????????.properties` faster?
-find ${_content_dir%/}/vol-* -type f -name '*.properties' -mtime -${_days} -print0 -not -newer /tmp/checker | xargs -P${_P} -I{} -0 bash -c 'grep -q "^deleted=true" {} && sed -i -e "s/^deleted=true//" {} && echo "'${_output_date}' 00:00:01,$(basename {} .properties)" >> ./'${_output_date}';'
-```
+Demo script to list all objects from a File type blob store with tab delimiter format (not csv).
 
 ## DOWNLOAD and INSTALL:
 ```bash
@@ -39,7 +12,7 @@ chmod a+x /usr/local/bin/file-list
 $ file-list --help
 
 List .properties and .bytes files as *Tab* Separated Values (Path LastModified Size).
-    
+
 HOW TO and USAGE EXAMPLES:
     https://github.com/hajimeo/samples/blob/master/golang/FileList/README.md
 
@@ -66,7 +39,7 @@ Usage of file-list:
   -b string
         Base directory (default: '.') or S3 Bucket name (default ".")
   -bsName string
-        Reconcile: eg. 'default'. If provided, the SQL query will be faster
+        Reconcile: eg. 'default'. If provided, the SQL query will be much faster
   -c int
         Concurrent number for sub directories (may not need to use with very fast disk) (default 1)
   -c2 int
@@ -98,33 +71,37 @@ Usage of file-list:
 ```
 
 ## Usage Examples
-NOTE: For accurate performance testing, may need to clear Linux file cache (as 'root'):
+Optional: For accurate performance testing, may need to clear Linux file cache (as 'root'):
 ```
 echo 3 > /proc/sys/vm/drop_caches
 ```
+
 ### List all files under the ./sonatype-work/nexus3/blobs/default
 ```
-cd ./sonatype-work/nexus3/blobs/default;
-file-list -b ./content
+file-list -b ./sonatype-work/nexus3/blobs/default/content
 ... (snip) ...
 "sonatype-work/nexus3/blobs/default/content/vol-43/chap-29/3488648f-d5f8-45f8-8314-10681fcaf0ce.properties","2021-09-17 08:35:03.907951265 +1000 AEST",352
 "sonatype-work/nexus3/blobs/default/metadata.properties","2021-09-17 08:34:00.625028548 +1000 AEST",73
 
 2021/12/31 14:23:09 INFO: Printed 185 items (size: 75910509) in ./sonatype-work/nexus3/blobs/default with prefix:
 ```
+```
+file-list -b ./content -p 'vol-' -c 4 > /tmp/file-list_$(date +"%Y%m%d%H%M%S").out
+```
 
 ### Listing blob store items with .properties file contents (-P) with 10 concurrency (-c 10):
 ```
-file-list -b ./content -p 'vol-' -P -c 10 > /tmp/default_with_props.tsv
+file-list -b ./content -p 'vol-' -c 10 -P > /tmp/file-list_$(date +"%Y%m%d%H%M%S").out
 ```
-Exclude .bytes files, so that .properties file only:
+#### Excluding .bytes files, so that .properties file only:
+NOTE: .bytes modified date is usually same as created date.
 ```
-file-list -b ./content -p 'vol-' -P -f ".properties" -c 10 > /tmp/default_props_only.tsv
+file-list -b ./content -p 'vol-' -c 10 -P -f ".properties" > /tmp/file-list_$(date +"%Y%m%d%H%M%S").out
 ```
 
 ### Finding first 1 'deleted=true' (-fP "\<expression\>")
 ```
-file-list -b ./content -p 'vol-' -fP "deleted=true" -n 1 -c 10 > /tmp/default_soft_deleted.tsv
+file-list -b ./content -p 'vol-' -c 10 -fP "deleted=true" -n 1 > /tmp/file-list_$(date +"%Y%m%d%H%M%S").out
 ```
 
 ### Check the total count and size of all .bytes files
@@ -146,7 +123,6 @@ NOTE: the attributes in a .properties file are sorted in memory, so that attribu
 ```
 file-list -b ./content -p "vol-" -c 10 -f ".properties" -P -fPX "BlobStore\.blob-name=.+/maven-metadata.xml.*" -R > all_excluding_maven-metadata.tsv
 ```
-NOTE: the attributes in a .properties file are sorted in memory, so that attributes start with "@" comes before "deleted=true" line.
 
 ### Output lines for the reconciliation (blobstore.rebuildComponentDB) YYYY-MM-DD text (-RF) and for the files which were modified since 1 day ago (-mF "\<date\>")
 ```
@@ -182,3 +158,11 @@ NOTE: Above outputs blobs which are not in <format>_asset table, which includes 
 $ file-list -b ./content -p vol- -c 10 -db /nexus-data/etc/fabric/nexus-store.properties -RF -dF "$(date -d "1 day ago" +%Y-%m-%d)" > ./$(date '+%Y-%m-%d') 2> ./file-list_$(date +"%Y%m%d%H%M%S").log
 ```
 NOTE: If using -RDel to delete "deleted=true", recommend to save the STDERR into a file like above.
+
+## Misc.
+```
+echo -n > ./'${_output_date}'; # Only first time, otherwise optional in case you might want to append
+touch /tmp/checker;            # Only first time, otherwise optional in case of continuing 
+# TODO: is using `????????-????-????-????-????????????.properties` faster?
+find ${_content_dir%/}/vol-* -type f -name '*.properties' -mtime -${_days} -print0 -not -newer /tmp/checker | xargs -P${_P} -I{} -0 bash -c 'grep -q "^deleted=true" {} && sed -i -e "s/^deleted=true//" {} && echo "'${_output_date}' 00:00:01,$(basename {} .properties)" >> ./'${_output_date}';'
+```

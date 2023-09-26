@@ -26,4 +26,8 @@ require (
 	github.com/aws/aws-sdk-go-v2/service/ssooidc v1.13.10 // indirect
 	github.com/aws/aws-sdk-go-v2/service/sts v1.17.7 // indirect
 	github.com/aws/smithy-go v1.13.5 // indirect
+	github.com/chzyer/readline v1.5.1 // indirect
+	github.com/google/pprof v0.0.0-20230912144702-c363fe2c2ed8 // indirect
+	github.com/ianlancetaylor/demangle v0.0.0-20230524184225-eabc099b10ab // indirect
+	golang.org/x/sys v0.12.0 // indirect
 )

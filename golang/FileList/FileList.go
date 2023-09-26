@@ -51,6 +51,7 @@ HOW TO and USAGE EXAMPLES:
 
 // Arguments / global variables
 var _BASEDIR *string
+var _DIR_DEPTH *int
 var _PREFIX *string
 var _FILTER *string
 var _FILTER_P *string
@@ -112,6 +113,7 @@ type StoreProps map[string]string
 func _setGlobals() {
 	_BASEDIR = flag.String("b", ".", "Base directory (default: '.') or S3 Bucket name")
 	//_BASEDIR = flag.String("b", "", "S3 Bucket name")
+	_DIR_DEPTH = flag.Int("dd", 2, "NOT IN USE: Directory Depth to find sub directories (eg: 'vol-NN', 'chap-NN')")
 	_PREFIX = flag.String("p", "", "Prefix of sub directories (eg: 'vol-') This is not recursive")
 	_WITH_PROPS = flag.Bool("P", false, "If true, read and output the .properties files")
 	_FILTER = flag.String("f", "", "Filter for the file path (eg: '.properties' to include only this extension)")
@@ -122,7 +124,7 @@ func _setGlobals() {
 	//_EXCLUDE_FILE = flag.String("sk", "", "Blob IDs in this file will be skipped from the check") // TODO
 	//_INCLUDE_FILE = flag.String("sk", "", "ONLY blob IDs in this file will be checked")           // TODO
 	_TOP_N = flag.Int64("n", 0, "Return first N lines (0 = no limit). (TODO: may return more than N)")
-	_CONC_1 = flag.Int("c", 1, "Concurrent number for sub directories (may not need to use with very fast disk)")
+	_CONC_1 = flag.Int("c", 1, "Concurrent number for reading directories")
 	_LIST_DIRS = flag.Bool("L", false, "If true, just list directories and exit")
 	_NO_HEADER = flag.Bool("H", false, "If true, no header line")
 	_DEBUG = flag.Bool("X", false, "If true, verbose logging")
@@ -228,7 +230,7 @@ func _elapsed(startTsMs int64, message string, thresholdMs int64) {
 	//elapsed := time.Since(start)
 	elapsed := time.Now().UnixMilli() - startTsMs
 	if elapsed >= thresholdMs {
-		log.Printf("%s (%dms)", message, elapsed)
+		log.Printf("%s (%d ms)", message, elapsed)
 	}
 }
 
@@ -1029,7 +1031,6 @@ func getDirsS3(client *s3.Client) []string {
 	return dirs
 }
 
-// get *all* directories under basedir and which name starts with prefix
 func getDirs(basedir string, prefix string) []string {
 	var dirs []string
 	basedir = strings.TrimSuffix(basedir, string(filepath.Separator))
@@ -1051,7 +1052,36 @@ func getDirs(basedir string, prefix string) []string {
 	return dirs
 }
 
-func listObjectsS3(client *s3.Client, prefix string) {
+// get *all* directories under basedir and which name starts with prefix
+func walkDirs(basedir string, prefix string) []string {
+	var dirs []string
+	basedir = strings.TrimSuffix(basedir, string(filepath.Separator))
+	initDeps := strings.Count(basedir, string(os.PathSeparator))
+	depth := initDeps + *_DIR_DEPTH
+	err := filepath.Walk(basedir, func(path string, f os.FileInfo, err error) error {
+		if err != nil {
+			println("Walk for " + basedir + " and " + path + " failed.")
+			panic(err.Error())
+		}
+		if f.IsDir() {
+			if strings.Count(path, string(os.PathSeparator)) <= depth &&
+				len(prefix) == 0 || strings.HasPrefix(f.Name(), prefix) {
+				_log("DEBUG", fmt.Sprintf("getDirs appending path=%s", path))
+				dirs = append(dirs, path)
+			}
+		}
+		return nil
+	})
+	if err != nil {
+		println("Walk for " + basedir + " failed.")
+		panic(err.Error())
+	}
+	sort.Strings(dirs)
+	return dirs
+}
+
+func listObjectsS3(client *s3.Client, dir string) {
+	startMs := time.Now().UnixMilli()
 	var subTtl int64
 	db := openDb(*_DB_CON_STR)
 	if db != nil {
@@ -1061,7 +1091,7 @@ func listObjectsS3(client *s3.Client, prefix string) {
 		Bucket:     _BASEDIR,
 		MaxKeys:    int32(*_MAXKEYS),
 		FetchOwner: *_WITH_OWNER,
-		Prefix:     &prefix,
+		Prefix:     &dir,
 	}
 
 	for {
@@ -1106,19 +1136,21 @@ func listObjectsS3(client *s3.Client, prefix string) {
 			break
 		}
 	}
+	_elapsed(startMs, fmt.Sprintf("INFO  %s checked %d files (current total: %d)", dir, subTtl, _CHECKED_N), 0)
 }
 
-func listObjects(basedir string) {
+func listObjects(dir string) {
+	startMs := time.Now().UnixMilli()
 	var subTtl int64
 	db := openDb(*_DB_CON_STR)
 	if db != nil {
 		defer db.Close()
 	}
 	// Below line does not work because currently Glob does not support ./**/*
-	//list, err := filepath.Glob(basedir + string(filepath.Separator) + *_FILTER)
+	//list, err := filepath.Glob(dir + string(filepath.Separator) + *_FILTER)
 	// Somehow WalkDir is slower in this code
-	//err := filepath.WalkDir(basedir, func(path string, f fs.DirEntry, err error) error {
-	err := filepath.Walk(basedir, func(path string, f os.FileInfo, err error) error {
+	//err := filepath.WalkDir(dir, func(path string, f fs.DirEntry, err error) error {
+	err := filepath.Walk(dir, func(path string, f os.FileInfo, err error) error {
 		if err != nil {
 			return errors.Wrap(err, "failed filepath.WalkDir")
 		}
@@ -1138,7 +1170,7 @@ func listObjects(basedir string) {
 		println("Got error retrieving list of files:")
 		panic(err.Error())
 	}
-	_log("INFO", fmt.Sprintf("Checked %d for %s (total: %d)", subTtl, basedir, _CHECKED_N))
+	_elapsed(startMs, fmt.Sprintf("INFO  %s checked %d files (current total: %d)", dir, subTtl, _CHECKED_N), 0)
 }
 
 // Define, set, and validate command arguments
@@ -1164,7 +1196,7 @@ func main() {
 	var subDirs []string
 	var client *s3.Client
 
-	_log("DEBUG", fmt.Sprintf("Retriving sub directories under %s", *_BASEDIR))
+	_log("INFO", fmt.Sprintf("Retriving sub directories under %s", *_BASEDIR))
 	if _IS_S3 != nil && *_IS_S3 {
 		cfg, err := config.LoadDefaultConfig(context.TODO())
 		if _DEBUG2 != nil && *_DEBUG2 {
@@ -1183,6 +1215,7 @@ func main() {
 		fmt.Printf("%v", subDirs)
 		return
 	}
+	_log("INFO", fmt.Sprintf("Retrived %d sub directories", len(subDirs)))
 	_log("DEBUG", fmt.Sprintf("Sub directories: %v", subDirs))
 
 	// Printing headers if requested
@@ -1203,7 +1236,6 @@ func main() {
 		fmt.Println("")
 	}
 
-	_log("INFO", fmt.Sprintf("Generating list from %s ...", *_BASEDIR))
 	wg := sync.WaitGroup{}
 	guard := make(chan struct{}, *_CONC_1)
 	for _, s := range subDirs {
@@ -1211,18 +1243,18 @@ func main() {
 			//_log("DEBUG", "Ignoring empty sub directory.")
 			continue
 		}
-		_log("DEBUG", "subDir: "+s)
+		_log("DEBUG", s+" starting ...")
 		guard <- struct{}{}
 		wg.Add(1)
 		if _IS_S3 != nil && *_IS_S3 {
-			go func(client *s3.Client, prefix string) {
-				listObjectsS3(client, prefix)
+			go func(client *s3.Client, subdir string) {
+				listObjectsS3(client, subdir)
 				<-guard
 				wg.Done()
 			}(client, s)
 		} else {
-			go func(basedir string) {
-				listObjects(basedir)
+			go func(subdir string) {
+				listObjects(subdir)
 				<-guard
 				wg.Done()
 			}(s)
@@ -1231,6 +1263,6 @@ func main() {
 
 	wg.Wait()
 	println("")
-	_log("INFO", fmt.Sprintf("Printed %d of %d (size:%d) in %s and sub-dir starts with %s (elapsed:%ds)", _PRINTED_N, _CHECKED_N, _TTL_SIZE, *_BASEDIR, *_PREFIX, time.Now().Unix()-_START_TIME_ts))
+	_log("INFO", fmt.Sprintf("Completed %d of %d (size:%d) in %s and sub-dir starts with '%s' (elapsed:%ds)", _PRINTED_N, _CHECKED_N, _TTL_SIZE, *_BASEDIR, *_PREFIX, time.Now().Unix()-_START_TIME_ts))
 	//_log("INFO", fmt.Sprintf("Printed %d items (size: %d) in bucket: %s with prefix: %s", _PRINTED_N, _TTL_SIZE, *_BASEDIR, *_PREFIX))
 }
