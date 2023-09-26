@@ -42,7 +42,7 @@ func TestCalcDurationFromStrings(t *testing.T) {
 	}
 }
 func TestEchoDuration(t *testing.T) {
-	echoDuration("end line")
+	calcDuration("end line")
 	t.Log("TODO: not implemented")
 	return
 }

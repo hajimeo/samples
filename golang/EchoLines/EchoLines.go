@@ -39,7 +39,7 @@ If the first argument is empty, the script accepts the STDIN.
 	find ./threads -type f -name '[0-9]*_*.out' | xargs -P3 -t -I{} bash -c '_d="$(basename "{}" ".out")";echolines "{}" "^\".+" "" "./threads_per_thread/${_d}"'
 
 ### Get duration of each line:
-    export ELAPSED_REGEX="^\d\d\d\d-\d\d-\d\d.(\d\d:\d\d:\d\d.\d\d\d)"
+    export ELAPSED_REGEX="^\d\d\d\d-\d\d-\d\d.(\d\d:\d\d:\d\d.\d\d\d)" ASCII_DISABLED=Y
 	echolines "./log/nexus.log" "^\d\d\d\d-\d\d-\d\d.\d\d:\d\d:\d\d.\d\d\d" "^\d\d\d\d-\d\d-\d\d.\d\d:\d\d:\d\d.\d\d\d"
 ### Get duration of NXRM3 queries, and sort by the longuest:
     export ELAPSED_REGEX="^\d\d\d\d-\d\d-\d\d.(\d\d:\d\d:\d\d.\d\d\d)"
@@ -253,7 +253,7 @@ func echoEndLine(line string, key string) bool {
 		OUT_FILES[key] = nil
 	}
 	// Duration needs to be processed after outputting the end line.
-	echoDuration(line)
+	calcDuration(line)
 	return isEchoed
 }
 
@@ -293,7 +293,7 @@ func setStartDatetimeFromLine(line string) {
 	START_DATETIMES[key] = elapsedStart
 }
 
-func echoDuration(endLine string) {
+func calcDuration(endLine string) {
 	if ELAPSED_REGEXP == nil {
 		_dlog("No ELAPSED_REGEX")
 		return
@@ -389,7 +389,7 @@ func echoDurationInner(dura Duration, maxKeyLen int, divideMs int64) {
 	}
 	if dura.key == NO_KEY {
 		// As "sec,ms" contains comma, using "|". Also "<num> ms" for easier sorting (it was "ms:<num>")
-		fmt.Printf("# %s-%s|%8dms%s\n", dura.startTimeStr, dura.endTimeStr, dura.durationMs, ascii)
+		fmt.Printf("# %s %s|%8dms%s\n", dura.startTimeStr, dura.endTimeStr, dura.durationMs, ascii)
 	} else {
 		fmt.Printf("# %s-%s|%8dms|%*s%s\n", dura.startTimeStr, dura.endTimeStr, dura.durationMs, KEY_PADDING, dura.key, ascii)
 	}
