@@ -11,16 +11,17 @@ import java.time.Instant
 def elapse(Instant start, String word) {
     Instant end = Instant.now()
     Duration d = Duration.between(start, end)
-    println("# '${word}' took ${d}")
+    println("# Elapsed ${d}: ${word}")
 }
 
 def p = new Properties()
-if (!args) p = System.getenv()  //username, password, jdbcUrl
-else {
-    def pf = new File(args[0])
+if (args.length > 1 && !args[1].empty) {
+    def pf = new File(args[1])
     pf.withInputStream { p.load(it) }
+} else {
+    p = System.getenv()  //username, password, jdbcUrl
 }
-def query = (args.length > 1 && !args[1].empty) ? args[1] : "SELECT 'ok' as test"
+def query = (args.length > 0 && !args[0].empty) ? args[0] : "SELECT version()"
 def driver = Class.forName('org.postgresql.Driver').newInstance() as Driver
 def dbP = new Properties()
 dbP.setProperty("user", p.username)
