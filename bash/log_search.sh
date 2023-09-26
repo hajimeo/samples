@@ -149,7 +149,7 @@ function f_topErrors() {
     [ -z "${_regex}" ] && _regex="\b(WARN|ERROR|SEVERE|FATAL|SHUTDOWN|Caused by|.+?Exception|FAILED)\b.+"
     [ -n "${_date_regex}" ] && _regex="${_date_regex}.*${_regex}"
     [ -n "${_max_N}" ] && _max_N_opt="-m ${_max_N}"
-    echo "# rg -c \"${_regex}\" ..."
+    echo "# rg -c \"${_regex}\" ... | rg -v \"${_exclude_regex}\""
     if [ -f "${_glob}" ]; then
         rg -z -c "${_regex}" -H "${_glob}" && echo " "
         rg -z --no-line-number --no-filename "${_regex}" ${_max_N_opt} "${_glob}"
