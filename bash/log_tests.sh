@@ -388,11 +388,12 @@ function e_app_logs() {
         _split_log "${_log_path}"
     fi
     local _since_last_restart="$(ls -1r _split_logs/* 2>/dev/null | head -n1)"
+    local _excludes="(WARN .+ high disk watermark|This is NOT an error|Attempt to access soft-deleted blob .+nexus-repository-docker|CacheInfo missing for)"
     if [ -n "${_since_last_restart}" ]; then
-        f_topErrors "${_since_last_restart}" "" "" "(WARN .+ high disk watermark|This is NOT an error|Attempt to access soft-deleted blob .+nexus-repository-docker)" >${_FILTERED_DATA_DIR%/}/f_topErrors.out
+        f_topErrors "${_since_last_restart}" "" "" "${_excludes}" >${_FILTERED_DATA_DIR%/}/f_topErrors.out
     elif _size_check "${_log_path}"; then
         # TODO: this one is slow
-        _TOP_ERROR_MAX_N=10000 f_topErrors "${_LOG_GLOB}" "" "" "(WARN .+ high disk watermark|This is NOT an error|Attempt to access soft-deleted blob .+nexus-repository-docker)" >${_FILTERED_DATA_DIR%/}/f_topErrors.out
+        _TOP_ERROR_MAX_N=10000 f_topErrors "${_LOG_GLOB}" "" "" "${_excludes}" >${_FILTERED_DATA_DIR%/}/f_topErrors.out
     fi
 }
 function e_requests() {
@@ -490,6 +491,9 @@ function t_system() {
     fi
     if _rg -g sysinfo.json -q 'KUBERNETES_'; then
         _head "WARN" "Might be installed on KUBERNETES (shouldn't use H2/OrientDB)"
+    fi
+    if _rg -g sysinfo.json -q 'REDHAT'; then
+        _head "WARN" "Might be RHEL8 (TODO: most likely inaccurate)"
     fi
 }
 function t_mounts() {
