@@ -196,7 +196,7 @@ function takeDumps() {
     for _i in $(seq 1 ${_count}); do
         echo "[$(date +'%Y-%m-%d %H:%M:%S')] taking dump ${_i}/${_count} into '${_outPfx}*' ..." >&2
         local _wpid_in_for=""
-        if [ -s "${_storeProp}" ]; then
+        if [ -s "${_storeProp}" ] || [ -n "${jdbcUrl}" ]; then
             # If _storeProp is given, do extra check for NXRM3
             (date +'%Y-%m-%d %H:%M:%S'; runDbQuery "select * from pg_stat_activity where state <> 'idle' and query not like '% pg_stat_activity %' order by query_start limit 100;select relation::regclass, * from pg_locks where relation::regclass::text != 'pg_locks' limit 100;" "${_storeProp}" "${_interval}") >> "${_outPfx}101.log" &
             _wpid_in_for="$!"
