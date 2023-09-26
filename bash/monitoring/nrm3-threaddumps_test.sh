@@ -27,7 +27,7 @@ function test_runDbQuery() {
     fi
 }
 
-function test_detectDirs() {
+function test_setGlobals() {
     echo "sleep 1" > /tmp/sleep.sh
     # Mac can't detect _INSTALL_DIR from /proc/PID/cwd, so added /tmp/
     bash /tmp/sleep.sh -Dkaraf.data=${HOME} -Dexe4j.moduleName=/tmp/bin/nexus org.sonatype.nexus.karaf.NexusMain &
@@ -37,8 +37,10 @@ function test_detectDirs() {
     unset _INSTALL_DIR
     unset _WORK_DIR
     #set -x
-    if ! detectDirs >/dev/null; then
-        _error
+    setGlobals
+    local _rc=$?
+    if [ ${_rc} -ne 0 ]; then
+        _error "rc: ${_rc}"
     fi
     #set +x
     if [ "${_PID}" != "${_wpid}" ]; then
@@ -53,8 +55,10 @@ function test_detectDirs() {
     wait
 
     export _INSTALL_DIR="/var/tmp" _WORK_DIR="."
-    if ! detectDirs "9999" >/dev/null; then
-        _error
+    setGlobals "9999"
+    local _rc=$?
+    if [ ${_rc} -ne 0 ]; then
+        _error "rc: ${_rc} with 9999"
     fi
     if [ "${_INSTALL_DIR%/}" != "/var/tmp" ]; then
         _error "_INSTALL_DIR: ${_INSTALL_DIR%/} != /var/tmp"

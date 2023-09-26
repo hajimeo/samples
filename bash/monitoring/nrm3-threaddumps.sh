@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 usage() {
-    cat << EOF
+    cat <<EOF
 bash <(curl -sfL https://raw.githubusercontent.com/hajimeo/samples/master/bash/monitoring/nrm3-threaddumps.sh --compressed)
 
 PURPOSE:
@@ -28,7 +28,6 @@ OPTIONS:
 EOF
 }
 
-
 : "${_INSTALL_DIR:=""}"
 : "${_WORK_DIR:=""}"
 _INTERVAL=2
@@ -39,11 +38,12 @@ _REGEX=""
 _DB_CONN_TEST_FILE="/tmp/DbConnTest.groovy"
 _PID=""
 _OUT_DIR=""
+# Also username, password, jdbcUrl
 
 function genDbConnTest() {
     local __doc__="Generate a DB connection script file"
     local _dbConnFile="${1:-"${_DB_CONN_TEST_FILE}"}"
-    cat << 'EOF' > "${_dbConnFile}"
+    cat <<'EOF' >"${_dbConnFile}"
 import org.postgresql.*
 import groovy.sql.Sql
 import java.time.Duration
@@ -52,16 +52,17 @@ import java.time.Instant
 def elapse(Instant start, String word) {
     Instant end = Instant.now()
     Duration d = Duration.between(start, end)
-    println("# '${word}' took ${d}")
+    println("# Elapsed ${d}: ${word}")
 }
 
 def p = new Properties()
-if (!args) p = System.getenv()  //username, password, jdbcUrl
-else {
-    def pf = new File(args[0])
+if (args.length > 1 && !args[1].empty) {
+    def pf = new File(args[1])
     pf.withInputStream { p.load(it) }
+} else {
+    p = System.getenv()  //username, password, jdbcUrl
 }
-def query = (args.length > 1 && !args[1].empty) ? args[1] : "SELECT 'ok' as test"
+def query = (args.length > 0 && !args[0].empty) ? args[0] : "SELECT version()"
 def driver = Class.forName('org.postgresql.Driver').newInstance() as Driver
 def dbP = new Properties()
 dbP.setProperty("user", p.username)
@@ -92,8 +93,8 @@ function runDbQuery() {
     local _dbConnFile="${4:-"${_DB_CONN_TEST_FILE}"}"
     local _installDir="${5:-"${_INSTALL_DIR}"}"
     local _groovyAllVer="2.4.17"
-    if [ ! -s "${_storeProp}" ]; then
-        echo "No nexus-store.properties file." >&2
+    if [ ! -s "${_storeProp}" ] && [ -z "${jdbcUrl}" ]; then
+        echo "No nexus-store.properties file and no jdbcUrl set." >&2
         return 1
     fi
     if [ ! -s "${_dbConnFile}" ]; then
@@ -102,11 +103,11 @@ function runDbQuery() {
     local _java="java"
     [ -d "${JAVA_HOME%/}" ] && _java="${JAVA_HOME%/}/bin/java"
     timeout ${_timeout}s ${_java} -Dgroovy.classpath="$(find "${_installDir%/}/system/org/postgresql/postgresql" -type f -name 'postgresql-42.*.jar' | tail -n1)" -jar "${_installDir%/}/system/org/codehaus/groovy/groovy-all/${_groovyAllVer}/groovy-all-${_groovyAllVer}.jar" \
-    "${_dbConnFile}" "${_storeProp}" "${_query}"
+        "${_dbConnFile}" "${_query}" "${_storeProp}"
 }
 
-function detectDirs() {    # Best effort. may not return accurate dir path
-    local __doc__="Populate PID and directory path global variables"
+function setGlobals() { # Best effort. may not return accurate dir path
+    local __doc__="Populate PID and directory path global variables etc."
     local _pid="${1:-"${_PID}"}"
     if [ -z "${_pid}" ]; then
         _pid="$(ps auxwww | grep -F 'org.sonatype.nexus.karaf.NexusMain' | grep -vw grep | awk '{print $2}' | tail -n1)"
@@ -121,6 +122,19 @@ function detectDirs() {    # Best effort. may not return accurate dir path
         _WORK_DIR="$(ps wwwp ${_pid} | sed -n -E '/org.sonatype.nexus.karaf.NexusMain/ s/.+-Dkaraf.data=([^ ]+) .+/\1/p' | head -n1)"
         [[ ! "${_WORK_DIR}" =~ ^/ ]] && _WORK_DIR="${_INSTALL_DIR%/}/${_WORK_DIR}"
         [ -d "${_WORK_DIR}" ] || return 1
+    fi
+    if [ ! -s "${_STORE_FILE}" ] && [ -z "${jdbcUrl}" ] && [ -n "${_pid}" ]; then
+        if [ -e "/proc/${_pid}/environ" ]; then
+            if grep -q 'NEXUS_DATASTORE_NEXUS_' "/proc/${_pid}/environ"; then
+                eval "$(cat "/proc/${_pid}/environ" | tr '\0' '\n' | grep -E '^NEXUS_DATASTORE_NEXUS_.+=')"
+                export username="${NEXUS_DATASTORE_NEXUS_USERNAME}" password="${NEXUS_DATASTORE_NEXUS_PASSWORD}" jdbcUrl="${NEXUS_DATASTORE_NEXUS_JDBCURL}"
+            elif grep -q 'JDBC_URL=' "/proc/${_pid}/environ"; then
+                eval "$(cat "/proc/${_pid}/environ" | tr '\0' '\n' | grep -E '^(JDBC_URL|DB_USER|DB_PWD)=')"
+                export username="${DB_USER}" password="${DB_PWD}" jdbcUrl="${JDBC_URL}"
+            fi
+        elif [ -s "${_WORK_DIR%/}/etc/fabric/nexus-store.properties" ] && grep -q -w jdbcUrl "${_WORK_DIR%/}/etc/fabric/nexus-store.properties"; then
+            _STORE_FILE="${_WORK_DIR%/}/etc/fabric/nexus-store.properties"
+        fi
     fi
 }
 
@@ -258,7 +272,7 @@ function _stopping() {
 
 main() {
     local _pfx="${1:-"script-$(date +"%Y%m%d%H%M%S")"}"
-    detectDirs "${_PID}"
+    setGlobals "${_PID}"
 
     local _outDir="${_OUT_DIR:-"${_WORK_DIR%/}/log/tasks"}"
     _OUT_DIR="${_outDir}"
@@ -270,13 +284,11 @@ main() {
         echo "Could not find work directory (_WORK_DIR)." >&2
         return 1
     fi
-    if [ -z "${_STORE_FILE}" ] && [ -d "${_WORK_DIR%/}" ]; then
-        _STORE_FILE="${_WORK_DIR%/}/etc/fabric/nexus-store.properties"
-    fi
-    genDbConnTest || return $?
+
+    genDbConnTest
     local _misc_start=$(date +%s)
-    miscChecks "${_PID}" &> "${_outDir%/}/${_pfx}900.log"
-    echo "[$(date +'%Y-%m-%d %H:%M:%S')] miscChecks completed ($(( $(date +%s) - ${_misc_start} ))s)" >&2
+    miscChecks "${_PID}" &>"${_outDir%/}/${_pfx}900.log"
+    echo "[$(date +'%Y-%m-%d %H:%M:%S')] miscChecks completed ($(($(date +%s) - ${_misc_start}))s)" >&2
     # NOTE: same infor as prometheus is in support zip
 
     if [ -z "${_LOG_FILE}" ]; then
@@ -305,30 +317,30 @@ if [ "$0" = "${BASH_SOURCE[0]}" ]; then
 
     while getopts "c:i:s:p:f:r:o:" opts; do
         case $opts in
-            c)
-                [ -n "$OPTARG" ] && _COUNT="$OPTARG"
-                ;;
-            i)
-                [ -n "$OPTARG" ] && _INTERVAL="$OPTARG"
-                ;;
-            s)
-                _STORE_FILE="$OPTARG"
-                ;;
-            f)
-                _LOG_FILE="$OPTARG"
-                ;;
-            r)
-                _REGEX="$OPTARG"
-                ;;
-            p)
-                [ -n "$OPTARG" ] && _PID="$OPTARG"
-                ;;
-            o)
-                [ -n "$OPTARG" ] && _OUT_DIR="$OPTARG"
-                ;;
-            *)
-                echo "$opts $OPTARG is not supported. Ignored." >&2
-                ;;
+        c)
+            [ -n "$OPTARG" ] && _COUNT="$OPTARG"
+            ;;
+        i)
+            [ -n "$OPTARG" ] && _INTERVAL="$OPTARG"
+            ;;
+        s)
+            _STORE_FILE="$OPTARG"
+            ;;
+        f)
+            _LOG_FILE="$OPTARG"
+            ;;
+        r)
+            _REGEX="$OPTARG"
+            ;;
+        p)
+            [ -n "$OPTARG" ] && _PID="$OPTARG"
+            ;;
+        o)
+            [ -n "$OPTARG" ] && _OUT_DIR="$OPTARG"
+            ;;
+        *)
+            echo "$opts $OPTARG is not supported. Ignored." >&2
+            ;;
         esac
     done
 
