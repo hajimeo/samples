@@ -8,6 +8,7 @@ import org.jline.terminal.Terminal;
 import org.jline.terminal.TerminalBuilder;
 
 import java.io.*;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Paths;
 import java.sql.*;
@@ -19,10 +20,13 @@ import java.util.*;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
+import static java.lang.String.valueOf;
+
 public class H2Console {
     static final private String H2_DEFAULT_OPTS = "DATABASE_TO_UPPER=FALSE;LOCK_MODE=0;DEFAULT_LOCK_TIMEOUT=600000";
     static final private String PROMPT = "=> ";
     static private String h2ExtraOpts = "";
+    static private String binaryField;
     static private Terminal terminal;
     static private History history;
     static private String historyPath;
@@ -82,6 +86,24 @@ public class H2Console {
         return columns;
     }
 
+    private static String bytesToStr(Object o) {
+        try {
+            if (o instanceof String) {
+                byte[] decodedBytes = Base64.getDecoder().decode(o.toString());
+                String decodedString = new String(decodedBytes);
+                return decodedString;
+            }
+
+            if (o instanceof byte[]) {
+                return new String((byte[]) o, StandardCharsets.UTF_8);
+            }
+        } catch (Exception e) {
+            log(e.getMessage(), isDebug);
+        }
+        log(valueOf(o.getClass()), isDebug);
+        return o.toString();
+    }
+
     // TODO: changing to List<?> breaks toJSON()
     private static int printRsAsJson(ResultSet rs, boolean isPaging) throws SQLException {
         List<String> columns = getColumns(rs);
@@ -106,7 +128,12 @@ public class H2Console {
 
             try {
                 for (String label : columns) {
-                    obj.put(label, rs.getObject(label));
+                    Object o = rs.getObject(label);
+                    if (!binaryField.isEmpty() && label.equalsIgnoreCase(binaryField)) {
+                        obj.put(label, bytesToStr(o));
+                    } else {
+                        obj.put(label, o);
+                    }
                 }
                 terminal.writer().print(obj.toString());
             } catch (Exception e) {
@@ -241,6 +268,9 @@ public class H2Console {
                 }
                 StringBuilder header = new StringBuilder();
                 for (String label : columns) {
+                    if (!maxLen.containsKey(label)) {
+                        continue;
+                    }
                     header.append(String.format("%-" + (maxLen.get(label) + 1) + "s", label.toUpperCase()));
                 }
                 terminal.writer().println(header);
@@ -545,6 +575,8 @@ public class H2Console {
         log("lastRid      = " + lastRid, isDebug);
         h2ExtraOpts = System.getProperty("h2ExtraOpts", "");
         log("lastRid      = " + lastRid, isDebug);
+        binaryField = System.getProperty("binaryField", "");
+        log("binaryField  = " + binaryField, isDebug);
 
         String envH2DBUser = System.getenv("_H2DB_USER");
         if (envH2DBUser != null) {
