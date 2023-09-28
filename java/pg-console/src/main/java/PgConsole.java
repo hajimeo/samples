@@ -35,6 +35,8 @@ public class PgConsole {
     static private String dbPwd = "";
     private static Connection conn;
     private static Statement stat;
+    private static Hashtable<String, String> columnsWithType;
+    private static List<String> columns;
     private static final String sep = System.getProperty("file.separator");
 
     private PgConsole() {
@@ -66,24 +68,22 @@ public class PgConsole {
         }
     }
 
-    private static Hashtable<String, String> getColumnsWithType(ResultSet rs) throws SQLException {
+    private static List<String> setColumnsWithType(ResultSet rs) throws SQLException {
         ResultSetMetaData meta = rs.getMetaData();
-        //int longestLabel = 0;
         int colLen = meta.getColumnCount();
-        Hashtable<String, String> columns = new Hashtable<>();
+        List<String> columns = new ArrayList<>();
+        columnsWithType = new Hashtable<>();
         for (int i = 1; i <= colLen; i++) {
-            String s = meta.getColumnName(i);
+            String s = meta.getColumnLabel(i);
             String t = meta.getColumnTypeName(i).toLowerCase();
-            columns.put(s, t);
+            log("column: " + s + "(" + t + ")", isDebug);
+            columns.add(s);
+            columnsWithType.put(s, t);
         }
-        log("Columns: " + columns, isDebug);
         return columns;
     }
 
     private static int printRsAsJson(ResultSet rs) throws SQLException {
-        // TODO: changing to List<?> breaks toJSON()
-        List<String> columns = (List<String>) getColumnsWithType(rs).keys();
-
         terminal.writer().print("\n[");
         int rowCount = 0;
         while (rs.next()) {
@@ -112,27 +112,15 @@ public class PgConsole {
         return rowCount;
     }
 
-    private static List<String> dictKeys(Hashtable<String, String> dict) {
-        List<String> keys = new ArrayList<>();
-        Enumeration<String> enumeration = dict.keys();
-        for (Map.Entry<String, String> entry : dict.entrySet()) {
-            keys.add(entry.getKey());
-        }
-        return keys;
-    }
-
     private static String fixedWidth(String value, String label, Hashtable<String, Integer> maxLen, Boolean isNumType) {
         if (isNumType) {
-            return String.format("%-" + (maxLen.get(label) + 3 + 2) + "s", value + ",");
+            return String.format("%-" + (maxLen.get(label) + 3) + "s", value + ",");
         }
         return String.format("%-" + (maxLen.get(label) + 3) + "s", ("\"" + value.replace("\"", "\\\"") + "\","));
     }
 
     private static int printRsAsFixedWidth(ResultSet rs) throws SQLException {
-        Hashtable<String, String> columnsWithType = getColumnsWithType(rs);
-        List<String> columns = dictKeys(columnsWithType);
-
-        List<Hashtable<String, String>> resultUpto100 = new ArrayList<>();
+        List<Hashtable<String, String>> resultUpToNth = new ArrayList<>();
         Hashtable<String, Integer> maxLen = new Hashtable<>();
         int rowCount = 0;
         while (rs.next()) {
@@ -143,7 +131,7 @@ public class PgConsole {
                 if (obj != null) {
                     value = obj.toString();
                 }
-                log(label + " = " + value, isDebug);
+                //log(label + " = " + value, isDebug);
                 if (!maxLen.containsKey(label)) {
                     maxLen.put(label, label.length());
                 }
@@ -152,10 +140,10 @@ public class PgConsole {
                 }
                 row.put(label, value);
             }
-            resultUpto100.add(row);
-            // sample only first 100
+            resultUpToNth.add(row);
+            // sample only first N
             rowCount++;
-            if (rowCount >= 100) {
+            if (rowCount >= 1000) {
                 break;
             }
         }
@@ -176,7 +164,7 @@ public class PgConsole {
         terminal.writer().println(hr);
         terminal.flush();*/
 
-        for (Hashtable<String, String> row : resultUpto100) {
+        for (Hashtable<String, String> row : resultUpToNth) {
             StringBuilder line = new StringBuilder();
             for (String label : columns) {
                 line.append(fixedWidth(row.get(label).toString(), label, maxLen, numTypes.contains(columnsWithType.get(label))));
@@ -227,6 +215,7 @@ public class PgConsole {
             int lastRows = 0;
             if (stat.execute(query)) {
                 rs = stat.getResultSet();
+                columns = setColumnsWithType(rs);
                 if (outputFormat.equalsIgnoreCase("json")) {
                     lastRows = printRsAsJson(rs);
                 } else {
@@ -243,7 +232,7 @@ public class PgConsole {
 
     private static void execute(String query) {
         // NOTE: this method is not for large result set
-        log(query, isDebug);
+        log("execute: " + query, isDebug);
         try {
             ResultSet rs;
             if (stat.execute(query)) {
@@ -317,7 +306,7 @@ public class PgConsole {
             return true;
         }
 
-        log(input, isDebug);
+        log("input: " + input, isDebug);
         if (input.toLowerCase().startsWith("set autocommit true")) {
             conn.setAutoCommit(true);
             System.err.println("OK.");
@@ -383,7 +372,6 @@ public class PgConsole {
         while (input != null && !input.startsWith("exit")) {
             try {
                 if (!isSpecialQueryAndProcess(input)) {
-                    log("execQueries: " + input, isDebug);
                     execQueries(input);
                 }
                 input = reader.readLine(PROMPT);
