@@ -9,17 +9,18 @@ from http.server import BaseHTTPRequestHandler
 
 listen_host = "127.0.0.1"
 listen_port = 9999
-delay_sec = 1
+delay_sec = 3
 
 
 def write_with_delay(s, fp=None, chunk_size=32768, sec=1, repeat=100, message=""):
     if fp:
         while True:
+            # Always wait first
+            if sec > 0:
+                time.sleep(float(sec))
             chunk = fp.read(chunk_size)
             if chunk:
                 s.wfile.write(chunk)
-                if sec > 0:
-                    time.sleep(float(sec))
             else:
                 break
     else:
@@ -39,6 +40,7 @@ class SlowserverRequestHandler(BaseHTTPRequestHandler):
                 if mtype:
                     self.send_header("Content-type", mtype)
                 self.end_headers()
+                # If initial dalay is needed, add sleep in here
                 write_with_delay(self, fp=fp, sec=delay_sec)
         except IOError:
             self.send_response(404)
@@ -46,15 +48,15 @@ class SlowserverRequestHandler(BaseHTTPRequestHandler):
 
 
 if __name__ == '__main__':
-    if len(sys.argv) > 1:
+    if len(sys.argv) > 1 and len(sys.argv[1]) > 0:
         listen_host = sys.argv[1]
-    if len(sys.argv) > 2:
+    if len(sys.argv) > 2 and len(sys.argv[2]) > 0:
         listen_port = int(sys.argv[2])
-    if len(sys.argv) > 3:
+    if len(sys.argv) > 3 and len(sys.argv[3]) > 0:
         delay_sec = int(sys.argv[3])
 
     try:
-        print(f"Starting on {listen_host}:{listen_port} ...")
+        print(f"Starting on {listen_host}:{listen_port} with delay_sec={delay_sec} ...")
         server = HTTPServer((listen_host, listen_port), SlowserverRequestHandler)
         server.serve_forever()
     except KeyboardInterrupt:
