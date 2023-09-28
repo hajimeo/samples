@@ -25,7 +25,7 @@ import static java.lang.String.valueOf;
 public class H2Console {
     static final private String H2_DEFAULT_OPTS = "DATABASE_TO_UPPER=FALSE;LOCK_MODE=0;DEFAULT_LOCK_TIMEOUT=600000";
     static final private String PROMPT = "=> ";
-    static private String h2ExtraOpts = "";
+    static private String h2Opts = "";
     static private String binaryField;
     static private Terminal terminal;
     static private History history;
@@ -573,7 +573,7 @@ public class H2Console {
         log("ridName      = " + ridName, isDebug);
         lastRid = System.getProperty("lastRid", "0");
         log("lastRid      = " + lastRid, isDebug);
-        h2ExtraOpts = System.getProperty("h2ExtraOpts", "");
+        h2Opts = System.getProperty("h2Opts", "");
         log("lastRid      = " + lastRid, isDebug);
         binaryField = System.getProperty("binaryField", "");
         log("binaryField  = " + binaryField, isDebug);
@@ -598,14 +598,17 @@ public class H2Console {
 
         String path = args[0];
         // As the default option doesn't have MV_STORE to support Repo Manager's H2, automatically add MV_STORE=FALSE
-        if (h2ExtraOpts.isEmpty() && path.endsWith(".h2.db")) {
-            h2ExtraOpts = "MV_STORE=FALSE";
-            if (path.endsWith("ods.h2.db")) {
-                h2ExtraOpts = h2ExtraOpts + ";SCHEMA=insight_brain_ods";
-            }
-            // TODO: this is not good logic but assuming ".h2.db" is for IQ
-            if (dbUser.isEmpty()) {
-                dbUser = "sa";
+        if (h2Opts.isEmpty()) {
+            h2Opts = H2_DEFAULT_OPTS;
+            if (path.endsWith(".h2.db")) {
+                h2Opts = h2Opts + ";MV_STORE=FALSE";
+                if (path.endsWith("ods.h2.db")) {
+                    h2Opts = h2Opts + ";SCHEMA=insight_brain_ods";
+                }
+                // TODO: this is not good logic but assuming ".h2.db" is for IQ
+                if (dbUser.isEmpty()) {
+                    dbUser = "sa";
+                }
             }
         }
         if (new File(path).isFile()) {
@@ -613,14 +616,11 @@ public class H2Console {
             path = new File(path).getAbsolutePath();
         }
         path = path.replaceAll("\\.(h2|mv)\\.db", "");
-        String h2Opt = H2_DEFAULT_OPTS;
-        if (!h2ExtraOpts.isEmpty()) {
-            h2Opt = h2Opt + ";" + h2ExtraOpts;
-        }
         try {
-            System.err.println("# jdbc:h2:" + path + ";" + h2Opt);
+            String url = "jdbc:h2:" + path.replaceAll(";\\s*$", "") + ";" + h2Opts.replaceAll("^;", "");
+            System.err.println("# " + url);
             org.h2.Driver.load();
-            conn = DriverManager.getConnection("jdbc:h2:" + path + ";" + h2Opt, dbUser, dbPwd);
+            conn = DriverManager.getConnection(url, dbUser, dbPwd);
             // Making sure auto commit is on as default
             conn.setAutoCommit(true);
             stat = conn.createStatement();
