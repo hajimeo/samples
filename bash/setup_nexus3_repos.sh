@@ -1407,7 +1407,7 @@ function f_apiS() {
             _log "ERROR" "No session id in '${_c}'"
             return 1
         fi
-        _sess_key="NXJWT"
+        _sess_key="NXJWT"   # Seems this was no longer used
     fi
     local _H_sess="${_sess_key}: ${_sess}"
     local _H_anti="NX-ANTI-CSRF-TOKEN: test"
