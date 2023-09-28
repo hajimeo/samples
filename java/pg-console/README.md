@@ -31,7 +31,7 @@ Connection testing:
 ```
 for i in {1..3}; do time echo "SELECT 1 as c1" | java -jar ./pg-console.jar "$JDBC_URL" "$DB_USER" "$DB_PWD" 2>&1 | grep "Elapsed"; done
 ```
-Batch processing
+Batch processing:
 ```
 echo "SQL SELECT statement" | java -jar ./pg-console.jar <jdbcUrl> <dbUser> <dbPwd>
 ```

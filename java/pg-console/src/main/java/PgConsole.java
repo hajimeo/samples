@@ -1,3 +1,7 @@
+/**
+ * TODO: If easy to implement, keep reading the stdin until ";"
+ */
+
 import org.json.JSONObject;
 import org.jline.reader.*;
 import org.jline.reader.impl.DefaultHighlighter;
@@ -21,17 +25,17 @@ import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 public class PgConsole {
+    static private Boolean isDebug;
     static final private String PROMPT = "=> ";
+    static final private List<String> numTypes = Arrays.asList("smallint", "integer", "int", "int4", "bigint", "decimal", "numeric", "real", "smallserial", "serial", "bigserial");
+    static private String outputFormat = "csv";    // or json
     static private Terminal terminal;
-    static private History history;
     static private String historyPath;
-    static private int lastRows = 0;
     static private String dbUser = "";
     static private String dbPwd = "";
-    static private Boolean isDebug;
     private static Connection conn;
     private static Statement stat;
-    private static String sep = System.getProperty("file.separator");
+    private static final String sep = System.getProperty("file.separator");
 
     private PgConsole() {
     }
@@ -62,22 +66,23 @@ public class PgConsole {
         }
     }
 
-    private static List<String> getColumns(ResultSet rs) throws SQLException {
+    private static Hashtable<String, String> getColumnsWithType(ResultSet rs) throws SQLException {
         ResultSetMetaData meta = rs.getMetaData();
         //int longestLabel = 0;
         int colLen = meta.getColumnCount();
-        List<String> columns = new ArrayList();
-        for (int i = 0; i < colLen; i++) {
-            String s = meta.getColumnLabel(i + 1);
-            columns.add(s);
+        Hashtable<String, String> columns = new Hashtable<>();
+        for (int i = 1; i <= colLen; i++) {
+            String s = meta.getColumnName(i);
+            String t = meta.getColumnTypeName(i).toLowerCase();
+            columns.put(s, t);
         }
         log("Columns: " + columns, isDebug);
         return columns;
     }
 
-    // TODO: changing to List<?> breaks toJSON()
     private static int printRsAsJson(ResultSet rs) throws SQLException {
-        List<String> columns = getColumns(rs);
+        // TODO: changing to List<?> breaks toJSON()
+        List<String> columns = (List<String>) getColumnsWithType(rs).keys();
 
         terminal.writer().print("\n[");
         int rowCount = 0;
@@ -104,6 +109,91 @@ public class PgConsole {
 
         terminal.writer().println("\n]");
         terminal.flush();
+        return rowCount;
+    }
+
+    private static List<String> dictKeys(Hashtable<String, String> dict) {
+        List<String> keys = new ArrayList<>();
+        Enumeration<String> enumeration = dict.keys();
+        for (Map.Entry<String, String> entry : dict.entrySet()) {
+            keys.add(entry.getKey());
+        }
+        return keys;
+    }
+
+    private static String fixedWidth(String value, String label, Hashtable<String, Integer> maxLen, Boolean isNumType) {
+        if (isNumType) {
+            return String.format("%-" + (maxLen.get(label) + 3 + 2) + "s", value + ",");
+        }
+        return String.format("%-" + (maxLen.get(label) + 3) + "s", ("\"" + value.replace("\"", "\\\"") + "\","));
+    }
+
+    private static int printRsAsFixedWidth(ResultSet rs) throws SQLException {
+        Hashtable<String, String> columnsWithType = getColumnsWithType(rs);
+        List<String> columns = dictKeys(columnsWithType);
+
+        List<Hashtable<String, String>> resultUpto100 = new ArrayList<>();
+        Hashtable<String, Integer> maxLen = new Hashtable<>();
+        int rowCount = 0;
+        while (rs.next()) {
+            Hashtable<String, String> row = new Hashtable<>();
+            for (String label : columns) {
+                Object obj = rs.getObject(label);
+                String value = "null";
+                if (obj != null) {
+                    value = obj.toString();
+                }
+                log(label + " = " + value, isDebug);
+                if (!maxLen.containsKey(label)) {
+                    maxLen.put(label, label.length());
+                }
+                if (maxLen.get(label) < value.length()) {
+                    maxLen.put(label, value.length());
+                }
+                row.put(label, value);
+            }
+            resultUpto100.add(row);
+            // sample only first 100
+            rowCount++;
+            if (rowCount >= 100) {
+                break;
+            }
+        }
+
+        StringBuilder header = new StringBuilder();
+        for (String label : columns) {
+            if (!maxLen.containsKey(label)) {
+                continue;
+            }
+            header.append(fixedWidth(label, label, maxLen, true));
+        }
+        terminal.writer().println(header.toString().replaceAll(",\\s*$", ""));
+        terminal.flush();
+        /*StringBuilder hr = new StringBuilder();
+        for (String label : columns) {
+            hr.append(String.format("%" + (maxLen.get(label) + 2) + "s", " ").replace(" ", "-")).append(" ");
+        }
+        terminal.writer().println(hr);
+        terminal.flush();*/
+
+        for (Hashtable<String, String> row : resultUpto100) {
+            StringBuilder line = new StringBuilder();
+            for (String label : columns) {
+                line.append(fixedWidth(row.get(label).toString(), label, maxLen, numTypes.contains(columnsWithType.get(label))));
+            }
+            terminal.writer().println(line.toString().replaceAll(",\\s*$", ""));
+            terminal.flush();
+        }
+
+        while (rs.next()) {
+            StringBuilder line = new StringBuilder();
+            for (String label : columns) {
+                line.append(fixedWidth(rs.getString(label), label, maxLen, numTypes.contains(columnsWithType.get(label))));
+            }
+            terminal.writer().println(line.toString().replaceAll(",\\s*$", ""));
+            terminal.flush();
+            rowCount++;
+        }
         return rowCount;
     }
 
@@ -134,9 +224,14 @@ public class PgConsole {
     private static int execQuery(String query) {
         try {
             ResultSet rs;
+            int lastRows = 0;
             if (stat.execute(query)) {
                 rs = stat.getResultSet();
-                lastRows = printRsAsJson(rs);
+                if (outputFormat.equalsIgnoreCase("json")) {
+                    lastRows = printRsAsJson(rs);
+                } else {
+                    lastRows = printRsAsFixedWidth(rs);
+                }
             } else {
                 lastRows = stat.getUpdateCount();
             }
@@ -153,42 +248,7 @@ public class PgConsole {
             ResultSet rs;
             if (stat.execute(query)) {
                 rs = stat.getResultSet();
-                List<String> columns = getColumns(rs);
-                List<Hashtable<String, String>> result = new ArrayList();
-                Hashtable<String, Integer> maxLen = new Hashtable<>();
-                while (rs.next()) {
-                    Hashtable<String, String> row = new Hashtable<>();
-                    for (String label : columns) {
-                        Object obj = rs.getObject(label);
-                        String value = "null";
-                        if (obj != null) {
-                            value = obj.toString();
-                        }
-                        log(label + " = " + value, isDebug);
-                        if (!maxLen.containsKey(label)) {
-                            maxLen.put(label, label.length());
-                        }
-                        if (maxLen.get(label) < value.length()) {
-                            maxLen.put(label, value.length());
-                        }
-                        row.put(label, value);
-                    }
-                    result.add(row);
-                }
-                StringBuilder header = new StringBuilder();
-                for (String label : columns) {
-                    header.append(String.format("%-" + (maxLen.get(label) + 1) + "s", label.toUpperCase()));
-                }
-                terminal.writer().println(header);
-                terminal.flush();
-                for (Hashtable<String, String> row : result) {
-                    StringBuilder line = new StringBuilder();
-                    for (String label : columns) {
-                        line.append(String.format("%-" + (maxLen.get(label) + 1) + "s", row.get(label)));
-                    }
-                    terminal.writer().println(line);
-                    terminal.flush();
-                }
+                printRsAsFixedWidth(rs);
             }
         } catch (PSQLException e) {
             System.out.println();
@@ -245,6 +305,7 @@ public class PgConsole {
         if (input.trim().startsWith("--")) {
             return true;
         }
+
         if (input.toLowerCase().startsWith("set debug true")) {
             isDebug = true;
             System.err.println("OK. isDebug=" + isDebug);
@@ -255,15 +316,30 @@ public class PgConsole {
             System.err.println("OK. isDebug=" + isDebug);
             return true;
         }
+
+        log(input, isDebug);
         if (input.toLowerCase().startsWith("set autocommit true")) {
-            log(input, isDebug);
             conn.setAutoCommit(true);
             System.err.println("OK.");
             return true;
         }
         if (input.toLowerCase().startsWith("set autocommit false")) {
-            log(input, isDebug);
             conn.setAutoCommit(false);
+            System.err.println("OK.");
+            return true;
+        }
+        if (input.toLowerCase().startsWith("set output text")) {
+            outputFormat = "text";
+            System.err.println("OK.");
+            return true;
+        }
+        if (input.toLowerCase().startsWith("set output json")) {
+            outputFormat = "json";
+            System.err.println("OK.");
+            return true;
+        }
+        if (input.toLowerCase().startsWith("set output csv")) {
+            outputFormat = "csv";
             System.err.println("OK.");
             return true;
         }
@@ -419,12 +495,12 @@ public class PgConsole {
                 .system(true)
                 .dumb(true)
                 .build();
-        history = new DefaultHistory();
-        historyPath = System.getProperty("user.home") + sep + ".pg-console_history";
+        History history = new DefaultHistory();
+        historyPath = System.getProperty("user.home").replaceAll(sep + "$", "") + sep + ".pg-console_history";
         Path path = Paths.get(historyPath);
         if (!Files.isWritable(path)) {
-            System.err.println("# user.home is not writable for history file. Using java.io.tmpdir.");
-            historyPath = System.getProperty("java.io.tmpdir") + sep + ".pg-console_history";
+            System.err.println("# " + System.getProperty("user.home") + " is not writable for history file. Using java.io.tmpdir.");
+            historyPath = System.getProperty("java.io.tmpdir").replaceAll(sep + "$", "") + sep + ".pg-console_history";
         }
         System.err.println("# history path: " + historyPath);
         Set<String> words = genAutoCompWords(historyPath);
@@ -470,13 +546,14 @@ public class PgConsole {
         try {
             System.err.println("# " + jdbcUrl);
             conn = DriverManager.getConnection(jdbcUrl, dbUser, dbPwd);
-            // Making sure auto commit is on as default
-            conn.setAutoCommit(true);
+            // https://stackoverflow.com/questions/28217044/process-a-large-amount-of-data-from-postgresql-with-java
+            conn.setAutoCommit(false);
             stat = conn.createStatement();
             stat.setFetchSize(1000);
 
+            LineReader lr = setupReader();
             System.err.println("# Type 'exit' or Ctrl+D to exit. Ctrl+C to cancel current query");
-            readLineLoop(setupReader());
+            readLineLoop(lr);
         } catch (Exception e) {
             e.printStackTrace();
         } finally {
