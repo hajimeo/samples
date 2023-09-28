@@ -191,11 +191,42 @@ def request2table(filepath, tablename="t_request", max_file_size=(1024 * 1024 * 
     if bool(time_until_regex):
         line_until = ju._linenumber(log_path, "\d\d/.../\d\d\d\d:" + time_until_regex)
     (col_names, line_matching) = _gen_regex_for_request_logs(log_path)
-    return ju.logs2table(log_path, tablename=tablename, line_beginning="^.",
+    rtn = ju.logs2table(log_path, tablename=tablename, line_beginning="^.",
                          col_names=col_names, line_matching=line_matching,
                          max_file_size=max_file_size,
                          line_from=line_from, line_until=line_until)
+    if not bool(rtn):
+        return False
+    req2table_post(tablename=tablename, add_startTime=True)
+    return True
 
+
+def req2table_post(tablename="t_request", add_startTime=True, datetime_col="date", elapsed_col="elapsedTime"):
+    if ju.exists("t_request", "headerContentLength"):
+        try:
+            ju._info("Changing '-' in headerContentLength to 0 ...")
+            _ = ju.execute(sql=f"UPDATE {tablename} SET headerContentLength = 0 WHERE headerContentLength = '-'")
+        except:
+            pass
+    if add_startTime:
+        try:
+            _ = ju.execute(sql=f"ALTER TABLE {tablename} ADD COLUMN startTime timestamp DEFAULT NULL")
+        except Exception as e:
+            ju._err(str(e))
+        try:
+            _ = ju.execute(sql=f"ALTER TABLE {tablename} ADD COLUMN endTime timestamp DEFAULT NULL")
+        except Exception as e:
+            ju._err(str(e))
+        try:
+            ju._info(f"Populating endTime from '{datetime_col}' column ...")
+            _ = ju.execute(sql=f"UPDATE {tablename} SET endTime = UDF_STRFTIME('%Y-%m-%d %H:%M:%S', `{datetime_col}`)")
+        except Exception as e:
+            ju._err(str(e))
+        try:
+            ju._info(f"Populating startTime from '{datetime_col}' and '{elapsed_col}' columns ...")
+            _ = ju.execute(sql=f"UPDATE {tablename} SET startTime = UDF_STARTED_TIME(`{datetime_col}`, {elapsed_col})")
+        except Exception as e:
+            ju._err(str(e))
 
 def applog2table(filepath, tablename="t_applog", max_file_size=(1024 * 1024 * 100), time_from_regex=None,
                  time_until_regex=None):
@@ -309,30 +340,9 @@ def etl(path="", log_suffix=".log", dist="./_filtered", max_file_size=(1024 * 10
             _ = request2table("request"+log_suffix)
 
         if ju.exists("t_request"):
-            try:
-                _ = ju.execute(sql="UPDATE t_request SET headerContentLength = 0 WHERE headerContentLength = '-'")
-                isHeaderContentLength = True
-            except:
-                isHeaderContentLength = False
-                # non NXRM3 request.log wouldn't have headerContentLength
-                pass
-            if add_startTime:
-                try:
-                    _ = ju.execute(sql="ALTER TABLE t_request ADD COLUMN startTime timestamp DEFAULT NULL")
-                except Exception as e:
-                    ju._err(str(e))
-                try:
-                    _ = ju.execute(sql="ALTER TABLE t_request ADD COLUMN endTime timestamp DEFAULT NULL")
-                except Exception as e:
-                    ju._err(str(e))
-                try:
-                    _ = ju.execute(sql="UPDATE t_request SET endTime = UDF_STRFTIME('%Y-%m-%d %H:%M:%S', `date`)")
-                except Exception as e:
-                    ju._err(str(e))
-                try:
-                    _ = ju.execute(sql="UPDATE t_request SET startTime = UDF_STARTED_TIME(`date`, elapsedTime)")
-                except Exception as e:
-                    ju._err(str(e))
+            # non NXRM3 request.log wouldn't have headerContentLength
+            isHeaderContentLength = ju.exists("t_request", "headerContentLength")
+            req2table_post(tablename="t_request", add_startTime=add_startTime)
 
         # Loading application log file(s) into database.
         nxrm_logs = applog2table("nexus" + log_suffix, "t_nxrm_logs")

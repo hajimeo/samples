@@ -66,7 +66,7 @@ from time import time
 from datetime import datetime
 from dateutil import parser
 # At this moment, many pandas functions do not work with modin.
-#import modin.pandas as pd
+# import modin.pandas as pd
 import pandas as pd
 from sqlalchemy import create_engine
 import matplotlib.pyplot as plt
@@ -86,7 +86,6 @@ try:
     from urllib.request import urlopen, Request
 except ImportError:
     from urllib2 import urlopen, Request
-
 
 _DEBUG = False
 _LOAD_UDFS = True
@@ -319,6 +318,10 @@ def _info(message):
     _log("INFO", message)
 
 
+def _warn(message):
+    _log("WARN", message)
+
+
 def _err(message):
     _log("ERROR", message)
 
@@ -420,7 +423,7 @@ def json2df(filename, tablename=None, conn=None, chunksize=1000, if_exists='repl
         if bool(max_file_size) and max_file_size >= 0:
             fs = _get_filesize(file_path)
             if bool(line_from) is False and fs >= max_file_size:
-                _info("WARN: File %s (%d MB) is too large (max_file_size=%d). Use 'line_from'." % (
+                _warn("File %s (%d MB) is too large (max_file_size=%d). Use 'line_from'." % (
                     file_path, int(fs / 1024 / 1024), max_file_size))
                 continue
             if fs < 128:
@@ -1235,13 +1238,13 @@ def _autocomp_inject(tablename=None):
             cols = describe(t).name.to_list()
             for c in cols:
                 f.write("%s.%s\n" % (t, c))
-            #tbl_cls = _gen_class(t, cols)
-            #try:
+            # tbl_cls = _gen_class(t, cols)
+            # try:
             #    get_ipython().user_global_ns[t] = tbl_cls
             #    globals()[t] = tbl_cls
             #    locals()[t] = tbl_cls
             #    _info("added %s with %s" % (t, str(globals()[t])))
-            #except:
+            # except:
             #    _debug("get_ipython().user_global_ns failed")
             #    pass
 
@@ -1609,8 +1612,8 @@ def describe(tablename=None, colname=None, conn=None):
 desc = describe
 
 
-def exists(tablename, conn=None):
-    return len(describe(tablename=tablename, conn=conn)) > 0
+def exists(tablename, colname=None, conn=None):
+    return len(describe(tablename=tablename, colname=colname, conn=conn)) > 0
 
 
 def show_create_table(tablenames=None, like=None, conn=None):
@@ -2109,7 +2112,7 @@ def logs2table(filename, tablename=None, conn=None,
         if bool(max_file_size) and max_file_size >= 0:
             fs = _get_filesize(f)
             if bool(line_from) is False and fs >= max_file_size:
-                _info("WARN: File %s (%d MB) is too large (max_file_size=%d).." % (
+                _warn("File %s (%d MB) is too large (max_file_size=%d).." % (
                     str(f), int(fs / 1024 / 1024), max_file_size))
                 continue
             if fs < 128:
@@ -2145,7 +2148,7 @@ def logs2table(filename, tablename=None, conn=None,
 
 def _log2tables_inner(tuples, conn, tablename, col_names, dfs):
     if bool(tuples) is False or len(tuples) == 0:
-        _info("WARN: got empty tuple. Ignoring ...")
+        _warn("got empty tuple. Ignoring ...")
         return 0
     _debug(("tuples len:%d" % len(tuples)))
     if bool(conn):
@@ -2234,7 +2237,7 @@ def csv2df(filename, conn=None, tablename=None, chunksize=1000, header=0, if_exi
     if bool(max_file_size) and max_file_size >= 0:
         fs = _get_filesize(file_path)
         if fs >= max_file_size:
-            _info("WARN: File %s (%d MB) is too large (max_file_size=%d).." % (
+            _warn("File %s (%d MB) is too large (max_file_size=%d).." % (
                 file_path, int(fs / 1024 / 1024), max_file_size))
             return None
         if fs < 128:
