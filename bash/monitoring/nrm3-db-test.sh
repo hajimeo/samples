@@ -132,7 +132,7 @@ main() {
         runDbQuery "SELECT distinct REGEXP_REPLACE(recipe_name, '-.+', '') AS fmt FROM repository" 2>/dev/null | while read -r _fmt; do
             if [[ "${_fmt}" =~ \[fmt:([^\]]+)\] ]]; then
                 local _format="${BASH_REMATCH[1]}"
-                echo "SELECT '${_format}' as format, r.name as repo_name, count(*) as count, SUM(ab.blob_size) as bytes FROM ${_format}_asset_blob ab INNER JOIN ${_format}_asset a USING (asset_blob_id) INNER JOIN ${_format}_content_repository cr USING (repository_id) INNER JOIN repository r on cr.config_repository_id = r.id GROUP BY 1, 2 UNION SELECT '${_format}' as format, '(soft-deleting)' as repo_name, count(*) as count, SUM(ab.blob_size) as bytes FROM ${_format}_asset_blob ab LEFT JOIN ${_format}_asset a USING (asset_blob_id) WHERE a.asset_blob_id IS NULL GROUP BY 1, 2;"
+                echo "SELECT '${_format}' as format, r.name as repo_name, count(*) as count, SUM(ab.blob_size) as bytes FROM ${_format}_asset_blob ab INNER JOIN ${_format}_asset a USING (asset_blob_id) INNER JOIN ${_format}_content_repository cr USING (repository_id) INNER JOIN repository r on cr.config_repository_id = r.id GROUP BY 1, 2 UNION ALL SELECT '${_format}' as format, '(soft-deleting)' as repo_name, count(*) as count, SUM(ab.blob_size) as bytes FROM ${_format}_asset_blob ab LEFT JOIN ${_format}_asset a USING (asset_blob_id) WHERE a.asset_blob_id IS NULL GROUP BY 1, 2;"
             fi
         done >/tmp/.queries.sql
         if [ -s /tmp/.queries.sql ]; then
