@@ -29,7 +29,7 @@ import java.time.Instant
 def elapse(Instant start, String word) {
     Instant end = Instant.now()
     Duration d = Duration.between(start, end)
-    java.lang.System.err.println("# Elapsed ${d}: ${word}")
+    System.err.println("# Elapsed ${d}${word.take(200)}")
 }
 
 def p = new Properties()
@@ -46,14 +46,16 @@ dbP.setProperty("user", p.username)
 dbP.setProperty("password", p.password)
 def start = Instant.now()
 def conn = driver.connect(p.jdbcUrl, dbP)
-elapse(start, "connect")
+elapse(start, " - connect")
 def sql = new Sql(conn)
 try {
     def queries = query.split(";")
     queries.each { q ->
+        q = q.trim()
+        System.err.println("# Querying: ${q.take(100)} ...")
         start = Instant.now()
         sql.eachRow(q) { println(it) }
-        elapse(start, q)
+        elapse(start, "")
     }
 } finally {
     sql.close()
@@ -124,19 +126,22 @@ main() {
         return 1
     fi
 
-    #
     if [ -z "${query}" ]; then
         runDbQuery "SELECT version()"
         # check the estimate count and size
         runDbQuery "SELECT distinct REGEXP_REPLACE(recipe_name, '-.+', '') AS fmt FROM repository" 2>/dev/null | while read -r _fmt; do
             if [[ "${_fmt}" =~ \[fmt:([^\]]+)\] ]]; then
                 local _format="${BASH_REMATCH[1]}"
-                local _sql="SELECT r.name as repo_name, count(*) as count, SUM(ab.blob_size) as bytes FROM ${_format}_asset_blob ab INNER JOIN ${_format}_asset a USING (asset_blob_id) INNER JOIN ${_format}_content_repository cr USING (repository_id) INNER JOIN repository r on cr.config_repository_id = r.id GROUP BY 1"
-                runDbQuery "${_sql}"
+                echo "SELECT '${_format}' as format, r.name as repo_name, count(*) as count, SUM(ab.blob_size) as bytes FROM ${_format}_asset_blob ab INNER JOIN ${_format}_asset a USING (asset_blob_id) INNER JOIN ${_format}_content_repository cr USING (repository_id) INNER JOIN repository r on cr.config_repository_id = r.id GROUP BY 1, 2 UNION SELECT '${_format}' as format, '(soft-deleting)' as repo_name, count(*) as count, SUM(ab.blob_size) as bytes FROM ${_format}_asset_blob ab LEFT JOIN ${_format}_asset a USING (asset_blob_id) WHERE a.asset_blob_id IS NULL GROUP BY 1, 2;"
             fi
-        done
-    else
-        runDbQuery "${query}"
+        done >/tmp/.queries.sql
+        if [ -s /tmp/.queries.sql ]; then
+            echo "# format, repo_name, count, bytes"
+            query="$(cat /tmp/.queries.sql)"
+        fi
+    fi
+    if [ -n "${query%;}" ]; then
+        runDbQuery "${query%;}"
     fi
 }
 
