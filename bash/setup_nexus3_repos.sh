@@ -108,7 +108,7 @@ _RESP_FILE=""
 
 ### Nexus installation functions ##############################################################################
 # To install 1st/2nd instance: _NEXUS_ENABLE_HA=Y f_install_nexus3 "" "nxrmha"
-# To upgrade (from ${_dirpath}/): tar -xvf $HOME/.nexus_executable_cache/nexus-3.58.1-02-mac.tgz
+# To upgrade (from ${_dirpath}/): tar -xvf $HOME/.nexus_executable_cache/nexus-3.61.0-02-mac.tgz
 function f_install_nexus3() {
     local __doc__="Install specific NXRM3 version"
     local _ver="${1:-"${r_NEXUS_VERSION}"}"     # 'latest'
@@ -186,6 +186,7 @@ EOF
     if [ "${_port}" != "8081" ]; then
         echo "May need to execute 'export _NEXUS_URL=\"http://localhost:${_port}/\"'"
     fi
+
     if _isYes "${_starting}"; then
         echo "Starting with: ${_dirpath%/}/nexus-${_ver}/bin/nexus start"; sleep 3
         eval "${_dirpath%/}/nexus-${_ver}/bin/nexus start"
@@ -297,7 +298,8 @@ function _prepare_install() {
     fi
     if [ ! -s "${_tgz}" ]; then
         echo "no ${_tgz}. Downloading from ${_url} ..."
-        curl -o "/tmp/${_tgz_name}" -L "${_url}" || return $?
+        curl -sf -o "/tmp/${_tgz_name}" -L "${_url}" || return $?
+        [ -s "/tmp/${_tgz_name}" ] || return 101
         mv -v -f /tmp/${_tgz_name} ${_tgz} || return $?
     fi
     mkdir -v -p "${_extract_path}" || return $?
@@ -317,6 +319,7 @@ function _prepare_install() {
 
 ### Repository setup functions ################################################################################
 # Eg: r_NEXUS_URL="http://dh1.standalone.localdomain:8081/" f_setup_xxxxx
+# TODO: ,"replication":{"preemptivePullEnabled":false}
 function f_setup_maven() {
     local __doc__="Create Maven2 proxy/hosted/group repositories with dummy data"
     local _prefix="${1:-"maven"}"
@@ -499,7 +502,7 @@ function f_setup_nuget() {
     # TODO: should add "https://www.myget.org/F/workflow" as well?
 
     if ! _is_repo_available "${_prefix}-choco-proxy"; then # Need '"nugetVersion":"V2",'?
-        f_apiS '{"action":"coreui_Repository","method":"create","data":[{"attributes":{"nugetProxy":{"nugetVersion":"V2","queryCacheItemMaxAge":3600},"proxy":{"remoteUrl":"https://chocolatey.org/api/v2/","contentMaxAge":1440,"metadataMaxAge":1440},"replication":{"preemptivePullEnabled":false},"httpclient":{"blocked":false,"autoBlock":true,"connection":{"useTrustStore":false}},"storage":{"blobStoreName":"'${_bs_name}'","strictContentTypeValidation":true'${_extra_sto_opt}'},"negativeCache":{"enabled":true,"timeToLive":1440},"cleanup":{"policyName":[]}},"name":"'${_prefix}'-choco-proxy","format":"","type":"","url":"","online":true,"routingRuleId":"","authEnabled":false,"httpRequestSettings":false,"recipe":"nuget-proxy"}],"type":"rpc"}'
+        f_apiS '{"action":"coreui_Repository","method":"create","data":[{"attributes":{"nugetProxy":{"nugetVersion":"V2","queryCacheItemMaxAge":3600},"proxy":{"remoteUrl":"https://chocolatey.org/api/v2/","contentMaxAge":1440,"metadataMaxAge":1440},"httpclient":{"blocked":false,"autoBlock":true,"connection":{"useTrustStore":false}},"storage":{"blobStoreName":"'${_bs_name}'","strictContentTypeValidation":true'${_extra_sto_opt}'},"negativeCache":{"enabled":true,"timeToLive":1440},"cleanup":{"policyName":[]}},"name":"'${_prefix}'-choco-proxy","format":"","type":"","url":"","online":true,"routingRuleId":"","authEnabled":false,"httpRequestSettings":false,"recipe":"nuget-proxy"}],"type":"rpc"}'
     fi
 
     # Nexus should have nuget.org-proxy, nuget-group, and nuget-hosted already, so creating only v3 one
@@ -543,7 +546,7 @@ function f_setup_docker() {
     # add some data for xxxx-proxy
     _log "INFO" "Populating ${_prefix}-proxy repository with some image ..."
     if ! _populate_docker_proxy; then
-        _log "WARN" "_populate_docker_proxy failed. May need to add 'Docker Bearer Token Realm' (not only for anonymous access)."
+        _log "WARN" "_populate_docker_proxy failed. May need f_nexus_https_config (and FQDN) or 'Docker Bearer Token Realm' (not only for anonymous access)."
     fi
 
     if [ -n "${_source_nexus_url}" ] && [ -n "${_extra_sto_opt}" ] && ! _is_repo_available "${_prefix}-repl-proxy"; then
@@ -558,7 +561,7 @@ function f_setup_docker() {
     # add some data for xxxx-hosted
     _log "INFO" "Populating ${_prefix}-hosted repository with some image ..."
     if ! _populate_docker_hosted; then
-        _log "WARN" "_populate_docker_hosted failed. May need to add 'Docker Bearer Token Realm'."
+        _log "WARN" "_populate_docker_hosted failed. May need f_nexus_https_config (and FQDN) or 'Docker Bearer Token Realm' (not only for anonymous access)."
     fi
 
     # If no xxxx-group, create it
@@ -651,18 +654,17 @@ function f_setup_yum() {
     [ -z "${_bs_name}" ] && _bs_name="$(_get_blobstore_name)"
     [ -z "${_ds_name}" ] && _ds_name="$(_get_datastore_name)"
     [ -n "${_ds_name}" ] && _extra_sto_opt=',"dataStoreName":"'${_ds_name}'"'
+    # NOTE: due to the known limitation, some version of Nexus requires anonymous for yum repo
+    # https://support.sonatype.com/hc/en-us/articles/213464848-Authenticated-Access-to-Nexus-from-Yum-Doesn-t-Work
     # If no xxxx-proxy, create it
     if ! _is_repo_available "${_prefix}-proxy"; then
         f_apiS '{"action":"coreui_Repository","method":"create","data":[{"attributes":{"proxy":{"remoteUrl":"http://mirror.centos.org/centos/","contentMaxAge":1440,"metadataMaxAge":1440},"httpclient":{"blocked":false,"autoBlock":true},"storage":{"blobStoreName":"'${_bs_name}'","strictContentTypeValidation":true'${_extra_sto_opt}'},"negativeCache":{"enabled":true,"timeToLive":1440},"cleanup":{"policyName":[]}},"name":"'${_prefix}'-proxy","format":"","type":"","url":"","online":true,"routingRuleId":"","authEnabled":false,"httpRequestSettings":false,"recipe":"yum-proxy"}],"type":"rpc"}' || return $?
     fi
-    # add some data for xxxx-proxy (Ubuntu has "yum" command)
-    # NOTE: using 'yum' command is a bit too slow, so not using at this moment
-    #_echo_yum_repo_file "${_prefix}-proxy" > /etc/yum.repos.d/nexus-yum-test.repo
-    #yum --disablerepo="*" --enablerepo="nexusrepo-test" install --downloadonly --downloaddir=${_TMP%/} dos2unix
-    # NOTE: due to the known limitation, some version of Nexus requires anonymous for yum repo
-    # https://support.sonatype.com/hc/en-us/articles/213464848-Authenticated-Access-to-Nexus-from-Yum-Doesn-t-Work
+    # Add some data for xxxx-proxy (Ubuntu has "yum" command)
+    # NOTE: using 'yum' command is a bit too slow, so not using at this moment, but how to
+    #   _echo_yum_repo_file "${_prefix}-proxy" > /etc/yum.repos.d/nexus-yum-test.repo
+    #   yum --disablerepo="*" --enablerepo="nexusrepo-test" install --downloadonly --downloaddir=${_TMP%/} dos2unix
     f_get_asset "${_prefix}-proxy" "7/os/x86_64/Packages/dos2unix-6.0.3-7.el7.x86_64.rpm" "${_TMP%/}/dos2unix-6.0.3-7.el7.x86_64.rpm"
-    # NOTE: https://issues.sonatype.org/browse/NEXUS-27899
     if ! _is_repo_available "${_prefix}-epel-proxy"; then
         f_apiS '{"action":"coreui_Repository","method":"create","data":[{"attributes":{"proxy":{"remoteUrl":"https://dl.fedoraproject.org/pub/epel/","contentMaxAge":1440,"metadataMaxAge":1440},"httpclient":{"blocked":false,"autoBlock":true},"storage":{"blobStoreName":"'${_bs_name}'","strictContentTypeValidation":true'${_extra_sto_opt}'},"negativeCache":{"enabled":true,"timeToLive":1440},"cleanup":{"policyName":[]}},"name":"'${_prefix}'-epel-proxy","format":"","type":"","url":"","online":true,"routingRuleId":"","authEnabled":false,"httpRequestSettings":false,"recipe":"yum-proxy"}],"type":"rpc"}' || return $?
     fi
@@ -687,10 +689,14 @@ function f_setup_yum() {
 
     # If no xxxx-group, create it
     if ! _is_repo_available "${_prefix}-group"; then
-        f_apiS '{"action":"coreui_Repository","method":"create","data":[{"attributes":{"storage":{"blobStoreName":"'${_bs_name}'","strictContentTypeValidation":true'${_extra_sto_opt}'},"group":{"memberNames":["'${_prefix}'-hosted","'${_prefix}'-proxy"]}},"name":"'${_prefix}'-group","format":"","type":"","url":"","online":true,"recipe":"yum-group"}],"type":"rpc"}' || return $?
+        f_apiS '{"action":"coreui_Repository","method":"create","data":[{"attributes":{"storage":{"blobStoreName":"'${_bs_name}'","strictContentTypeValidation":true'${_extra_sto_opt}'},"group":{"memberNames":["'${_prefix}'-hosted","'${_prefix}'-proxy","'${_prefix}'-epel-proxy"]}},"name":"'${_prefix}'-group","format":"","type":"","url":"","online":true,"recipe":"yum-group"}],"type":"rpc"}' || return $?
     fi
     # add some data for xxxx-group
     #f_get_asset "${_prefix}-group" "7/os/x86_64/Packages/$(basename ${_upload_file})"
+    #f_get_asset "${_prefix}-hosted" "7/os/x86_64/repodata/repomd.xml"
+    #f_get_asset "${_prefix}-proxy" "7/os/x86_64/repodata/repomd.xml"
+    # This can be very slow ...
+    _ASYNC_CURL="Y" f_get_asset "${_prefix}-group" "7/os/x86_64/repodata/repomd.xml"
 }
 function _echo_yum_repo_file() {
     local _repo="${1:-"yum-group"}"
@@ -907,6 +913,7 @@ function f_setup_conda() {
     [ -n "${_ds_name}" ] && _extra_sto_opt=',"dataStoreName":"'${_ds_name}'"'
     # If no xxxx-proxy, create it (NOTE: No HA)
     if ! _is_repo_available "${_prefix}-proxy"; then
+        # Or https://repo.anaconda.com/pkgs/
         f_apiS '{"action":"coreui_Repository","method":"create","data":[{"attributes":{"proxy":{"remoteUrl":"https://repo.continuum.io/pkgs/","contentMaxAge":1440,"metadataMaxAge":1440},"httpclient":{"blocked":false,"autoBlock":true,"connection":{"useTrustStore":false}},"storage":{"blobStoreName":"'${_bs_name}'","strictContentTypeValidation":true'${_extra_sto_opt}'},"negativeCache":{"enabled":true,"timeToLive":1440},"cleanup":{"policyName":[]}},"name":"'${_prefix}'-proxy","format":"","type":"","url":"","online":true,"routingRuleId":"","authEnabled":false,"httpRequestSettings":false,"recipe":"conda-proxy"}],"type":"rpc"}' || return $?
     fi
     # TODO: add some data for xxxx-proxy
@@ -1101,6 +1108,18 @@ function f_branding() {
 }
 
 ### Nexus related Misc. functions #################################################################
+function _get_inst_dir() {
+    local _install_dir="$(ps auxwww | _sed -n -E '/org.sonatype.nexus.karaf.NexusMain/ s/.+-Dexe4j.moduleName=([^ ]+)\/bin\/nexus .+/\1/p' | head -1)"
+    [ -z "${_install_dir}" ] && _install_dir="$(find . -mindepth 1 -maxdepth 1 -type d -name 'nexus*' 2>/dev/null | sort | tail -n1)"
+    readlink -f "${_install_dir%/}"
+}
+function _get_work_dir() {
+    local _install_dir="$(_get_inst_dir)"
+    [ -z "${_install_dir}" ] && return 1
+    local _work_dir="$(ps auxwww | _sed -n -E '/org.sonatype.nexus.karaf.NexusMain/ s/.+-Dkaraf.data=([^ ]+) .+/\1/p' | head -n1)"
+    [ -z "${_work_dir}" ] && _work_dir="$(find . -mindepth 1 -maxdepth 2 -type d -name 'nexus3' | sort | tail -n1)"
+    readlink -f "${_install_dir%/}/${_work_dir%/}"
+}
 function _get_blobstore_name() {
     local _bs_name="default"
     if [ -n "${_BLOBTORE_NAME}" ]; then
@@ -1487,7 +1506,7 @@ function p_client_container() {
     local __doc__="Process multiple functions to create a docker container to install various client commands"
     local _base_url="${1:-"${r_NEXUS_URL:-"${_NEXUS_URL}"}"}"
     local _name="${2:-"nexus-client"}"
-    local _centos_ver="${3:-"7.6.1810"}"
+    local _centos_ver="${3:-"7.9.2009"}"
     local _cmd="${4:-"${r_DOCKER_CMD:-"docker"}"}"
 
     local _image_name="${_name}:latest"
@@ -1501,7 +1520,7 @@ function p_client_container() {
         # Expecting f_setup_yum and f_setup_docker have been run
         curl -s -f -m 7 --retry 2 "${_DL_URL%/}/docker/DockerFile_Nexus" -o ${_dockerfile} || return $?
 
-        local _os_and_ver="centos:${_centos_ver}"
+        local _os_and_ver="docker.io/centos:${_centos_ver}"
         # If docker-group or docker-proxy host:port is provided, trying to use it.
         if [ -n "${r_DOCKER_GROUP:-"${r_DOCKER_PROXY}"}" ]; then
             if ! _docker_login "${r_DOCKER_GROUP}" "" "${r_ADMIN_USER:-"${_ADMIN_USER}"}" "${r_ADMIN_PWD:-"${_ADMIN_PWD}"}"; then
@@ -1525,7 +1544,7 @@ function p_client_container() {
         cd -
     fi
 
-    if [ -n "${_cmd}" ] && ! ${_cmd} network list --format "{{.Name}}" | grep -q "^${_DOCKER_NETWORK_NAME}$"; then
+    if [ -n "${_cmd}" ] && ! ${_cmd} network ls --format "{{.Name}}" | grep -q "^${_DOCKER_NETWORK_NAME}$"; then
         _docker_add_network "${_DOCKER_NETWORK_NAME}" "" "${_cmd}" || return $?
     fi
 
@@ -1866,7 +1885,8 @@ function f_nexus_change_pwd() {
 function f_put_realms() {
     local _optional_realms=""
     f_api "/service/rest/v1/security/realms/active" | grep -q '"SamlRealm"' || _optional_realms=",\"SamlRealm\""
-    f_api "/service/rest/v1/security/realms/active" "[\"NexusAuthenticatingRealm\",\"NexusAuthorizingRealm\",\"User-Token-Realm\",\"rutauth-realm\",\"DockerToken\",\"ConanToken\",\"NpmToken\",\"NuGetApiKey\",\"LdapRealm\"${_optional_realms}]" "PUT" || return $?
+    # NOTE: ,\"NexusAuthorizingRealm\" was removed from 3.61
+    f_api "/service/rest/v1/security/realms/active" "[\"NexusAuthenticatingRealm\",\"User-Token-Realm\",\"rutauth-realm\",\"DockerToken\",\"ConanToken\",\"NpmToken\",\"NuGetApiKey\",\"LdapRealm\"${_optional_realms}]" "PUT" || return $?
     # Removed ,"SamlRealm" as it adds extra popup to login
 }
 
@@ -1891,26 +1911,71 @@ function f_nexus_testuser() {
 }
 
 function f_nexus_https_config() {
-    local _mount="${1}"
-    local _ca_pem="${2}"
+    local _port="${1:-"8443"}"
+    local _pwd="${2:-"password"}"
+    local _work_dir="${3}"
+    local _inst_dir="${4}"
+    local _ca_pem="${5}"
 
-    _upsert ${_mount%/}/etc/nexus.properties "ssl.etc" "\${karaf.data}/etc/jetty" || return $?
-    _upsert ${_mount%/}/etc/nexus.properties "nexus-args" "\${jetty.etc}/jetty.xml,\${jetty.etc}/jetty-http.xml,\${jetty.etc}/jetty-requestlog.xml,\${ssl.etc}/jetty-https.xml" || return $?
-    _upsert ${_mount%/}/etc/nexus.properties "application-port-ssl" "8443" || return $?
+    [ -z "${_inst_dir}" ] && _inst_dir="$(_get_inst_dir)"
+    [ -z "${_inst_dir%/}" ] && return 10
+    [ -z "${_work_dir}" ] && _work_dir="$(_get_work_dir)"
+    [ -z "${_work_dir%/}" ] && return 11
 
-    if [ ! -d "${_mount%/}/etc/jetty" ]; then
-        # Should change the permission/ownership?
-        mkdir -p "${_mount%/}/etc/jetty" || return $?
+    if [ ! -d "${_work_dir%/}/etc/ssl" ]; then
+        mkdir -v -p ${_work_dir%/}/etc/ssl || return $?
     fi
-    if [ ! -s "${_mount%/}/etc/jetty/jetty-https.xml" ]; then
-        curl -s -f -L -o "${_mount%/}/etc/jetty/jetty-https.xml" "${_DL_URL%/}/misc/nexus-jetty-https.xml" || return $?
-    fi
-    if [ ! -s "${_mount%/}/etc/jetty/keystore.jks" ]; then
-        curl -s -f -L -o "${_mount%/}/etc/jetty/keystore.jks" "${_DL_URL%/}/misc/standalone.localdomain.jks" || return $?
+    if [ ! -s "${_work_dir%/}/etc/ssl/keystore.jks" ]; then
+        curl -sSf -L -o "${_work_dir%/}/etc/ssl/keystore.jks" "${_DL_URL%/}/misc/standalone.localdomain.jks" || return $?
     fi
 
-    _trust_ca "${_ca_pem}" || return $?
-    _log "DEBUG" "HTTPS configured against config files under ${_mount}"
+    local _alias="$(keytool -list -v -keystore ${_work_dir%/}/etc/ssl/keystore.jks -storepass "${_pwd}" 2>/dev/null | _sed -nr 's/Alias name: (.+)/\1/p')"
+    [ -n "${_alias}" ] && _log "INFO" "Using '${_alias}' as alias name..." && sleep 1
+
+    _log "INFO" "Updating ${_work_dir%/}/etc/nexus.properties ..."
+    if [ ! -s ${_work_dir%/}/etc/nexus.properties.orig ]; then
+        cp -p ${_work_dir%/}/etc/nexus.properties ${_work_dir%/}/etc/nexus.properties.orig || return $?
+    fi
+    _upsert ${_work_dir%/}/etc/nexus.properties "application-port-ssl" "${_port}" || return $?
+    _upsert ${_work_dir%/}/etc/nexus.properties "ssl.etc" "\${karaf.data}/etc/ssl" || return $?
+    _upsert ${_work_dir%/}/etc/nexus.properties "nexus-args" "\${jetty.etc}/jetty.xml,\${jetty.etc}/jetty-http.xml,\${karaf.data}/etc/jetty/jetty-https.xml,\${jetty.etc}/jetty-requestlog.xml" || return $?
+
+    local _needToSed=true
+    if [ ! -f ${_work_dir%/}/etc/jetty/jetty-https.xml ]; then
+        [ ! -d "${_work_dir%/}/etc/jetty" ] && mkdir -v -p ${_work_dir%/}/etc/jetty
+        if [ -d "${_inst_dir%/}" ]; then
+            cp -v -p ${_inst_dir%/}/etc/jetty/jetty-https.xml ${_work_dir%/}/etc/jetty/ || return $?
+        else
+            curl -sSf -L -o "${_work_dir%/}/etc/jetty/jetty-https.xml" "${_DL_URL%/}/misc/nexus-jetty-https.xml" || return $?
+            _needToSed=false
+        fi
+    fi
+
+    if ${_needToSed}; then
+        _log "INFO" "Updating ${_work_dir%/}/etc/jetty/jetty-https.xml ..."
+        # Check <Set name="KeyStorePassword">password</Set> and <Set name="KeyStorePassword"/>
+        # Also if it's already customised, don't forget to check "KeyStorePath", which default is ("ssl.etc" + ???) /keystore.jks
+        for _name in "KeyStorePassword" "KeyManagerPassword" "TrustStorePassword"; do
+            _sed -i -r "s@<Set name=.${_name}.+>@<Set name=\"${_name}\">${_pwd}</Set>@gI" ${_work_dir%/}/etc/jetty/jetty-https.xml || return $?
+        done
+        # Doc says alias is optional, but didn't work when it was wrong.
+        if [ -n "${_alias}" ]; then
+            if ! grep -q '<Set name="certAlias">' ${_work_dir%/}/etc/jetty/jetty-https.xml; then
+                _sed -i '/<Set name="KeyStorePath">/i \
+    <Set name="certAlias">'${_alias}'</Set>' ${_work_dir%/}/etc/jetty/jetty-https.xml
+            fi
+        fi
+        # Jetty behaviour change: https://github.com/eclipse/jetty.project/issues/4425 (from Nexus 3.26)
+        if [[ "${_ver}" =~ ^(3\.26|3\.27|3\.28) ]]; then
+            _sed -i 's@class=\"org.eclipse.jetty.util.ssl.SslContextFactory\"@class=\"org.eclipse.jetty.util.ssl.SslContextFactory\$Server\"@g' ${_work_dir%/}/etc/jetty/jetty-https.xml
+        fi
+    fi
+    _log "INFO" "Please restart service. To check the connection:
+    curl -svkf \"https://${_NEXUS_HOSTNAME}:${_port}/\" -o/dev/null 2>&1 | grep 'Server certificate:' -A 5"
+
+    if [ -s "${_ca_pem}" ]; then
+        _trust_ca "${_ca_pem}" || return $?
+    fi
 }
 
 function f_nexus_mount_volume() {
@@ -1993,10 +2058,12 @@ function f_start_saml_server() {
     echo "[INFO] Running simplesamlidp in background ..."
     echo "       PID: ${_pid}  Log: ./simplesamlidp_$$.log"
     echo "       IdP metadata: ./idp_metadata.xml"
-    echo "       Sp metadata: ${_sp_meta_file}"
+    #echo "       curl -D- -X PUT -u admin:admin123 http://localhost:8070/api/v2/roleMemberships/global/role/b9646757e98e486da7d730025f5245f8/group/ipausers"
+    if [ ! -s "${_sp_meta_file}" ]; then
+        echo "[WARN] Please get SP metadata and save into ${_sp_meta_file}, then restart."
     echo "       Example Attr: {uid=[samluser], eduPersonPrincipalName=[samluser@standalone.localdomain], eduPersonAffiliation=[users], givenName=[saml], sn=[user], cn=[Saml User]}"
-    echo "       curl -D- -X PUT -u admin:admin123 http://localhost:8070/api/v2/roleMemberships/global/role/b9646757e98e486da7d730025f5245f8/group/ipausers"
-
+    echo "       so, eduPersonPrincipalName can be used for 'email', eduPersonAffiliation for 'groups'."
+    fi
 }
 
 function f_start_ldap_server() {
@@ -2408,10 +2475,9 @@ function f_delete_asset() {
     done
     echo "Deleted ${_line_num} assets"
 }
-function f_delete_all_assets() {
-    local __doc__="Delete all assets (not components) with Search REST API (require correct search index)"
-    local _force="$1"
-    local _repo="$2"
+function f_get_all_assets() {
+    local _repo="$1"
+    local _attr="${2:-"id"}"    # or "downloadUrl"
     local _max_loop="${3:-200}" # 50 * 200 = 10000 max
     rm -f ${_TMP%/}/${FUNCNAME[0]}_*.out || return $?
     local _path="/service/rest/v1/search/assets"
@@ -2421,7 +2487,7 @@ function f_delete_all_assets() {
     cat /dev/null > ${_TMP%/}/${FUNCNAME[0]}_$$.out
     for i in $(seq "1" "${_max_loop}"); do
         f_api "${_path}${_base_query}${_query}" > ${_TMP%/}/${FUNCNAME[0]}.json || return $?
-        grep -E '^            "id":' -h ${_TMP%/}/${FUNCNAME[0]}.json | sort | uniq >> ${_TMP%/}/${FUNCNAME[0]}_$$.out || return $?
+        grep -E '^            "'${_attr}'":' -h ${_TMP%/}/${FUNCNAME[0]}.json | sort | uniq >> ${_TMP%/}/${FUNCNAME[0]}_$$.out || return $?
         grep -qE '"continuationToken": *"[0-9a-f]+' ${_TMP%/}/${FUNCNAME[0]}.json || break
         local cToken="$(cat ${_TMP%/}/${FUNCNAME[0]}.json | python -c 'import sys,json;a=json.loads(sys.stdin.read());print(a["continuationToken"])')"
         if [ -z "${_base_query}" ]; then
@@ -2430,13 +2496,32 @@ function f_delete_all_assets() {
             _query="&continuationToken=${cToken}"
         fi
     done
-    local _line_num="$(cat ${_TMP%/}/${FUNCNAME[0]}_$$.out | wc -l | tr -d '[:space:]')"
+    echo "${_TMP%/}/${FUNCNAME[0]}_$$.out"
+}
+function f_test_all_assets() {
+    local __doc__="Check/test if all assets can be downloaded"
+    local _repo="$1"
+    local _all_asset_file="$(f_get_all_assets "${_repo}" "downloadUrl")" || return $?
+    local _line_num="$(cat "${_all_asset_file}" | wc -l | tr -d '[:space:]')"
+    cat "${_all_asset_file}" | while read -r _l; do
+        if [[ "${_l}" =~ \"downloadUrl\"[[:space:]]*:[[:space:]]*\"(http.?://[^/]+)(.*)\" ]]; then
+            curl -sSf -w "%{http_code} ${BASH_REMATCH[2]} (%{time_total}s)\n" -L "${BASH_REMATCH[1]}${BASH_REMATCH[2]}" -o/dev/null
+        fi
+    done
+    echo "Checked ${_line_num} assets"
+}
+function f_delete_all_assets() {
+    local __doc__="Delete all assets (not components) with Search REST API (require correct search index)"
+    local _repo="$1"
+    local _force="$2"
+    local _all_asset_file="$(f_get_all_assets "${_repo}" "id")" || return $?
+    local _line_num="$(cat "${_all_asset_file}" | wc -l | tr -d '[:space:]')"
     if [[ ! "${_force}" =~ ^[yY] ]]; then
         read -p "Are you sure to delete all (${_line_num}) assets?: " "_yes"
         echo ""
         [[ "${_yes}" =~ ^[yY] ]] || return
     fi
-    cat ${_TMP%/}/${FUNCNAME[0]}_$$.out | while read -r _l; do
+    cat "${_all_asset_file}" | while read -r _l; do
         if [[ "${_l}" =~ \"id\"[[:space:]]*:[[:space:]]*\"([^\"]+)\" ]]; then
             echo "# ${BASH_REMATCH[1]}"
             f_api "/service/rest/v1/assets/${BASH_REMATCH[1]}" "" "DELETE" || break
