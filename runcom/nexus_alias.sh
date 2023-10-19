@@ -38,7 +38,7 @@ fi
 function _get_rm_url() {
     local _rm_url="${1:-${_NEXUS_URL}}"
     if [ -z "${_rm_url}" ]; then
-        for _url in "http://localhost:8081/" "http://dh1:8081/"; do
+        for _url in "http://localhost:8081/" "https://nxrm3pg-k8s.standalone.localdomain/" "http://dh1:8081/"; do
             if curl -f -s -I "${_url%/}/" &>/dev/null; then
                 echo "${_url%/}/"
                 _NEXUS_URL="${_url%/}/"
@@ -231,16 +231,21 @@ function setDbConn() {
     local _java_opts="-Dnexus.datastore.enabled=true -Dnexus.datastore.nexus.jdbcUrl=\"jdbc:postgresql://$(hostname -f):5432/${_dbname}\" -Dnexus.datastore.nexus.username=\"${_dbusr}\" -Dnexus.datastore.nexus.password=\"${_dbpwd}\" -Dnexus.datastore.nexus.schema=${_dbschema} -Dnexus.datastore.nexus.advanced=maxLifetime=600000 -Dnexus.datastore.nexus.maximumPoolSize=10"
     if [[ "${_isIQ}" =~ ^[yY] ]]; then
         _java_opts="-Ddw.database.type=postgresql -Ddw.database.hostname=$(hostname -f) -Ddw.database.port=5432 -Ddw.database.name=${_dbname%/} -Ddw.database.username=${_dbusr} -Ddw.database.password=${_dbpwd} ${_java_opts}"
-    elif find . -maxdepth 5 -type f -name nexus-store.properties | grep nexus-store.properties; then
-        echo "Found nexus-store.properties. Not setting Java options" >&2
-        _java_opts=""
+    # TODO: Below was checking support zip
+    #elif find . -maxdepth 5 -type f -name nexus-store.properties | grep nexus-store.properties; then
+    #    echo "Found nexus-store.properties. Not setting Java options" >&2
+    #    _java_opts=""
     fi
     if echo "${JAVA_TOOL_OPTIONS}" | grep -E "D(dw\.database\.type|nexus\.datastore\.enabled)="; then
-        echo "Found JAVA_TOOL_OPTIONS has DB related options. Not setting Java options" >&2
+        echo "Found JAVA_TOOL_OPTIONS has DB related options. Not setting Java options" >&2; sleep 5
         _java_opts=""
     fi
     if [ -n "${_java_opts}" ]; then
-        export JAVA_TOOL_OPTIONS="${JAVA_TOOL_OPTIONS} ${_java_opts}"
+        if [ -n "${JAVA_TOOL_OPTIONS}" ]; then
+            export JAVA_TOOL_OPTIONS="${JAVA_TOOL_OPTIONS} ${_java_opts}"
+        else
+            export JAVA_TOOL_OPTIONS="${_java_opts}"
+        fi
     fi
 
     # if my special script for PostgreSQL exists, create DB user and database
@@ -337,7 +342,14 @@ function nxrm3Install() {
 #nxrmDocker "nxrm3-test" "" "8181:8081 8543:8443 15000:5000" #"--read-only -v /tmp/nxrm3-test:/tmp" or --tmpfs /tmp:noexec
 #mkdir -v -p -m777 /var/tmp/share/sonatype/nxrm3docker
 #docker run --init -d -p 18081:8081 --name=nxrm3docker -e INSTALL4J_ADD_VM_PARAMS="-Dnexus-context-path=/nexus -Djava.util.prefs.userRoot=/nexus-data" -v /var/tmp/share:/var/tmp/share -v /var/tmp/share/sonatype/nxrm3docker:/nexus-data sonatype/nexus3:latest
-#docker run --init -d -p 18081:8081 -p 18443:8443 --name=nxrm3dockerWithHTTPS --tmpfs /tmp:noexec -e INSTALL4J_ADD_VM_PARAMS="-Dssl.etc=\${karaf.data}/etc/ssl -Dnexus-args=\${jetty.etc}/jetty.xml,\${jetty.etc}/jetty-https.xml,\${jetty.etc}/jetty-requestlog.xml -Dapplication-port-ssl=8443 -Djava.util.prefs.userRoot=/nexus-data" -v /var/tmp/share:/var/tmp/share -v /var/tmp/share/sonatype/nxrm3-data:/nexus-data dh1.standalone.localdomain:5000/sonatype/nexus3:latest
+
+# For new installation, creating local dir for /nexus-data
+#_NEXUS_DATA_LOCAL="/var/tmp/share/sonatype/nxrm3-data-test";
+#mkdir -v -p "${_NEXUS_DATA_LOCAL}/etc/ssl";
+# NOTE: copy jetty-https.xml and keystore.jks into above directory
+#       -Dapplication-port-ssl=8443 does not work
+#chown -R 200:200 "${_NEXUS_DATA_LOCAL}";
+#docker run --init -d -p 18081:8081 -p 18443:8443 --name=nxrm3dockerWithHTTPS --tmpfs /tmp:noexec -e INSTALL4J_ADD_VM_PARAMS="-Dssl.etc=\${karaf.data}/etc/ssl -Dnexus-args=\${jetty.etc}/jetty.xml,\${jetty.etc}/jetty-https.xml,\${jetty.etc}/jetty-requestlog.xml -Djava.util.prefs.userRoot=/nexus-data" -v /var/tmp/share:/var/tmp/share -v ${_NEXUS_DATA_LOCAL}:/nexus-data dh1.standalone.localdomain:5000/sonatype/nexus3:latest
 # export INSTALL4J_ADD_VM_PARAMS="-XX:ActiveProcessorCount=2 -Xms2g -Xmx2g -XX:MaxDirectMemorySize=2g -XX:+PrintGC -XX:+PrintGCDateStamps -Dnexus.licenseFile=/var/tmp/share/sonatype/sonatype-license.lic"
 # export INSTALL4J_ADD_VM_PARAMS="-XX:ActiveProcessorCount=2 -Xms2g -Xmx2g -XX:MaxDirectMemorySize=2g -Dnexus.licenseFile=/var/tmp/share/sonatype/sonatype-license.lic -Dnexus.datastore.enabled=true -Dnexus.datastore.nexus.jdbcUrl=jdbc\:postgresql\://localhost/nxrm?ssl=true&sslmode=require -Dnexus.datastore.nexus.username=nxrm -Dnexus.datastore.nexus.password=nxrm123 -Dnexus.datastore.nexus.maximumPoolSize=10 -Dnexus.datastore.nexus.advanced=maxLifetime=600000"
 function nxrmDocker() {
@@ -589,7 +601,7 @@ done
 EOF
 function mvn-deploy() {
     local __doc__="Wrapper of mvn clean package deploy"
-    local _deploy_repo="${1:-"${_NEXUS_URL:-"http://localhost:8081/"}repository/maven-hosted/"}"
+    local _deploy_repo="${1:-"$(_get_rm_url)repository/maven-hosted/"}"
     local _remote_repo="${2}"
     local _local_repo="${3}"
     local _server_id="${4:-"nexus"}"
@@ -630,7 +642,7 @@ function mvn-upload() {
     local _file="${1}"
     local _gav="${2:-"com.example:my-app:1.0"}"
     local _remote_repo="${3:-"maven-hosted"}"
-    local _nexus_url="${4:-"${_NEXUS_URL-"http://localhost:8081/"}"}"
+    local _nexus_url="${4:-"$(_get_rm_url)"}"
     if [ -z "${_file}" ]; then
         if [ ! -f "./junit-4.12.jar" ]; then
             mvn-get-file "junit:junit:4.12" || return $?
@@ -657,7 +669,7 @@ alias mvn-get='mvn-get-file'
 function mvn-get-file() {
     local __doc__="It says mvn- but curl to get a single file with GAV."
     local _gav="${1:-"junit:junit:4.12"}"   # or org.yaml:snakeyaml:jar:1.23
-    local _repo_url="${2:-"${_NEXUS_URL:-"http://localhost:8081/"}repository/maven-public/"}"
+    local _repo_url="${2:-"$(_get_rm_url)repository/maven-public/"}"
     local _user="${3:-"admin"}"
     local _pwd="${4:-"admin123"}"
     local _path=""
@@ -692,8 +704,8 @@ function mvn-get-with-dep() {
 function mvn-get-then-deploy() {
     local __doc__="Get a file with curl/mvn-get-file, then mvn deploy:deploy-file"
     local _gav="${1:-"junit:junit:4.12"}"
-    local _get_repo="${2:-"${_NEXUS_URL:-"http://localhost:8081/"}repository/maven-public/"}"
-    local _dep_repo="${3:-"${_NEXUS_URL:-"http://localhost:8081/"}repository/maven-snapshots/"}" # layout policy: strict may make request fail.
+    local _get_repo="${2:-"$(_get_rm_url)repository/maven-public/"}"
+    local _dep_repo="${3:-"$(_get_rm_url)repository/maven-snapshots/"}" # layout policy: strict may make request fail.
     local _is_snapshot="${4-"Y"}"
     local _file="$(mvn-get-file "${_gav}" "${_get_repo}")" || return $?
     if [ -n "${_file}" ]; then
@@ -774,7 +786,7 @@ EOF
 alias npm-deploy='npmDeploy'
 alias npmPublish='npmDeploy'
 function npmDeploy() {
-    local _repo_url="${1:-"${_NEXUS_URL:-"http://localhost:8081/"}repository/npm-hosted/"}"
+    local _repo_url="${1:-"$(_get_rm_url)repository/npm-hosted/"}"
     local _name="${2:-"lodash-vulnerable"}"
     local _ver="${3:-"1.0.0"}"
     if [ -s ./package.json ] && [ ! -s ./package.json.orig ]; then
@@ -828,7 +840,7 @@ function npmDummyVer() {
 
 function nuget-get() {
     local _pkg="$1" # Syncfusion.SfChart.WPF@19.2.0.62
-    local _repo_url="${2:-"${_NEXUS_URL:-"http://localhost:8081/"}repository/nuget.org-proxy/index.json"}"
+    local _repo_url="${2:-"$(_get_rm_url)repository/nuget.org-proxy/index.json"}"
     local _save_to="${3}"  # NOTE: nuget.exe does not work with SSD with exFat
     local _ver=""
     if [[ "${_pkg}" =~ ^([^@]+)@([^ ]+)$ ]]; then
@@ -844,51 +856,6 @@ function nuget-get() {
 
 
 ### Misc.   #################################
-
-# 1. Create a new raw-test-hosted repo
-# 2. curl -D- -u "admin:admin123" -T<(echo "test for nxrm3Staging") -L -k "${_NEXUS_URL%/}/repository/raw-hosted/test/nxrm3Staging.txt"
-# 3. nxrm3Staging "raw-test-hosted" "raw-test-tag" "repository=raw-hosted&name=*test%2Fnxrm3Staging.txt"
-# ^ Tag is optional. Using "*" in name= as name|path in NewDB starts with "/"
-# With maven2:
-#   export _NEXUS_URL="https://nxrm3ha-k8s.standalone.localdomain/"
-#   mvn-upload "" "com.example:my-app-staging:1.0" "maven-hosted"
-#   nxrm3Staging "maven-releases" "maven-test-tag" "repository=maven-hosted&name=my-app-staging"
-function nxrm3Staging() {
-    local _move_to_repo="${1}"
-    local _tag="${2}"
-    local _search="${3}"
-    local _nxrm3_url="${4:-"${_NEXUS_URL-"http://localhost:8081/"}"}"
-    # tag may already exist, so not stopping if error
-    if [ -n "${_tag}" ]; then
-        echo "# ${_nxrm3_url%/}/service/rest/v1/tags -d '{\"name\": \"'${_tag}'\"}'"
-        curl -D- -u admin:admin123 -H "Content-Type: application/json" "${_nxrm3_url%/}/service/rest/v1/tags" -d '{"name": "'${_tag}'"}'
-        echo ""
-    fi
-    if [ -n "${_search}" ]; then
-        if [ -z "${_tag}" ] && [ -z "${_move_to_repo}" ]; then
-            echo "# ${_nxrm3_url%/}/service/rest/v1/search?${_search}"
-            curl -D- -u admin:admin123 -X GET "${_nxrm3_url%/}/service/rest/v1/search?${_search}"
-            echo ""
-            return
-        fi
-        if [ -n "${_tag}" ]; then
-            echo "# ${_nxrm3_url%/}/service/rest/v1/tags/associate/${_tag}?${_search}"
-            curl -D- -u admin:admin123 -X POST "${_nxrm3_url%/}/service/rest/v1/tags/associate/${_tag}?${_search}"
-            echo ""
-            # NOTE: immediately moving fails with 404
-            sleep 5
-        fi
-    fi
-    if [ -n "${_tag}" ]; then
-        echo "# ${_nxrm3_url%/}/service/rest/v1/staging/move/${_move_to_repo}?tag=${_tag}"
-        curl -D- -f -u admin:admin123 -X POST "${_nxrm3_url%/}/service/rest/v1/staging/move/${_move_to_repo}?tag=${_tag}" || return $?
-    elif [ -n "${_search}" ]; then
-        echo "# ${_nxrm3_url%/}/service/rest/v1/staging/move/${_move_to_repo}?${_search}"
-        curl -D- -f -u admin:admin123 -X POST "${_nxrm3_url%/}/service/rest/v1/staging/move/${_move_to_repo}?${_search}" || return $?
-    fi
-    echo ""
-}
-
 function nxrm3Scripting() {
     local _groovy_file="$1"
     local _nexus_url="$2"

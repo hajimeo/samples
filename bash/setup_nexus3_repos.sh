@@ -2530,6 +2530,50 @@ function f_delete_all_assets() {
     echo "Deleted ${_line_num} assets (run Cleanup unused <format> blobs from <datastore> task)"
 }
 
+# 1. Create a new raw-test-hosted repo from Web UI (or API)
+# 2. curl -D- -u "admin:admin123" -T<(echo "test for f_staging_move") -L -k "${_NEXUS_URL%/}/repository/raw-hosted/test/nxrm3Staging.txt"
+# 3. f_staging_move "raw-test-hosted" "raw-test-tag" "repository=raw-hosted&name=*test%2Fnxrm3Staging.txt"
+# ^ Tag is optional. Using "*" in name= as name|path in NewDB starts with "/"
+# With maven2:
+#   export _NEXUS_URL="https://nxrm3ha-k8s.standalone.localdomain/"
+#   mvn-upload "" "com.example:my-app-staging:1.0" "maven-hosted"
+#   nxrm3Staging "maven-releases" "maven-test-tag" "repository=maven-hosted&name=my-app-staging"
+function f_staging_move() {
+    local _move_to_repo="${1}"
+    local _tag="${2}"
+    local _search="${3}"
+    local _nxrm3_url="${4:-"$(_get_rm_url)"}"
+    # tag may already exist, so not stopping if error
+    if [ -n "${_tag}" ]; then
+        echo "# ${_nxrm3_url%/}/service/rest/v1/tags -d '{\"name\": \"'${_tag}'\"}'"
+        curl -D- -u admin:admin123 -H "Content-Type: application/json" "${_nxrm3_url%/}/service/rest/v1/tags" -d '{"name": "'${_tag}'"}'
+        echo ""
+    fi
+    if [ -n "${_search}" ]; then
+        if [ -z "${_tag}" ] && [ -z "${_move_to_repo}" ]; then
+            echo "# ${_nxrm3_url%/}/service/rest/v1/search?${_search}"
+            curl -D- -u admin:admin123 -X GET "${_nxrm3_url%/}/service/rest/v1/search?${_search}"
+            echo ""
+            return
+        fi
+        if [ -n "${_tag}" ]; then
+            echo "# ${_nxrm3_url%/}/service/rest/v1/tags/associate/${_tag}?${_search}"
+            curl -D- -u admin:admin123 -X POST "${_nxrm3_url%/}/service/rest/v1/tags/associate/${_tag}?${_search}"
+            echo ""
+            # NOTE: immediately moving fails with 404
+            sleep 5
+        fi
+    fi
+    if [ -n "${_tag}" ]; then
+        echo "# ${_nxrm3_url%/}/service/rest/v1/staging/move/${_move_to_repo}?tag=${_tag}"
+        curl -D- -f -u admin:admin123 -X POST "${_nxrm3_url%/}/service/rest/v1/staging/move/${_move_to_repo}?tag=${_tag}" || return $?
+    elif [ -n "${_search}" ]; then
+        echo "# ${_nxrm3_url%/}/service/rest/v1/staging/move/${_move_to_repo}?${_search}"
+        curl -D- -f -u admin:admin123 -X POST "${_nxrm3_url%/}/service/rest/v1/staging/move/${_move_to_repo}?${_search}" || return $?
+    fi
+    echo ""
+}
+
 function f_run_tasks_by_type() {
     local _task_type="$1"   #assetBlob.cleanup
     f_api "/service/rest/v1/tasks?type=${_task_type}" > ${_TMP%/}/${FUNCNAME[0]}.json || return $?
