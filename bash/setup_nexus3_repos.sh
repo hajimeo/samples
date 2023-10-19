@@ -2542,7 +2542,7 @@ function f_staging_move() {
     local _move_to_repo="${1}"
     local _tag="${2}"
     local _search="${3}"
-    local _nxrm3_url="${4:-"$(_get_rm_url)"}"
+    local _nxrm3_url="${4:-"${r_NEXUS_URL:-"${_NEXUS_URL}"}"}"
     # tag may already exist, so not stopping if error
     if [ -n "${_tag}" ]; then
         echo "# ${_nxrm3_url%/}/service/rest/v1/tags -d '{\"name\": \"'${_tag}'\"}'"
