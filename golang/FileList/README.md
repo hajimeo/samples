@@ -159,6 +159,11 @@ $ file-list -b ./content -p vol- -c 10 -db /nexus-data/etc/fabric/nexus-store.pr
 ```
 NOTE: If using -RDel to delete "deleted=true", recommend to save the STDERR into a file like above.
 
+### Delete specific .properties/.bytes files:
+```
+$ file-list -b ./sonatype-work/nexus3/blobs/default/content -p "vol-" -c 4 -fP "@BlobStore\.blob-name=/@sonatype/policy-demo,.+@Bucket\.repo-name=npm-hosted" -R -H | cut -d '.' -f1 | xargs -I{} -t rm -v -f {}.{properties,bytes}
+```
+
 ## Misc.
 ```
 echo -n > ./'${_output_date}'; # Only first time, otherwise optional in case you might want to append
