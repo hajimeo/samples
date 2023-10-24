@@ -1230,6 +1230,25 @@ EOF
     echo "# May need to use 'insecure-skip-tls-verify: true' under 'cluster' instead of certificate-authority-data"
 }
 
+function f_nerdctl_setup() {
+    # https://www.guide2wsl.com/nerdctl/
+    local _ver="${1:-"1.6.2"}"
+    https://github.com/containerd/nerdctl/releases/download/v1.6.2/nerdctl-1.6.2-linux-amd64.tar.gz
+    curl -o /tmp/nerdctl-${_ver}-linux-amd64.tar.gz -L https://github.com/containerd/nerdctl/releases/download/v${_ver}/nerdctl-${_ver}-linux-amd64.tar.gz
+    if [ ! -d "/opt/nerdctl" ]; then
+        mkdir -v /opt/nerdctl || return $?
+    fi
+    tar -C /opt/nerdctl -xzvf /tmp/nerdctl-${_ver}-linux-amd64.tar.gz || return $?
+    if [ ! -e "/usr/local/bin/nerdctl" ]; then
+        ln -v -s /opt/nerdctl/nerdctl /usr/local/bin/nerdctl
+    fi
+    # Test
+    if [ -e /var/snap/microk8s/common/run/containerd.sock ]; then
+        sudo nerdctl --address /var/snap/microk8s/common/run/containerd.sock namespace ls
+        #sudo nerdctl --address /var/snap/microk8s/common/run/containerd.sock --namespace k8s.io ps
+    fi
+}
+
 function f_vnc_setup() {
     local __doc__="Install X and VNC Server. NOTE: this may use about 400MB space"
     # https://www.digitalocean.com/community/tutorials/how-to-install-and-configure-vnc-on-ubuntu-16-04
