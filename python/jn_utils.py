@@ -33,6 +33,8 @@ Show the values of affected ID in group by
     GROUP_CONCAT(rid, ',') as rids
 Convert Unix timestamp with milliseconds to datetime
     DATETIME(ROUND(dateColumn / 1000), 'unixepoch')
+Cast real/float to decimal with 2 decimal point
+    ROUND(avg(elapsedTime), 2)
 Get date_hour
     UDF_REGEX('(\d\d\d\d-\d\d-\d\d.\d\d)', date_time, 1)
   or, faster way to get 10mis from the request.log:
@@ -2207,7 +2209,7 @@ def load_csvs(src="./", conn=None, include_ptn='*.csv', exclude_ptn='', chunksiz
 
 
 def csv2df(filename, conn=None, tablename=None, chunksize=1000, header=0, if_exists='replace',
-           max_file_size=(1024 * 1024 * 400)):
+           add_filepath=False, max_file_size=(1024 * 1024 * 400)):
     '''
     Load a CSV file into a DataFrame *or* database table if conn is given
     If conn is given, import into a DB table
@@ -2219,6 +2221,7 @@ def csv2df(filename, conn=None, tablename=None, chunksize=1000, header=0, if_exi
                    Row number(s) to use as the column names
                    Or a list of column names
     :param if_exists: {‘fail’, ‘replace’, ‘append’}
+    :param add_filepath: if True, add column "filePath" for the reading file path
     :param max_file_size: max file size (note size smaller than 128 bytes is also skipped)
     :return: Pandas DF object or False if file is not readable
     #>>> df = ju.csv2df(file_path='./slow_queries.csv', conn=ju.connect())
@@ -2227,21 +2230,11 @@ def csv2df(filename, conn=None, tablename=None, chunksize=1000, header=0, if_exi
     if bool(tablename) and conn is None:
         conn = connect()
     if os.path.exists(filename):
-        file_path = filename
+        files = [filename]
     else:
         files = _globr(filename)
         if bool(files) is False:
             _debug("No %s. Skipping ..." % (str(filename)))
-            return None
-        file_path = files[0]
-    if bool(max_file_size) and max_file_size >= 0:
-        fs = _get_filesize(file_path)
-        if fs >= max_file_size:
-            _warn("File %s (%d MB) is too large (max_file_size=%d).." % (
-                file_path, int(fs / 1024 / 1024), max_file_size))
-            return None
-        if fs < 128:
-            _info("%s is too small (%d) as CSV. Skipping ..." % (str(file_path), fs))
             return None
     # special logic for 'csv': if no header, most likely 'append' is better
     if if_exists is None:
@@ -2249,22 +2242,40 @@ def csv2df(filename, conn=None, tablename=None, chunksize=1000, header=0, if_exi
             if_exists = 'append'
         else:
             if_exists = 'fail'
-    names = None
-    if type(header) == list:
-        names = header
-        header = None
-    try:
-        # read_csv file fails if file is empty
-        df = pd.read_csv(file_path, escapechar='\\', header=header, names=names, index_col=False)
-    except pd.errors.EmptyDataError:
-        _info("File %s is empty" % (str(filename)))
-        return False
+    change_replace_to_append = False
+    for file_path in files:
+        if bool(max_file_size) and max_file_size >= 0:
+            fs = _get_filesize(file_path)
+            if fs >= max_file_size:
+                _warn("File %s (%d MB) is too large (max_file_size=%d).." % (
+                    file_path, int(fs / 1024 / 1024), max_file_size))
+                return None
+            if fs < 128:
+                _info("%s is too small (%d) as CSV. Skipping ..." % (str(file_path), fs))
+                return None
+        names = None
+        if type(header) == list:
+            names = header
+            header = None
+        try:
+            # read_csv file fails if file is empty
+            df = pd.read_csv(file_path, escapechar='\\', header=header, names=names, index_col=False)
+            if add_filepath:
+                df['filePath'] = file_path
+        except pd.errors.EmptyDataError:
+            _info("File %s is empty" % (str(filename)))
+            return False
+        if bool(conn):
+            if bool(tablename) is False:
+                tablename = _pick_new_key(os.path.basename(file_path), {}, using_1st_char=False, prefix='t_')
+            if if_exists == "replace" and change_replace_to_append:
+                if_exists = "append"
+            if df2table(df=df, tablename=tablename, conn=conn, chunksize=chunksize, if_exists=if_exists) is True:
+                _info("Created table: %s for %s with '%s'" % (tablename, file_path, if_exists))
+                _autocomp_inject(tablename=tablename)
+                if if_exists == "replace":
+                    change_replace_to_append = True
     if bool(conn):
-        if bool(tablename) is False:
-            tablename = _pick_new_key(os.path.basename(file_path), {}, using_1st_char=False, prefix='t_')
-        if df2table(df=df, tablename=tablename, conn=conn, chunksize=chunksize, if_exists=if_exists) is True:
-            _info("Created table: %s" % (tablename))
-            _autocomp_inject(tablename=tablename)
         return len(df) > 0
     return df
 
