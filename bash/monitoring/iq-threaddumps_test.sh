@@ -9,30 +9,36 @@ function test_usage() {
 }
 
 function test_detectDirs() {
-    echo "sleep 1" > /tmp/sleep.sh
-    echo "sonatypeWork: $HOME" > /tmp/config.yml
-    # Mac can't detect _INSTALL_DIR from /proc/PID/cwd, so added /tmp/
-    bash /tmp/sleep.sh /tmp/nexus-iq-server-aaaaaa.jar server /tmp/config.yml &
-    local _wpid=$!
-
     unset _PID
     unset _INSTALL_DIR
     unset _WORK_DIR
+
+    local _wpid=""
+    local _pid="$(ps auxwww | grep -E 'nexus-iq-server.*\.jar server' | grep -vw grep | awk '{print $2}' | tail -n1)"
+    if [ -z "${_pid}" ]; then
+        echo "sleep 1" > /tmp/sleep.sh
+        chmod u+x /tmp/sleep.sh
+        echo "sonatypeWork: $HOME" > /tmp/config.yml
+        # Mac can't detect _INSTALL_DIR from /proc/PID/cwd, so added /tmp/
+        bash -c "cd /tmp && ./sleep.sh java /tmp/nexus-iq-server-aaaaaa.jar server /tmp/config.yml" &
+        _wpid=$!
+    fi
+
     #set -x
     if ! detectDirs >/dev/null; then
         _error
     fi
     #set +x
-    if [ "${_PID}" != "${_wpid}" ]; then
-        _error "_PID: ${_PID} != ${_wpid}"
+
+    if [ -n "${_wpid}" ]; then
+        if [[ ! "${_INSTALL_DIR%/}" =~ /tmp$ ]]; then # Mac appends /private
+            _error "_INSTALL_DIR: ${_INSTALL_DIR%/} != /tmp"
+        fi
+        if [ "${_WORK_DIR%/}" != "$HOME" ]; then
+            _error "_WORK_DIR: ${_WORK_DIR%/} != $HOME"
+        fi
+        wait ${_wpid}
     fi
-    if [ "${_INSTALL_DIR%/}" != "/tmp" ]; then
-        _error "_INSTALL_DIR: ${_INSTALL_DIR%/} != /tmp"
-    fi
-    if [ "${_WORK_DIR%/}" != "$HOME" ]; then
-        _error "_WORK_DIR: ${_WORK_DIR%/} != $HOME"
-    fi
-    wait
 
     export _INSTALL_DIR="/var/tmp" _WORK_DIR="."
     if ! detectDirs "9999" >/dev/null; then
@@ -44,7 +50,26 @@ function test_detectDirs() {
     if [ "${_WORK_DIR%/}" != "." ]; then
         _error "_WORK_DIR: ${_WORK_DIR%/} != '.'"
     fi
-    wait
+    jobs -l
+}
+
+function test_detectAdminUrl() {
+    unset _ADMIN_URL
+    cat << EOF > /tmp/test_detectAdminUrl.tmp
+server:
+  adminConnectors:
+  - port: 8471
+    type: https
+EOF
+    _STORE_FILE="/tmp/test_detectAdminUrl.tmp"
+    detectAdminUrl
+    local _rc=$?
+    #if [ "${_rc}" -ne 0 ] ; then
+    #    _error "Return code was not 0 but ${_rc}"
+    #fi
+    if [ "${_ADMIN_URL%/}" != "https://localhost:8471" ] ; then
+        _error "${_ADMIN_URL%/} was not https://localhost:8471"
+    fi
 }
 
 function test_tailStdout() {
@@ -54,7 +79,7 @@ function test_tailStdout() {
     local _pid=$!
     tailStdout "${_pid}" "1" "/tmp/test_tailStdout.out" "/"
     local _rc=$?
-    if [ "${_rc}" -ne 0 ] && [ "${_rc}" -ne 124 ] ; then
+    if [ "${_rc}" -ne 0 ] && [ "${_rc}" -ne 124 ] ; then    # 124 = timeout
         _error
     fi
     wait

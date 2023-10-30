@@ -7,8 +7,7 @@ PURPOSE:
 Gather basic information to troubleshoot Java process related *performance* issues.
 Designed for Nexus official docker image: https://github.com/sonatype/docker-nexus-iq-server
 Currently this script gathers the following information:
- - Java thread dumps with kill -3 or jstack, with netstat (or equivalent) and top
- - If config.yml is given, does extra test via admin-port (localhost:8071)
+ - Java thread dumps with kill -3 or jstack or :8071/threads, with netstat (or equivalent) and top
 
 EXAMPLE:
     # Taking thread dumps whenever the log line contains "QuartzJobStoreTX"
@@ -31,9 +30,10 @@ EOF
 
 : "${_INSTALL_DIR:=""}"
 : "${_WORK_DIR:=""}"
+: "${_ADMIN_URL:=""}"
 _INTERVAL=2
 _COUNT=5
-_STORE_FILE=""  # currently not in use
+_STORE_FILE=""
 _LOG_FILE=""
 _REGEX=""
 _PID=""
@@ -46,34 +46,57 @@ function detectDirs() {    # Best effort. may not return accurate dir path
     if [ -z "${_pid}" ]; then
         _pid="$(ps auxwww | grep -E 'nexus-iq-server.*\.jar server' | grep -vw grep | awk '{print $2}' | tail -n1)"
         _PID="${_pid}"
-        [ -z "${_pid}" ] && return 1
+        [ -z "${_pid}" ] && return 11
     fi
     if [ ! -d "${_INSTALL_DIR}" ]; then
         _INSTALL_DIR="$(readlink -f /proc/${_pid}/cwd 2>/dev/null)"
         if [ -z "${_INSTALL_DIR}" ]; then
-            if type lsof &>/dev/null; then  # eg. Mad (Darwin)
-                _INSTALL_DIR="$(lsof -a -d cwd -p ${_pid} | grep 'java' | awk '{print $9}')"
+            if type lsof &>/dev/null; then  # eg. Mac (Darwin)
+                # Removed " | grep 'java'" for testing
+                _INSTALL_DIR="$(lsof -a -d cwd -p ${_pid} | grep -w "${_pid}" | awk '{print $9}')"
             else
                 local _jarpath="$(ps wwwp ${_pid} 2>/dev/null | grep -m1 -E -o 'nexus-iq-server.*\.jar')"
                 _INSTALL_DIR="$(dirname "${_jarpath}")"
             fi
         fi
-        [ -d "${_INSTALL_DIR}" ] || return 1
+        [ -d "${_INSTALL_DIR}" ] || return 12
+    fi
+    if [ -z "${_STORE_FILE}" ]; then
+        _STORE_FILE="$(ps wwwp ${_pid} | sed -n -E '/nexus-iq-server/ s/.+\.jar server ([^ ]+).*/\1/p' | head -n1)"
+        [[ ! "${_STORE_FILE}" =~ ^/ ]] && _STORE_FILE="${_INSTALL_DIR%/}/${_STORE_FILE}"
+        [ -e "${_STORE_FILE}" ] && _STORE_FILE="$(readlink -f "${_STORE_FILE}")"
     fi
     if [ ! -d "${_WORK_DIR}" ] && [ -d "${_INSTALL_DIR%/}" ]; then
-        local _config
-        if [ -s "${_STORE_FILE}" ]; then
-            _config="${_STORE_FILE}"
-        else
-            _config="$(ps wwwp ${_pid} | sed -n -E '/nexus-iq-server/ s/.+\.jar server ([^ ]+).*/\1/p' | head -n1)"
-            [[ ! "${_config}" =~ ^/ ]] && _config="${_INSTALL_DIR%/}/${_config}"
-        fi
-        [ -z "${_config}" ] && return 1
-        #_STORE_FILE="$(readlink -f "${_config}")"
-        _WORK_DIR="$(sed -n -E 's/sonatypeWork[[:space:]]*:[[:space:]]*(.+)/\1/p' "${_config}")"
+        _WORK_DIR="$(sed -n -E 's/sonatypeWork[[:space:]]*:[[:space:]]*(.+)/\1/p' "${_STORE_FILE}")"
         [[ ! "${_WORK_DIR}" =~ ^/ ]] && _WORK_DIR="${_INSTALL_DIR%/}/${_WORK_DIR}"
-        [ -d "${_WORK_DIR}" ] || return 1
+        [ -d "${_WORK_DIR}" ] || return 13
     fi
+}
+
+function detectAdminUrl() {
+    if [ -z "${_ADMIN_URL}" ]; then
+        # Expecting detectDirs has already run or _STORE_FILE has been specified
+        if [ -f "${_STORE_FILE}" ]; then
+            # Best effort. If customised, won't work
+            local _proto="http"
+            local _port="8071"
+            local _lines="$(grep -E '^server:' -A 100 "${_STORE_FILE}" | grep -E '^\s+adminConnectors:' -A3 | grep -wE "(port|type)" | paste - -)"
+            if [[ "${_lines}" =~ port[[:space:]]*:[[:space:]]*[![:space:]]?([0-9]+) ]]; then    # \d wouldn't work
+                _port="${BASH_REMATCH[1]}"
+            fi
+            if [[ "${_lines}" =~ type[[:space:]]*:[[:space:]]*[![:space:]]?(http|https) ]]; then
+                _proto="${BASH_REMATCH[1]}"
+            fi
+            _ADMIN_URL="${_proto}://localhost:${_port}"
+        else
+            _ADMIN_URL="http://localhost:8071"
+        fi
+    fi
+    if [ -n "${_ADMIN_URL%/}" ] && curl -m1 -sf -k "${_ADMIN_URL%/}/ping" -o/dev/null; then
+        echo "${_ADMIN_URL%/}"
+        return 0
+    fi
+    return 1
 }
 
 function tailStdout() {
@@ -119,6 +142,7 @@ function takeDumps() {
     local _outPfx="${_outDir%/}/${_pfx}"
 
     local _jstack=""
+    local _admin_url=""
     if [ -x "${JAVA_HOME%/}/bin/jstack" ]; then
         _jstack="${JAVA_HOME%/}/bin/jstack"
     elif type jstack &>/dev/null; then
@@ -126,9 +150,16 @@ function takeDumps() {
     fi
     if [ -z "${_jstack}" ]; then
         if [ ! -f /proc/${_pid}/fd/1 ]; then
-            echo "[$(date +'%Y-%m-%d %H:%M:%S')] WARN  No 'jstack' and no stdout file (so best effort)" >&2
+            _admin_url="$(detectAdminUrl)"
+            if [ -n "${_admin_url}" ]; then
+                echo "[$(date +'%Y-%m-%d %H:%M:%S')] WARN  No 'jstack' and no stdout file. Using ${_admin_url%/}/threads" >&2
+            else
+                echo "[$(date +'%Y-%m-%d %H:%M:%S')] WARN  No 'jstack' and no stdout file (so best effort)" >&2
+            fi
         fi
-        tailStdout "${_pid}" "$((${_count} * ${_interval} + 4))" "${_outPfx}000.log" "${_installDir}"
+        if [ -z "${_admin_url}" ]; then
+            tailStdout "${_pid}" "$((${_count} * ${_interval} + 4))" "${_outPfx}000.log" "${_installDir}"
+        fi
     fi
 
     for _i in $(seq 1 ${_count}); do
@@ -140,6 +171,8 @@ function takeDumps() {
         fi
         if [ -n "${_jstack}" ]; then
             ${_jstack} -l ${_pid} >> "${_outPfx}000.log"
+        elif [ -n "${_admin_url}" ]; then
+            curl -m${_interval} -sSf -k "${_admin_url%/}/threads" >> "${_outPfx}000.log"
         else
             kill -3 "${_pid}"
         fi
