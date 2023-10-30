@@ -12,6 +12,7 @@ function test_detectDirs() {
     unset _PID
     unset _INSTALL_DIR
     unset _WORK_DIR
+    unset _STORE_FILE
 
     local _wpid=""
     local _pid="$(ps auxwww | grep -E 'nexus-iq-server.*\.jar server' | grep -vw grep | awk '{print $2}' | tail -n1)"
@@ -33,6 +34,9 @@ function test_detectDirs() {
     if [ -n "${_wpid}" ]; then
         if [[ ! "${_INSTALL_DIR%/}" =~ /tmp$ ]]; then # Mac appends /private
             _error "_INSTALL_DIR: ${_INSTALL_DIR%/} != /tmp"
+        fi
+        if [[ ! "${_STORE_FILE}" =~ /tmp/config.yml$ ]]; then # Mac appends /private
+            _error "_STORE_FILE: ${_STORE_FILE%/} != /tmp/config.yml"
         fi
         if [ "${_WORK_DIR%/}" != "$HOME" ]; then
             _error "_WORK_DIR: ${_WORK_DIR%/} != $HOME"

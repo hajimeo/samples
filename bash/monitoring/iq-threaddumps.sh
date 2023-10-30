@@ -52,7 +52,6 @@ function detectDirs() {    # Best effort. may not return accurate dir path
         _INSTALL_DIR="$(readlink -f /proc/${_pid}/cwd 2>/dev/null)"
         if [ -z "${_INSTALL_DIR}" ]; then
             if type lsof &>/dev/null; then  # eg. Mac (Darwin)
-                # Removed " | grep 'java'" for testing
                 _INSTALL_DIR="$(lsof -a -d cwd -p ${_pid} | grep -w "${_pid}" | awk '{print $9}')"
             else
                 local _jarpath="$(ps wwwp ${_pid} 2>/dev/null | grep -m1 -E -o 'nexus-iq-server.*\.jar')"
