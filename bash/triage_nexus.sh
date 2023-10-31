@@ -295,7 +295,7 @@ function f_orientdb_checks() {
     echo ""
     echo "# Checking size (Bytes) of index files (alphabetical order) ..."
     grep '_idx.sbt' "${_db}" | awk '{printf("%12s %s\n",$'${_size_col}',$'${_file_col}')}' | sort -k2 | tee /tmp/f_orientdb_checks.out
-    echo "Total: $(awk '{print $1}' /tmp/f_orientdb_checks.out | paste -sd+ - | bc) bytes / $(cat /tmp/f_orientdb_checks.out | wc -l) indexes (expecting 20)"
+    echo "Total: $(awk '{print $1}' /tmp/f_orientdb_checks.out | paste -sd+ - | bc) bytes / $(cat /tmp/f_orientdb_checks.out | wc -l) indexes (expecting 21 as of 3.61.0)"
     echo ""
     echo "# Estimating table sizes (Bytes) from pcl files ..."
     grep '.pcl' "${_db}" | awk '{print $'${_size_col}'" "$'${_file_col}'}' | sort -k2 | sed -E 's/_?[0-9]*\.pcl//' > /tmp/f_orientdb_checks.out
@@ -367,6 +367,24 @@ function f_find_missing() {
     local _depth="$2"
     find ${_start_dir%/} -mindepth ${_depth} -maxdepth ${_depth} -type d -print | while read -r _p; do [ -f "${_p}/${_expecting}" ] || echo "${_p} is missing ${_expecting}"; done
 }
+
+function f_deadBlobResult_summary() {
+    local _json="$1"
+    python3 -c "import sys,json
+js=json.load(open('${_json}'))
+print(js.keys())
+result = []
+print('# REPO_NAME, count')
+for repo in js:
+    print(f'\"{repo}\", {len(js[repo])}')
+    for asset in js[repo]:
+        if 'blob_ref:null' in str(asset):
+            result.append(repo)
+from collections import Counter
+print('# blob_ref:null, count')
+print(Counter(result).items())"
+}
+
 
 
 if [ "$0" = "$BASH_SOURCE" ]; then
