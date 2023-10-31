@@ -193,8 +193,10 @@ function _postgresql_create_dbuser() {
 
     # NOTE: Use 'hostssl all all 0.0.0.0/0 cert clientcert=1' for 2-way | client certificate authentication
     #       To do that, also need to utilise database.parameters.some_key:value in config.yml
-    if ! grep -E "host\s+(${_dbname:-"all"}|all)\s+${_dbusr}\s+" "${_pg_hba_conf}"; then
-        echo "host ${_dbname:-"all"} ${_dbusr} 0.0.0.0/0 md5" >> "${_pg_hba_conf}" || return $?
+    local _sudo=""
+    [ -r "${_pg_hba_conf}" ] || _sudo="sudo -u ${_dbadmin}"
+    if ! ${_sudo} grep -E "host\s+(${_dbname:-"all"}|all)\s+${_dbusr}\s+" "${_pg_hba_conf}"; then
+        ${_sudo} bash -c "echo \"host ${_dbname:-"all"} ${_dbusr} 0.0.0.0/0 md5\" >> \"${_pg_hba_conf}\"" || return $?
         ${_psql_as_admin} -tAc 'SELECT pg_reload_conf()' || return $?
         #${_psql_as_admin} -tAc 'SELECT pg_read_file('pg_hba.conf');'
         ${_psql_as_admin} -tAc "select * from pg_hba_file_rules where database = '{${_dbname:-"all"}}' and user_name = '{${_dbusr}}';"
