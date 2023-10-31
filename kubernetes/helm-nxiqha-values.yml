@@ -1,17 +1,28 @@
-#$ cd ~/IdeaProjects/nexus-iq-server-ha/
-#$ git pull && git fetch
-#$ helm template nxiqha . -f ~/IdeaProjects/samples/kubernetes/helm-nxiqha-values.yml -n sonatype-ha >~/IdeaProjects/samples/kubernetes/helm-nxiqha-deployed.yaml
+# Check deploy-ing yaml file
+#$ helm template nxiqha sonatype/nexus-iq-server-ha -f ./helm-nxiqha-values.yml -n sonatype-ha >./helm-nxiqha-deployed.yaml
+
+# To install from scratch (not perfectly scratch as persistent volumes remain)
 #$ helm uninstall nxiqha -n sonatype-ha
-#$ helm install nxiqha ./chart -f ~/IdeaProjects/samples/kubernetes/helm-nxiqha-values.yml --set-file iq_server.license=/var/tmp/share/sonatype/sonatype-license.lic -n sonatype-ha
-#$ helm upgrade nxiqha ./chart -f ~/IdeaProjects/samples/kubernetes/helm-nxiqha-values.yml -n sonatype-ha --version 1.162.0 --dry-run
+
+#$ helm install nxiqha sonatype/nexus-iq-server-ha -f ./helm-nxiqha-values.yml --set-file iq_server.license=/var/tmp/share/sonatype/sonatype-license.lic -n sonatype-ha
+
+#$ helm repo update sonatype
+#$ helm search repo sonatype/nexus-iq-server-ha
+#$ helm upgrade nxiqha sonatype/nexus-iq-server-ha -f ./helm-nxiqha-values.yml -n sonatype-ha --dry-run
+
+# Or until CLM-28041 will be fixed,
+#$ cd ~/IdeaProjects/nexus-iq-server-ha/; git pull && git fetch
+#$ helm upgrade nxiqha ./chart -f ~/IdeaProjects/samples/kubernetes/helm-nxiqha-values.yml -n sonatype-ha #--version 1.162.0 --dry-run
+# NOTE --version uses CHART VERSION not APP VERSION
 
 iq_server:
   # '--set global.imageRegistry=MY_NXRM' can be used too
   imageRegistry: # Container image registry, if not specified the Docker public registry will be used
   image: "sonatype/nexus-iq-server"
   tag: "latest"
-  imagePullPolicy: "Always"
-  javaOpts: "-Xms2g -Xmx4g -Djava.util.prefs.userRoot=/sonatype-work/javaprefs"
+  imagePullPolicy: "IfNotPresent" # "Always" fails with this helm chart
+  javaOpts: "-Xms2g -Xmx4g"
+  #javaOpts: "-Xms2g -Xmx4g -Djava.util.prefs.userRoot=/sonatype-work/javaprefs"
   database:
     hostname: "192.168.1.31"
     port: 5432
