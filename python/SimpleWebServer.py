@@ -58,10 +58,14 @@ class SimpleWebServer(BaseHTTPRequestHandler):
         if len(json_obj['messages']['matches']) > 0:
             for o in json_obj['messages']['matches']:
                 SimpleWebServer.log('    matchN = ' + json.dumps(o, indent=2, sort_keys=True))
+                try:
+                    username = str(o['username']) + " (" + str(o['user']) + ")"
+                except:
+                    username = "- (" + str(o['user']) + ")"
                 html += u"<hr/>"
                 html += u"<pre>"
                 html += u"DATETIME : " + toDateStr(o['ts']) + " | CHANNEL: " + str(
-                    o['channel']['name']) + " | USERNAME: " + str(o['username']) + " (" + str(o['user']) + ")\n"
+                    o['channel']['name']) + " | USERNAME: " + username + "\n"
                 html += u"PERMALINK: <a href='" + o['permalink'].replace('/archives/',
                                                                          '/messages/') + u"' target='_blank'>" + o[
                             'permalink'] + u"</a>\n"
