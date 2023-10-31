@@ -178,7 +178,7 @@ EOF
         fi
     fi
 
-    f_delete_all_assets "Y"
+    f_delete_all_assets "" "Y"
     local _expected_num=$(cat /tmp/f_delete_all_assets_$$.out | wc -l | tr -d '[:space:]')
 
     # For measuring the time of your restoring command, delete Linux (file) cache
