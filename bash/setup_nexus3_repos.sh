@@ -113,7 +113,7 @@ function f_install_nexus3() {
     local __doc__="Install specific NXRM3 version"
     local _ver="${1:-"${r_NEXUS_VERSION}"}"     # 'latest'
     local _dbname="${2-"${r_NEXUS_DBNAME}"}"   # If h2, use H2
-    local _dbusr="${3-"nxrm"}"     # Specifying default as do not want to create many users/roles
+    local _dbusr="${3-"nexus"}"     # Specifying default as do not want to create many users/roles
     local _dbpwd="${4-"${_dbusr}123"}"
     local _port="${5-"${r_NEXUS_INSTALL_PORT:-"${_NXRM3_INSTALL_PORT}"}"}"      # If not specified, checking from 8081
     local _dirpath="${6-"${r_NEXUS_INSTALL_PATH:-"${_NXRM3_INSTALL_DIR}"}"}"    # If not specified, create a new dir under current dir
@@ -453,8 +453,9 @@ function f_setup_npm() {
         f_apiS '{"action":"coreui_Repository","method":"create","data":[{"attributes":{"storage":{"blobStoreName":"'${_bs_name}'","writePolicy":"ALLOW_ONCE","strictContentTypeValidation":true'${_extra_sto_opt}'},"cleanup":{"policyName":[]}},"name":"'${_prefix}'-hosted","format":"","type":"","url":"","online":true,"recipe":"npm-hosted"}],"type":"rpc"}' || return $?
     fi
     # add some data for xxxx-hosted
-    curl -sSf -o "${_TMP%/}/sonatype-policy-demo-2.1.0.tgz" -L "https://registry.npmjs.org/@sonatype/policy-demo/-/policy-demo-2.1.0.tgz"
-    _ASYNC_CURL="Y" f_upload_asset "${_prefix}-hosted" -F "npm.asset=@${_TMP%/}/sonatype-policy-demo-2.1.0.tgz"
+    for i in {1..3}; do # 2.0.0 is used in npm-proxy
+        curl -sSf -o "${_TMP%/}/sonatype-policy-demo-2.${i}.0.tgz" -L "https://registry.npmjs.org/@sonatype/policy-demo/-/policy-demo-2.${i}.0.tgz" && _ASYNC_CURL="Y" f_upload_asset "${_prefix}-hosted" -F "npm.asset=@${_TMP%/}/sonatype-policy-demo-2.${i}.0.tgz"
+    done
 
     # If no xxxx-prop-hosted (proprietary), create it (from 3.30)
     # https://help.sonatype.com/integrations/iq-server-and-repository-management/iq-server-and-nxrm-3.x/preventing-namespace-confusion
@@ -1117,7 +1118,7 @@ function _get_work_dir() {
     local _install_dir="$(_get_inst_dir)"
     [ -z "${_install_dir}" ] && return 1
     local _work_dir="$(ps auxwww | _sed -n -E '/org.sonatype.nexus.karaf.NexusMain/ s/.+-Dkaraf.data=([^ ]+) .+/\1/p' | head -n1)"
-    [ -z "${_work_dir}" ] && _work_dir="$(find . -mindepth 1 -maxdepth 2 -type d -name 'nexus3' | sort | tail -n1)"
+    [ -z "${_work_dir}" ] && _work_dir="$(find . -mindepth 1 -maxdepth 2 -type d -path '*/sonatype-work/*' -name 'nexus3' | sort | tail -n1)"
     readlink -f "${_install_dir%/}/${_work_dir%/}"
 }
 function _get_blobstore_name() {
@@ -1883,11 +1884,12 @@ function f_nexus_change_pwd() {
 }
 
 function f_put_realms() {
-    local _optional_realms=""
-    f_api "/service/rest/v1/security/realms/active" | grep -q '"SamlRealm"' || _optional_realms=",\"SamlRealm\""
+    local _realms="\"NexusAuthenticatingRealm\",\"User-Token-Realm\",\"rutauth-realm\",\"DockerToken\",\"ConanToken\",\"NpmToken\",\"NuGetApiKey\",\"LdapRealm\""
     # NOTE: ,\"NexusAuthorizingRealm\" was removed from 3.61
-    f_api "/service/rest/v1/security/realms/active" "[\"NexusAuthenticatingRealm\",\"User-Token-Realm\",\"rutauth-realm\",\"DockerToken\",\"ConanToken\",\"NpmToken\",\"NuGetApiKey\",\"LdapRealm\"${_optional_realms}]" "PUT" || return $?
-    # Removed ,"SamlRealm" as it adds extra popup to login
+    f_api "/service/rest/v1/security/realms/available" | grep -q '"NexusAuthorizingRealm"' && _realms="\"NexusAuthenticatingRealm\",\"NexusAuthorizingRealm\",\"User-Token-Realm\",\"rutauth-realm\",\"DockerToken\",\"ConanToken\",\"NpmToken\",\"NuGetApiKey\",\"LdapRealm\""
+    # Keep using SAML Realm only if it is already active (otherwise, "Sign in" always shows the SSO popup)
+    f_api "/service/rest/v1/security/realms/active" | grep -q '"SamlRealm"' && _realms="${_realms},\"SamlRealm\""
+    f_api "/service/rest/v1/security/realms/active" "[${_realms}]" "PUT" || return $?
 }
 
 function f_nexus_csel() {
@@ -2498,16 +2500,21 @@ function f_get_all_assets() {
     done
     echo "${_TMP%/}/${FUNCNAME[0]}_$$.out"
 }
-function f_test_all_assets() {
-    local __doc__="Check/test if all assets can be downloaded"
+function f_check_all_assets() {
+    local __doc__="Check/test if all assets can be downloaded (should update the downloaded time)"
     local _repo="$1"
+    local _parallel="${2:-"4"}"
+    local _usr="${3:-"${_ADMIN_USER}"}"
+    local _pwd="${4:-"${_ADMIN_PWD}"}"
+
     local _all_asset_file="$(f_get_all_assets "${_repo}" "downloadUrl")" || return $?
     local _line_num="$(cat "${_all_asset_file}" | wc -l | tr -d '[:space:]')"
+    # TODO: should use sed
     cat "${_all_asset_file}" | while read -r _l; do
         if [[ "${_l}" =~ \"downloadUrl\"[[:space:]]*:[[:space:]]*\"(http.?://[^/]+)(.*)\" ]]; then
-            curl -sSf -w "%{http_code} ${BASH_REMATCH[2]} (%{time_total}s)\n" -L "${BASH_REMATCH[1]}${BASH_REMATCH[2]}" -o/dev/null
+            echo "${BASH_REMATCH[1]}${BASH_REMATCH[2]}"
         fi
-    done
+    done | xargs -I{} -P${_parallel} curl -s -f -u "${_usr}:${_pwd}" -w '%{http_code} {} (%{time_total}s)\n' -L -k "{}" -o/dev/null
     echo "Checked ${_line_num} assets"
 }
 function f_delete_all_assets() {
@@ -2537,42 +2544,47 @@ function f_delete_all_assets() {
 # With maven2:
 #   export _NEXUS_URL="https://nxrm3ha-k8s.standalone.localdomain/"
 #   mvn-upload "" "com.example:my-app-staging:1.0" "maven-hosted"
-#   nxrm3Staging "maven-releases" "maven-test-tag" "repository=maven-hosted&name=my-app-staging"
+#   f_staging_move "maven-releases" "maven-test-tag" "repository=maven-hosted&name=my-app-staging"
+# Just search components with the tag
+#   f_api "/service/rest/v1/search?tag=raw-test-tag"
 function f_staging_move() {
     local _move_to_repo="${1}"
     local _tag="${2}"
     local _search="${3}"
-    local _nxrm3_url="${4:-"${r_NEXUS_URL:-"${_NEXUS_URL}"}"}"
-    # tag may already exist, so not stopping if error
     if [ -n "${_tag}" ]; then
-        echo "# ${_nxrm3_url%/}/service/rest/v1/tags -d '{\"name\": \"'${_tag}'\"}'"
-        curl -D- -u admin:admin123 -H "Content-Type: application/json" "${_nxrm3_url%/}/service/rest/v1/tags" -d '{"name": "'${_tag}'"}'
+        # Creating the tag, and not stopping if error (because it already exists)
+        echo "# /service/rest/v1/tags -d '{\"name\": \"'${_tag}'\"}'"
+        f_api "/service/rest/v1/tags" '{"name":"'${_tag}'"}'
         echo ""
     fi
     if [ -n "${_search}" ]; then
         if [ -z "${_tag}" ] && [ -z "${_move_to_repo}" ]; then
-            echo "# ${_nxrm3_url%/}/service/rest/v1/search?${_search}"
-            curl -D- -u admin:admin123 -X GET "${_nxrm3_url%/}/service/rest/v1/search?${_search}"
+            # If only search is given, just search
+            echo "# /service/rest/v1/search?${_search}"
+            f_api "/service/rest/v1/search?${_search}"
             echo ""
             return
         fi
         if [ -n "${_tag}" ]; then
-            echo "# ${_nxrm3_url%/}/service/rest/v1/tags/associate/${_tag}?${_search}"
-            curl -D- -u admin:admin123 -X POST "${_nxrm3_url%/}/service/rest/v1/tags/associate/${_tag}?${_search}"
+            # If tag is given, associate the search matching components to this tag
+            echo "# /service/rest/v1/tags/associate/${_tag}?${_search}"
+            f_api "/service/rest/v1/tags/associate/${_tag}?${_search}" "" "POST"
             echo ""
             # NOTE: immediately moving fails with 404
             sleep 5
         fi
     fi
+    # Move!
     if [ -n "${_tag}" ]; then
-        echo "# ${_nxrm3_url%/}/service/rest/v1/staging/move/${_move_to_repo}?tag=${_tag}"
-        curl -D- -f -u admin:admin123 -X POST "${_nxrm3_url%/}/service/rest/v1/staging/move/${_move_to_repo}?tag=${_tag}" || return $?
+        echo "# /service/rest/v1/staging/move/${_move_to_repo}?tag=${_tag}"
+        f_api "/service/rest/v1/staging/move/${_move_to_repo}?tag=${_tag}" "" "POST" || return $?
     elif [ -n "${_search}" ]; then
-        echo "# ${_nxrm3_url%/}/service/rest/v1/staging/move/${_move_to_repo}?${_search}"
-        curl -D- -f -u admin:admin123 -X POST "${_nxrm3_url%/}/service/rest/v1/staging/move/${_move_to_repo}?${_search}" || return $?
+        echo "# /service/rest/v1/staging/move/${_move_to_repo}?${_search}"
+        f_api "${_nxrm3_url%/}/service/rest/v1/staging/move/${_move_to_repo}?${_search}" "" "POST" || return $?
     fi
     echo ""
 }
+# TODO: add `/service/rest/v1/staging/delete`
 
 function f_run_tasks_by_type() {
     local _task_type="$1"   #assetBlob.cleanup
