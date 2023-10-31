@@ -402,7 +402,7 @@ function e_requests() {
         f_request2csv "${_req_log_path}" ${_FILTERED_DATA_DIR%/}/request.csv 2>/dev/null &
         _rg "${_DATE_FMT_REQ}:(\d\d).+(/rest/|/api/)([^/ =?]+/?[^/ =?]+/?[^/ =?]+/?[^/ =?]+/?[^/ =?]+/?)" --no-filename -g ${_REQUEST_LOG} -o -r '"$1:" "$2$3"' | _replace_number | sort -k1,2 | uniq -c > ${_FILTERED_DATA_DIR%/}/agg_requests_count_hour_api.ssv &
     else
-        _LOG "WARN" "Not converting '${_req_log_path}' to CSV (and agg_requests_count_hour_api) because no ${_REQUEST_LOG:-"request.log"} or larger than _LOG_THRESHOLD_BYTES:${_LOG_THRESHOLD_BYTES} * 10"
+        _LOG "WARN" "Not converting '${_req_log_path:-"empty"}' to CSV (and agg_requests_count_hour_api) because no ${_REQUEST_LOG:-"request.log"} or larger than _LOG_THRESHOLD_BYTES:${_LOG_THRESHOLD_BYTES} * 10"
     fi
 }
 function e_threads() {
@@ -474,12 +474,12 @@ function t_basic() {
 }
 function t_system() {
     _basic_check "" "${_FILTERED_DATA_DIR%/}/extracted_configs.md" || return
-    _test_template "$(_rg 'AvailableProcessors: *[1-3]$' ${_FILTERED_DATA_DIR%/}/extracted_configs.md)" "WARN" "AvailableProcessors might be too low (-XX:ActiveProcessorCount=N ?)"
-    _test_template "$(_rg 'TotalPhysicalMemorySize: *(.+ MB|[1-7]\.\d+ GB)' ${_FILTERED_DATA_DIR%/}/extracted_configs.md)" "WARN" "TotalPhysicalMemorySize might be too low"
+    _test_template "$(_rg 'AvailableProcessors.?: *[1-3]\b' ${_FILTERED_DATA_DIR%/}/extracted_configs.md)" "WARN" "AvailableProcessors might be too low (-XX:ActiveProcessorCount=N ?)"
+    _test_template "$(_rg 'TotalPhysicalMemorySize.?: *(.+ MB|[1-7]\.\d+ GB)' ${_FILTERED_DATA_DIR%/}/extracted_configs.md)" "WARN" "TotalPhysicalMemorySize might be too low"
     # TODO: compare TotalPhysicalMemorySize and CommittedVirtualMemorySize
-    _test_template "$(rg 'MaxFileDescriptorCount: *\d{4}$' ${_FILTERED_DATA_DIR%/}/extracted_configs.md)" "WARN" "MaxFileDescriptorCount might be too low"
-    _test_template "$(rg 'SystemLoadAverage: *([4-9]\.|\d\d+)' ${_FILTERED_DATA_DIR%/}/extracted_configs.md)" "WARN" "SystemLoadAverage might be too high (check number of CPUs)"
-    _test_template "$(rg 'maxMemory: *(.+ MB|[1-3]\.\d+ GB)' ${_FILTERED_DATA_DIR%/}/extracted_configs.md)" "WARN" "maxMemory (heap|Xmx) might be too low (NEXUS-35218)"
+    _test_template "$(rg 'MaxFileDescriptorCount.?: *\d{4}\b' ${_FILTERED_DATA_DIR%/}/extracted_configs.md)" "WARN" "MaxFileDescriptorCount might be too low"
+    _test_template "$(rg 'SystemLoadAverage.?: *([4-9]\.|\d\d+)' ${_FILTERED_DATA_DIR%/}/extracted_configs.md)" "WARN" "SystemLoadAverage might be too high (check number of CPUs)"
+    _test_template "$(rg 'maxMemory.?: *(.+ MB|[1-3]\.\d+ GB)' ${_FILTERED_DATA_DIR%/}/extracted_configs.md)" "WARN" "maxMemory (heap|Xmx) might be too low (NEXUS-35218)"
     _test_template "$(rg -g jmx.json -g wrapper.conf -q -- '-XX:\+UseG1GC' || rg -g jmx.json -- '-Xmx')" "WARN" "No '-XX:+UseG1GC' for below Xmx (only for Java 8)" "Also consider using -XX:+ExplicitGCInvokesConcurrent"
     _test_template "$(rg -g jmx.json 'UseCGroupMemoryLimitForHeap')" "WARN" "UseCGroupMemoryLimitForHeap is specified (not required from 8v191)"
     _test_template "$(rg -g jmx.json -- '-Djavax\.net\.ssl..+=')" "WARN" "javax.net.ssl.xxxx is used in jmx.json: java.lang:type=Runtime,InputArguments"
@@ -540,7 +540,7 @@ for key in fsDicts['system-filestores']:
 
 # TODO: For this one, checking without size limit (not _rg)?
 function t_oome() {
-    _test_template "$(_RG_MAX_FILESIZE="6G" _rg 'java.lang.OutOfMemoryError:.+' -m1 -o -g "${_LOG_GLOB}" -g '\!jvm.log' | sort | uniq -c | sort | head -n10)" "ERROR" "OutOfMemoryError detected from ${_LOG_GLOB}"
+    _test_template "$(_RG_MAX_FILESIZE="6G" _rg 'java.lang.OutOfMemoryError:.+' -m1 -B1 -g "${_LOG_GLOB}" -g '\!jvm.log' | sort | uniq)" "ERROR" "OutOfMemoryError detected from ${_LOG_GLOB}"
 }
 function t_fips() {
     _test_template "$(_rg -m1 '(KeyStore must be from provider SunPKCS11-NSS-FIPS|PBE AlgorithmParameters not available)' -g "${_LOG_GLOB}")" "WARN" "FIPS mode might be detected from ${_LOG_GLOB}" "-Dcom.redhat.fips=false"
@@ -584,9 +584,9 @@ function t_requests() {
 
     # TODO: Using agg_requests_count_hour_api.ssv as SQLite does not have regex replace (so that can include elapsed)
     if [ -s "${_FILTERED_DATA_DIR%/}/agg_requests_count_hour_api.ssv" ]; then
-        # /rest/v1/status for NXRM3 should be fast so excluding
-        _query="SELECT c2 as hour, c3 as api, sum(c1) as c FROM ${_FILTERED_DATA_DIR%/}/agg_requests_count_hour_api.ssv WHERE api not like '%/rest/v1/status%' GROUP BY hour, api HAVING c > 100 ORDER BY c DESC LIMIT 40"
-        _test_tmpl_auto "$(q -d" " -T  --disable-double-double-quoting "${_query}")" "2" "5" "Potentially too frequent API-like requests per hour (${_FILTERED_DATA_DIR%/}/agg_requests_count_hour_api.ssv)" \
+        # once in 10 seconds or higher APIs. NXRM3's /rest/v1/status is light and fast so excluding
+        local _query="SELECT c2 as hour, c3 as api, sum(c1) as c FROM ${_FILTERED_DATA_DIR%/}/agg_requests_count_hour_api.ssv WHERE api not like '%/rest/v1/status%' GROUP BY hour, api HAVING c > 360 ORDER BY c DESC LIMIT 40"
+        _test_tmpl_auto "$(_q -d" " -T  --disable-double-double-quoting "${_query}")" "2" "5" "Potentially too frequent API-like requests per hour (${_FILTERED_DATA_DIR%/}/agg_requests_count_hour_api.ssv)" \
           "_q -H \"SELECT substr(date,1,14) as hour, count(*), avg(elapsedTime), max(elapsedTime), sum(elapsedTime) FROM ${_FILTERED_DATA_DIR%/}/request.csv where requestURL like '%/<REPLACE_HERE>/%' GROUP by hour HAVING max(elapsedTime) > 2000\""
     fi
 
