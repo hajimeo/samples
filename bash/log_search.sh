@@ -1028,6 +1028,25 @@ function f_wrapper2threads() {
     fi
 }
 
+# f_scriptLogSplit ./script-20231030142554000.log "Y"
+function f_scriptLogSplit() {
+    local _script_log="$1"
+    local _full_split="$2"
+    sed -n "/^2023-[0-9][0-9]-[0-9][0-9]/,\$p" "${_script_log}" > ./threads.raw
+    if [ -s ./threads.raw ]; then
+        cat ./threads.raw | python3 -c "import sys,html,re;rx=re.compile(r\"<[^>]+>\");print(html.unescape(rx.sub(\"\",sys.stdin.read())))" > threads.txt && rm -f ./threads.raw
+    fi
+    sed -n "/^2023-[0-9][0-9]-[0-9][0-9]/q;p" "${_script_log}" > ./tops_netstats.txt
+    if [[ "${_full_split}" =~ [yY] ]]; then
+        [ -s ./threads.txt ] && f_threads ./threads.txt
+        if [ -s ./tops_netstats.txt ]; then
+            f_splitTopNetstat ./tops_netstats.txt
+            f_hexTids_from_topH ./tops_netstats.txt
+            f_check_netstat ./tops_netstats.txt
+        fi
+    fi
+}
+
 #f_splitByRegex threads.txt "^${_DATE_FORMAT}.+"
 #_THREAD_FILE_GLOB="?-dump.txt" f_threads "."   # Don't use "*" beginning of the file name
 # NOTE: f_last_tid_in_log would be useful.
