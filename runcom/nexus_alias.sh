@@ -10,6 +10,7 @@ function rubySpecs2str() {
 }
 function rubyRz2str() {
     local _pkg_ver_rz="${1}"    # https://rubygems.org/quick/Marshal.4.8/nexus-1.4.0.gemspec.rz
+    #ruby -rpp -e "p Marshal.load(Zlib::Inflate.new.inflate(File.open(\"${_pkg_ver_rz}\").read))"
     ruby -rpp -e "p Marshal.load(Gem::Util.inflate(File.read(\"${_pkg_ver_rz}\")))"
 }
 # Cocoapods buildNxrmSpecFilePath
@@ -226,6 +227,31 @@ function setDbConn() {
     if [ -z "${_dbname%/}" ] || [ -d "${_dbname%/}" ]; then
         echo "Not doing anything as _dbname is empty or directory" >&2
         return 0
+    fi
+
+    local _work_dir="$(find . -mindepth 1 -maxdepth 2 -type d -path '*/sonatype-work/*' -name 'nexus3' | sort | tail -n1)"
+
+    if [ -z "${_dbname}" ]; then
+        if echo "${JAVA_TOOL_OPTIONS}" | grep -q "nexus.datastore.nexus.schema="; then
+            echo "${JAVA_TOOL_OPTIONS}"
+            return 0
+        fi
+    fi
+
+    if [[ ! "${_isIQ}" =~ ^[yY] ]] && [ -d "${_work_dir%/}" ]; then
+        mkdir -v -p "${_work_dir%/}/etc/fabric"
+        cat << EOF > "${_work_dir%/}/etc/fabric/nexus-store.properties"
+jdbcUrl=jdbc\:postgresql\://$(hostname -f)\:5432/${_dbname}
+username=${_dbusr}
+password=${_dbpwd}
+schema=${_schema:-"public"}
+maximumPoolSize=40
+advanced=maxLifetime\=600000
+EOF
+        if [ -s "${_work_dir%/}/etc/fabric/nexus-store.properties" ]; then
+            cat ${_work_dir%/}/etc/fabric/nexus-store.properties | grep -v password
+            return 0
+        fi
     fi
 
     local _java_opts="-Dnexus.datastore.enabled=true -Dnexus.datastore.nexus.jdbcUrl=\"jdbc:postgresql://$(hostname -f):5432/${_dbname}\" -Dnexus.datastore.nexus.username=\"${_dbusr}\" -Dnexus.datastore.nexus.password=\"${_dbpwd}\" -Dnexus.datastore.nexus.schema=${_dbschema} -Dnexus.datastore.nexus.advanced=maxLifetime=600000 -Dnexus.datastore.nexus.maximumPoolSize=10"
