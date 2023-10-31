@@ -116,6 +116,25 @@ function setGlobals() { # Best effort. may not return accurate dir path
     fi
 }
 
+# Query example. Start this after 'setGlobals ${_PID}', also better redirect STDERR
+function searchBlobId() {
+    local _blobId="$1"
+    [ -z "${_blobId}" ] && return 1
+    runDbQuery "SELECT distinct REGEXP_REPLACE(recipe_name, '-.+', '') AS fmt FROM repository" 2>/dev/null | while read -r _fmt; do
+        if [[ "${_fmt}" =~ \[fmt:([^\]]+)\] ]]; then
+            local _format="${BASH_REMATCH[1]}"
+            echo "SELECT '${_format}' as format, r.name as repo_name, ab.asset_blob_id, ab.blob_ref, ab.blob_size, a.path, a.kind FROM ${_format}_asset_blob ab INNER JOIN ${_format}_asset a USING (asset_blob_id) INNER JOIN ${_format}_content_repository cr USING (repository_id) INNER JOIN repository r on cr.config_repository_id = r.id WHERE ab.blob_ref like '%${_blobId}';"
+        fi
+    done >/tmp/.queries.sql
+    if [ -s /tmp/.queries.sql ]; then
+        echo "# format, repo_name, asset_blob_id, blob_ref, blob_size, path, kind"
+        query="$(cat /tmp/.queries.sql)"
+    fi
+    if [ -n "${query%;}" ]; then
+        runDbQuery "${query%;}"
+    fi
+}
+
 main() {
     local query="$1"
 
