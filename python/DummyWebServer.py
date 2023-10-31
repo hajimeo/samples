@@ -1,7 +1,6 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 import mimetypes
-import os
 import sys
 import time
 from http.server import HTTPServer
@@ -40,7 +39,7 @@ class SlowserverRequestHandler(BaseHTTPRequestHandler):
                 if mtype:
                     self.send_header("Content-type", mtype)
                 self.end_headers()
-                # If initial dalay is needed, add sleep in here
+                # If initial delay is needed, add sleep in here
                 write_with_delay(self, fp=fp, sec=delay_sec)
         except IOError:
             self.send_response(404)
