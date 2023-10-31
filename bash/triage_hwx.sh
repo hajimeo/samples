@@ -116,7 +116,8 @@ function f_check_system() {
     (netstat -s || cat /proc/net/dev) &> ${_work_dir%/}/netstat_s.out
 
     # Misc.
-    #sysctl kernel.pid_max fs.file-max fs.file-nr # max is OS limit (Too many open files)
+    #sysctl kernel.pid_max fs.file-max fs.file-nr kernel.threads-max vm.overcommit_memory vm.overcommit_ratio vm.max_map_count # file-max is OS limit (Too many open files)
+    # $JAVA_HOME/bin/java -XX:+PrintFlagsFinal -version | grep -w ThreadStackSize
     sysctl -a &> ${_work_dir%/}/sysctl.out
     sysctl -a | grep fips &> ${_work_dir%/}/sysctl_rhel_fips.out
     #sar -A &> ${_work_dir%/}/sar_A.out
@@ -150,7 +151,7 @@ function f_check_process() {
     else
         cat /proc/${_p}/limits &> ${_work_dir%/}/proc_limits_${_p}.out
     fi
-    cat /proc/${_p}/status &> ${_work_dir%/}/proc_status_${_p}.out
+    cat /proc/${_p}/status &> ${_work_dir%/}/proc_status_${_p}.out  # including memory usage
     date > ${_work_dir%/}/proc_io_${_p}.out; cat /proc/${_p}/io >> ${_work_dir%/}/proc_io_${_p}.out
     cat /proc/${_p}/environ | tr '\0' '\n' > ${_work_dir%/}/proc_environ_${_p}.out
     # https://gist.github.com/jkstill/5095725
