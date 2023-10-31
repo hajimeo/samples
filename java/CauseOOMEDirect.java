@@ -37,7 +37,7 @@ public class CauseOOMEDirect {
         int interval = (args.length > 1) ? Integer.parseInt(args[1]) : 500;
 
         CauseOOMEDirect test = new CauseOOMEDirect();
-        log("Starting test with max loop=" + maxIteration + " and interval=" + interval + " ...");
+        log("Starting test with max loop=" + maxIteration + " and interval=" + interval + " ms ...");
         try {
             test.OOMEing(maxIteration, interval);
         } catch (OutOfMemoryError e) {
