@@ -2,15 +2,15 @@
  * Based on:
  * https://lucene.apache.org/core/5_5_2/demo/src-html/org/apache/lucene/demo/SearchFiles.html
  * https://ishanupamanyu.com/blog/get-all-documents-in-lucene/
- *
+ * <p>
  * long totalHits = topDocs.totalHits; // 5.5.2
  * mvn clean package && cp -v -f ./target/esdump-1.0-SNAPSHOT-jar-with-dependencies.jar ../../misc/esdump.jar
  * long totalHits = topDocs.totalHits.value; // 8.11.2
  * mvn clean package && cp -v -f ./target/esdump-1.0-SNAPSHOT-jar-with-dependencies.jar ../../misc/esdump8.jar
- *
+ * <p>
  * curl -O -L https://github.com/hajimeo/samples/raw/master/misc/esdump.jar
- * curl -O -L https://github.com/hajimeo/samples/raw/master/misc/esdump8.jar
- *
+ * curl -O -L https://github.com/hajimeo/samples/raw/master/misc/esdump8.jar (for IQ)
+ * <p>
  * TODO: Caused by: java.lang.IllegalArgumentException: An SPI class of type org.apache.lucene.codecs.Codec with name 'Lucene84' does not exist.  You need to add the corresponding JAR file supporting this SPI to your classpath.  The current classpath supports the following names: [Lucene87]
  */
 
@@ -19,6 +19,7 @@ import org.apache.lucene.analysis.standard.StandardAnalyzer;
 import org.apache.lucene.document.Document;
 import org.apache.lucene.index.DirectoryReader;
 import org.apache.lucene.index.IndexReader;
+import org.apache.lucene.index.IndexableField;
 import org.apache.lucene.queryparser.classic.ParseException;
 import org.apache.lucene.queryparser.classic.QueryParser;
 import org.apache.lucene.search.*;
@@ -40,9 +41,9 @@ public class EsDump {
 
     public static void main(String[] args) throws IOException, ParseException {
         if (args.length == 0) {
-            System.err.println("EsDump './sonatype-work/nexus3/elasticsearch/nexus/nodes/0/indices' 'raw-hosted' '.+name_aka_path.+'");
+            System.err.println("java -jar ./esdump.jar './sonatype-work/nexus3/elasticsearch/nexus/nodes/0/indices' 'raw-hosted' '.+name_aka_path.+'");
             System.err.println("# to just convert repository name to index hash:");
-            System.err.println("EsDump '' 'raw-hosted'");
+            System.err.println("java -jar ./esdump.jar '' 'raw-hosted'");
             return;
         }
 
@@ -120,10 +121,10 @@ public class EsDump {
     public static long searchAndPrintResults(IndexSearcher indexSearcher, Query query) throws IOException {
         long i = 0L;
         TopDocs topDocs = indexSearcher.search(query, RETRIEVE_NUM);
-        long totalHits = topDocs.totalHits; // 5.5.2
-        //long totalHits = topDocs.totalHits.value; // 8.11.2
+        //long totalHits = topDocs.totalHits; // 5.5.2
+        long totalHits = topDocs.totalHits.value; // 8.11.2
         System.err.printf("Found %d hits.%n", totalHits);
-        System.out.printf("[%n");
+        System.out.println("[");
         while (topDocs.scoreDocs.length != 0) {
             ScoreDoc[] results = topDocs.scoreDocs;
             for (ScoreDoc scoreDoc : results) {
@@ -131,10 +132,13 @@ public class EsDump {
                 Document doc = indexSearcher.doc(docId);
                 i++;
                 System.err.printf("# Doc %d:%n", i);
-                System.out.printf("%s", doc.getBinaryValue(FIELD_NAME).utf8ToString());
+                //System.out.printf("%s", doc.getBinaryValue(FIELD_NAME).utf8ToString());
+                for (IndexableField field : doc.getFields()) {
+                    System.out.printf("  \"%s\":\"%s\"%n", field.name(),field.stringValue());
+                }
                 if (MAX_LIMIT > 0 && MAX_LIMIT <= i) {
-                    System.out.printf("%n");
-                    System.out.printf("]%n");
+                    System.out.println("");
+                    System.out.printf("]");
                     return i;
                 }
                 if (i < totalHits) {
