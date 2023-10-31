@@ -1,14 +1,15 @@
 #!/usr/bin/env bash
 usage() {
     cat << 'EOF'
+
 PURPOSE:
-Gather basic information to troubleshoot Java process related *performance* issues.
-Tested with Nexus official docker image: https://github.com/sonatype/docker-nexus3
-Currently this script gathers the following information:
- - Java thread dumps with jstack if available otherwise kill -3 (000.log)
- - top -H (001.log)
- - netstat or similar (002.log)
- - misc. OS info (900.log)
+    Gather basic information to troubleshoot Java process related *performance* issues.
+    Tested with Nexus official docker image: https://github.com/sonatype/docker-nexus3
+    Currently this script gathers the following information:
+     - Java thread dumps with jstack if available otherwise kill -3 (000.log)
+     - top -H (001.log)
+     - netstat or similar (002.log)
+     - misc. OS info (900.log)
 
 EXAMPLES:
     # Taking thread dumps whenever the log line contains "QuartzTaskInfo"
@@ -33,13 +34,19 @@ _COUNT=5
 _LOG_FILE=""
 _REGEX=""
 _PID=""
-_OUT_DIR=""
+_OUT_DIR="/tmp"
+
 
 function tailStdout() {
     local __doc__="Tail stdout file or XX:LogFile file"
     local _pid="$1"
     local _timeout="${2:-"30"}"
     local _outputFile="${3}"
+
+    if [ -z "${_pid}" ]; then
+        echo "No file to tail for pid:${_pid}" >&2
+        return 1
+    fi
 
     local _cmd=""
     local _sleep="0.5"
@@ -87,7 +94,7 @@ function takeDumps() {
         if [ ! -f /proc/${_pid}/fd/1 ]; then
             echo "[$(date +'%Y-%m-%d %H:%M:%S')] WARN  No 'jstack' and no stdout file (so best effort)" >&2
         fi
-        tailStdout "${_pid}" "$((${_count} * ${_interval} + 4))" "${_outPfx}000.log" "${_installDir}"
+        tailStdout "${_pid}" "$((${_count} * ${_interval} + 4))" "${_outPfx}000.log"
     fi
 
     for _i in $(seq 1 ${_count}); do
@@ -161,36 +168,27 @@ function _stopping() {
 
 main() {
     local _pfx="${1:-"script-$(date +"%Y%m%d%H%M%S")"}"
-    detectDirs "${_PID}"
-
-    local _outDir="${_OUT_DIR:-"/tmp"}"
-    _OUT_DIR="${_outDir}"
-    if [ -z "${_INSTALL_DIR}" ]; then
-        echo "Could not find install directory (_INSTALL_DIR)." >&2
-        return 1
-    fi
-    if [ -z "${_WORK_DIR}" ]; then
-        echo "Could not find work directory (_WORK_DIR)." >&2
-        return 1
-    fi
+    local _pid="${2:-"${_PID}"}"
+    [ -z "${_pid}" ] && echo "No PID (-p) provided." >&2 && usage && return 1
 
     local _misc_start=$(date +%s)
-    miscChecks "${_PID}" &> "${_outDir%/}/${_pfx}900.log"
+    miscChecks "${_PID}" &> "${_OUT_DIR%/}/${_pfx}900.log"
     echo "[$(date +'%Y-%m-%d %H:%M:%S')] miscChecks completed ($(( $(date +%s) - ${_misc_start} ))s)" >&2
     # NOTE: same infor as prometheus is in support zip
 
+    # No monitoring log file specified, so taking dumps normally
     if [ -z "${_LOG_FILE}" ]; then
-        takeDumps "${_PID}" "${_COUNT}" "${_INTERVAL}" "${_outDir%/}" "${_pfx}"
+        takeDumps "${_PID}" "${_COUNT}" "${_INTERVAL}" "${_OUT_DIR%/}" "${_pfx}"
         return $?
     fi
 
-    [ ! -f "${_LOG_FILE}" ] && echo "${_LOG_FILE} does not exist" >&2 && return 1
-    [ -z "${_REGEX}" ] && echo "'-f' is provided but no '-r'" >&2 && return 1
+    [ ! -f "${_LOG_FILE}" ] && echo "${_LOG_FILE} does not exist." >&2 && usage && return 1
+    [ -z "${_REGEX}" ] && echo "'-f' is provided but no '-r'." >&2 && usage && return 1
     echo "Monitoring ${_LOG_FILE} with '${_REGEX}' ..." >&2
     while true; do
         if tail -n0 -F "${_LOG_FILE}" | grep --line-buffered -m1 -E "${_REGEX}"; then
             trap "_stopping" SIGINT
-            takeDumps "${_PID}" "${_COUNT}" "${_INTERVAL}" "${_outDir%/}"
+            takeDumps "${_PID}" "${_COUNT}" "${_INTERVAL}" "${_OUT_DIR%/}"
             sleep 1
         fi
     done
