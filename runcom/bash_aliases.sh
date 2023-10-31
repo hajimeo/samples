@@ -54,7 +54,7 @@ function git_comp_tags() {
     local _tag1="$1"
     local _tag2="$2"
     local _diff="$3"
-    local _fetched="$(find . -maxdepth 3 -type f -name "FETCH_HEAD" -mmin -60 -print 2>/dev/null)"
+    local _fetched="$(find . -type f -maxdepth 3 -name "FETCH_HEAD" -mmin -60 -print 2>/dev/null)"
     if [ -z "${_fetched}" ]; then
         git fetch
     fi
@@ -254,7 +254,7 @@ function fcat() {
     local _max_depth="${3:-"7"}"
     local _result=1
     # Accept not only file name but also /<dir>/<filename> so that using grep
-    for _f in `find . -maxdepth ${_max_depth} -type f -print | grep -w "${_name}$"`; do
+    for _f in `find . -type f -maxdepth ${_max_depth} -print | grep -w "${_name}$"`; do
         echo "# ${_f}" >&2
         cat "${_f}" && _result=0
         [[ "${_find_all}" =~ ^(y|Y) ]] || break
@@ -269,7 +269,7 @@ function fvim() {
     local _max_depth="${3:-"7"}"
     local _result=1
     # Accept not only file name but also /<dir>/<filename> so that using grep
-    for _f in `find . -maxdepth ${_max_depth} -type f -print | grep -w "${_name}$"`; do
+    for _f in `find . -type f -maxdepth ${_max_depth} -print | grep -w "${_name}$"`; do
         echo "# ${_f}" >&2
         vim "${_f}" && _result=$?
         [[ "${_find_all}" =~ ^(y|Y) ]] || break
@@ -759,8 +759,8 @@ function backupC() {
         # Blow is bad because extracted files may have old dates
         #${_find} "$HOME/Documents/tests" -type f -mtime +120 -delete 2>/dev/null
         #${_find} $HOME/Documents/tests/* -type d -mtime +2 -empty -print -delete
-        ${_find} "$HOME/Documents/tests" -maxdepth 1 -type d | rg '(nxrm|nxiq)_[0-9.-]+_([a-zA-Z].+)' -o -r '$2' | rg -v -i -w 'h2' | xargs -I{} psql -c "DROP DATABASE {}"
-        ${_find} "$HOME/Documents/tests" -maxdepth 1 -type d -mtime +120 -print0 | xargs -0 -I{} -t rm -rf {}
+        ${_find} "$HOME/Documents/tests" -type d -maxdepth 1 -mtime +120 | rg '(nxrm|nxiq)_[0-9.-]+_([a-zA-Z].+)' -o -r '$2' | rg -v -i -w 'h2' | xargs -I{} -t psql -c "DROP DATABASE {}"
+        ${_find} "$HOME/Documents/tests" -type d -maxdepth 1 -mtime +120 -print0 | xargs -0 -I{} -t rm -rf {}
      fi
 
     [ ! -d "${_src}" ] && return 11
@@ -769,12 +769,12 @@ function backupC() {
     # NOTE: xargs may not work with very long file name 'mv: rename {} to /Users/hosako/.Trash/{}: No such file or directory', so not using.
     _src="$(realpath "${_src}")"    # because find -L ... -delete does not work
     [ -z "${_src%/}" ] && return 12
-    ${_find} ${_src%/} -type f -mtime +7 -size 0 \( ! -name "._*" \) -print -delete 2>/dev/null &
-    ${_find} ${_src%/} -type d -mtime +14 -name '*_tmp' -print -delete 2>/dev/null &
-    ${_find} ${_src%/} -type f -mtime +14 -name '*.tmp' -print -delete 2>/dev/null &
-    ${_find} ${_src%/} -type f -mtime +60 -name "*.log" -print -delete 2>/dev/null &
-    ${_find} ${_src%/} -type f -mtime +90 -size +128000k -print -delete 2>/dev/null &
-    ${_find} ${_src%/} -type f -mtime +180 -print -delete 2>/dev/null &
+    ${_find} ${_src%/} -type f -mtime +7 -size 0 \( ! -name "._*" \) -delete 2>/dev/null &
+    ${_find} ${_src%/} -type d -mtime +14 -name '*_tmp' -delete 2>/dev/null &
+    ${_find} ${_src%/} -type f -mtime +14 -name '*.tmp' -delete 2>/dev/null &
+    ${_find} ${_src%/} -type f -mtime +60 -name "*.log" -delete 2>/dev/null &
+    ${_find} ${_src%/} -type f -mtime +90 -size +128000k -delete 2>/dev/null &
+    ${_find} ${_src%/} -type f -mtime +180 -delete 2>/dev/null &
 
     #[ ! -d "$HOME/.Trash" ] && return 13
     #local _mv="mv --backup=t"
@@ -785,7 +785,9 @@ function backupC() {
     #${_find} ${_src%/} -type f -mtime +90  -size +2048000k -print0 | xargs -0 -n1 -I {} ${_mv} "{}" $HOME/.Trash/ &
     #${_find} ${_src%/} -type f -mtime +45 -size +4048000k -print0 | xargs -0 -n1 -I {} ${_mv} "{}" $HOME/.Trash/ &
 
+    jobs -l
     wait
+
     # Wait then deleting empty directories. NOTE: this find command requires "/*"
     ${_find} ${_src%/}/* -type d -mtime +2 -empty -delete &
 
