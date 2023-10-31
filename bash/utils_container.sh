@@ -11,7 +11,7 @@ __TMP=${__TMP:-"/tmp"}
 
 
 function _docker_cmd() {
-    # Checking in my prefered order
+    # Checking in my preferred order
     #TODO: if which skopeo &>/dev/null; then
     #    echo "skopeo"
     if which docker &>/dev/null; then
