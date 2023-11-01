@@ -4,7 +4,7 @@
 #
 # python3 -m pip install ldaptor
 # curl -O -L https://raw.githubusercontent.com/hajimeo/samples/master/python/ldapproxy.py
-# python3 ./ldapproxy.py 10389 node-freeipa.standalone.localdomain 389 # or 636 ssl
+# python3 ./ldapproxy.py "10389" "node-freeipa.standalone.localdomain" "389" # or "636" "ssl"
 
 from ldaptor.protocols import pureldap
 from ldaptor.protocols.ldap.ldapclient import LDAPClient
