@@ -44,9 +44,9 @@ class LoggingProxy(ProxyBase):
                 return defer.succeed(None)
 
         response = self.read_cache(self.hashing(request))
+        log.msg("Request => " + repr(request))
+        log.msg("Response => " + repr(response))
         if response is not None:
-            log.msg("Request => " + repr(request))
-            log.msg("Response => " + repr(response))
             reply(response)
             if isinstance(response, pureldap.LDAPSearchResultEntry):
                 reply(pureldap.LDAPSearchResultDone(0))
