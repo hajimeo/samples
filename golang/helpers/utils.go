@@ -26,6 +26,20 @@ func Elapsed(startTsMs int64, message string, thresholdMs int64) {
 	}
 }
 
+func DatetimeStrToInt(datetimeStr string) int64 {
+	if len(datetimeStr) == 0 {
+		panic("datetimeStr is empty")
+	}
+	if len(datetimeStr) <= 10 {
+		datetimeStr = datetimeStr + " 00:00:00"
+	}
+	tmpTimeFrom, err := time.Parse("2006-01-02 15:04:03", datetimeStr)
+	if err != nil {
+		panic(err)
+	}
+	return tmpTimeFrom.Unix()
+}
+
 func GetEnv(key string, fallback string) string {
 	value, exists := os.LookupEnv(key)
 	if exists {

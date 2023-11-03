@@ -24,6 +24,18 @@ func TestElapsed(t *testing.T) {
 	Elapsed(startMs, fmt.Sprintf("TEST startMs = %d", startMs), 0)
 }
 
+func TestDatetimeStrToInt(t *testing.T) {
+	result := DatetimeStrToInt("2023-10-20")
+	if result != 1697760000 {
+		t.Errorf("Result should be timestanmp (int64) but got %v", result)
+	}
+	result = DatetimeStrToInt("2023-10-20 12:12:12")
+	if result != 1697803920 {
+		t.Errorf("Result should be timestanmp (int64) but got %v", result)
+	}
+	//result = datetimeStrToTs("aaaaa")
+}
+
 func TestGetEnv(t *testing.T) {
 	os.Setenv("FOO", "1")
 	shouldBe1 := GetEnv("FOO", "2")
