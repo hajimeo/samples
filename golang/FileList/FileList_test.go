@@ -101,6 +101,10 @@ func TestGetBaseNameWithoutExt(t *testing.T) {
 	if fileName != "00000000-abcd-ef00-12345-123456789abc" {
 		t.Errorf("getBaseNameWithoutExt with %s didn't return '00000000-abcd-ef00-12345-123456789abc'", DUMMY_FILE_PATH)
 	}
+	fileName = getBaseNameWithoutExt("00000000-abcd-ef00-12345-123456789abc")
+	if fileName != "00000000-abcd-ef00-12345-123456789abc" {
+		t.Errorf("getBaseNameWithoutExt didn't return '00000000-abcd-ef00-12345-123456789abc'")
+	}
 }
 
 func TestGetBlobSize(t *testing.T) {
@@ -201,31 +205,6 @@ func TestGetAssetBlobTables(t *testing.T) {
 //	}
 //}
 
-func TestGenValidateNodeIdQuery(t *testing.T) {
-	if len(TEST_DB_CONN_STR) == 0 {
-		t.Log("No DB conn string provided in TEST_DB_CONN_STR. Skipping TestGenRpoFmtMap.")
-		return
-	}
-	*_DB_CON_STR = TEST_DB_CONN_STR
-	db := openDb(*_DB_CON_STR)
-	query := genValidateNodeIdQuery("aaaaa", db)
-	if !strings.Contains(query, "aaaaa") {
-		t.Errorf("genValidateNodeIdQuery should return a query containing 'aaaaa'")
-		t.Log(query)
-	}
-}
-
-func TestValidateNodeId(t *testing.T) {
-	if len(TEST_DB_CONN_STR) == 0 {
-		t.Log("No DB conn string provided in TEST_DB_CONN_STR. Skipping TestGenRpoFmtMap.")
-		return
-	}
-	*_DB_CON_STR = TEST_DB_CONN_STR
-	if validateNodeId("aaaaa") {
-		t.Errorf("validateNodeId should not return true with 'aaaaa'")
-	}
-}
-
 func TestRemoveLines(t *testing.T) {
 	updatedContents := removeLines(DUMMY_PROP_TXT, _R_DELETED)
 	if len(updatedContents) == len(DUMMY_FILE_PATH) {
@@ -243,26 +222,16 @@ func TestIsTimestampBetween(t *testing.T) {
 	}
 }
 
-func TestGenOutputForReconcile(t *testing.T) {
-	delDateFrom := datetimeStrToTs("2021-06-02")
-	delDateTo := datetimeStrToTs("2021-06-03")
-	output, _, err := genOutputForReconcile(DUMMY_PROP_TXT, DUMMY_FILE_PATH, delDateFrom, delDateTo, false, nil)
-	if err != nil {
-		t.Errorf("genOutputForReconcile return error %s", err.Error())
+func TestDatetimeStrToTs(t *testing.T) {
+	result := datetimeStrToTs("2023-10-20")
+	if result != 1697760000 {
+		t.Errorf("Result should be timestanmp (int64) but got %v", result)
 	}
-	if !strings.Contains(output, ",00000000-abcd-ef00-12345-123456789abc") {
-		t.Errorf("output should contain '00000000-abcd-ef00-12345-123456789abc'\n(%s)", output)
+	result = datetimeStrToTs("2023-10-20 12:12:12")
+	if result != 1697803920 {
+		t.Errorf("Result should be timestanmp (int64) but got %v", result)
 	}
-
-	delDateFrom = datetimeStrToTs("2022-06-02")
-	delDateTo = datetimeStrToTs("2022-07-02")
-	output, _, err = genOutputForReconcile(DUMMY_PROP_TXT, DUMMY_FILE_PATH, delDateFrom, delDateTo, false, nil)
-	if err == nil || !strings.Contains(err.Error(), "is not between") {
-		t.Errorf("genOutputForReconcile return unexpected error %s", err.Error())
-	}
-	if strings.Contains(output, ",00000000-abcd-ef00-12345-123456789abc") {
-		t.Errorf("As 'deletedDateTime=1622674572617' (2021-06-02T22:56:12.617Z), should not return anything (%s)", output)
-	}
+	//result = datetimeStrToTs("aaaaa")
 }
 
 // TODO: TestGenOutputFromProp (and some others)

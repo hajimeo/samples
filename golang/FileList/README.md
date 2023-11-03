@@ -1,5 +1,5 @@
 # File List
-Demo script to list all objects from a File type blob store with tab delimiter format (not csv).
+Demo script to list all files from a File type blob store with tab delimiter format (not csv).
 
 ## DOWNLOAD and INSTALL:
 ```bash
@@ -27,9 +27,7 @@ Usage of file-list:
   -P    If true, read and output the .properties files
   -R    If true, .properties content is *sorted* and -fP|-fPX string is treated as regex
   -RDel
-        Reconcile: Remove 'deleted=true' from .properties. Requires -dF
-  -RF
-        Reconcile: Output for the Reconcile task (datetime,blob_ref). -P will be ignored
+        Remove 'deleted=true' from .properties. Requires -dF
   -S3
         AWS S3: If true, access S3 bucket with AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY and AWS_REGION
   -T    AWS S3: If true, get tags of each object
@@ -38,18 +36,22 @@ Usage of file-list:
         If true, more verbose logging
   -b string
         Base directory (default: '.') or S3 Bucket name (default ".")
+  -bF string
+        file path whic contains the list of blob IDs
   -bsName string
-        Reconcile: eg. 'default'. If provided, the SQL query will be much faster
+        eg. 'default'. If provided, the SQL query will be faster
   -c int
-        Concurrent number for sub directories (may not need to use with very fast disk) (default 1)
+        Concurrent number for reading directories (default 1)
   -c2 int
         AWS S3: Concurrent number for retrieving AWS Tags (default 16)
   -dF string
-        Reconcile: Deleted date YYYY-MM-DD (from). Used to search deletedDateTime
+        Deleted date YYYY-MM-DD (from). Used to search deletedDateTime
   -dT string
-        Reconcile: Deleted date YYYY-MM-DD (to). To exclude newly deleted assets
+        Deleted date YYYY-MM-DD (to). To exclude newly deleted assets
   -db string
-        Reconcile: DB connection string or path to properties file
+        DB connection string or path to properties file
+  -dd int
+        NOT IN USE: Directory Depth to find sub directories (eg: 'vol-NN', 'chap-NN') (default 2)
   -f string
         Filter for the file path (eg: '.properties' to include only this extension)
   -fP string
@@ -59,15 +61,17 @@ Usage of file-list:
   -m int
         AWS S3: Integer value for Max Keys (<= 1000) (default 1000)
   -mF string
-        Reconcile: File modification date YYYY-MM-DD from
+        File modification date YYYY-MM-DD from
   -mT string
-        Reconcile: File modification date YYYY-MM-DD to
+        File modification date YYYY-MM-DD to
   -n int
         Return first N lines (0 = no limit). (TODO: may return more than N)
   -p string
         Prefix of sub directories (eg: 'vol-') This is not recursive
+  -repoFmt string
+        eg. 'maven2'. If provided, the SQL query will be faster
   -src string
-        Reconcile: Using database or blobstore as source [BS|DB] (default "BS")
+        Using database or blobstore as source [BS|DB] (default "BS")
 ```
 
 ## Usage Examples
@@ -113,53 +117,53 @@ $ file-list -b ./content -p 'vol-' -f ".bytes" >/dev/null
 13:52:46.972949 INFO  Printed 136895 of 136895 (size:2423593014) in ./content and sub-dir starts with vol- (elapsed:26s)
 ```
 
-### List all objects which properties contain 'repo-name=docker-proxy' and 'deleted=true'
+### List all files which properties contain 'repo-name=docker-proxy' and 'deleted=true'
 ```
 file-list -b ./content -p "vol-" -c 10 -f ".properties" -P -fP "@Bucket\.repo-name=docker-proxy.+deleted=true" -R > docker-proxy_soft_deleted.tsv
 ```
 NOTE: the attributes in a .properties file are sorted in memory, so that attributes start with "@" comes before "deleted=true" line.
 
-### List all objects which does NOT contain 'maven-metadata.xml'
+### List all files which does NOT contain 'maven-metadata.xml'
 ```
 file-list -b ./content -p "vol-" -c 10 -f ".properties" -P -fPX "BlobStore\.blob-name=.+/maven-metadata.xml.*" -R > all_excluding_maven-metadata.tsv
 ```
 
-### Output lines for the reconciliation (blobstore.rebuildComponentDB) YYYY-MM-DD text (-RF) and for the files which were modified since 1 day ago (-mF "\<date\>")
+### List files which were modified since 1 day ago (-mF "YYYY-MM-DD")
 ```
-file-list -b ./content -p "vol-" -c 10 -RF -mF "$(date -d "1 day ago" +%Y-%m-%d)" > ./$(date '+%Y-%m-%d')
-```
-
-### Output lines for the reconciliation (blobstore.rebuildComponentDB) YYYY-MM-DD text (-RF) and deleted from one day ago (-dF "\<date\>")
-```
-file-list -b ./content -p "vol-" -c 10 -RF -dF "$(date -d "1 day ago" +%Y-%m-%d)" > ./$(date '+%Y-%m-%d')
+file-list -b ./content -p "vol-" -c 10 -mF "$(date -d "1 day ago" +%Y-%m-%d)" > ./$(date '+%Y-%m-%d')
 ```
 
-### Remove 'deleted=true' (-RDel), then outputs lines for the reconciliation YYYY-MM-DD text
+### List files which were soft-deleted since one day ago (-dF "YYYY-MM-DD")
 ```
-file-list -b ./content -p "vol-" -c 10 -RF -dF "$(date -d "1 day ago" +%Y-%m-%d)" -RDel > ./$(date '+%Y-%m-%d')
+file-list -b ./content -p "vol-" -c 10 -dF "$(date -d "1 day ago" +%Y-%m-%d)" > ./$(date '+%Y-%m-%d')
 ```
-### Remove 'deleted=true' (-RDel) against S3, then outputs the contents of .properties file (before editing), and with DRY-RUN mode
+To use the output for the Reconcile Task's Since log, use ` | rg '/([0-9a-f\-]+)\..+(\d\d\d\d.\d\d.\d\d.\d\d:\d\d:\d\d)' -o -r '$2,$1'`
+
+### **DANGEROUS** Remove 'deleted=true' (-RDel and -dF "YYYY-MM-DD")
+```
+file-list -b ./content -p "vol-" -c 10 -dF "$(date -d "1 day ago" +%Y-%m-%d)" -RDel > ./$(date '+%Y-%m-%d')
+```
+
+### Remove 'deleted=true' (-RDel) but Dry Run against S3, then outputs the contents of .properties file ( to check before removing)
 ```
 file-list -S3 -b apac-support-bucket -p "node-nxrm-ha1/content/vol-" -c 10 -R -fP "@Bucket\.repo-name=raw-s3-hosted,.+deleted=true" -P -dF "$(date -d "1 day ago" +%Y-%m-%d)" -RDel -Dry
 ```
 
-### Check orphaned files by querying against PostgreSQL (-db "\<conn string or nexus-store.properties file path) with max 10 DB connections (-c 10)
+### Check orphaned files by querying against PostgreSQL (-db "\<conn string or nexus-store.properties file path) with max 10 DB connections (-c 10), and using -P as it's faster because of generating better SQL query
 ```
-file-list -b ./content -p vol- -c 10 -db "host=localhost port=5432 user=nxrm3pg password=nxrm3pg dbname=nxrm3pg"
+file-list -b ./content -p vol- -c 10 -db "host=localhost port=5432 user=nxrm3pg password=nxrm3pg dbname=nxrm3pg" -P
+# or
+file-list -b ./content -p vol- -c 10 -db /nexus-data/etc/fabric/nexus-store.properties -P
 ```
-or
-```
-file-list -b ./content -p vol- -c 10 -db /nexus-data/etc/fabric/nexus-store.properties
-```
-NOTE: Above outputs blobs which are not in <format>_asset table, which includes assets which have not soft-deleted by Cleanup unused asset blobs task.
+NOTE: the above outputs blobs with properties content, which are not in <format>_asset table, which means it doesn't check the asset_blobs which are soft-deleted by Cleanup unused asset blobs task.
 
-### Check orphaned files, and with the reconciliation YYYY-MM-DD format output (-RF), and deleted after 1 day ago (-dF)
+### Check orphaned files, checking files, which were soft-deleted since 1 day ago (-dF)
 ```
-$ file-list -b ./content -p vol- -c 10 -db /nexus-data/etc/fabric/nexus-store.properties -RF -dF "$(date -d "1 day ago" +%Y-%m-%d)" > ./$(date '+%Y-%m-%d') 2> ./file-list_$(date +"%Y%m%d%H%M%S").log
+$ file-list -b ./content -p vol- -c 10 -db /nexus-data/etc/fabric/nexus-store.properties -dF "$(date -d "1 day ago" +%Y-%m-%d)" > ./$(date '+%Y-%m-%d') 2> ./file-list_$(date +"%Y%m%d%H%M%S").log
 ```
-NOTE: If using -RDel to delete "deleted=true", recommend to save the STDERR into a file like above.
+NOTE: If using -RDel to remove "deleted=true", recommend to save the STDERR into a file (like above) in case of reverting.
 
-### Delete specific .properties/.bytes files:
+###  List specific .properties/.bytes files then delete with xargs + rm:
 ```
 $ file-list -b ./sonatype-work/nexus3/blobs/default/content -p "vol-" -c 4 -fP "@BlobStore\.blob-name=/@sonatype/policy-demo,.+@Bucket\.repo-name=npm-hosted" -R -H | cut -d '.' -f1 | xargs -I{} -t rm -v -f {}.{properties,bytes}
 ```

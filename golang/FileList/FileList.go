@@ -9,7 +9,9 @@ $HOME/IdeaProjects/samples/misc/filelist_$(uname)_$(uname -m) -b <workingDirecto
 $HOME/IdeaProjects/samples/misc/filelist_$(uname)_$(uname -m) -b <workingDirectory>/blobs/default/content -p "vol-" -c1 10
 
 cd /opt/sonatype/sonatype-work/nexus3/blobs/default/
-file-list -b ./content -p vol- -c 4 -db /opt/sonatype/sonatype-work/nexus3/etc/fabric/nexus-store.properties -RF -bsName default > ./$(date '+%Y-%m-%d') 2> ./file-list_$(date +"%Y%m%d").log &
+file-list -b ./content -p vol- -c 4 -db /opt/sonatype/sonatype-work/nexus3/etc/fabric/nexus-store.properties -bsName default > ./$(date '+%Y-%m-%d') 2> ./file-list_$(date +"%Y%m%d").log &
+
+Fr S3: https://pkg.go.dev/github.com/aws/aws-sdk-go/service/s3
 */
 
 package main
@@ -63,16 +65,18 @@ var _WITH_PROPS *bool
 var _NO_HEADER *bool
 var _USE_REGEX *bool
 
+// as it should have only .bytes and .properties, probably not needed any more
 //var _EXCLUDE_FILE *string
 //var _INCLUDE_FILE *string
 
-// Reconcile related
-var _RECON_FMT *bool
+// Reconcile / orphaned related
 var _REMOVE_DEL *bool
 var _WITH_BLOB_SIZE *bool
 var _DB_CON_STR *string
+var _BLOB_IDS_FILE *string
 var _TRUTH *string
 var _BS_NAME *string
+var _REPO_FORMAT *string
 var _DEL_DATE_FROM *string
 var _DEL_DATE_FROM_ts int64
 var _DEL_DATE_TO *string
@@ -131,16 +135,17 @@ func _setGlobals() {
 	_DEBUG2 = flag.Bool("XX", false, "If true, more verbose logging")
 	_DRY_RUN = flag.Bool("Dry", false, "If true, RDel does not do anything")
 
-	// Reconcile related
-	_TRUTH = flag.String("src", "BS", "Reconcile: Using database or blobstore as source [BS|DB]") // TODO: not implemented "DB" type yet
-	_DB_CON_STR = flag.String("db", "", "Reconcile: DB connection string or path to properties file")
-	_BS_NAME = flag.String("bsName", "", "Reconcile: eg. 'default'. If provided, the SQL query will be much faster")
-	_RECON_FMT = flag.Bool("RF", false, "Reconcile: Output for the Reconcile task (datetime,blob_ref). -P will be ignored")
-	_REMOVE_DEL = flag.Bool("RDel", false, "Reconcile: Remove 'deleted=true' from .properties. Requires -dF")
-	_DEL_DATE_FROM = flag.String("dF", "", "Reconcile: Deleted date YYYY-MM-DD (from). Used to search deletedDateTime")
-	_DEL_DATE_TO = flag.String("dT", "", "Reconcile: Deleted date YYYY-MM-DD (to). To exclude newly deleted assets")
-	_MOD_DATE_FROM = flag.String("mF", "", "Reconcile: File modification date YYYY-MM-DD from")
-	_MOD_DATE_TO = flag.String("mT", "", "Reconcile: File modification date YYYY-MM-DD to")
+	// Reconcile / orphaned blob finding related
+	_TRUTH = flag.String("src", "BS", "Using database or blobstore as source [BS|DB]") // TODO: not implemented "DB" type yet
+	_DB_CON_STR = flag.String("db", "", "DB connection string or path to properties file")
+	_BLOB_IDS_FILE = flag.String("bF", "", "file path whic contains the list of blob IDs")
+	_BS_NAME = flag.String("bsName", "", "eg. 'default'. If provided, the SQL query will be faster")
+	_REPO_FORMAT = flag.String("repoFmt", "", "eg. 'maven2'. If provided, the SQL query will be faster")
+	_REMOVE_DEL = flag.Bool("RDel", false, "Remove 'deleted=true' from .properties. Requires -dF")
+	_DEL_DATE_FROM = flag.String("dF", "", "Deleted date YYYY-MM-DD (from). Used to search deletedDateTime")
+	_DEL_DATE_TO = flag.String("dT", "", "Deleted date YYYY-MM-DD (to). To exclude newly deleted assets")
+	_MOD_DATE_FROM = flag.String("mF", "", "File modification date YYYY-MM-DD from")
+	_MOD_DATE_TO = flag.String("mT", "", "File modification date YYYY-MM-DD to")
 
 	// AWS S3 related
 	_CONC_2 = flag.Int("c2", 16, "AWS S3: Concurrent number for retrieving AWS Tags")
@@ -181,7 +186,7 @@ func _setGlobals() {
 	_R_DELETED, _ = regexp.Compile("deleted=true") // should not use ^ as replacing one-line text
 	_R_REPO_NAME, _ = regexp.Compile("[^#]?@Bucket.repo-name=(.+)")
 	_R_BLOB_NAME, _ = regexp.Compile("[^#]?@BlobStore.blob-name=(.+)")
-	if *_RECON_FMT || *_REMOVE_DEL {
+	if *_REMOVE_DEL {
 		*_FILTER = _PROP_EXT
 		if len(*_FILTER_P) == 0 {
 			*_FILTER_P = "deleted=true"
@@ -358,33 +363,6 @@ func genRepoFmtMap() map[string]string {
 	return reposToFmts
 }
 
-func genValidateNodeIdQuery(nodeId string, db *sql.DB) string {
-	tableNames := getAssetTables(db, "", nil)
-	query := "SELECT SUM(c) as numInvalid"
-	query = query + " FROM (" + genAssetBlobUnionQuery(tableNames, "1 as c", "ab.blob_ref NOT like '%@"+nodeId+"' LIMIT 1", true) + ") t_unions"
-	//query = "SELECT tableName, REGEXP_REPLACE(blob_ref, '^[^@]+@', '') AS nodeId, count(*) FROM ("+query+") t_unions GROUP BY 1, 2"
-	return query
-}
-
-func validateNodeId(nodeId string) bool {
-	// temporarily opening a DB connection only for this query
-	db := openDb(*_DB_CON_STR)
-	if db != nil {
-		defer db.Close()
-	}
-	query := genValidateNodeIdQuery(nodeId, db)
-	rows := queryDb(query, db)
-	defer rows.Close()
-	var numInvalid int64
-	for rows.Next() {
-		err := rows.Scan(&numInvalid)
-		if err != nil {
-			panic(err)
-		}
-	}
-	return !(numInvalid > 1)
-}
-
 func genDbConnStr(props StoreProps) string {
 	jdbcPtn := regexp.MustCompile(`jdbc:postgresql://([^/:]+):?(\d*)/([^?]+)\??(.*)`)
 	props["jdbcUrl"] = strings.ReplaceAll(props["jdbcUrl"], "\\", "")
@@ -468,10 +446,7 @@ func printLineS3(client *s3.Client, item types.Object, db *sql.DB) {
 		return
 	}
 
-	// If not for Reconciliation YYYY-MM-DD log, output normally.
-	if !*_RECON_FMT {
-		output = fmt.Sprintf("%s%s%s%s%d", path, _SEP, modTime, _SEP, item.Size)
-	}
+	output = fmt.Sprintf("%s%s%s%s%d", path, _SEP, modTime, _SEP, item.Size)
 
 	// If .properties file is checked and _WITH_BLOB_SIZE, then get the size of .bytes file
 	if *_WITH_BLOB_SIZE && *_FILTER == _PROP_EXT && strings.HasSuffix(path, _PROP_EXT) {
@@ -534,10 +509,7 @@ func printLine(path string, fInfo os.FileInfo, db *sql.DB) {
 		return
 	}
 
-	// If not for Reconciliation YYYY-MM-DD log, output normally.
-	if !*_RECON_FMT {
-		output = fmt.Sprintf("%s%s%s%s%d", path, _SEP, modTime, _SEP, fInfo.Size())
-	}
+	output = fmt.Sprintf("%s%s%s%s%d", path, _SEP, modTime, _SEP, fInfo.Size())
 
 	// If .properties file is checked and _WITH_BLOB_SIZE, then get the size of .bytes file
 	if *_WITH_BLOB_SIZE && *_FILTER == _PROP_EXT && strings.HasSuffix(path, _PROP_EXT) {
@@ -562,8 +534,6 @@ func printLine(path string, fInfo os.FileInfo, db *sql.DB) {
 
 // To handle a bit complicated conditions
 func _printLineExtra(output string, path string, modTimeTs int64, db *sql.DB, client *s3.Client) string {
-	skipCheck := false
-
 	if _START_TIME_ts > 0 && modTimeTs > _START_TIME_ts {
 		_log("INFO", "path:"+path+" is recently modified, so skipping ("+strconv.FormatInt(modTimeTs, 10)+" > "+strconv.FormatInt(_START_TIME_ts, 10)+")")
 		return ""
@@ -576,24 +546,16 @@ func _printLineExtra(output string, path string, modTimeTs int64, db *sql.DB, cl
 	// NOTE: Not doing same for _DEL_DATE_TO_ts as some task may touch.
 
 	// no deleted date from/to, should not need to open a file
-	if (*_RECON_FMT || !*_WITH_PROPS) && len(*_DB_CON_STR) > 0 && len(*_TRUTH) > 0 && _DEL_DATE_FROM_ts == 0 && _DEL_DATE_TO_ts == 0 {
-		if *_TRUTH == "BS" && !isBlobMissingInDB("", path, db) {
+	if (!*_WITH_PROPS) && len(*_DB_CON_STR) > 0 && len(*_TRUTH) > 0 && _DEL_DATE_FROM_ts == 0 && _DEL_DATE_TO_ts == 0 {
+		blobId := getBaseNameWithoutExt(path)
+		if *_TRUTH == "BS" && !isBlobMissingInDB("", blobId, db) {
 			_log("DEBUG2", "path:"+path+" exists in Database. Skipping.")
 			return ""
-		} else if *_TRUTH == "DB" && !isBlobMissingInBlobStore(path, client) {
+		} else if *_TRUTH == "DB" && !isBlobMissingInBlobStore(blobId, client) {
 			_log("DEBUG2", "path:"+path+" exists in Blobstore. Skipping.")
 			return ""
 		}
-
-		if *_RECON_FMT {
-			reconOutput, _, reconErr := genOutputForReconcile("", path, _DEL_DATE_FROM_ts, _DEL_DATE_TO_ts, true, client)
-			if reconErr != nil {
-				_log("DEBUG", reconErr.Error())
-			}
-			return reconOutput
-		} else if !*_WITH_PROPS {
-			return output
-		}
+		return output
 	}
 
 	// Excluding above special condition, usually needs to read the file
@@ -607,24 +569,22 @@ func _printLineExtra(output string, path string, modTimeTs int64, db *sql.DB, cl
 		_log("WARN", "getContents for "+path+" returned 0 size.")
 	}
 
-	// If 'contents' is given, utilise the repository name.
+	// If 'contents' is given, get the repository name and use it in the query.
 	if len(*_DB_CON_STR) > 0 && len(*_TRUTH) > 0 {
+		blobId := getBaseNameWithoutExt(path)
 		if *_TRUTH == "BS" {
 			// Script is asked to output if this blob is missing in DB
-			if !isBlobMissingInDB(contents, path, db) {
+			if !isBlobMissingInDB(contents, blobId, db) {
 				return ""
 			}
-			skipCheck = true
 		} else if *_TRUTH == "DB" {
 			// Script is asked to output if this blob is missing in Blobstore
-			if !isBlobMissingInBlobStore(path, client) {
+			if !isBlobMissingInBlobStore(blobId, client) {
 				return ""
 			}
-			skipCheck = true
 		}
 	}
 
-	// TODO: too messy and confusing
 	if *_WITH_PROPS || len(*_FILTER_P) > 0 || len(*_FILTER_PX) > 0 {
 		props, skipReason := genOutputFromProp(contents, path)
 		if skipReason != nil {
@@ -635,23 +595,10 @@ func _printLineExtra(output string, path string, modTimeTs int64, db *sql.DB, cl
 			output = fmt.Sprintf("%s%s%s", output, _SEP, props)
 		}
 	}
-	if *_RECON_FMT || *_REMOVE_DEL {
-		// If reconciliation output format is requested, should not use 'output'
-		reconOutput, shouldRemoveDel, reconErr := genOutputForReconcile(contents, path, _DEL_DATE_FROM_ts, _DEL_DATE_TO_ts, skipCheck, client)
-		if reconErr != nil {
-			_log("DEBUG", reconErr.Error())
-		}
-		// Currently, for the safety, _REMOVE_DEL requires delDateFromTs
-		if *_REMOVE_DEL && _DEL_DATE_FROM_ts > 0 {
-			if !shouldRemoveDel {
-				_log("DEBUG", reconErr.Error())
-				return ""
-			}
-			_ = removeDel(contents, path, client)
-		}
-		if *_RECON_FMT {
-			return reconOutput
-		}
+
+	// Currently, for the safety, _REMOVE_DEL requires delDateFromTs
+	if *_REMOVE_DEL && _DEL_DATE_FROM_ts > 0 {
+		_ = removeDel(contents, path, client)
 	}
 
 	return output
@@ -761,7 +708,7 @@ func queryDb(query string, db *sql.DB) *sql.Rows {
 
 func genAssetBlobUnionQuery(tableNames []string, columns string, where string, includeTableName bool) string {
 	if len(columns) == 0 {
-		columns = "*"
+		columns = "a.asset_id, a.repository_id, a.path, a.kind, a.component_id, a.last_downloaded, a.last_updated, ab.*"
 	}
 	if len(where) > 0 {
 		where = " WHERE " + where
@@ -773,19 +720,21 @@ func genAssetBlobUnionQuery(tableNames []string, columns string, where string, i
 		if includeTableName {
 			element = element + ", '" + tableName + "' as tableName"
 		}
-		element = fmt.Sprintf("%s FROM %s a", element, tableName)
-		// NOTE: Join is required otherwise when Cleanup unused asset blob task has not been run, this script thinks that blob exists
-		element = fmt.Sprintf("%s JOIN %s_blob ab ON a.asset_blob_id = ab.asset_blob_id", element, tableName)
+		element = fmt.Sprintf("%s FROM %s_blob ab", element, tableName)
+		// NOTE: Left Join is required otherwise when Cleanup unused asset blob task has not been run, this script thinks that blob is orphaned, which is not true
+		element = fmt.Sprintf("%s LEFT JOIN %s a ON a.asset_blob_id = ab.asset_blob_id", element, tableName)
 		element = fmt.Sprintf("%s%s", element, where)
-		elements = append(elements, "("+element+")")
+		element = fmt.Sprintf("%s LIMIT 1", element)
+		elements = append(elements, element)
 	}
-	query := strings.Join(elements, " UNION ALL ")
-	//_log("DEBUG", query)
+	query := elements[0]
+	if len(elements) > 0 {
+		query = "(" + strings.Join(elements, ") UNION ALL (") + ")"
+	}
 	return query
 }
 
-func genBlobIdCheckingQuery(path string, tableNames []string) string {
-	blobId := getBaseNameWithoutExt(path)
+func genBlobIdCheckingQuery(blobId string, tableNames []string) string {
 	// Just in case, supporting older version by using "%'"
 	where := "blob_ref LIKE '%" + blobId + "%'"
 	if len(*_BS_NAME) > 0 {
@@ -813,6 +762,8 @@ func getAssetTables(db *sql.DB, contents string, reposToFmt map[string]string) [
 		} else {
 			_log("WARN", fmt.Sprintf("repoName: %s is not in reposToFmt\n%v\n", repoName, reposToFmt))
 		}
+	} else if len(*_REPO_FORMAT) > 0 {
+		result = append(result, *_REPO_FORMAT+"_asset")
 	}
 
 	query := "SELECT table_name FROM information_schema.tables WHERE table_name like '%_asset'"
@@ -833,7 +784,7 @@ func getAssetTables(db *sql.DB, contents string, reposToFmt map[string]string) [
 }
 
 // Checking from DB to blobstore, like DeadBlobsFinder
-func isBlobMissingInBlobStore(path string, client *s3.Client) bool {
+func isBlobMissingInBlobStore(blobId string, client *s3.Client) bool {
 	// TODO: implement for S3 as well (eg: will be similar to getContentsS3)
 	/*if _IS_S3 != nil && *_IS_S3 {
 		readFromS3(path, client)
@@ -845,16 +796,16 @@ func isBlobMissingInBlobStore(path string, client *s3.Client) bool {
 	return false
 }
 
-func isBlobMissingInDB(contents string, path string, db *sql.DB) bool {
-	// TODO: Current UNION query is a bit slow. Providing "path" generates the repoFmt but too slow
+func isBlobMissingInDB(contents string, blobId string, db *sql.DB) bool {
+	// UNION ALL query against many tables is slow. so if contents is given, using specific table
 	tableNames := getAssetTables(db, contents, _REPO_TO_FMT)
 	if tableNames == nil { // Mainly for unit test
 		_log("WARN", "tableNames is nil for contents: "+contents)
 		return false
 	}
-	query := genBlobIdCheckingQuery(path, tableNames)
+	query := genBlobIdCheckingQuery(blobId, tableNames)
 	if len(query) == 0 { // Mainly for unit test
-		_log("WARN", fmt.Sprintf("query is empty for path: %s and tableNames: %v\n", path, tableNames))
+		_log("WARN", fmt.Sprintf("query is empty for blobId: %s and tableNames: %v\n", blobId, tableNames))
 		return false
 	}
 	// Ref: https://go.dev/doc/database/querying
@@ -864,46 +815,32 @@ func isBlobMissingInDB(contents string, path string, db *sql.DB) bool {
 		return false
 	}
 	defer rows.Close()
+	var cols []string
 	noRows := true
 	for rows.Next() {
+		// Expecting a lot blobs exist in DB, so showing the result only when DEBUG is set
+		if *_DEBUG {
+			if cols == nil || len(cols) == 0 {
+				cols, _ = rows.Columns()
+				if cols == nil || len(cols) == 0 {
+					panic("No columns against query:" + query)
+				}
+			}
+			vals := make([]interface{}, len(cols))
+			for i := range cols {
+				vals[i] = &vals[i]
+			}
+			err := rows.Scan(vals...)
+			if err != nil {
+				_log("WARN", "rows.Scan retuned error: "+err.Error())
+			} else {
+				_log("DEBUG", fmt.Sprintf("blobId: %s row: %v\n", blobId, vals))
+			}
+		}
 		noRows = false
 		break
 	}
 	return noRows
-}
-
-func genOutputForReconcile(contents string, path string, delDateFromTs int64, delDateToTs int64, skipCheck bool, client *s3.Client) (string, bool, error) {
-	deletedDtMsg := ""
-
-	// If skipCheck is true and no deletedDateFrom/To and _REMOVE_DEL are specified, just return the output for reconcile
-	if skipCheck && !*_REMOVE_DEL && delDateFromTs == 0 {
-		_log("INFO", fmt.Sprintf("Found path:%s .", path))
-		// Not using _SEP for this output
-		return fmt.Sprintf("%s,%s", getNowStr(), getBaseNameWithoutExt(path)), false, nil
-	}
-
-	// if _DEL_DATE_FROM or _DEL_DATE_TO, examine deletedDateTime
-	if delDateFromTs > 0 || delDateToTs > 0 {
-		m := _R_DEL_DT.FindStringSubmatch(contents)
-		// stop in here with error, only when skipCheck is false
-		if !skipCheck && len(m) < 2 {
-			return "", false, errors.New(fmt.Sprintf("path:%s does not match with %s (%s)", path, _R_DEL_DT.String(), m))
-		}
-
-		// Current logic is Check and Remove deleted=true only when deletedDatetime is set in the properties file
-		if len(m) > 1 {
-			deletedTSMsec, _ := strconv.ParseInt(m[1], 10, 64)
-			if !isTimestampBetween(deletedTSMsec, delDateFromTs*1000, delDateToTs*1000) {
-				return "", false, errors.New(fmt.Sprintf("%d is not between %d and %d", deletedTSMsec, delDateFromTs*1000, delDateToTs*1000))
-			}
-			deletedDtMsg = fmt.Sprintf(" deletedDateTime=%d", deletedTSMsec)
-		}
-		_log("INFO", fmt.Sprintf("Found path:%s%s", path, deletedDtMsg))
-	} else {
-		_log("DEBUG", fmt.Sprintf("Found path:%s%s", path, deletedDtMsg))
-	}
-	// Not using _SEP for this output
-	return fmt.Sprintf("%s,%s", getNowStr(), getBaseNameWithoutExt(path)), true, nil
 }
 
 func removeDel(contents string, path string, client *s3.Client) bool {
@@ -1093,6 +1030,10 @@ func listObjectsS3(client *s3.Client, dir string) {
 		FetchOwner: *_WITH_OWNER,
 		Prefix:     &dir,
 	}
+	// TODO: probaly below won't work as StartAfter should be Key
+	//if _MOD_DATE_FROM_ts > 0 {
+	//	input.StartAfter = aws.String(time.Unix(_MOD_DATE_FROM_ts, 0).UTC().Format("2006-01-02T15:04:05.000Z"))
+	//}
 
 	for {
 		resp, err := client.ListObjectsV2(context.TODO(), input)
@@ -1192,6 +1133,38 @@ func main() {
 		os.Exit(1)
 	}
 
+	if len(*_BLOB_IDS_FILE) > 0 {
+		_log("INFO", "Reading "+*_BLOB_IDS_FILE)
+		if len(*_DB_CON_STR) == 0 {
+			_log("ERROR", "DB connection string (-db) is required")
+			os.Exit(1)
+		}
+		f, err := os.Open(*_BLOB_IDS_FILE)
+		if err != nil {
+			_log("ERROR", err.Error())
+			os.Exit(1)
+		}
+		defer f.Close()
+
+		db := openDb(*_DB_CON_STR)
+		scanner := bufio.NewScanner(f)
+		for scanner.Scan() {
+			// Expecting the file contains only blobId for now
+			blobId := scanner.Text()
+			if *_TRUTH == "BS" && isBlobMissingInDB("", blobId, db) {
+				_log("WARN", "blobId:"+blobId+" is missing in Database.")
+				//} else if *_TRUTH == "DB" && !isBlobMissingInBlobStore(blobId, client) {
+				//	_log("WARN", "blobId:"+blobId+" is missing in Blobstore.")
+			}
+		}
+
+		if err := scanner.Err(); err != nil {
+			_log("WARN", err.Error())
+			os.Exit(1)
+		}
+		os.Exit(0)
+	}
+
 	// Start outputting ..
 	var subDirs []string
 	var client *s3.Client
@@ -1213,13 +1186,14 @@ func main() {
 	}
 	if *_LIST_DIRS {
 		fmt.Printf("%v", subDirs)
-		return
+		os.Exit(0)
 	}
+
 	_log("INFO", fmt.Sprintf("Retrived %d sub directories", len(subDirs)))
 	_log("DEBUG", fmt.Sprintf("Sub directories: %v", subDirs))
 
-	// Printing headers if requested
-	if !*_RECON_FMT && !*_NO_HEADER {
+	// Printing headers (unless no header)
+	if !*_NO_HEADER {
 		fmt.Printf("Path%sLastModified%sSize", _SEP, _SEP)
 		if *_WITH_BLOB_SIZE && *_FILTER == _PROP_EXT {
 			fmt.Printf("%sBlobSize", _SEP)
