@@ -151,7 +151,7 @@ file-list -S3 -b apac-support-bucket -p "node-nxrm-ha1/content/vol-" -c 10 -R -f
 
 ### Check orphaned files by querying against PostgreSQL (-db "\<conn string or nexus-store.properties file path) with max 10 DB connections (-c 10), and using -P as it's faster because of generating better SQL query
 ```
-file-list -b ./content -p vol- -c 10 -db "host=localhost port=5432 user=nxrm3pg password=nxrm3pg dbname=nxrm3pg" -P
+file-list -b ./content -p vol- -c 10 -db "host=localhost port=5432 user=nxrm3pg password=******** dbname=nxrm3pg" -P
 # or
 file-list -b ./content -p vol- -c 10 -db /nexus-data/etc/fabric/nexus-store.properties -P
 ```
@@ -162,6 +162,12 @@ NOTE: the above outputs blobs with properties content, which are not in <format>
 $ file-list -b ./content -p vol- -c 10 -db /nexus-data/etc/fabric/nexus-store.properties -dF "$(date -d "1 day ago" +%Y-%m-%d)" > ./$(date '+%Y-%m-%d') 2> ./file-list_$(date +"%Y%m%d%H%M%S").log
 ```
 NOTE: If using -RDel to remove "deleted=true", recommend to save the STDERR into a file (like above) in case of reverting.
+
+### Check orphaned files from the text file which contains Blob IDs
+```
+file-list -b ./content -p vol- -c 10 -db "host=localhost port=5432 user=nxrm3pg password=******** dbname=nxrm3pg" -bF blobIds.txt 2>/tmp/result.err
+```
+Above /tmp/result.err contains the line `17:12:13.240005 WARN  blobId:cced76ab-3a55-4fff-8984-c855fde20331 is missing in Database.`
 
 ###  List specific .properties/.bytes files then delete with xargs + rm:
 ```
