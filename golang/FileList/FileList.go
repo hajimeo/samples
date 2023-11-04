@@ -34,6 +34,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"slices" // 1.21 or higher
 	"sort"
 	"strconv"
 	"strings"
@@ -87,6 +88,7 @@ var _MOD_DATE_TO *string
 var _MOD_DATE_TO_ts int64
 var _START_TIME_ts int64
 var _REPO_TO_FMT map[string]string
+var _ASSET_TABLES []string
 
 // AWS related
 var _IS_S3 *bool
@@ -98,10 +100,11 @@ var _CONC_2 *int
 // Regular expressions
 var _R *regexp.Regexp
 var _RX *regexp.Regexp
-var _R_DEL_DT *regexp.Regexp
-var _R_DELETED *regexp.Regexp
-var _R_REPO_NAME *regexp.Regexp
-var _R_BLOB_NAME *regexp.Regexp
+var _R_DELETED_DT, _ = regexp.Compile("[^#]?deletedDateTime=([0-9]+)")
+var _R_DELETED, _ = regexp.Compile("deleted=true") // should not use ^ as replacing one-line text
+var _R_REPO_NAME, _ = regexp.Compile("[^#]?@Bucket.repo-name=(.+)")
+var _R_BLOB_NAME, _ = regexp.Compile("[^#]?@BlobStore.blob-name=(.+)")
+var _R_BLOB_ID, _ = regexp.Compile("[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}")
 
 var _DEBUG *bool
 var _DEBUG2 *bool
@@ -115,6 +118,8 @@ var _PROP_EXT = ".properties"
 type StoreProps map[string]string
 
 func _setGlobals() {
+	_START_TIME_ts = time.Now().Unix()
+
 	_BASEDIR = flag.String("b", ".", "Base directory (default: '.') or S3 Bucket name")
 	//_BASEDIR = flag.String("b", "", "S3 Bucket name")
 	_DIR_DEPTH = flag.Int("dd", 2, "NOT IN USE: Directory Depth to find sub directories (eg: 'vol-NN', 'chap-NN')")
@@ -148,7 +153,7 @@ func _setGlobals() {
 	_MOD_DATE_TO = flag.String("mT", "", "File modification date YYYY-MM-DD to")
 
 	// AWS S3 related
-	_CONC_2 = flag.Int("c2", 16, "AWS S3: Concurrent number for retrieving AWS Tags")
+	_CONC_2 = flag.Int("c2", 8, "AWS S3: Concurrent number for retrieving AWS Tags")
 	_IS_S3 = flag.Bool("S3", false, "AWS S3: If true, access S3 bucket with AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY and AWS_REGION")
 	_MAXKEYS = flag.Int("m", 1000, "AWS S3: Integer value for Max Keys (<= 1000)")
 	_WITH_OWNER = flag.Bool("O", false, "AWS S3: If true, get the owner display name")
@@ -159,6 +164,7 @@ func _setGlobals() {
 	if _DEBUG2 != nil && *_DEBUG2 {
 		*_DEBUG = true
 	}
+
 	// If _FILTER_P is given, automatically populate other related variables
 	if len(*_FILTER_P) > 0 || len(*_FILTER_PX) > 0 {
 		*_FILTER = _PROP_EXT
@@ -172,20 +178,22 @@ func _setGlobals() {
 			}
 		}
 	}
+
 	if len(*_DB_CON_STR) > 0 {
 		if _, err := os.Stat(*_DB_CON_STR); err == nil {
-			props, _ := readPropertiesFile(*_DB_CON_STR)
-			*_DB_CON_STR = genDbConnStr(props)
+			*_DB_CON_STR = genDbConnStrFromFile(*_DB_CON_STR)
 		}
 		*_FILTER = _PROP_EXT
 		//*_WITH_PROPS = false
-		_REPO_TO_FMT = genRepoFmtMap()
+
+		db := openDb(*_DB_CON_STR)
+		if db == nil {
+			panic("_DB_CON_STR is provided but cannot open the database.") // Can't output _DB_CON_STR as it may include password
+		}
+		defer db.Close()
+		initRepoFmtMap(db)
 	}
-	_START_TIME_ts = time.Now().Unix()
-	_R_DEL_DT, _ = regexp.Compile("[^#]?deletedDateTime=([0-9]+)")
-	_R_DELETED, _ = regexp.Compile("deleted=true") // should not use ^ as replacing one-line text
-	_R_REPO_NAME, _ = regexp.Compile("[^#]?@Bucket.repo-name=(.+)")
-	_R_BLOB_NAME, _ = regexp.Compile("[^#]?@BlobStore.blob-name=(.+)")
+
 	if *_REMOVE_DEL {
 		*_FILTER = _PROP_EXT
 		if len(*_FILTER_P) == 0 {
@@ -316,7 +324,7 @@ func readPropertiesFile(path string) (StoreProps, error) {
 	props := StoreProps{}
 	file, err := os.Open(path)
 	if err != nil {
-		return nil, err
+		panic(err)
 	}
 	defer file.Close()
 	scanner := bufio.NewScanner(file)
@@ -338,18 +346,17 @@ func readPropertiesFile(path string) (StoreProps, error) {
 	return props, nil
 }
 
-func genRepoFmtMap() map[string]string {
-	// temporarily opening a DB connection only for this query
-	db := openDb(*_DB_CON_STR)
-	if db != nil {
-		defer db.Close()
-	}
-	rows := queryDb("SELECT name, REGEXP_REPLACE(recipe_name, '-.+', '') AS fmt FROM repository", db)
+func initRepoFmtMap(db *sql.DB) {
+	_REPO_TO_FMT = make(map[string]string)
+	_ASSET_TABLES = make([]string, 0)
+
+	query := "SELECT name, REGEXP_REPLACE(recipe_name, '-.+', '') AS fmt FROM repository"
+	rows := queryDb(query, db)
 	if rows == nil { // For unit tests
-		return nil
+		_log("DEBUG", fmt.Sprintf("No result with %s", query))
+		return
 	}
 	defer rows.Close()
-	reposToFmts := make(map[string]string)
 	for rows.Next() {
 		var name string
 		var fmt string
@@ -357,13 +364,17 @@ func genRepoFmtMap() map[string]string {
 		if err != nil {
 			panic(err)
 		}
-		reposToFmts[name] = fmt
+		_REPO_TO_FMT[name] = fmt
+		if !slices.Contains(_ASSET_TABLES, fmt+"_asset") {
+			_ASSET_TABLES = append(_ASSET_TABLES, fmt+"_asset")
+		}
 	}
-	_log("DEBUG", fmt.Sprintf("reposToFmts = %v", reposToFmts))
-	return reposToFmts
+	_log("DEBUG", fmt.Sprintf("_REPO_TO_FMT = %v", _REPO_TO_FMT))
+	_log("DEBUG", fmt.Sprintf("_ASSET_TABLES = %v", _ASSET_TABLES))
 }
 
-func genDbConnStr(props StoreProps) string {
+func genDbConnStrFromFile(filePath string) string {
+	props, _ := readPropertiesFile(filePath)
 	jdbcPtn := regexp.MustCompile(`jdbc:postgresql://([^/:]+):?(\d*)/([^?]+)\??(.*)`)
 	props["jdbcUrl"] = strings.ReplaceAll(props["jdbcUrl"], "\\", "")
 	matches := jdbcPtn.FindStringSubmatch(props["jdbcUrl"])
@@ -547,7 +558,7 @@ func _printLineExtra(output string, path string, modTimeTs int64, db *sql.DB, cl
 
 	// no deleted date from/to, should not need to open a file
 	if (!*_WITH_PROPS) && len(*_DB_CON_STR) > 0 && len(*_TRUTH) > 0 && _DEL_DATE_FROM_ts == 0 && _DEL_DATE_TO_ts == 0 {
-		blobId := getBaseNameWithoutExt(path)
+		blobId := extractBlobIdFromString(path)
 		if *_TRUTH == "BS" && !isBlobMissingInDB("", blobId, db) {
 			_log("DEBUG2", "path:"+path+" exists in Database. Skipping.")
 			return ""
@@ -571,7 +582,7 @@ func _printLineExtra(output string, path string, modTimeTs int64, db *sql.DB, cl
 
 	// If 'contents' is given, get the repository name and use it in the query.
 	if len(*_DB_CON_STR) > 0 && len(*_TRUTH) > 0 {
-		blobId := getBaseNameWithoutExt(path)
+		blobId := extractBlobIdFromString(path)
 		if *_TRUTH == "BS" {
 			// Script is asked to output if this blob is missing in DB
 			if !isBlobMissingInDB(contents, blobId, db) {
@@ -609,9 +620,10 @@ func getPathWithoutExt(path string) string {
 	return path[:len(path)-len(filepath.Ext(path))]
 }
 
-func getBaseNameWithoutExt(path string) string {
-	fileName := filepath.Base(path)
-	return getPathWithoutExt(fileName)
+func extractBlobIdFromString(path string) string {
+	return _R_BLOB_ID.FindString(path)
+	//fileName := filepath.Base(path)
+	//return getPathWithoutExt(fileName)
 }
 
 func getNowStr() string {
@@ -674,6 +686,7 @@ func getContentsS3(path string, client *s3.Client) (string, error) {
 
 func openDb(dbConnStr string) *sql.DB {
 	if len(dbConnStr) == 0 {
+		_log("DEBUG", "Empty DB connection string")
 		return nil
 	}
 	if !strings.Contains(dbConnStr, "sslmode") {
@@ -707,6 +720,10 @@ func queryDb(query string, db *sql.DB) *sql.Rows {
 }
 
 func genAssetBlobUnionQuery(tableNames []string, columns string, where string, includeTableName bool) string {
+	if len(tableNames) == 0 {
+		_log("DEBUG", "tableNames is empty.")
+		return ""
+	}
 	if len(columns) == 0 {
 		columns = "a.asset_id, a.repository_id, a.path, a.kind, a.component_id, a.last_downloaded, a.last_updated, ab.*"
 	}
@@ -746,39 +763,35 @@ func genBlobIdCheckingQuery(blobId string, tableNames []string) string {
 }
 
 // only works on postgres
-func getAssetTables(db *sql.DB, contents string, reposToFmt map[string]string) []string {
+func getAssetTables(db *sql.DB, contents string) []string {
 	result := make([]string, 0)
+	// If _REPO_FORMAT is specified, use this one
+	if len(*_REPO_FORMAT) > 0 {
+		result = append(result, *_REPO_FORMAT+"_asset")
+		return result
+	}
+	// NOTE: should not initiarise in here because of coroutine
+	if _REPO_TO_FMT == nil || len(_REPO_TO_FMT) == 0 {
+		_log("ERROR", "getAssetTables requires _REPO_TO_FMT but empty.")
+		return nil
+	}
+
 	if len(contents) > 0 {
 		m := _R_REPO_NAME.FindStringSubmatch(contents)
 		if len(m) < 2 {
 			_log("WARN", "No _R_REPO_NAME in "+contents)
 			// At this moment, if no blobName, assuming NOT missing...
-			return result
+			return nil
 		}
 		repoName := m[1]
-		if repoFmt, ok := reposToFmt[repoName]; ok {
+		if repoFmt, ok := _REPO_TO_FMT[repoName]; ok {
 			result = append(result, repoFmt+"_asset")
 			return result
 		} else {
-			_log("WARN", fmt.Sprintf("repoName: %s is not in reposToFmt\n%v\n", repoName, reposToFmt))
+			_log("WARN", fmt.Sprintf("repoName: %s is not in reposToFmt\n%v\n", repoName, _REPO_TO_FMT))
 		}
-	} else if len(*_REPO_FORMAT) > 0 {
-		result = append(result, *_REPO_FORMAT+"_asset")
-	}
-
-	query := "SELECT table_name FROM information_schema.tables WHERE table_name like '%_asset'"
-	rows := queryDb(query, db)
-	if rows == nil { // For unit tests
-		return nil
-	}
-	defer rows.Close()
-	for rows.Next() {
-		var name string
-		err := rows.Scan(&name)
-		if err != nil {
-			panic(err)
-		}
-		result = append(result, name)
+	} else if len(_ASSET_TABLES) > 0 {
+		return _ASSET_TABLES
 	}
 	return result
 }
@@ -798,8 +811,8 @@ func isBlobMissingInBlobStore(blobId string, client *s3.Client) bool {
 
 func isBlobMissingInDB(contents string, blobId string, db *sql.DB) bool {
 	// UNION ALL query against many tables is slow. so if contents is given, using specific table
-	tableNames := getAssetTables(db, contents, _REPO_TO_FMT)
-	if tableNames == nil { // Mainly for unit test
+	tableNames := getAssetTables(db, contents)
+	if tableNames == nil || len(tableNames) == 0 { // Mainly for unit test
 		_log("WARN", "tableNames is nil for contents: "+contents)
 		return false
 	}
@@ -1017,11 +1030,71 @@ func walkDirs(basedir string, prefix string) []string {
 	return dirs
 }
 
+func warnMissingBlobIDs(blobIdsFile string, dbConStr string, conc int) {
+	if conc < 1 {
+		_log("ERROR", "Incorrect concurrency:"+strconv.Itoa(conc))
+		return
+	}
+	f, err := os.Open(blobIdsFile)
+	if err != nil {
+		_log("ERROR", "blobIdsFile:"+blobIdsFile+" cannot be opened. "+err.Error())
+		return
+	}
+	defer f.Close()
+
+	// If can't connect, below panics
+	db := openDb(dbConStr)
+	if db == nil {
+		_log("ERROR", "Cannot open the database.") // Can't output _DB_CON_STR as it may include password
+		return
+	} else {
+		defer db.Close()
+	}
+	var wg sync.WaitGroup
+
+	guard := make(chan struct{}, conc)
+
+	scanner := bufio.NewScanner(f)
+	for scanner.Scan() {
+		line := scanner.Text()
+		guard <- struct{}{}
+		wg.Add(1)
+
+		go func(line string) {
+			defer wg.Done()
+			blobId := extractBlobIdFromString(line)
+			if len(blobId) == 0 {
+				_log("DEBUG", "line:"+line+" doesn't contain blibId.")
+			} else {
+				if *_TRUTH == "BS" {
+					if isBlobMissingInDB("", blobId, db) {
+						_log("WARN", "blobId:"+blobId+" is missing in Database.")
+					} else {
+						_log("DEBUG", "blobId:"+blobId+" exists in Database.")
+					}
+				} else if *_TRUTH == "DB" {
+					_log("WARN", "_TRUSE == DB is not implemented yet.")
+					// isBlobMissingInBlobStore(blobId, client)
+				} else {
+					_log("ERROR", "_TRUSE == "+*_TRUTH+" is not implemented yet.")
+				}
+			}
+			<-guard
+		}(line)
+	}
+
+	if err := scanner.Err(); err != nil {
+		_log("ERROR", err.Error())
+	}
+}
+
 func listObjectsS3(client *s3.Client, dir string) {
 	startMs := time.Now().UnixMilli()
 	var subTtl int64
 	db := openDb(*_DB_CON_STR)
-	if db != nil {
+	if db == nil {
+		_log("DEBUG", "Cannot open the database.") // Can't output _DB_CON_STR as it may include password
+	} else {
 		defer db.Close()
 	}
 	input := &s3.ListObjectsV2Input{
@@ -1049,8 +1122,8 @@ func listObjectsS3(client *s3.Client, dir string) {
 		for _, item := range resp.Contents {
 			if len(*_FILTER) == 0 || strings.Contains(*item.Key, *_FILTER) {
 				subTtl++
-				guardTags <- struct{}{}                                     // **
-				wgTags.Add(1)                                               // *
+				guardTags <- struct{}{} // **
+				wgTags.Add(1)           // *
 				go func(client *s3.Client, item types.Object, db *sql.DB) { // **
 					printLineS3(client, item, db)
 					<-guardTags   // **
@@ -1084,7 +1157,9 @@ func listObjects(dir string) {
 	startMs := time.Now().UnixMilli()
 	var subTtl int64
 	db := openDb(*_DB_CON_STR)
-	if db != nil {
+	if db == nil {
+		_log("DEBUG", "Cannot open the database.") // Can't output _DB_CON_STR as it may include password
+	} else {
 		defer db.Close()
 	}
 	// Below line does not work because currently Glob does not support ./**/*
@@ -1137,32 +1212,10 @@ func main() {
 		_log("INFO", "Reading "+*_BLOB_IDS_FILE)
 		if len(*_DB_CON_STR) == 0 {
 			_log("ERROR", "DB connection string (-db) is required")
-			os.Exit(1)
+			return
 		}
-		f, err := os.Open(*_BLOB_IDS_FILE)
-		if err != nil {
-			_log("ERROR", err.Error())
-			os.Exit(1)
-		}
-		defer f.Close()
-
-		db := openDb(*_DB_CON_STR)
-		scanner := bufio.NewScanner(f)
-		for scanner.Scan() {
-			// Expecting the file contains only blobId for now
-			blobId := scanner.Text()
-			if *_TRUTH == "BS" && isBlobMissingInDB("", blobId, db) {
-				_log("WARN", "blobId:"+blobId+" is missing in Database.")
-				//} else if *_TRUTH == "DB" && !isBlobMissingInBlobStore(blobId, client) {
-				//	_log("WARN", "blobId:"+blobId+" is missing in Blobstore.")
-			}
-		}
-
-		if err := scanner.Err(); err != nil {
-			_log("WARN", err.Error())
-			os.Exit(1)
-		}
-		os.Exit(0)
+		warnMissingBlobIDs(*_BLOB_IDS_FILE, *_DB_CON_STR, *_CONC_1)
+		return
 	}
 
 	// Start outputting ..

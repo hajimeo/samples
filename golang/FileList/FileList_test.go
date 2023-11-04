@@ -11,7 +11,7 @@ import (
 // To create DB, an easy way is running ./FileList_test.sh
 // var TEST_DB_CONN_STR = "host=localhost port=5432 user=nxrm password=nxrm123 dbname=nxrmtest"
 var TEST_DB_CONN_STR = ""
-var DUMMY_FILE_PATH = "/tmp/00000000-abcd-ef00-12345-123456789abc.properties"
+var DUMMY_FILE_PATH = "/tmp/00000000-abcd-ef00-1234-123456789abc.properties"
 var DUMMY_PROP_TXT = `#2021-06-02 22:56:12,617+0000
 #Wed Jun 02 22:56:12 UTC 2021
 deletedDateTime=1622674572617
@@ -33,6 +33,13 @@ maximumPoolSize=10
 jdbcUrl=jdbc\:postgresql\://192.168.1.1\:5433/nxrm3pg?ssl\=true&sslfactory\=org.postgresql.ssl.NonValidatingFactory
 advanced=maxLifetime\=600000
 username=nxrm3pg`
+var DUMMY_BLOB_IDS_PATH = "/tmp/dummy-blobids.txt"
+var DUMMY_BLOB_IDS_TXT = `./vol-25/chap-40/79a659c7-32a1-4a72-84e0-1a7d07a9f11f.properties
+./vol-24/chap-01/d04770e3-cc0e-4a37-a562-1bfd6150cb8a.properties
+./vol-24/chap-32/4a626c00-fbb7-4a96-826e-0b6c46465e5f.properties
+./vol-09/chap-39/2ca4c2f9-c7f5-44ab-a30a-7b1cebc736af.properties
+./vol-36/chap-43/a4ee5b0d-f9b3-4dd0-a95d-62feb2900694.properties
+./vol-16/chap-36/b5e06792-4487-4925-bac8-3fbb78d3f561.properties`
 
 func TestMain(m *testing.M) {
 	err := writeContentsFile(DUMMY_FILE_PATH, DUMMY_PROP_TXT)
@@ -40,6 +47,10 @@ func TestMain(m *testing.M) {
 		panic(err)
 	}
 	err = writeContentsFile(DUMMY_DB_PROPS_PATH, DUMMY_DB_PROP_TXT)
+	if err != nil {
+		panic(err)
+	}
+	err = writeContentsFile(DUMMY_BLOB_IDS_PATH, DUMMY_BLOB_IDS_TXT)
 	if err != nil {
 		panic(err)
 	}
@@ -72,11 +83,11 @@ func TestGenRpoFmtMap(t *testing.T) {
 		t.Log("No DB conn string provided in TEST_DB_CONN_STR. Skipping TestGenRpoFmtMap.")
 		return
 	}
-	*_DB_CON_STR = TEST_DB_CONN_STR
-	reposToFmts := genRepoFmtMap()
-	t.Log(reposToFmts)
-	if reposToFmts == nil || len(reposToFmts) == 0 {
-		t.Errorf("genRepoFmtMap didn't return any reposToFmts.")
+	db := openDb(TEST_DB_CONN_STR)
+	initRepoFmtMap(db)
+	t.Log(_REPO_TO_FMT)
+	if _REPO_TO_FMT == nil || len(_REPO_TO_FMT) == 0 {
+		t.Errorf("initRepoFmtMap didn't return any _REPO_TO_FMT.")
 	}
 }
 
@@ -91,19 +102,37 @@ func TestPrintLine(t *testing.T) {
 
 func TestGetPathWithoutExt(t *testing.T) {
 	pathWoExt := getPathWithoutExt(DUMMY_FILE_PATH)
-	if pathWoExt != "/tmp/00000000-abcd-ef00-12345-123456789abc" {
-		t.Errorf("getPathWithoutExt with %s didn't return '/tmp/00000000-abcd-ef00-12345-123456789abc'", DUMMY_FILE_PATH)
+	if pathWoExt != "/tmp/00000000-abcd-ef00-1234-123456789abc" {
+		t.Errorf("getPathWithoutExt with %s didn't return '/tmp/00000000-abcd-ef00-1234-123456789abc'", DUMMY_FILE_PATH)
 	}
 }
 
-func TestGetBaseNameWithoutExt(t *testing.T) {
-	fileName := getBaseNameWithoutExt(DUMMY_FILE_PATH)
-	if fileName != "00000000-abcd-ef00-12345-123456789abc" {
-		t.Errorf("getBaseNameWithoutExt with %s didn't return '00000000-abcd-ef00-12345-123456789abc'", DUMMY_FILE_PATH)
+func TestExtractBlobIdFromString(t *testing.T) {
+	blobId := extractBlobIdFromString(DUMMY_FILE_PATH)
+	if blobId != "00000000-abcd-ef00-1234-123456789abc" {
+		t.Errorf("extractBlobIdFromString from %s didn't return '00000000-abcd-ef00-1234-123456789abc' but %s", DUMMY_FILE_PATH, blobId)
 	}
-	fileName = getBaseNameWithoutExt("00000000-abcd-ef00-12345-123456789abc")
-	if fileName != "00000000-abcd-ef00-12345-123456789abc" {
-		t.Errorf("getBaseNameWithoutExt didn't return '00000000-abcd-ef00-12345-123456789abc'")
+	blobId = extractBlobIdFromString("00000000-abcd-ef00-1234-123456789abc")
+	if blobId != "00000000-abcd-ef00-1234-123456789abc" {
+		t.Errorf("extractBlobIdFromString didn't return '00000000-abcd-ef00-1234-123456789abc', but %s", blobId)
+	}
+}
+
+func TestWarnMissingBlobIDs(t *testing.T) {
+	// Just to test if panics
+	warnMissingBlobIDs("/not/existing/file", "not working DB conn", 1)
+	t.Log("NOTE: 'ERROR blobIdsFile:/not/existing/file cannot be opened. ...' is expected.")
+
+	TEST_DB_CONN_STR = ""
+	//TEST_DB_CONN_STR = "host=localhost port=5432 user=nexus password=nexus123 dbname=nxrm"
+	// To improve the query speed
+	*_BS_NAME = "default"
+	//*_DEBUG = true
+	db := openDb(TEST_DB_CONN_STR)
+	initRepoFmtMap(db)
+	warnMissingBlobIDs(DUMMY_BLOB_IDS_PATH, TEST_DB_CONN_STR, 2)
+	if len(TEST_DB_CONN_STR) == 0 {
+		t.Log("NOTE: 'ERROR Cannot open the database.' is expected.")
 	}
 }
 
@@ -133,8 +162,7 @@ func TestGetContents(t *testing.T) {
 }
 
 func TestGenDbConnStr(t *testing.T) {
-	props, _ := readPropertiesFile(DUMMY_DB_PROPS_PATH)
-	dbConnStr := genDbConnStr(props)
+	dbConnStr := genDbConnStrFromFile(DUMMY_DB_PROPS_PATH)
 	if !strings.Contains(dbConnStr, "host=192.168.1.1 port=5433 user=nxrm3pg password=xxxxxxxx dbname=nxrm3pg") {
 		t.Errorf("DB connection string: %s is incorrect.", dbConnStr)
 	}
@@ -173,26 +201,27 @@ func TestGenBlobIdCheckingQuery(t *testing.T) {
 	*_BS_NAME = "testtest"
 	query := genBlobIdCheckingQuery(DUMMY_FILE_PATH, tableNames)
 	// Could not test without DB || !strings.Contains(query, " helm_asset_blob ") || !strings.Contains(query, " helm_asset ")
-	if !strings.Contains(query, " UNION ALL ") || !strings.Contains(query, "00000000-abcd-ef00-12345-123456789abc") {
+	if !strings.Contains(query, " UNION ALL ") || !strings.Contains(query, "00000000-abcd-ef00-1234-123456789abc") {
 		t.Errorf("Generated query:%s might be incorrect", query)
 	}
 }
 
 func TestGetAssetBlobTables(t *testing.T) {
-	rtn := getAssetTables(nil, "", _REPO_TO_FMT)
-	if len(*_DB_CON_STR) == 0 && rtn != nil {
-		t.Errorf("If no _DB_CON_STR, getAssetTables should return nil")
+	*_DEBUG = true
+	rtn := getAssetTables(nil, "")
+	if len(*_DB_CON_STR) == 0 && rtn != nil && len(rtn) > 0 {
+		t.Errorf("If no _DB_CON_STR, getAssetTables should return nil but %v", rtn)
+	} else {
+		t.Log("NOTE: 'ERROR getAssetTables requires _REPO_TO_FMT but empty.' is expected.")
 	}
 	if len(TEST_DB_CONN_STR) == 0 {
 		t.Log("No DB conn string provided in TEST_DB_CONN_STR. Skipping TestGetAssetBlobTables.")
 		return
 	}
-	*_DB_CON_STR = TEST_DB_CONN_STR
-	db := openDb(*_DB_CON_STR)
-	_REPO_TO_FMT := genRepoFmtMap()
-	rtn = getAssetTables(db, DUMMY_PROP_TXT, _REPO_TO_FMT)
+	db := openDb(TEST_DB_CONN_STR)
+	rtn = getAssetTables(db, DUMMY_PROP_TXT)
 	t.Log(rtn)
-	if len(*_DB_CON_STR) == 0 && rtn == nil {
+	if len(*_DB_CON_STR) == 0 && (rtn == nil || len(rtn) > 0) {
 		t.Errorf("Even if no _DB_CON_STR, getAssetTables should NOT return nil")
 	}
 }
