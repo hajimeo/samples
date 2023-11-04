@@ -1122,8 +1122,8 @@ func listObjectsS3(client *s3.Client, dir string) {
 		for _, item := range resp.Contents {
 			if len(*_FILTER) == 0 || strings.Contains(*item.Key, *_FILTER) {
 				subTtl++
-				guardTags <- struct{}{} // **
-				wgTags.Add(1)           // *
+				guardTags <- struct{}{}                                     // **
+				wgTags.Add(1)                                               // *
 				go func(client *s3.Client, item types.Object, db *sql.DB) { // **
 					printLineS3(client, item, db)
 					<-guardTags   // **
