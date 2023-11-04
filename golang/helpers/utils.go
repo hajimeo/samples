@@ -83,9 +83,9 @@ func GetBoolEnv(key string, fallback bool) bool {
 }
 
 func DeferPanic() {
-	// recover from panic if one occurred. Set err to nil otherwise.
-	if err := recover(); err != nil {
-		log.Println("Panic occurred:", err)
+	// Use this function with 'defer' to recover from panic if occurred. Set err to nil otherwise.
+	if r := recover(); r != nil {
+		log.Println("Panic occurred:", r)
 	}
 }
 
