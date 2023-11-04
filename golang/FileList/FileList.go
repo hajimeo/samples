@@ -31,6 +31,7 @@ import (
 	"github.com/pkg/errors"
 	"io"
 	"log"
+	"math"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -53,6 +54,10 @@ HOW TO and USAGE EXAMPLES:
 }
 
 // Arguments / global variables
+var _DEBUG *bool
+var _DEBUG2 *bool
+var _DRY_RUN *bool
+
 var _BASEDIR *string
 var _DIR_DEPTH *int
 var _PREFIX *string
@@ -106,12 +111,11 @@ var _R_REPO_NAME, _ = regexp.Compile("[^#]?@Bucket.repo-name=(.+)")
 var _R_BLOB_NAME, _ = regexp.Compile("[^#]?@BlobStore.blob-name=(.+)")
 var _R_BLOB_ID, _ = regexp.Compile("[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}")
 
-var _DEBUG *bool
-var _DEBUG2 *bool
-var _DRY_RUN *bool
+// Global variables
 var _CHECKED_N int64 // Atomic (maybe slower?)
 var _PRINTED_N int64 // Atomic (maybe slower?)
 var _TTL_SIZE int64  // Atomic (maybe slower?)
+var _SLOW_MS int64 = 100
 var _SEP = "	"
 var _PROP_EXT = ".properties"
 
@@ -351,6 +355,7 @@ func initRepoFmtMap(db *sql.DB) {
 	_ASSET_TABLES = make([]string, 0)
 
 	query := "SELECT name, REGEXP_REPLACE(recipe_name, '-.+', '') AS fmt FROM repository"
+	_SLOW_MS = 100
 	rows := queryDb(query, db)
 	if rows == nil { // For unit tests
 		_log("DEBUG", fmt.Sprintf("No result with %s", query))
@@ -506,7 +511,6 @@ func printLine(path string, fInfo os.FileInfo, db *sql.DB) {
 	//_log("DEBUG", fmt.Sprintf("printLine-ing for path:%s", path))
 	modTime := fInfo.ModTime()
 	modTimeTs := modTime.Unix()
-	output := ""
 	var blobSize int64 = 0
 
 	atomic.AddInt64(&_CHECKED_N, 1)
@@ -520,7 +524,7 @@ func printLine(path string, fInfo os.FileInfo, db *sql.DB) {
 		return
 	}
 
-	output = fmt.Sprintf("%s%s%s%s%d", path, _SEP, modTime, _SEP, fInfo.Size())
+	output := fmt.Sprintf("%s%s%s%s%d", path, _SEP, modTime, _SEP, fInfo.Size())
 
 	// If .properties file is checked and _WITH_BLOB_SIZE, then get the size of .bytes file
 	if *_WITH_BLOB_SIZE && *_FILTER == _PROP_EXT && strings.HasSuffix(path, _PROP_EXT) {
@@ -706,7 +710,7 @@ func queryDb(query string, db *sql.DB) *sql.Rows {
 	if _DEBUG != nil && *_DEBUG {
 		defer _elapsed(time.Now().UnixMilli(), "DEBUG Executed "+query, 0)
 	} else {
-		defer _elapsed(time.Now().UnixMilli(), "WARN  slow query:"+query, 100)
+		defer _elapsed(time.Now().UnixMilli(), "WARN  slow query:"+query, _SLOW_MS)
 	}
 	if db == nil { // For unit tests
 		return nil
@@ -745,8 +749,11 @@ func genAssetBlobUnionQuery(tableNames []string, columns string, where string, i
 		elements = append(elements, element)
 	}
 	query := elements[0]
-	if len(elements) > 0 {
+	if len(elements) > 1 {
 		query = "(" + strings.Join(elements, ") UNION ALL (") + ")"
+		if _SLOW_MS == 100 {
+			_SLOW_MS = int64(len(elements) * 100)
+		}
 	}
 	return query
 }
@@ -1030,7 +1037,23 @@ func walkDirs(basedir string, prefix string) []string {
 	return dirs
 }
 
-func warnMissingBlobIDs(blobIdsFile string, dbConStr string, conc int) {
+func myHashCode(s string) int32 {
+	h := int32(0)
+	for _, c := range s {
+		h = (31 * h) + int32(c)
+	}
+	return h
+}
+
+func genBlobPath(blobId string) string {
+	// org.sonatype.nexus.blobstore.VolumeChapterLocationStrategy#location
+	hashInt := myHashCode(blobId)
+	vol := math.Abs(math.Mod(float64(hashInt), 43)) + 1
+	chap := math.Abs(math.Mod(float64(hashInt), 47)) + 1
+	return filepath.Join(fmt.Sprintf("vol-%02d", int(vol)), fmt.Sprintf("chap-%02d", int(chap)), blobId)
+}
+
+func printMissingBlobLines(blobIdsFile string, dbConStr string, conc int) {
 	if conc < 1 {
 		_log("ERROR", "Incorrect concurrency:"+strconv.Itoa(conc))
 		return
@@ -1047,8 +1070,6 @@ func warnMissingBlobIDs(blobIdsFile string, dbConStr string, conc int) {
 	if db == nil {
 		_log("ERROR", "Cannot open the database.") // Can't output _DB_CON_STR as it may include password
 		return
-	} else {
-		defer db.Close()
 	}
 	var wg sync.WaitGroup
 
@@ -1068,9 +1089,14 @@ func warnMissingBlobIDs(blobIdsFile string, dbConStr string, conc int) {
 			} else {
 				if *_TRUTH == "BS" {
 					if isBlobMissingInDB("", blobId, db) {
-						_log("WARN", "blobId:"+blobId+" is missing in Database.")
+						_log("WARN", "blobId:"+blobId+" does not exist in database.")
+						if blobId != line {
+							fmt.Println(genBlobPath(blobId) + ".*")
+						} else {
+							fmt.Println(line)
+						}
 					} else {
-						_log("DEBUG", "blobId:"+blobId+" exists in Database.")
+						_log("INFO", "blobId:"+blobId+" exists in database.")
 					}
 				} else if *_TRUTH == "DB" {
 					_log("WARN", "_TRUSE == DB is not implemented yet.")
@@ -1082,6 +1108,8 @@ func warnMissingBlobIDs(blobIdsFile string, dbConStr string, conc int) {
 			<-guard
 		}(line)
 	}
+	// 'defer' sometimes doesn't work
+	db.Close()
 
 	if err := scanner.Err(); err != nil {
 		_log("ERROR", err.Error())
@@ -1214,7 +1242,7 @@ func main() {
 			_log("ERROR", "DB connection string (-db) is required")
 			return
 		}
-		warnMissingBlobIDs(*_BLOB_IDS_FILE, *_DB_CON_STR, *_CONC_1)
+		printMissingBlobLines(*_BLOB_IDS_FILE, *_DB_CON_STR, *_CONC_1)
 		return
 	}
 
