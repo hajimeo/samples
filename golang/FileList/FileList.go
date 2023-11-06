@@ -194,8 +194,8 @@ func _setGlobals() {
 		if db == nil {
 			panic("_DB_CON_STR is provided but cannot open the database.") // Can't output _DB_CON_STR as it may include password
 		}
-		defer db.Close()
 		initRepoFmtMap(db)
+		db.Close()
 	}
 
 	if *_REMOVE_DEL {
@@ -355,7 +355,6 @@ func initRepoFmtMap(db *sql.DB) {
 	_ASSET_TABLES = make([]string, 0)
 
 	query := "SELECT name, REGEXP_REPLACE(recipe_name, '-.+', '') AS fmt FROM repository"
-	_SLOW_MS = 100
 	rows := queryDb(query, db)
 	if rows == nil { // For unit tests
 		_log("DEBUG", fmt.Sprintf("No result with %s", query))
@@ -751,9 +750,6 @@ func genAssetBlobUnionQuery(tableNames []string, columns string, where string, i
 	query := elements[0]
 	if len(elements) > 1 {
 		query = "(" + strings.Join(elements, ") UNION ALL (") + ")"
-		if _SLOW_MS == 100 {
-			_SLOW_MS = int64(len(elements) * 100)
-		}
 	}
 	return query
 }
@@ -770,7 +766,7 @@ func genBlobIdCheckingQuery(blobId string, tableNames []string) string {
 }
 
 // only works on postgres
-func getAssetTables(db *sql.DB, contents string) []string {
+func getAssetTables(contents string) []string {
 	result := make([]string, 0)
 	// If _REPO_FORMAT is specified, use this one
 	if len(*_REPO_FORMAT) > 0 {
@@ -818,7 +814,7 @@ func isBlobMissingInBlobStore(blobId string, client *s3.Client) bool {
 
 func isBlobMissingInDB(contents string, blobId string, db *sql.DB) bool {
 	// UNION ALL query against many tables is slow. so if contents is given, using specific table
-	tableNames := getAssetTables(db, contents)
+	tableNames := getAssetTables(contents)
 	if tableNames == nil || len(tableNames) == 0 { // Mainly for unit test
 		_log("WARN", "tableNames is nil for contents: "+contents)
 		return false
@@ -828,8 +824,12 @@ func isBlobMissingInDB(contents string, blobId string, db *sql.DB) bool {
 		_log("WARN", fmt.Sprintf("query is empty for blobId: %s and tableNames: %v\n", blobId, tableNames))
 		return false
 	}
-	// Ref: https://go.dev/doc/database/querying
+	if _SLOW_MS == 100 {
+		// This query can take longer so not showing too many WARNs
+		_SLOW_MS = int64(len(tableNames) * 100)
+	}
 	rows := queryDb(query, db)
+	_SLOW_MS = int64(100)
 	if rows == nil { // Mainly for unit test
 		_log("WARN", "rows is nil for query: "+query)
 		return false
@@ -1065,16 +1065,8 @@ func printMissingBlobLines(blobIdsFile string, dbConStr string, conc int) {
 	}
 	defer f.Close()
 
-	// If can't connect, below panics
-	db := openDb(dbConStr)
-	if db == nil {
-		_log("ERROR", "Cannot open the database.") // Can't output _DB_CON_STR as it may include password
-		return
-	}
 	var wg sync.WaitGroup
-
 	guard := make(chan struct{}, conc)
-
 	scanner := bufio.NewScanner(f)
 	for scanner.Scan() {
 		line := scanner.Text()
@@ -1083,17 +1075,24 @@ func printMissingBlobLines(blobIdsFile string, dbConStr string, conc int) {
 
 		go func(line string) {
 			defer wg.Done()
+			_log("DEBUG", "Extracting blobId from '"+line+"' .")
 			blobId := extractBlobIdFromString(line)
 			if len(blobId) == 0 {
 				_log("DEBUG", "line:"+line+" doesn't contain blibId.")
 			} else {
+				// TODO: Opening DB connection from outside of goroutine may not execute it concurrently? so doing in here
+				db := openDb(dbConStr)
+				if db == nil {
+					panic("Cannot open the database.") // Can't output _DB_CON_STR as it may include password
+				}
+				defer db.Close()
 				if *_TRUTH == "BS" {
 					if isBlobMissingInDB("", blobId, db) {
 						_log("WARN", "blobId:"+blobId+" does not exist in database.")
 						if blobId != line {
-							fmt.Println(genBlobPath(blobId) + ".*")
-						} else {
 							fmt.Println(line)
+						} else {
+							fmt.Println(genBlobPath(blobId) + ".*")
 						}
 					} else {
 						_log("INFO", "blobId:"+blobId+" exists in database.")
@@ -1104,12 +1103,12 @@ func printMissingBlobLines(blobIdsFile string, dbConStr string, conc int) {
 				} else {
 					_log("ERROR", "_TRUSE == "+*_TRUTH+" is not implemented yet.")
 				}
+				_log("DEBUG", "Completed blobId '"+blobId+"' .")
 			}
 			<-guard
 		}(line)
 	}
-	// 'defer' sometimes doesn't work
-	db.Close()
+	wg.Wait()
 
 	if err := scanner.Err(); err != nil {
 		_log("ERROR", err.Error())
@@ -1119,6 +1118,7 @@ func printMissingBlobLines(blobIdsFile string, dbConStr string, conc int) {
 func listObjectsS3(client *s3.Client, dir string) {
 	startMs := time.Now().UnixMilli()
 	var subTtl int64
+	// As this method is used in the goroutine, open own DB and close
 	db := openDb(*_DB_CON_STR)
 	if db == nil {
 		_log("DEBUG", "Cannot open the database.") // Can't output _DB_CON_STR as it may include password
@@ -1184,6 +1184,7 @@ func listObjectsS3(client *s3.Client, dir string) {
 func listObjects(dir string) {
 	startMs := time.Now().UnixMilli()
 	var subTtl int64
+	// As this method is used in the goroutine, open own DB and close
 	db := openDb(*_DB_CON_STR)
 	if db == nil {
 		_log("DEBUG", "Cannot open the database.") // Can't output _DB_CON_STR as it may include password
@@ -1243,6 +1244,8 @@ func main() {
 			return
 		}
 		printMissingBlobLines(*_BLOB_IDS_FILE, *_DB_CON_STR, *_CONC_1)
+		println("")
+		_log("INFO", fmt.Sprintf("Completed. (elapsed:%ds)", time.Now().Unix()-_START_TIME_ts))
 		return
 	}
 
@@ -1303,15 +1306,15 @@ func main() {
 		wg.Add(1)
 		if _IS_S3 != nil && *_IS_S3 {
 			go func(client *s3.Client, subdir string) {
+				defer wg.Done()
 				listObjectsS3(client, subdir)
 				<-guard
-				wg.Done()
 			}(client, s)
 		} else {
 			go func(subdir string) {
+				defer wg.Done()
 				listObjects(subdir)
 				<-guard
-				wg.Done()
 			}(s)
 		}
 	}

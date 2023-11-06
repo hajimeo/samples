@@ -163,11 +163,11 @@ $ file-list -b ./content -p vol- -c 10 -db /nexus-data/etc/fabric/nexus-store.pr
 ```
 NOTE: If using -RDel to remove "deleted=true", recommend to save the STDERR into a file (like above) in case of reverting.
 
-### Check orphaned files from the text file which contains Blob IDs
+### Check orphaned files from the text file (-bF ./blobIds.txt), which contains Blob IDs, against 'default' blob store (-bsName 'default')
 ```
-file-list -b ./content -p vol- -c 10 -db "host=localhost port=5432 user=nxrm3pg password=******** dbname=nxrm3pg" -bF blobIds.txt 2>/tmp/result.err
+file-list -b ./content -p vol- -c 10 -db "host=localhost port=5432 user=nxrm3pg password=******** dbname=nxrm3pg" -bF ./blobIds.txt -bsName "default" 2>/tmp/orphaned_verify.log 1>/tmp/orphaned_list.out
 ```
-Above /tmp/result.err contains the line `17:12:13.240005 WARN  blobId:cced76ab-3a55-4fff-8984-c855fde20331 is missing in Database.`
+Above /tmp/result.err contains the line `17:58:13.814063 WARN  blobId:81ab5a69-e099-44a1-af1a-7a406bc305e9 does not exist in database.`, or `INFO` if the blobId exists in the DB.
 
 ###  List specific .properties/.bytes files then delete with xargs + rm:
 ```
