@@ -221,15 +221,24 @@ function nxrmStart() {
 function setDbConn() {
     local _dbname="${1}"
     local _isIQ="${2}"
-    local _dbschema="${3:-"public"}"
+    local _baseDir="${3:-"."}"
+    local _dbschema="${4:-"public"}"
     local _dbusr="nexus"
     local _dbpwd="nexus123"
+
     if [ -z "${_dbname%/}" ] || [ -d "${_dbname%/}" ]; then
         echo "Not doing anything as _dbname is empty or directory" >&2
         return 0
     fi
 
-    local _work_dir="$(find . -mindepth 1 -maxdepth 2 -type d -path '*/sonatype-work/*' -name 'nexus3' | sort | tail -n1)"
+    # if my special script for PostgreSQL exists, create DB user and database
+    if [[ ! "${_NO_DB_CREATE}" =~ ^[yY] ]] && [ -s "$HOME/IdeaProjects/samples/bash/utils_db.sh" ]; then
+        source $HOME/IdeaProjects/samples/bash/utils.sh
+        source $HOME/IdeaProjects/samples/bash/utils_db.sh
+        _postgresql_create_dbuser "${_dbusr}" "${_dbpwd}" "${_dbname}" "${_dbschema}"
+    fi
+
+    local _work_dir="$(find ${_baseDir%/} -mindepth 1 -maxdepth 2 -type d -path '*/sonatype-work/*' -name 'nexus3' | sort | tail -n1)"
 
     if [ -z "${_dbname}" ]; then
         if echo "${JAVA_TOOL_OPTIONS}" | grep -q "nexus.datastore.nexus.schema="; then
@@ -272,13 +281,6 @@ EOF
         else
             export JAVA_TOOL_OPTIONS="${_java_opts}"
         fi
-    fi
-
-    # if my special script for PostgreSQL exists, create DB user and database
-    if [[ ! "${_NO_DB_CREATE}" =~ ^[yY] ]] && [ -s "$HOME/IdeaProjects/samples/bash/utils_db.sh" ]; then
-        source $HOME/IdeaProjects/samples/bash/utils.sh
-        source $HOME/IdeaProjects/samples/bash/utils_db.sh
-        _postgresql_create_dbuser "${_dbusr}" "${_dbpwd}" "${_dbname}" "${_dbschema}"
     fi
 }
 
@@ -398,7 +400,7 @@ function nxrmDocker() {
     fi
     local _opts="--name=${_name}"
     [ -n "${INSTALL4J_ADD_VM_PARAMS}" ] && _opts="${_opts} -e INSTALL4J_ADD_VM_PARAMS=\"${INSTALL4J_ADD_VM_PARAMS}\""
-    [ -d "${_work_dir%/}" ] && _opts="${_opts} -v ${_work_dir%/}:/var/tmp/share"
+    [ -d "${_work_dir%/}" ] && _opts="${_opts} -v ${_work_dir%/}:/var/tmp/share:z"  # :z or :Z for SELinux
     [ -d "${_nexus_data%/}" ] && _opts="${_opts} -v ${_nexus_data%/}:/nexus-data"
     [ -n "${_extra_opts}" ] && _opts="${_opts} ${_extra_opts}"  # Should be last to overwrite
     [ -n "${_docker_host}" ] && _docker_host="${_docker_host%/}/"
@@ -523,7 +525,7 @@ function iqDocker() {
     #-e JAVA_OPTS="-Ddw.database.type=postgresql -Ddw.database.hostname=db-server-name.domain.net"
     [ -n "${JAVA_OPTS}" ] && _java_opts="${_java_opts} ${JAVA_OPTS}"
     [ -n "${_java_opts}" ] && _opts="${_opts} -e JAVA_OPTS=\"${_java_opts}\""
-    [ -d "${_work_dir%/}" ] && _opts="${_opts} -v ${_work_dir%/}:/var/tmp/share"
+    [ -d "${_work_dir%/}" ] && _opts="${_opts} -v ${_work_dir%/}:/var/tmp/share:z"  # :z or :Z for SELinux
     [ -d "${_nexus_data%/}" ] && _opts="${_opts} -v ${_nexus_data%/}:/sonatype-work"
     [ -s "${_nexus_data%/}/etc/config.yml" ] && _opts="${_opts} -v ${_nexus_data%/}/etc:/etc/nexus-iq-server"
     [ -d "${_nexus_data%/}/log" ] && _opts="${_opts} -v ${_nexus_data%/}/log:/var/log/nexus-iq-server"
