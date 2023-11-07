@@ -21,6 +21,7 @@ import (
 	"bytes"
 	"context"
 	"database/sql"
+	"encoding/json"
 	"flag"
 	"fmt"
 	"github.com/aws/aws-sdk-go-v2/aws"
@@ -722,6 +723,23 @@ func queryDb(query string, db *sql.DB) *sql.Rows {
 	return rows
 }
 
+func getRow(rowCur *sql.Rows, cols []string) []interface{} {
+	if cols == nil || len(cols) == 0 {
+		_log("ERROR", "No column information")
+		return nil
+	}
+	vals := make([]interface{}, len(cols))
+	for i := range cols {
+		vals[i] = &vals[i]
+	}
+	err := rowCur.Scan(vals...)
+	if err != nil {
+		_log("WARN", "rows.Scan retuned error: "+err.Error())
+		return nil
+	}
+	return vals
+}
+
 func genAssetBlobUnionQuery(tableNames []string, columns string, where string, includeTableName bool) string {
 	if len(tableNames) == 0 {
 		_log("DEBUG", "tableNames is empty.")
@@ -791,7 +809,7 @@ func getAssetTables(contents string) []string {
 			result = append(result, repoFmt+"_asset")
 			return result
 		} else {
-			_log("WARN", fmt.Sprintf("repoName: %s is not in reposToFmt\n%v\n", repoName, _REPO_TO_FMT))
+			_log("WARN", fmt.Sprintf("repoName: %s is not in reposToFmt\n%v", repoName, _REPO_TO_FMT))
 		}
 	} else if len(_ASSET_TABLES) > 0 {
 		return _ASSET_TABLES
@@ -821,7 +839,7 @@ func isBlobMissingInDB(contents string, blobId string, db *sql.DB) bool {
 	}
 	query := genBlobIdCheckingQuery(blobId, tableNames)
 	if len(query) == 0 { // Mainly for unit test
-		_log("WARN", fmt.Sprintf("query is empty for blobId: %s and tableNames: %v\n", blobId, tableNames))
+		_log("WARN", fmt.Sprintf("query is empty for blobId: %s and tableNames: %v", blobId, tableNames))
 		return false
 	}
 	if _SLOW_MS == 100 {
@@ -846,16 +864,8 @@ func isBlobMissingInDB(contents string, blobId string, db *sql.DB) bool {
 					panic("No columns against query:" + query)
 				}
 			}
-			vals := make([]interface{}, len(cols))
-			for i := range cols {
-				vals[i] = &vals[i]
-			}
-			err := rows.Scan(vals...)
-			if err != nil {
-				_log("WARN", "rows.Scan retuned error: "+err.Error())
-			} else {
-				_log("DEBUG", fmt.Sprintf("blobId: %s row: %v\n", blobId, vals))
-			}
+			vals := getRow(rows, cols)
+			_log("DEBUG", fmt.Sprintf("blobId: %s row: %v", blobId, vals))
 		}
 		noRows = false
 		break
@@ -1051,6 +1061,24 @@ func genBlobPath(blobId string) string {
 	vol := math.Abs(math.Mod(float64(hashInt), 43)) + 1
 	chap := math.Abs(math.Mod(float64(hashInt), 47)) + 1
 	return filepath.Join(fmt.Sprintf("vol-%02d", int(vol)), fmt.Sprintf("chap-%02d", int(chap)), blobId)
+}
+
+func softDeletedCount(dbConStr string) {
+	query := "SELECT source_blob_store_name, count(*), min(deleted_date) FROM soft_deleted_blobs group by 1"
+	db := openDb(dbConStr)
+	defer db.Close()
+	rows := queryDb(query, db)
+	defer rows.Close()
+	cols, _ := rows.Columns()
+	if cols == nil || len(cols) == 0 {
+		panic("No columns against query:" + query)
+	}
+	_log("INFO", query)
+	for rows.Next() {
+		vals := getRow(rows, cols)
+		jsonVals, _ := json.Marshal(vals)
+		_log("INFO", fmt.Sprintf("%s", jsonVals))
+	}
 }
 
 func printMissingBlobLines(blobIdsFile string, dbConStr string, conc int) {
@@ -1249,6 +1277,10 @@ func main() {
 			return
 		}
 		printMissingBlobLines(*_BLOB_IDS_FILE, *_DB_CON_STR, *_CONC_1)
+		if len(*_DB_CON_STR) > 0 && (_IS_S3 == nil || !*_IS_S3) {
+			println("")
+			softDeletedCount(*_DB_CON_STR)
+		}
 		println("")
 		_log("INFO", fmt.Sprintf("Completed. (elapsed:%ds)", time.Now().Unix()-_START_TIME_ts))
 		return
@@ -1323,8 +1355,11 @@ func main() {
 			}(s)
 		}
 	}
-
 	wg.Wait()
+	if len(*_DB_CON_STR) > 0 && (_IS_S3 == nil || !*_IS_S3) {
+		println("")
+		softDeletedCount(*_DB_CON_STR)
+	}
 	println("")
 	_log("INFO", fmt.Sprintf("Completed %d of %d (size:%d) in %s and sub-dir starts with '%s' (elapsed:%ds)", _PRINTED_N, _CHECKED_N, _TTL_SIZE, *_BASEDIR, *_PREFIX, time.Now().Unix()-_START_TIME_ts))
 	//_log("INFO", fmt.Sprintf("Printed %d items (size: %d) in bucket: %s with prefix: %s", _PRINTED_N, _TTL_SIZE, *_BASEDIR, *_PREFIX))
