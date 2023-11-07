@@ -1058,10 +1058,15 @@ func printMissingBlobLines(blobIdsFile string, dbConStr string, conc int) {
 		_log("ERROR", "Incorrect concurrency:"+strconv.Itoa(conc))
 		return
 	}
-	f, err := os.Open(blobIdsFile)
-	if err != nil {
-		_log("ERROR", "blobIdsFile:"+blobIdsFile+" cannot be opened. "+err.Error())
-		return
+
+	f := os.Stdin
+	if blobIdsFile != "-" {
+		var err error
+		f, err = os.Open(blobIdsFile)
+		if err != nil {
+			_log("ERROR", "blobIdsFile:"+blobIdsFile+" cannot be opened. "+err.Error())
+			return
+		}
 	}
 	defer f.Close()
 

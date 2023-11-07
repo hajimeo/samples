@@ -166,8 +166,8 @@ NOTE: If using -RDel to remove "deleted=true", recommend to save the STDERR into
 ### Check orphaned files from the text file (-bF ./blobIds.txt), which contains Blob IDs, against 'default' blob store (-bsName 'default')
 ```
 file-list -b ./content -p vol- -c 10 -db "host=localhost port=5432 user=nxrm3pg password=******** dbname=nxrm3pg" -bF ./blobIds.txt -bsName "default" 2>/tmp/orphaned_verify.log 1>/tmp/orphaned_list.out
-# or, if BASH and need to process the input dynamically
-cat ./blobIds.txt | do_something | file-list -b ./content -p vol- -c 10 -db "host=localhost port=5432 user=nxrm3pg password=nxrm3pg dbname=nxrm3pg" -bF <(cat -) 2>/tmp/orphaned_verify.log 1>/tmp/orphaned_list.out
+# If the file contains unnecessary lines (eg: .bytes), use '-bf -'
+cat ./blobIds.txt | grep -v '.bytes' | file-list -b ./content -p vol- -c 10 -db "host=localhost port=5432 user=nxrm3pg password=******** dbname=nxrm3pg" -bsName default -bF - > orphaned.out
 ```
 Above /tmp/result.err contains the line `17:58:13.814063 WARN  blobId:81ab5a69-e099-44a1-af1a-7a406bc305e9 does not exist in database.`, or `INFO` if the blobId exists in the DB.
 
