@@ -6,6 +6,7 @@
 import json
 import sys
 import os
+import html
 
 startDir = "./blobs_abs"
 blobDir = "./blobs_rel"
@@ -23,10 +24,11 @@ if len(sys.argv) > 3:
 for bs in data:
     try:
         path = bs['attributes']['file']['path']
+        name = html.escape(bs['name'])
         if path.startswith("/"):
-            path = f"{startDir}{path} ({bs['name']})"
+            path = f"{startDir}{path} ({name})"
         else:
-            path = f"{blobDir}/{path} ({bs['name']})"
+            path = f"{blobDir}/{path} ({name})"
         print(f"creating '{path}' ...")
         os.makedirs(path)
     except:
