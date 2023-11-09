@@ -1028,8 +1028,8 @@ function f_wrapper2threads() {
     fi
 }
 
-# f_scriptLogSplit ./script-20231030142554000.log "Y"
-function f_scriptLogSplit() {
+# f_splitScriptLog ./script-20231030142554000.log "Y"
+function f_splitScriptLog() {
     local _script_log="$1"
     local _full_split="$2"
     sed -n "/^2023-[0-9][0-9]-[0-9][0-9]/,\$p" "${_script_log}" > ./threads.raw
@@ -1577,7 +1577,7 @@ function f_h2_start() {
         fi
     fi
     # NOTE: 1.4.200 is used by NXRM# but may causes org.h2.jdbc.JdbcSQLIntegrityConstraintViolationException with IQ    # -ifNotExists
-    java -Xmx${_Xmx} -cp $HOME/IdeaProjects/libs/h2-${_h2_ver}.jar org.h2.tools.Server -webPort ${_port} -baseDir "${_baseDir}"
+    java -Xmx${_Xmx} -cp $HOME/IdeaProjects/libs/h2-${_h2_ver}.jar org.h2.tools.Server -webPort ${_port} -baseDir "${_baseDir}" -webAllowOthers -tcpAllowOthers -pgAllowOthers
 }
 
 # TODO: backup function with:
