@@ -273,17 +273,36 @@ function _update_hosts_for_k8s() {
 
 # NOTE: If docker-desktop: docker run --rm -it --privileged --pid=host debian nsenter -t 1 -m -u -n -i sh
 #       and check /containers/services/docker/rootfs/
-_CONTAINER_CMD="${_CONTAINER_CMD:-"microk8s ctr containers"}"
-function _k8s_nsenter() {
+#_CONTAINER_CMD="microk8s ctr containers"
+function _k8s_nsenters() {
+    # To run one command to multiple pods
     local _cmd="${1}"
     local _filter="${2}" # docker.io/sonatype/nexus3.30.1 or image_id
     local _parallel="${3}"
+    local _container_cmd="${4:-"${_CONTAINER_CMD:-"ctr containers"}"}"
+
+    [ -z "${_filter}" ] && return 1
     : > ${__TMP%/}/${FUNCNAME}.list
     # | python -c "import sys,json;a=json.loads(sys.stdin.read());print(json.dumps(a['Spec']['linux']['namespaces']))"
-    ${_CONTAINER_CMD} ls | grep -E "${_filter}" | awk '{print $1}' | while read -r _i; do
-        ${_CONTAINER_CMD} info ${_i} | sed -n -r 's@.+/proc/([0-9]+)/ns/.+@\1@p' | head -n1 >> ${__TMP%/}/${FUNCNAME}.list
+    ${_container_cmd} ls | grep -E "${_filter}" | awk '{print $1}' | while read -r _i; do
+        ${_container_cmd} info ${_i} | sed -n -r 's@.+/proc/([0-9]+)/ns/.+@\1@p' | head -n1 >> ${__TMP%/}/${FUNCNAME}.list
     done 2>/dev/null
     cat ${__TMP%/}/${FUNCNAME}.list | xargs -I{} -t -P${_parallel:-"1"} nsenter -t {} -n sh -c "${_cmd}"
+}
+function _k8s_nsenter() {
+    # workaround of no 'runc'. This uses kubectl but still require _CONTAINER_CMD
+    local _cmd="${1}"
+    local _pod_name="${2}"
+    local _namespace="${3:-"default"}"
+    local _k="${4:-"${_KUBECTL_CMD:-"kubectl"}"}"
+    local _container_cmd="${5:-"${_CONTAINER_CMD:-"ctr containers"}"}"
+
+    [ -z "${_pod_name}" ] && return 11
+    local _containerID="$(${_k} get pod ${_pod_name} -n ${_namespace} -o jsonpath="{.status.containerStatuses[0].containerID}" | sed -n -r 's@^.+//(.+)$@\1@p')"
+    [ -z "${_containerID}" ] && return 12
+    local _pid="$(${_container_cmd} info ${_containerID} | sed -n -r 's@.+/proc/([0-9]+)/ns/.+@\1@p' | head -n1)"
+    [ -z "${_pid}" ] && return 13
+    nsenter -t ${_pid} -n sh -c "${_cmd}"
 }
 
 function _k8s_exec() {
