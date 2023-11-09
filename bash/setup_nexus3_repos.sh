@@ -398,6 +398,10 @@ function f_setup_pypi() {
     if [ -s "${_TMP%/}/mydummyproject-3.0.0-py3-none-any.whl" ] || curl -sf -o ${_TMP%/}/mydummyproject-3.0.0-py3-none-any.whl -L "https://github.com/hajimeo/samples/raw/master/misc/mydummyproject-3.0.0-py3-none-any.whl"; then
         _ASYNC_CURL="Y" f_upload_asset "${_prefix}-hosted" -F "pypi.asset=@${_TMP%/}/mydummyproject-3.0.0-py3-none-any.whl"
     fi
+    # To test a pypi group metadata merge
+    if [ -s "${_TMP%/}/Unit-9.9.9.tar.gz" ] || curl -sf -o ${_TMP%/}/Unit-9.9.9.tar.gz -L "https://github.com/hajimeo/samples/raw/master/misc/Unit-9.9.9.tar.gz"; then
+        _ASYNC_CURL="Y" f_upload_asset "${_prefix}-hosted" -F "pypi.asset=@${_TMP%/}/Unit-9.9.9.tar.gz"
+    fi
 
     # If no xxxx-group, create it
     if ! _is_repo_available "${_prefix}-group"; then
@@ -2163,10 +2167,10 @@ function f_register_script() {
 
 #f_upload_dummies "http://localhost:8081/repository/raw-hosted/manyfiles" "1432 10000" 8
 function f_upload_dummies() {
-    local __doc__="Upload text files into (raw) hosted repository"
+    local __doc__="Upload (PUT) text files into (raw) hosted repository"
     local _repo_path="${1:-"${_NEXUS_URL%/}/repository/raw-hosted/test"}"
     local _how_many="${2:-"10"}"
-    local _parallel="${3:-"4"}"
+    local _parallel="${3:-"3"}"
     local _file_prefix="${4:-"test_"}"
     local _file_suffix="${5:-".txt"}"
     local _usr="${6:-"${_ADMIN_USER}"}"
@@ -2179,15 +2183,27 @@ function f_upload_dummies() {
     # -T<(echo "aaa") may not work with some old bash, so creating a file
     for i in $(eval "${_seq}"); do
       echo "${_file_prefix}${i}${_file_suffix}"
-    done | xargs -I{} -P${_parallel} curl -s -f -u "${_usr}:${_pwd}" -w '%{http_code} {} (%{time_total}s)\n' -T<(echo "test by f_upload_dummies at $(date +'%Y-%m-%d %H:%M:%S')") -L -k "${_repo_path%/}/{}"
+    done | xargs -I{} -P${_parallel} curl -sSf -u "${_usr}:${_pwd}" -w '%{http_code} {} (%{time_total}s)\n' -T<(echo "test by f_upload_dummies at $(date +'%Y-%m-%d %H:%M:%S')") -L -k "${_repo_path%/}/{}"
     # NOTE: xargs only stops if exit code is 255
 }
 
+function f_upload_dummies_raw() {
+    local __doc__="Upload text files into raw hosted repository"
+    local _repo_name="${1:-"raw-hosted"}"
+    local _how_many="${2:-"10"}"
+    local _parallel="${3:-"3"}"
+    local _file_prefix="${4:-"test_"}"
+    local _file_suffix="${5:-".txt"}"
+    local _usr="${6:-"${_ADMIN_USER}"}"
+    local _pwd="${7:-"${_ADMIN_PWD}"}"
+    f_upload_dummies "${_NEXUS_URL%/}/repository/${_repo_name}/dummies" "${_how_many}" "${_parallel}" "${_file_prefix}" "${_file_suffix}" "${_usr}" "${_pwd}"
+}
+
 function f_upload_dummies_mvn() {
-    local __doc__="Upload text files into (maven) hosted repository"
+    local __doc__="Upload text files into maven hosted repository"
     local _repo_name="${1:-"maven-hosted"}"
     local _how_many="${2:-"10"}"
-    local _parallel="${3:-"4"}"
+    local _parallel="${3:-"3"}"
     local _file_prefix="${4:-"test_"}"
     local _file_suffix="${5:-".txt"}"
     local _usr="${6:-"${_ADMIN_USER}"}"
@@ -2212,12 +2228,12 @@ function f_upload_dummies_mvn() {
     #export -f f_upload_asset
     for i in $(eval "${_seq}"); do
       echo "$i"
-    done | xargs -I{} -P${_parallel} curl -s -f -u "${_usr}:${_pwd}" -w "%{http_code} ${_g}:${_a}:{} (%{time_total}s)\n" -H "accept: application/json" -H "Content-Type: multipart/form-data" -X POST -k "${_NEXUS_URL%/}/service/rest/v1/components?repository=${_repo_name}" -F maven2.groupId=${_g} -F maven2.artifactId=${_a} -F maven2.version={} -F maven2.asset1=@${_filepath} -F maven2.asset1.extension=jar
+    done | xargs -I{} -P${_parallel} curl -sSf -u "${_usr}:${_pwd}" -w "%{http_code} ${_g}:${_a}:{} (%{time_total}s)\n" -H "accept: application/json" -H "Content-Type: multipart/form-data" -X POST -k "${_NEXUS_URL%/}/service/rest/v1/components?repository=${_repo_name}" -F maven2.groupId=${_g} -F maven2.artifactId=${_a} -F maven2.version={} -F maven2.asset1=@${_filepath} -F maven2.asset1.extension=jar
     # NOTE: xargs only stops if exit code is 255
 }
 
 function f_upload_dummies_npm() {
-    local __doc__="Upload dummy tgz into (npm) hosted repository"
+    local __doc__="Upload dummy tgz into npm hosted repository"
     local _repo_name="${1:-"npm-hosted"}"
     local _how_many="${2:-"10"}"
     local _pkg_name="${3:-"mytest"}"
@@ -2269,7 +2285,7 @@ EOF
 # Example command to create with 4 concurrency and 500 each (=2000)
 #for _i in {0..3}; do _SEQ_START=$((500 * ${_i} + 1)) f_upload_dummies_nuget "nuget-hosted" 500 & done
 function f_upload_dummies_nuget() {
-    local __doc__="Upload dummy .nupkg into (Nuget) hosted repository"
+    local __doc__="Upload dummy .nupkg into Nuget hosted repository"
     local _repo_name="${1:-"nuget-hosted"}"
     local _how_many="${2:-"10"}"
     local _pkg_name="${3:-"HelloWorld"}"    # eg. AutoFixture.AutoNSubstitute for dependencies
@@ -2312,7 +2328,7 @@ function f_upload_dummies_nuget() {
         [ ${_rc} != 0 ] && return ${_rc}
         # NOTE: Can't execute this curl in parallel (unlike other f_upload_dummies) because of using same file name.
         #       Use different _SEQ_START to make upload faster
-        curl -s -f -u "${_usr}:${_pwd}" -o/dev/null -w "%{http_code} ${_pkg_name}.${_base_ver}.$i.nupkg (%{time_total}s)\n" -X PUT "${_repo_url%/}/" -F "package=@${_tmpdir%/}/${_pkg_name}.${_base_ver}.${_seq_start}.nupkg" || return $?
+        curl -sSf -u "${_usr}:${_pwd}" -o/dev/null -w "%{http_code} ${_pkg_name}.${_base_ver}.$i.nupkg (%{time_total}s)\n" -X PUT "${_repo_url%/}/" -F "package=@${_tmpdir%/}/${_pkg_name}.${_base_ver}.${_seq_start}.nupkg" || return $?
         #f_upload_asset "${_repo_name}" -F "nuget.asset=@${_TMP%/}/${_pkg_name}.${_base_ver}.$i.nupkg" || return $?
     done
 }
@@ -2354,7 +2370,7 @@ function f_upload_dummies_rubygem() {
         local _url="https://rubygems.org/gems/${_pkg}-${_ver}.gem"
         curl -sf -w "Download: %{http_code} ${_url} (%{time_total}s)\n" "${_url}" -o ${_tmpdir%/}/${_pkg}-${_ver}.gem || continue
         f_upload_asset "${_repo_name}" -F rubygem.asset=@${_tmpdir%/}/${_pkg}-${_ver}.gem || return $?
-        #curl -sf -w "Download: %{http_code} specs.4.8.gz (%{time_total}s | %{size_download}b)\n" -o/dev/null "${_repo_url%/}/specs.4.8.gz"
+        #curl -sSf -w "Download: %{http_code} specs.4.8.gz (%{time_total}s | %{size_download}b)\n" -o/dev/null "${_repo_url%/}/specs.4.8.gz"
     done
 }
 
@@ -2427,8 +2443,8 @@ function f_upload_dummies_yum() {
         if [ -n "${_pkg_name}" ] && ! echo "${_name}" | grep -qE "\b${_pkg_name}\b"; then
             continue
         fi
-        curl -sf -w "Download: %{http_code} ${_name} (%{time_total} secs, %{size_download} bytes)\n" "${_url}" -o ${_tmpdir%/}/${_name} || continue
-        curl -sf -w "Upload  : %{http_code} ${_name} (%{time_total} secs, %{size_download} bytes)\n" -T ${_tmpdir%/}/${_name} -u "${_usr}:${_pwd}" "${_repo_url%/}/${_yum_upload_path%/}/Packages/${_name}" || return $?
+        curl -sSf -w "Download: %{http_code} ${_name} (%{time_total} secs, %{size_download} bytes)\n" "${_url}" -o ${_tmpdir%/}/${_name} || continue
+        curl -sSf -w "Upload  : %{http_code} ${_name} (%{time_total} secs, %{size_download} bytes)\n" -T ${_tmpdir%/}/${_name} -u "${_usr}:${_pwd}" "${_repo_url%/}/${_yum_upload_path%/}/Packages/${_name}" || return $?
         rm -f ${_tmpdir%/}/${_name}
         #sleep 60
         #curl -sf -w "Download: %{http_code} ${_YUM_GROUP_REPO} repomd.xml (%{time_total} secs, %{size_download} bytes)\n" -o/dev/null "${_NEXUS_URL%/}/repository/${_YUM_GROUP_REPO}/${_yum_upload_path%/}/repodata/repomd.xml"
@@ -2503,7 +2519,7 @@ function f_get_all_assets() {
 function f_check_all_assets() {
     local __doc__="Check/test if all assets can be downloaded (should update the downloaded time)"
     local _repo="$1"
-    local _parallel="${2:-"4"}"
+    local _parallel="${2:-"3"}"
     local _usr="${3:-"${_ADMIN_USER}"}"
     local _pwd="${4:-"${_ADMIN_PWD}"}"
 
@@ -2514,13 +2530,17 @@ function f_check_all_assets() {
         if [[ "${_l}" =~ \"downloadUrl\"[[:space:]]*:[[:space:]]*\"(http.?://[^/]+)(.*)\" ]]; then
             echo "${BASH_REMATCH[1]}${BASH_REMATCH[2]}"
         fi
-    done | xargs -I{} -P${_parallel} curl -s -f -u "${_usr}:${_pwd}" -w '%{http_code} {} (%{time_total}s)\n' -L -k "{}" -o/dev/null
+    done | xargs -I{} -P${_parallel} curl -sSf -u "${_usr}:${_pwd}" -w '%{http_code} {} (%{time_total}s)\n' -L -k "{}" -o/dev/null
     echo "Checked ${_line_num} assets"
 }
 function f_delete_all_assets() {
     local __doc__="Delete all assets (not components) with Search REST API (require correct search index)"
     local _repo="$1"
     local _force="$2"
+    local _parallel="${3:-"3"}"
+    local _usr="${4:-"${_ADMIN_USER}"}"
+    local _pwd="${5:-"${_ADMIN_PWD}"}"
+    local _nexus_url="${6:-"${r_NEXUS_URL:-"${_NEXUS_URL}"}"}"
     local _all_asset_file="$(f_get_all_assets "${_repo}" "id")" || return $?
     local _line_num="$(cat "${_all_asset_file}" | wc -l | tr -d '[:space:]')"
     if [[ ! "${_force}" =~ ^[yY] ]]; then
@@ -2530,16 +2550,16 @@ function f_delete_all_assets() {
     fi
     cat "${_all_asset_file}" | while read -r _l; do
         if [[ "${_l}" =~ \"id\"[[:space:]]*:[[:space:]]*\"([^\"]+)\" ]]; then
-            echo "# ${BASH_REMATCH[1]}"
-            f_api "/service/rest/v1/assets/${BASH_REMATCH[1]}" "" "DELETE" || break
+            echo "/service/rest/v1/assets/${BASH_REMATCH[1]}"
         fi
-    done
-    echo "Deleted ${_line_num} assets (run Cleanup unused <format> blobs from <datastore> task)"
+    done | xargs -I{} -P${_parallel} curl -sSf -u "${_usr}:${_pwd}" -w '%{http_code} {} (%{time_total}s)\n' -X DELETE -L -k "${_nexus_url%/}{}"
+    # To make this function faster, not using f_api "/service/rest/v1/assets/${BASH_REMATCH[1]}" "" "DELETE" (but now can't stop at the first error...)
+    echo "Deleted ${_line_num} assets. 'Cleanup unused <format> blobs from <datastore> task' (assetBlob.cleanup) may need to be run."
 }
 
 # 1. Create a new raw-test-hosted repo from Web UI (or API)
 # 2. curl -D- -u "admin:admin123" -T<(echo "test for f_staging_move") -L -k "${_NEXUS_URL%/}/repository/raw-hosted/test/nxrm3Staging.txt"
-# 3. f_staging_move "raw-test-hosted" "raw-test-tag" "repository=raw-hosted&name=*test%2Fnxrm3Staging.txt"
+# 3. f_staging_move "raw-test-hosted" "raw-test-tag" "repository=raw-hosted&name=*test/nxrm3Staging.txt"
 # ^ Tag is optional. Using "*" in name= as name|path in NewDB starts with "/"
 # With maven2:
 #   export _NEXUS_URL="https://nxrm3ha-k8s.standalone.localdomain/"
@@ -2553,14 +2573,14 @@ function f_staging_move() {
     local _search="${3}"
     if [ -n "${_tag}" ]; then
         # Creating the tag, and not stopping if error (because it already exists)
-        echo "# /service/rest/v1/tags -d '{\"name\": \"'${_tag}'\"}'"
-        f_api "/service/rest/v1/tags" '{"name":"'${_tag}'"}'
+        echo "# /service/rest/v1/tags -d '{\"name\":\"${_tag}\"}'"
+        f_api "/service/rest/v1/tags" "{\"name\":\"${_tag}\"}"
         echo ""
     fi
     if [ -n "${_search}" ]; then
         if [ -z "${_tag}" ] && [ -z "${_move_to_repo}" ]; then
             # If only search is given, just search
-            echo "# /service/rest/v1/search?${_search}"
+            echo "# /service/rest/v1/search with ${_search}"
             f_api "/service/rest/v1/search?${_search}"
             echo ""
             return
@@ -2584,10 +2604,27 @@ function f_staging_move() {
     fi
     echo ""
 }
+# Test associate only after f_setup_maven & f_upload_dummies_mvn
+function _associate_test() {
+    _tag="tag-test"
+    _search="repository=maven-hosted&maven.groupId=setup.nexus3.repos&maven.artifactId=dummy&maven.baseVersion=3"
+    f_api "/service/rest/v1/tags" "{\"name\":\"${_tag}\"}"
+    f_api "/service/rest/v1/tags/associate/${_tag}?${_search}" "" "POST"
+    sleep 3
+    _search="repository=maven-hosted&maven.groupId=setup.nexus3.repos&maven.artifactId=dummy"
+    f_api "/service/rest/v1/tags/associate/${_tag}?${_search}" "" "POST"
+    sleep 3
+    f_api "/service/rest/v1/search?${_search}"
+}
+
 # TODO: add `/service/rest/v1/staging/delete`
 
 function f_run_tasks_by_type() {
     local _task_type="$1"   #assetBlob.cleanup
+    if [ -z "${_task_type}" ]; then
+        f_api "/service/rest/v1/tasks"
+        return $?
+    fi
     f_api "/service/rest/v1/tasks?type=${_task_type}" > ${_TMP%/}/${FUNCNAME[0]}.json || return $?
     cat ${_TMP%/}/${FUNCNAME[0]}.json | python -c 'import sys,json;a=json.loads(sys.stdin.read());
 for t in a["items"]:
