@@ -5,6 +5,10 @@
  *
  * php -S 0.0.0.0:7999 ./index.php
  * curl -X PUT -T test.txt localhost:7999
+ *
+ * To check mime type:
+ *  $ file --mime-type sisu-odata4j-0.0.7.jar
+ *  sisu-odata4j-0.0.7.jar: application/zip
  */
 
 function _log($msg)
@@ -58,6 +62,18 @@ function put_handler()
 function get_handler()
 {
     $req = $_SERVER['REQUEST_URI'];
+
+    /*
+     * dd if=/dev/zero of=./some-test-3.0.496-RELEASE.jar bs=89552991 count=1
+     * #zip -0 ./some-test-3.0.496-RELEASE.jar ./dummy.img   # this still changes the size
+     * jar -c0vf ./some-test-3.0.496-RELEASE.jar ./dummy.img # this adds MANIFEST.MF so the size changes
+     */
+    if (stripos($req, "/some-test-3.0.496-RELEASE.jar") > 0) {
+        header("Content-Type: application/gzip");
+        _return_file('./some-test-3.0.496-RELEASE.jar');
+        _log("    Handled {$req} " . PHP_EOL);
+        return;
+    }
 
     if (stripos($req, "/manifests/5.3.33-66ddce6") > 0) {
         header("Docker-Content-Digest: sha256:c46d23046a71f0216a881f6976a67f9f2309d9420d7e0585db5f3dd11dc333dc");
