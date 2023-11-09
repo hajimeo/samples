@@ -167,6 +167,7 @@ if type aws-vault &>/dev/null && [ -s "$HOME/.kube/support_test_config" ]; then
 fi
 #type zsh &>/dev/null && alias zzhi='env /usr/bin/arch -x86_64 /bin/zsh —-login'
 type zsh &>/dev/null && alias ibrew="arch -x86_64 /usr/local/bin/brew"
+type zsh &>/dev/null && alias pbrew="ALL_PROXY=http://proxyuser:proxypwd@dh1:28081 arch -x86_64 /usr/local/bin/brew"
 
 ## Non default (need to install some complex software and/or develop script) alias commands ############################
 # Load/source my own searching utility functions / scripts
@@ -525,12 +526,6 @@ while i < len(s):
     f = False
     i += 1
 print('')"
-}
-# Grep against jar file to find a class ($1)
-function jargrep() {
-    local _cmd="jar -tf"
-    which jar &>/dev/null || _cmd="less"
-    find -L ${2:-./} -type f -name '*.jar' -print0 | xargs -0 -n1 -I {} bash -c "${_cmd} {} | grep -wi '$1' && echo {}"
 }
 # from https://stackoverflow.com/questions/54920113/calculate-average-execution-time-of-a-program-using-bash
 function avg_time() {
