@@ -394,9 +394,6 @@ function get_cert_from_https() {
     # But if openssl need to remove unnecessary lines
     #sed -ne '/-BEGIN CERTIFICATE-/,/-END CERTIFICATE-/p' /tmp/${_host}_${_port}.tmp | tee ${_export_pem_path} || return $?
 
-    if [ -z "${_import_truststore}" ]; then
-        cat ${_export_pem_path}
-    fi
     #gcsplit -f cert -s /tmp/${_host}_${_port}.tmp '/BEGIN CERTIFICATE/' '{*}'
     # Below didn't work on Mac
     #openssl crl2pkcs7 -nocrl -certfile ${_export_pem_path} -out ${_pfx}.p7b
@@ -404,16 +401,21 @@ function get_cert_from_https() {
     #local _cmd="${_keytool} -import -alias \"${_alias}\" -trustcacerts -keystore \"${_import_truststore}\" -file ${_pfx}.p7b"
     # Below nearly works but 'n' is not working
     #cat ${_export_pem_path} | awk 'split_after==1{n++;split_after=0} /-----END CERTIFICATE-----/ {split_after=1} {print > ("'${_pfx}_'" n ".pem")}'
-
     local _pfx="/tmp/${_host}_${_port}"
     rm -f ${_pfx}_*.pem || return $?
     grep -nwE '(BEGIN|END)' ${_export_pem_path} | grep -Eo '^[0-9]+' | paste - - | sed -E 's@([0-9]+)[[:space:]]+([0-9]+)@sed -n "\1,\2p" '${_export_pem_path}' > '${_pfx}'_\1.pem@' | xargs -t -I{} bash -c "{}"
 
     for _f in $(ls -1 ${_pfx}_*.pem); do
-        local _alias="$(basename "${_f}" .pem)"
-        local _cmd="${_keytool} -import -alias \"${_alias}\" -keystore \"${_import_truststore}\" -file \"${_f}\"" #-storepass changeit -noprompt
-        echo "${_cmd}"
-        eval "${_cmd}"
+        if [ -n "${_import_truststore}" ]; then
+            local _alias="$(basename "${_f}" .pem)"
+            local _cmd="${_keytool} -import -alias \"${_alias}\" -keystore \"${_import_truststore}\" -file \"${_f}\"" #-storepass changeit -noprompt
+            echo "${_cmd}"
+            eval "${_cmd}"
+        else
+            echo "# ${_f}"
+            openssl x509 -noout -subject -fingerprint -inform pem -in ${_f} # RM3 Web UI shows sha1
+            openssl x509 -noout -fingerprint -sha256 -inform pem -in ${_f}
+        fi
     done
 }
 
