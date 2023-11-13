@@ -2,7 +2,7 @@
 #source /dev/stdin <<< "$(curl https://raw.githubusercontent.com/hajimeo/samples/master/bash/utils.sh --compressed)"
 #source /dev/stdin <<< "$(curl https://raw.githubusercontent.com/hajimeo/samples/master/bash/utils_container.sh --compressed)"
 
-_DOCKER_CMD=${_DOCKER_CMD:-"docker"}    # To support podman etc.
+_DOCKER_CMD=${_DOCKER_CMD:-"docker"}    # To support podman, skopeo etc.
 _KUBECTL_CMD=${_KUBECTL_CMD:-"kubectl"}
 _DOMAIN="${_DOMAIN:-"standalone.localdomain"}"
 _DNS_RELOAD="sudo systemctl reload dnsmasq >/dev/null"
