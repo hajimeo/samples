@@ -2180,10 +2180,11 @@ function f_upload_dummies() {
     local _seq_end="$((${_seq_start} + ${_how_many} - 1))"
     local _seq="seq ${_seq_start} ${_seq_end}"
     [[ "${_how_many}" =~ ^[0-9]+[[:space:]]+[0-9]+$ ]] && _seq="seq ${_how_many}"
-    # -T<(echo "aaa") may not work with some old bash, so creating a file
+    # -T<(echo "aaa") may not work with some old bash and somehow some of files become 0 byte, so creating a file
+    echo "test by f_upload_dummies at $(date +'%Y-%m-%d %H:%M:%S')" > ${_TMP%/}/${FUNCNAME[0]}_$$.txt || return $?
     for i in $(eval "${_seq}"); do
       echo "${_file_prefix}${i}${_file_suffix}"
-    done | xargs -I{} -P${_parallel} curl -sSf -u "${_usr}:${_pwd}" -w '%{http_code} {} (%{time_total}s)\n' -T<(echo "test by f_upload_dummies at $(date +'%Y-%m-%d %H:%M:%S')") -L -k "${_repo_path%/}/{}"
+    done | xargs -I{} -P${_parallel} curl -sSf -u "${_usr}:${_pwd}" -w '%{http_code} {} (%{time_total}s)\n' -T ${_TMP%/}/${FUNCNAME[0]}_$$.txt -L -k "${_repo_path%/}/{}"
     # NOTE: xargs only stops if exit code is 255
 }
 
@@ -2236,50 +2237,28 @@ function f_upload_dummies_npm() {
     local __doc__="Upload dummy tgz into npm hosted repository"
     local _repo_name="${1:-"npm-hosted"}"
     local _how_many="${2:-"10"}"
-    local _pkg_name="${3:-"mytest"}"
+    local _pkg_name="${3:-"@dummy/policy-demo"}"
     local _repo_url="${_NEXUS_URL%/}/repository/${_repo_name}/"
     local _seq_start="${_SEQ_START:-1}"
     local _seq_end="$((${_seq_start} + ${_how_many} - 1))"
     local _seq="seq ${_seq_start} ${_seq_end}"
-    if ! type npm &>/dev/null; then
-        echo "ERROR: this function requires 'npm' in the PATH"
-        return 1
+    local _dummy_tzg_name="dummy-policy-demo"
+    if [ ! -s "${_TMP%/}/${_dummy_tzg_name}.tgz" ]; then
+        curl -sSf -o "${_TMP%/}/${_dummy_tzg_name}.tgz" -L "https://registry.npmjs.org/@sonatype/policy-demo/-/policy-demo-2.0.0.tgz" || return $?
     fi
-    local _dir="$(mktemp -d)"
-    cat << EOF > "${_dir%/}/package.json"
-{
-    "author": "nxrm test",
-    "description": "reproducing issue",
-    "keywords": [],
-    "license": "ISC",
-    "main": "index.js",
-    "name": "${_pkg_name}",
-    "publishConfig": {
-        "registry": "${_repo_url}"
-    },
-    "scripts": {
-        "test": "echo \"Error: no test specified\" && exit 1"
-    },
-    "version": "1.0.0"
-}
-EOF
-    cd "${_dir}"
+    local _tmpdir="$(mktemp -d)"
+    tar -xf ${_TMP%/}/${_dummy_tzg_name}.tgz -C ${_tmpdir%/} || return $?
+    if [ -n "${_pkg_name}" ]; then
+        sed -i.tmp -E 's;"name": ".+";"name": "'${_pkg_name}'";' ${_tmpdir%/}/package/package.json
+    fi
+    # TODO: upload concurrently (not using _ASYNC_CURL="Y")
     for i in $(eval "${_seq}"); do
-      sed -i.tmp -E 's/"version": "1.[0-9].0"/"version": "1.'${i}'.0"/' ./package.json
-      # TODO: should be parallel
-      if ! npm publish --registry "${_repo_url}" -ddd; then
-          echo "ERROR: may need 'npm Bearer Token Realm'"
-          echo "       also 'npm adduser --registry ${_repo_url%/}/' (check ~/.npmrc as well)"
-          cd -
-          return 1
-      fi
-      sleep 1
+        sed -i.tmp -E 's/"version": ".+"/"version": "9.'${i}'.0"/' ${_tmpdir%/}/package/package.json || return $?
+        rm -f ${_tmpdir%/}/package/package.json.tmp
+        tar -czf ${_TMP%/}/${_dummy_tzg_name}-9.${i}.0.tgz -C ${_tmpdir%/} package || return $?
+        f_upload_asset "${_repo_name}" -F "npm.asset=@${_TMP%/}/${_dummy_tzg_name}-9.${i}.0.tgz" || return $?
+        rm -v -f ${_TMP%/}/${_dummy_tzg_name}-9.${i}.0.tgz
     done
-    cd -
-    echo "To test:
-    curl -O ${_repo_url%/}/${_pkg_name}
-    npm cache clean --force
-    npm pack --registry ${_repo_url%/}/ ${_pkg_name}"
 }
 
 # Example command to create with 4 concurrency and 500 each (=2000)
