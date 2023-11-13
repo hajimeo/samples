@@ -479,7 +479,12 @@ function t_system() {
     # TODO: compare TotalPhysicalMemorySize and CommittedVirtualMemorySize
     _test_template "$(rg 'MaxFileDescriptorCount.?: *\d{4}\b' ${_FILTERED_DATA_DIR%/}/extracted_configs.md)" "WARN" "MaxFileDescriptorCount might be too low"
     _test_template "$(rg 'SystemLoadAverage.?: *([4-9]\.|\d\d+)' ${_FILTERED_DATA_DIR%/}/extracted_configs.md)" "WARN" "SystemLoadAverage might be too high (check number of CPUs)"
-    _test_template "$(rg 'maxMemory.?: *(.+ MB|[1-3]\.\d+ GB)' ${_FILTERED_DATA_DIR%/}/extracted_configs.md)" "WARN" "maxMemory (heap|Xmx) might be too low (NEXUS-35218)"
+    local _xms="$(rg -i '\-Xms([a-zA-Z0-9]+)' -o -r '$1' -g jmx.json --no-filename)"
+    local _xmx="$(rg -i '\-Xmx([a-zA-Z0-9]+)' -o -r '$1' -g jmx.json --no-filename)"
+    if [ "${_xms}" != "${_xmx}" ]; then
+        _test_template "$(rg -i '\-Xm[sx]' -g jmx.json)" "WARN" "Xms (${_xms}) value might not be same as Xmx (${_xmx})"
+    fi
+    _test_template "$(rg 'maxMemory.?: *(.+ MB|[1-3]\.\d+ GB)' ${_FILTERED_DATA_DIR%/}/extracted_configs.md)" "WARN" "maxMemory (heap|Xmx) might be too low (if docker/pod: NEXUS-35218)"
     _test_template "$(rg -g jmx.json -g wrapper.conf -q -- '-XX:\+UseG1GC' || rg -g jmx.json -- '-Xmx')" "WARN" "No '-XX:+UseG1GC' for below Xmx (only for Java 8)" "Also consider using -XX:+ExplicitGCInvokesConcurrent"
     _test_template "$(rg -g jmx.json 'UseCGroupMemoryLimitForHeap')" "WARN" "UseCGroupMemoryLimitForHeap is specified (not required from 8v191)"
     _test_template "$(rg -g jmx.json -- '-Djavax\.net\.ssl..+=')" "WARN" "javax.net.ssl.xxxx is used in jmx.json: java.lang:type=Runtime,InputArguments"
@@ -540,7 +545,7 @@ for key in fsDicts['system-filestores']:
 
 # TODO: For this one, checking without size limit (not _rg)?
 function t_oome() {
-    _test_template "$(_RG_MAX_FILESIZE="6G" _rg 'java.lang.OutOfMemoryError:.+' -m1 -B1 -g "${_LOG_GLOB}" -g '\!jvm.log' | sort | uniq)" "ERROR" "OutOfMemoryError detected from ${_LOG_GLOB}"
+    _test_template "$(_RG_MAX_FILESIZE="6G" _rg 'java.lang.OutOfMemoryError:.+' -m1 -B1 -g "${_LOG_GLOB}" -g '\!jvm.log' | sort | uniq)" "ERROR" "OutOfMemoryError detected from ${_LOG_GLOB} (Xms is too small?)"
 }
 function t_fips() {
     _test_template "$(_rg -m1 '(KeyStore must be from provider SunPKCS11-NSS-FIPS|PBE AlgorithmParameters not available)' -g "${_LOG_GLOB}")" "WARN" "FIPS mode might be detected from ${_LOG_GLOB}" "-Dcom.redhat.fips=false"
