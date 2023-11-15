@@ -177,7 +177,7 @@ function _postgresql_create_dbuser() {
     local _schema="${4}"
     local _dbadmin="${5}"
     local _port="${6:-"5432"}"
-    local _force="${7}"
+    local _force="${7-"${_RECREATE_DB}"}"
     _dbadmin="$(_get_dbadmin_user "${_dbadmin}" "${_port}")"
     local _psql_as_admin="$(_get_psql_as_admin "${_dbadmin}")"
 
@@ -215,7 +215,7 @@ function _postgresql_create_role_and_db() {
     local _schema="${4}"
     local _dbadmin="${5}"
     local _port="${6:-"5432"}"
-    local _force="${7}"
+    local _force="${7-"${_RECREATE_DB}"}"
     _dbadmin="$(_get_dbadmin_user "${_dbadmin}" "${_port}")"
 
     local _psql_as_admin="$(_get_psql_as_admin "${_dbadmin}")"
@@ -235,7 +235,7 @@ function _postgresql_create_role_and_db() {
                 ${_psql_as_admin} -d template1 -c "DROP DATABASE ${_dbname};"
             else
                 _log "WARN" "${_dbname} already exists. May need to run below first:
-        ${_psql_as_admin} -d ${_dbname} -c \"DROP SCHEMA ${_schema:-"public"} CASCADE;CREATE SCHEMA ${_schema:-"public"} AUTHORIZATION ${_dbusr};\""
+        ${_psql_as_admin} -d ${_dbname} -c \"DROP SCHEMA ${_schema:-"public"} CASCADE;CREATE SCHEMA ${_schema:-"public"} AUTHORIZATION ${_dbusr};GRANT ALL ON SCHEMA ${_schema:-"public"} TO ${_dbusr};\""
                 sleep 3
                 _create_db=false
             fi
