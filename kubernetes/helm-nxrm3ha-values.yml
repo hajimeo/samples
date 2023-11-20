@@ -1,0 +1,122 @@
+# https://github.com/sonatype/nxrm3-ha-repository/tree/main/nxrm-ha-helm
+# https://help.sonatype.com/repomanager3/planning-your-implementation/resiliency-and-high-availability/high-availability-deployment-options/option-2---on-premises-high-availability-deployment-using-kubernetes#Option2OnPremisesHighAvailabilityDeploymentUsingKubernetes-helmlic
+
+# Only once or once a year
+#$ kubectl -n sonatype-ha create secret generic sonatype-license --from-file sonatype-license.lic=/var/tmp/share/sonatype/sonatype-license.lic
+#$ helm repo add sonatype-ha https://sonatype.github.io/helm3-charts/
+
+# Can't specify name space in below
+#$ helm template nxrm3ha sonatype-ha/nxrm-ha -f ./helm-nxrm3ha-values.yml -n sonatype-ha >./helm-nxrm3ha-deploying.yaml
+#$ kubectl -n sonatype-ha apply -f ./helm-nxrm3ha-deploying.yaml
+
+# TODO: Error: INSTALLATION FAILED: Unable to continue with install: Namespace "sonatype-ha" in namespace "" exists and cannot be imported into the current release: invalid ownership metadata; label validation error: missing key "app.kubernetes.io/managed-by": must be set to "Helm"; annotation validation error: missing key "meta.helm.sh/release-name": must be set to "nxrm3ha"; annotation validation error: missing key "meta.helm.sh/release-namespace": must be set to "default"
+#$ helm install nxrm3ha sonatype-ha/nxrm-ha -f ./helm-nxrm3ha-values.yml -n sonatype-ha --dry-run
+
+# Why need namespace???
+namespaces:
+  nexusNs: sonatype-ha
+statefulset:
+  name: nxrm-statefulset
+  serviceName: nxrm-statefulset-service
+  replicaCount: 1
+  initContainer:
+    image:
+      repository: busybox
+      tag: 1.33.1
+    resources:
+      limits:
+        cpu: "0.2"
+        memory: "512Mi"
+      requests:
+        cpu: "0.1"
+        memory: "256Mi"
+  container:
+    image:
+      repository: sonatype/nexus3
+      tag: latest
+    resources:
+      # See help documentation, these are minimum system requirements
+      requests:
+        cpu: 1
+        memory: "6Gi"
+      limits:
+        cpu: 2
+        memory: "8Gi"
+    containerPort: 8081
+    pullPolicy: IfNotPresent
+    terminationGracePeriod: 120
+    env:
+      nexusDBName: nxrm3helmha
+      nexusDBPort: 5432
+      install4jAddVmParams: "-Xms2703m -Xmx2703m"
+      jdbcUrlParams: null # Must start with a '?' e.g. "?foo=bar&baz=foo"
+  requestLogContainer:
+    image:
+      repository: busybox
+      tag: 1.33.1
+    resources:
+      limits:
+        cpu: "0.2"
+        memory: "512Mi"
+      requests:
+        cpu: "0.1"
+        memory: "256Mi"
+  auditLogContainer:
+    image:
+      repository: busybox
+      tag: 1.33.1
+    resources:
+      limits:
+        cpu: "0.2"
+        memory: "512Mi"
+      requests:
+        cpu: "0.1"
+        memory: "256Mi"
+  taskLogContainer:
+    image:
+      repository: busybox
+      tag: 1.33.1
+    resources:
+      limits:
+        cpu: "0.2"
+        memory: "512Mi"
+      requests:
+        cpu: "0.1"
+        memory: "256Mi"
+  livenessProbe:
+    failureThreshold: 6
+    initialDelaySeconds: 120
+    path: /
+    periodSeconds: 60
+  readinessProbe:
+    failureThreshold: 6
+    initialDelaySeconds: 120
+    path: /
+    periodSeconds: 60
+  imagePullSecrets: {}
+
+secret:
+  secretProviderClass: "secretProviderClass"
+  provider: provider # e.g. aws, azure etc
+  dbSecret:
+    name: "nxrm-db-secret"
+    enabled: true
+  db:
+    user: "nxrm3ha"
+    userAlias: nxrm-db-user-alias
+    password: "nxrm3ha"
+    passwordAlias: nxrm-db-password-alias
+    host: "192.168.1.31"  # Why port is hard-coded, 5432
+    hostAlias: nxrm-db-host-alias
+  nexusAdmin:
+    name: "nexusAdminPassword"
+    alias: "admin-nxrm-password-alias"
+  nexusAdminSecret:
+    enabled: true
+    adminPassword: admin123
+  license:
+    name: sonatype-license.lic
+    licenseSecret:
+      enabled: false  # Not using license as do not like pasting base64 license in here
+      fileContentsBase64: ''
+      mountPath: /etc/sonatype
