@@ -171,6 +171,7 @@ function takeDumps() {
         if [ -n "${_jstack}" ]; then
             ${_jstack} -l ${_pid} >> "${_outPfx}000.log"
         elif [ -n "${_admin_url}" ]; then
+            date --rfc-3339=seconds >> "${_outPfx}000.log"
             if ! curl -m${_interval} -sSf -k "${_admin_url%/}/threads" >> "${_outPfx}000.log"; then
                 kill -3 "${_pid}"   # Need to use 'docker logs' or 'kubectl logs'
             fi
