@@ -154,8 +154,8 @@ function tailStdout() {
         local jvmLog="${BASH_REMATCH[1]}"
         _cmd="tail -n0 -f "${_installDir%/}/${jvmLog#/}""
     elif readlink -f /proc/${_pid}/fd/1 2>/dev/null | grep -q '/pipe:'; then
-        _cmd="cat /proc/${_pid}/fd/1"
-        _sleep="1"
+        #_cmd="cat /proc/${_pid}/fd/1"
+        _cmd=""
     fi
     if [ -z "${_cmd}" ]; then
         echo "No file to tail for pid:${_pid}" >&2

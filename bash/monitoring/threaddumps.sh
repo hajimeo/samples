@@ -60,8 +60,8 @@ function tailStdout() {
         local jmvLogPath="$(ls -l /proc/${_pid}/fd | grep -oE "/[^ ]+/${jvmLog}$")"
         _cmd="tail -n0 -f "${jmvLogPath}""
     elif readlink -f /proc/${_pid}/fd/1 2>/dev/null | grep -q '/pipe:'; then
-        _cmd="cat /proc/${_pid}/fd/1"
-        _sleep="1"
+        #_cmd="cat /proc/${_pid}/fd/1"  # this often returns truncated string due to pipe size limit
+        _cmd=""
     fi
     if [ -z "${_cmd}" ]; then
         echo "No file to tail for pid:${_pid}" >&2
