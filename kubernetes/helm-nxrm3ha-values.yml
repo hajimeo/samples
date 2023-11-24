@@ -12,6 +12,9 @@
 #$ eval "echo \"$(cat ./helm-nxrm3ha-values.yml | grep -v '^\s*#')\"" > ./${RELEASE_NAME}.yaml
 #$ helm install ${RELEASE_NAME} ${NAME_SPACE}/nxrm-ha -f ./${RELEASE_NAME}.yaml --debug #--dry-run
 
+# To update the values (specify --version with Chart version)
+#$ helm upgrade ${RELEASE_NAME} ${NAME_SPACE}/nxrm-ha -f ./${RELEASE_NAME}.yaml --version 62.0.0 --debug
+
 # For troubleshooting
 #$ helm template nxrm3ha sonatype-helm/nxrm-ha -f ./helm-nxrm3ha-values.yml -n sonatype-helm >./helm-nxrm3ha-deploying.yaml
 #$ kubectl -n sonatype-helm apply -f ./helm-nxrm3ha-deploying.yaml
@@ -97,6 +100,22 @@ statefulset:
     path: /
     periodSeconds: 60
   imagePullSecrets: {}
+
+service:  #Nexus Repo NodePort Service
+  nexus:
+    enabled: true
+    name: 'nexus-service'
+    type: NodePort
+    protocol: TCP
+    port: 80
+    targetPort: 8081
+  docker:  #Nodeport Service for Docker Service
+    name: 'nexus-docker-service'
+    enabled: true
+    type: NodePort
+    protocol: TCP
+    port: 4999
+    targetPort: 4999
 
 secret:
   secretProviderClass: 'secretProviderClass'
