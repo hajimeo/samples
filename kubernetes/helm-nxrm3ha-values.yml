@@ -2,19 +2,20 @@
 # https://help.sonatype.com/repomanager3/planning-your-implementation/resiliency-and-high-availability/high-availability-deployment-options/option-2---on-premises-high-availability-deployment-using-kubernetes#Option2OnPremisesHighAvailabilityDeploymentUsingKubernetes-helmlic
 
 # Only once or once a year
-#$ kubectl -n sonatype-ha create secret generic sonatype-license --from-file sonatype-license.lic=/var/tmp/share/sonatype/sonatype-license.lic
-#$ helm repo add sonatype-ha https://sonatype.github.io/helm3-charts/
+#$ helm repo add sonatype-helm https://sonatype.github.io/helm3-charts/
+#$ kubectl -n sonatype-helm create secret generic sonatype-license --from-file sonatype-license.lic=/var/tmp/share/sonatype/sonatype-license.lic
 
-# Can't specify name space in below
-#$ helm template nxrm3ha sonatype-ha/nxrm-ha -f ./helm-nxrm3ha-values.yml -n sonatype-ha >./helm-nxrm3ha-deploying.yaml
-#$ kubectl -n sonatype-ha apply -f ./helm-nxrm3ha-deploying.yaml
+#$ helm install nxrm3ha sonatype-helm/nxrm-ha -f ./helm-nxrm3ha-values.yml -n sonatype-helm --dry-run
 
-# TODO: Error: INSTALLATION FAILED: Unable to continue with install: Namespace "sonatype-ha" in namespace "" exists and cannot be imported into the current release: invalid ownership metadata; label validation error: missing key "app.kubernetes.io/managed-by": must be set to "Helm"; annotation validation error: missing key "meta.helm.sh/release-name": must be set to "nxrm3ha"; annotation validation error: missing key "meta.helm.sh/release-namespace": must be set to "default"
-#$ helm install nxrm3ha sonatype-ha/nxrm-ha -f ./helm-nxrm3ha-values.yml -n sonatype-ha --dry-run
+#$ helm template nxrm3ha sonatype-helm/nxrm-ha -f ./helm-nxrm3ha-values.yml -n sonatype-helm >./helm-nxrm3ha-deploying.yaml
+#$ kubectl -n sonatype-helm apply -f ./helm-nxrm3ha-deploying.yaml
+
+# TODO: Error: INSTALLATION FAILED: Unable to continue with install: Namespace "sonatype-helm" in namespace "" exists and cannot be imported into the current release: invalid ownership metadata; label validation error: missing key "app.kubernetes.io/managed-by": must be set to "Helm"; annotation validation error: missing key "meta.helm.sh/release-name": must be set to "nxrm3ha"; annotation validation error: missing key "meta.helm.sh/release-namespace": must be set to "default"
+# TODO: java.nio.file.NoSuchFileException: /etc/sonatype/sonatype-license.lic
 
 # Why need namespace???
 namespaces:
-  nexusNs: sonatype-ha
+  nexusNs: sonatype-helm
 statefulset:
   name: nxrm-statefulset
   serviceName: nxrm-statefulset-service
@@ -117,6 +118,6 @@ secret:
   license:
     name: sonatype-license.lic
     licenseSecret:
-      enabled: false  # Not using license as do not like pasting base64 license in here
-      fileContentsBase64: ''
+      enabled: true
+      fileContentsBase64: ''  # Not using license as do not like pasting base64 license in here
       mountPath: /etc/sonatype
