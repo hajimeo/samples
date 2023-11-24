@@ -109,7 +109,7 @@ secret:
     userAlias: nxrm-db-user-alias
     password: 'nxrm3ha'
     passwordAlias: nxrm-db-password-alias
-    host: '192.168.1.31'  # Why port is hard-coded, 5432
+    host: '192.168.1.31'
     hostAlias: nxrm-db-host-alias
   nexusAdmin:
     name: 'nexusAdminPassword'
