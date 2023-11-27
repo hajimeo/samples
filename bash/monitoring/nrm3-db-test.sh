@@ -3,11 +3,16 @@ usage() {
     cat <<EOF
 USAGE:
     bash <(curl -sfL https://raw.githubusercontent.com/hajimeo/samples/master/bash/monitoring/nrm3-db-test.sh --compressed)
+# Or
+    curl -O -sfL https://raw.githubusercontent.com/hajimeo/samples/master/bash/monitoring/nrm3-db-test.sh --compressed
+    bash ./nrm3-db-test.sh [-i <installDir>] [-s /path/to/nexus-store.properties] [-q "query"]
 
-    bash ./nrm3-db-test.sh [-q "query"] [-s /path/to/nexus-store.properties]
-
+# If no 'nexus-store.properties', use 'export:
     export username="nxrm" password="nxrm123" jdbcUrl="jdbc:postgresql://localhost:5432/nxrm"
-    bash ./nrm3-db-test.sh -i "./nexus-3.59.0-01" [-q "query"]
+    bash ./nrm3-db-test.sh [-q "query"]
+
+# If Nexus is not running, specify '-i <installDir>' (and '-s' or 'export' for DB connection):
+    bash ./nrm3-db-test.sh -i ./nexus-3.62.0-01/ -s ./sonatype-work/nexus3/etc/fabric/nexus-store.properties
 EOF
 }
 
