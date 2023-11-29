@@ -1,7 +1,6 @@
 /**
  * Based on https://github.com/crewjam/saml
- *
- * go build -o ../../misc/simplesamlsp_$(uname) SimpleSamlSP.go && env GOOS=linux GOARCH=amd64 go build -o ../../misc/simplesamlsp_Linux SimpleSamlSP.go && date
+ * TODO: not working
  */
 package main
 
@@ -25,15 +24,15 @@ func simplesamlsp_help() {
 Simple SAML tester for troubleshooting.
 
 DOWNLOAD and INSTALL:
-    sudo curl -o /usr/local/bin/simplesamlsp -L https://github.com/hajimeo/samples/raw/master/misc/simplesamlsp_$(uname)
+    sudo curl -o /usr/local/bin/simplesamlsp -L https://github.com/hajimeo/samples/raw/master/misc/simplesamlsp_$(uname)_$(uname -m)
     sudo chmod a+x /usr/local/bin/simplesamlsp
     
 USAGE EXAMPLE:
     simplesamlsp <listening address:port> <IDP metadata URL> [certFile] [keyFile]
 
-    openssl req -x509 -newkey rsa:2048 -keyout myservice.key -out myservice.cert -days 365 -nodes -subj "/CN=$(hostname -f)"
-    simplesamlsp $(hostname -f):8080 https://dh1.standalone.localdomain:8444/simplesaml/saml2/idp/metadata.php ./myservice.cert ./myservice.key
-    simplesamlsp dh1.standalone.localdomain:8081 https://dh1.standalone.localdomain:8444/simplesaml/saml2/idp/metadata.php
+    #openssl req -x509 -newkey rsa:2048 -keyout myservice.key -out myservice.cert -days 365 -nodes -subj "/CN=$(hostname -f)"
+    export _SAML_SP_ENTITY_ID="https://dh1.standalone.localdomain:8443/service/rest/v1/security/saml/metadata" _SAML_SP_BIND_PATH="/saml"
+    simplesamlsp dh1.standalone.localdomain:8443 https://node-freeipa.standalone.localdomain:8444/simplesaml/saml2/idp/metadata.php ./cert/standalone.localdomain.crt ./cert/standalone.localdomain.key
 
 ENVIRONMENT VARIABLES (all optional):
     _SAML_SP_ENTITY_ID string  eg: http://dh1.standalone.localdomain:8081/service/rest/v1/security/saml/metadata
@@ -66,7 +65,7 @@ func login(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		panic(err)
 	}
-	helpers.Log("DEBUG", "data = "+string(data))
+	helpers.ULog("DEBUG", "data = "+string(data))
 	_, _ = w.Write(data)
 }
 
@@ -75,22 +74,22 @@ func _setArgs() {
 		simplesamlsp_help()
 		os.Exit(0)
 	}
-	helpers.DEBUG = helpers.getBoolEnv("_DEBUG", false)
+	helpers.DEBUG = helpers.UEnvB("_DEBUG", false)
 	if len(os.Args) > 1 {
 		HOST_PORT = os.Args[1]
-		helpers.Log("DEBUG", "HOST_PORT = "+HOST_PORT)
+		helpers.ULog("DEBUG", "HOST_PORT = "+HOST_PORT)
 	}
 	if len(os.Args) > 2 {
 		IDP_METADATA_URL = os.Args[2]
-		helpers.Log("DEBUG", "IDP_METADATA_URL = "+IDP_METADATA_URL)
+		helpers.ULog("DEBUG", "IDP_METADATA_URL = "+IDP_METADATA_URL)
 	}
 	if len(os.Args) > 3 {
 		CERT_PATH = os.Args[3]
-		helpers.Log("DEBUG", "CERT_PATH = "+CERT_PATH)
+		helpers.ULog("DEBUG", "CERT_PATH = "+CERT_PATH)
 	}
 	if len(os.Args) > 4 {
 		KEY_PATH = os.Args[4]
-		helpers.Log("DEBUG", "KEY_PATH = "+KEY_PATH)
+		helpers.ULog("DEBUG", "KEY_PATH = "+KEY_PATH)
 	}
 }
 
@@ -104,59 +103,62 @@ func GetSpUrlStr(hostPort string, path string) string {
 
 func ReadRsaKeyCert(keyFile string, certFile string) (*rsa.PrivateKey, *x509.Certificate) {
 	defer helpers.DeferPanic()
-	var key *rsa.PrivateKey
+	var key any
 	var cert *x509.Certificate
 	if len(keyFile) > 0 {
 		keyStr, err := ioutil.ReadFile(keyFile)
 		if err != nil {
-			helpers.Log("ERROR", fmt.Sprintf("keyFile %s is not readable", keyFile))
+			helpers.ULog("ERROR", fmt.Sprintf("keyFile %s is not readable", keyFile))
 			return nil, nil
 		}
-		blockKey, _ := pem.Decode([]byte(keyStr))
-		key, err = x509.ParsePKCS1PrivateKey(blockKey.Bytes)
+		blockKey, _ := pem.Decode(keyStr)
+		key, err = x509.ParsePKCS8PrivateKey(blockKey.Bytes)
 		if err != nil {
-			helpers.Log("ERROR", fmt.Sprintf("keyFile %s is not a valid key", keyFile))
-			return nil, nil
+			key, err = x509.ParsePKCS1PrivateKey(blockKey.Bytes)
+			if err != nil {
+				helpers.ULog("WARN", fmt.Sprintf("keyFile %s may not be a valid key: %s", keyFile, err.Error()))
+				return nil, nil
+			}
 		}
 	}
 	if len(certFile) > 0 {
 		certStr, err := ioutil.ReadFile(certFile)
 		if err != nil {
-			helpers.Log("ERROR", fmt.Sprintf("certFile %s is not readable", certFile))
+			helpers.ULog("ERROR", fmt.Sprintf("certFile %s is not readable", certFile))
 			return nil, nil
 		}
 		blockCert, _ := pem.Decode([]byte(certStr))
 		cert, err = x509.ParseCertificate(blockCert.Bytes)
 		if err != nil {
-			helpers.Log("ERROR", fmt.Sprintf("certFile %s is not a valid certificate", certFile))
+			helpers.ULog("ERROR", fmt.Sprintf("certFile %s is not a valid certificate", certFile))
 			return nil, nil
 		}
 	}
-	return key, cert
+	return key.(*rsa.PrivateKey), cert
 }
 
 func SamlLoadConfig(spUrlStr string, entityID string, idpMetadataUrlStr string, keyFile string, certFile string) samlsp.Options {
 	// NOTE: Accept environment variables: _SAML_SP_ENTITY_ID
 	if len(idpMetadataUrlStr) == 0 {
-		helpers.Log("ERROR", "idpMetadataUrlStr is required.")
+		helpers.ULog("ERROR", "idpMetadataUrlStr is required.")
 		panic("Empty idpMetadataUrlStr")
 	}
 	idpMetadataUrl, err := url.Parse(idpMetadataUrlStr)
 	if err != nil {
-		helpers.Log("WARN", fmt.Sprintf("%s may not be a valid URL string. Ignoring ...", idpMetadataUrlStr))
+		helpers.ULog("WARN", fmt.Sprintf("%s may not be a valid URL string. Ignoring ...", idpMetadataUrlStr))
 		panic(err)
 	}
 
-	helpers.Log("DEBUG", "Getting IdP metadata with "+idpMetadataUrlStr)
+	helpers.ULog("DEBUG", "Getting IdP metadata with "+idpMetadataUrlStr)
 	idpMetadata, err := samlsp.FetchMetadata(context.Background(), http.DefaultClient, *idpMetadataUrl)
 	if err != nil {
-		helpers.Log("ERROR", fmt.Sprintf("Failed to fetch the metadata from %s", idpMetadataUrlStr))
+		helpers.ULog("ERROR", fmt.Sprintf("Failed to fetch the metadata from %s", idpMetadataUrlStr))
 		panic(err)
 	}
-	helpers.Log("DEBUG", fmt.Sprintf("FetchMetadata result: %+v", idpMetadata))
+	helpers.ULog("DEBUG", fmt.Sprintf("FetchMetadata result: %+v", idpMetadata))
 	rootURL, err := url.Parse(spUrlStr)
 	if err != nil {
-		helpers.Log("ERROR", fmt.Sprintf("%s is not a vaild URL string", spUrlStr))
+		helpers.ULog("ERROR", fmt.Sprintf("%s is not a vaild URL string", spUrlStr))
 		panic(err)
 	}
 	key, cert := ReadRsaKeyCert(keyFile, certFile)
@@ -171,34 +173,48 @@ func SamlLoadConfig(spUrlStr string, entityID string, idpMetadataUrlStr string, 
 	if len(entityID) > 0 {
 		samlOptions.EntityID = entityID
 	}
-	helpers.Log("DEBUG", fmt.Sprintf("Configuration Options: %+v", samlOptions))
+	helpers.ULog("DEBUG", fmt.Sprintf("Configuration Options: %+v", samlOptions))
 	return samlOptions
+}
+
+func hello(w http.ResponseWriter, r *http.Request) {
+	for name, values := range r.Header {
+		for _, value := range values {
+			fmt.Fprintf(w, "%s = %s\n", name, value)
+		}
+	}
+	if r.Method == "POST" {
+		_ = r.ParseForm()
+		fmt.Fprintf(w, "---------------\n")
+	}
+	for name := range r.Form {
+		fmt.Fprintf(w, "     %s\n", name)
+	}
 }
 
 func main() {
 	_setArgs()
-	bindPath := helpers.getEnv("_SAML_SP_BIND_PATH", "/saml/") // Needs to end with "/"?
-	entityID := helpers.getEnv("_SAML_SP_ENTITY_ID", "")
+	bindPath := helpers.UEnv("_SAML_SP_BIND_PATH", "/saml/") // Needs to end with "/"?
+	entityID := helpers.UEnv("_SAML_SP_ENTITY_ID", "")
 	spUrlStr := GetSpUrlStr(HOST_PORT, "")
-	helpers.Log("DEBUG", "Generating SAML Config then MiddleWare with "+spUrlStr+", "+KEY_PATH+", "+CERT_PATH)
+	helpers.ULog("DEBUG", "Generating SAML Config then MiddleWare with "+spUrlStr+", "+KEY_PATH+", "+CERT_PATH)
 	config := SamlLoadConfig(spUrlStr, entityID, IDP_METADATA_URL, KEY_PATH, CERT_PATH)
 	myMiddleWare, err := samlsp.New(config)
 	if err != nil {
-		helpers.Log("ERROR", fmt.Sprintf("samlsp.New failed with %+v", config))
+		helpers.ULog("ERROR", fmt.Sprintf("samlsp.New failed with %+v", config))
 		panic(err)
 	}
 	//TODO: myMiddleWare.OnError = func(w http.ResponseWriter, r *http.Request, err error) {/* Do something */}
-
 	http.Handle("/login", myMiddleWare.RequireAccount(http.HandlerFunc(login)))
-	http.Handle(bindPath, myMiddleWare)
-	helpers.Log("INFO", "Starting Simple SP on "+config.URL.String()+"/login ("+config.URL.String()+bindPath+"metadata)")
+	http.Handle(bindPath, http.HandlerFunc(hello))
+	helpers.ULog("INFO", "Starting Simple SP on "+config.URL.String()+"/login ("+config.URL.String()+bindPath+"metadata)")
 	if len(KEY_PATH) > 0 {
 		err = http.ListenAndServeTLS(HOST_PORT, CERT_PATH, KEY_PATH, nil)
 	} else {
 		err = http.ListenAndServe(HOST_PORT, nil)
 	}
 	if err != nil {
-		helpers.Log("ERROR", "ListenAndServe failed with "+HOST_PORT)
+		helpers.ULog("ERROR", "ListenAndServe failed with "+HOST_PORT)
 		panic(err)
 	}
 }
