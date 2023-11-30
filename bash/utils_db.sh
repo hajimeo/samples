@@ -65,10 +65,9 @@ function _postgresql_configure() {
     #_upsert ${_postgresql_conf} "maintenance_work_mem" "64MB" "#maintenance_work_mem"    # Default 64MB. Can be higher than work_mem
     #_upsert ${_postgresql_conf} "effective_cache_size" "3072MB" "#effective_cache_size" # Default 4GB. RAM * 50% ~ 75%
     #_upsert ${_postgresql_conf} "wal_buffers" "16MB" "#wal_buffers" # Default -1 (1/32 of shared_buffers) Usually higher provides better write performance
-    _upsert ${_postgresql_conf} "checkpoint_completion_target" "0.9" "#checkpoint_completion_target"    # Default 0.5 or 0.9. Ratio of checkpoint_timeout (5min). Larger reduce disk I/O but may take checkpointing longer
     #_upsert ${_postgresql_conf} "random_page_cost" "1.1" "#random_page_cost"   # Default 4.0. If very fast disk is used, recommended to use same as seq_page_cost (1.0)
     #_upsert ${_postgresql_conf} "effective_io_concurrency" "200" "#effective_io_concurrency"   # Default 1. Was for RAID so number of disks. If SSD, somehow 200 is recommended
-    _upsert ${_postgresql_conf} "checkpoint_completion_target" "0.9" "#checkpoint_completion_target"    # Default 0.5 (old 'checkpoint_segments'). Larger may work for write heavy DB
+    _upsert ${_postgresql_conf} "checkpoint_completion_target" "0.9" "#checkpoint_completion_target"    # Default 0.5 (old 'checkpoint_segments')Ratio of checkpoint_timeout (5min). Larger reduce disk I/O but may take checkpointing longer
     _upsert ${_postgresql_conf} "min_wal_size" "1GB" "#min_wal_size"    # Default 80MB
     _upsert ${_postgresql_conf} "max_wal_size" "4GB" "#max_wal_size"    # Default 1GB
     #_upsert ${_postgresql_conf} "max_slot_wal_keep_size" "100GB" "#max_slot_wal_keep_size"    # Default -1 and probably from v13?
@@ -220,10 +219,10 @@ function _postgresql_create_role_and_db() {
 
     local _psql_as_admin="$(_get_psql_as_admin "${_dbadmin}")"
     # NOTE: need to be superuser and 'usename' is correct. options: -t --tuples-only, -A --no-align, -F --field-separator
-    ${_psql_as_admin} -d template1 -tA -c "SELECT usename FROM pg_shadow" | grep -q "^${_dbusr}$" || ${_psql_as_admin} -d template1 -c "CREATE USER ${_dbusr} WITH LOGIN PASSWORD '${_dbpwd}';"    # not SUPERUSER
+    ${_psql_as_admin} -d template1 -tA -c "SELECT usename FROM pg_shadow" | grep -q "^${_dbusr}$" || ${_psql_as_admin} -d template1 -c "CREATE USER \"${_dbusr}\" WITH LOGIN PASSWORD '${_dbpwd}';"    # not SUPERUSER
     if [ "${_dbadmin}" != "postgres" ] && [ "${_dbadmin}" != "$USER" ]; then
         # TODO ${_dbadmin%@*} is only for Azure
-        ${_psql_as_admin} -d template1 -c "GRANT ${_dbusr} TO \"${_dbadmin%@*}\";"
+        ${_psql_as_admin} -d template1 -c "GRANT \"${_dbusr}\" TO \"${_dbadmin%@*}\";"
     fi
 
     if [ -n "${_dbname}" ]; then
@@ -232,7 +231,7 @@ function _postgresql_create_role_and_db() {
             if [[ "${_force}" =~ ^[yY] ]]; then
                 _log "WARN" "${_dbname} already exists. As force is specified, dropping ${_dbname} ..."
                 sleep 5
-                ${_psql_as_admin} -d template1 -c "DROP DATABASE ${_dbname};"
+                ${_psql_as_admin} -d template1 -c "DROP DATABASE \"${_dbname}\";"
             else
                 _log "WARN" "${_dbname} already exists. May need to run below first:
         ${_psql_as_admin} -d ${_dbname} -c \"DROP SCHEMA ${_schema:-"public"} CASCADE;CREATE SCHEMA ${_schema:-"public"} AUTHORIZATION ${_dbusr};GRANT ALL ON SCHEMA ${_schema:-"public"} TO ${_dbusr};\""
@@ -241,12 +240,14 @@ function _postgresql_create_role_and_db() {
             fi
         fi
         if ${_create_db}; then
-            # NOTE: 'WITH template <dbname>' does not work well with different owner/user
-            ${_psql_as_admin} -d template1 -c "CREATE DATABASE ${_dbname} WITH OWNER ${_dbusr} ENCODING 'UTF8';"
+            # NOTE: to copy a database locally 'WITH TEMPLATE another_db OWNER ${_dbusr}'
+            ${_psql_as_admin} -d template1 -c "CREATE DATABASE \"${_dbname}\" WITH OWNER \"${_dbusr}\" ENCODING 'UTF8';"
+        else
+            ${_psql_as_admin} -d template1 -c "GRANT ALL ON DATABASE \"${_dbname}\" TO \"${_dbusr}\";" >/dev/null || return $?
         fi
-        # NOTE: Below two lines are NOT needed because of 'WITH OWNER'. Just for testing purpose to avoid unnecessary permission errors.
-        ${_psql_as_admin} -d template1 -c "GRANT ALL ON DATABASE ${_dbname} TO \"${_dbusr}\";" >/dev/null || return $?
+        # NOTE: For postgresql v15 change. Also use double-quotes for case sensitivity?
         ${_psql_as_admin} -d ${_dbname} -c "GRANT ALL ON SCHEMA public TO \"${_dbusr}\";" >/dev/null
+        # To delete user: DROP OWNED BY ${_dbusr}; DROP USER ${_dbusr};
 
         if [ -n "${_schema}" ]; then
             local _search_path="${_dbusr},public"
