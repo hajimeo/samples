@@ -349,7 +349,7 @@ function keytool_v() {
     eval "${_cmd} ${_pwd_opts}"
 }
 
-#keytool -printcert -sslserver ${_host}:${_port}
+#keytool -printcert -rfc -sslserver ${_host}:${_port}
 # Accept _PROXY_HOST_PORT _PROXY_USER_PWD
 function get_cert_from_https() {
     local _host="$1"
