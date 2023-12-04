@@ -398,7 +398,7 @@ function e_app_logs() {
 }
 function e_requests() {
     local _req_log_path="$(find . -maxdepth 3 -name "${_REQUEST_LOG:-"request.log"}" | sort -r | head -n1 2>/dev/null)"
-    if  _size_check "${_req_log_path}" "$((${_LOG_THRESHOLD_BYTES} * 10))"; then
+    if _size_check "${_req_log_path}" "$((${_LOG_THRESHOLD_BYTES} * 10))"; then
         f_request2csv "${_req_log_path}" ${_FILTERED_DATA_DIR%/}/request.csv 2>/dev/null &
         _rg "${_DATE_FMT_REQ}:(\d\d).+(/rest/|/api/)([^/ =?]+/?[^/ =?]+/?[^/ =?]+/?[^/ =?]+/?[^/ =?]+/?)" --no-filename -g ${_REQUEST_LOG} -o -r '"$1:" "$2$3"' | _replace_number | sort -k1,2 | uniq -c > ${_FILTERED_DATA_DIR%/}/agg_requests_count_hour_api.ssv &
     else
@@ -436,6 +436,8 @@ function r_threads() {
 function r_requests() {
     local _hour="$1"
     local _where=""
+    # Probably don't want to spend too much time for this function
+    _size_check "${_FILTERED_DATA_DIR%/}/request.csv" "$((${_LOG_THRESHOLD_BYTES} * 2))" || return 11
     [ -n "${_hour}" ] && _where="WHERE date like '%2023:${_hour}%'"
     # TODO: RM 3.61 may have some new metrics for unique users 'nexus.analytics.unique_user_authentications_count'
     _head "REQUESTS" "Counting host_ip + user per hour for last 10 ('-' in user is counted as 1)"
@@ -479,8 +481,8 @@ function t_system() {
     # TODO: compare TotalPhysicalMemorySize and CommittedVirtualMemorySize
     _test_template "$(rg 'MaxFileDescriptorCount.?: *\d{4}\b' ${_FILTERED_DATA_DIR%/}/extracted_configs.md)" "WARN" "MaxFileDescriptorCount might be too low"
     _test_template "$(rg 'SystemLoadAverage.?: *([4-9]\.|\d\d+)' ${_FILTERED_DATA_DIR%/}/extracted_configs.md)" "WARN" "SystemLoadAverage might be too high (check number of CPUs)"
-    local _xms="$(rg -i '\-Xms([a-zA-Z0-9]+)' -o -r '$1' -g jmx.json --no-filename)"
-    local _xmx="$(rg -i '\-Xmx([a-zA-Z0-9]+)' -o -r '$1' -g jmx.json --no-filename)"
+    local _xms="$(rg -i '\-Xms([a-zA-Z0-9]+)' -o -r '$1' -g jmx.json --no-filename | tail -n1)"
+    local _xmx="$(rg -i '\-Xmx([a-zA-Z0-9]+)' -o -r '$1' -g jmx.json --no-filename | tail -n1)"
     if [ "${_xms}" != "${_xmx}" ]; then
         _test_template "$(rg -i '\-Xm[sx]' -g jmx.json)" "WARN" "Xms (${_xms}) value might not be same as Xmx (${_xmx})"
     fi
@@ -605,6 +607,7 @@ main() {
     local _result_file="${1:-"/dev/stdout"}"
     _prerequisites || return $?
     f_run_extract || return $?
+    jobs -l | grep -vw "Done"; sleep 1 # Just in case
     echo "# $(basename "$BASH_SOURCE" ".sh") results" > "${_result_file}"
     echo "[[toc]]" >> "${_result_file}"
     echo "" >> "${_result_file}"
