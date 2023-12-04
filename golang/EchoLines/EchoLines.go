@@ -31,7 +31,7 @@ If END_REGEXP is provided but without any capture group, the end line is not ech
 If the first argument is empty, the script accepts the STDIN.
 
 ### NXRM2 thread dumps:
-	echolines "wrapper.log.2,wrapper.log.1,wrapper.log" "^\d\d\d\d-\d\d-\d\d \d\d:\d\d:\d\d$" "(^\s+class space.+)" > threads.txt
+	echolines "wrapper.log.2,wrapper.log.1,wrapper.log" "^jvm 1    \| \d\d\d\d-\d\d-\d\d \d\d:\d\d:\d\d$" "(^\s+class space.+)" | sed 's/^jvm 1    | //' > threads.txt
 ### NXRM3 thread dumps:
 	HTML_REMOVE=Y echolines "./jvm.log" "^\d\d\d\d-\d\d-\d\d \d\d:\d\d:\d\d$" "(^\s+class space.+)" "threads"
 	# If would like to split per thread:
@@ -209,7 +209,8 @@ func echoStartLine(line string, key string) bool {
 	var f *os.File
 	if SPLIT_FILE {
 		var err error
-		outFilePath := filepath.Join(OUT_DIR, strconv.Itoa(FOUND_COUNT)+"_"+FILE_NAME_PFXS[key]+".out")
+		// Not expecting more than 99 threads in one file
+		outFilePath := filepath.Join(OUT_DIR, fmt.Sprintf("%02d", FOUND_COUNT)+"_"+FILE_NAME_PFXS[key]+".out")
 		// If file exist, stop
 		if _, err = os.Stat(outFilePath); err == nil {
 			log.Fatal(outFilePath + " already exists.")
