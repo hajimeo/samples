@@ -3,6 +3,10 @@ Demo script to list all files from a File type blob store with tab delimiter for
 
 ## DOWNLOAD and INSTALL:
 ```bash
+curl -o ./file-list -L https://github.com/hajimeo/samples/raw/master/misc/filelist_$(uname)_$(uname -m)
+chmod a+x ./file-list
+```
+```bash
 curl -o /usr/local/bin/file-list -L https://github.com/hajimeo/samples/raw/master/misc/filelist_$(uname)_$(uname -m)
 chmod a+x /usr/local/bin/file-list
 ```
