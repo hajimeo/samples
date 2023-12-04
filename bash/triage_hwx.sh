@@ -94,7 +94,7 @@ function f_check_system() {
 
     # Disk
     # NOTE: with java https://confluence.atlassian.com/kb/test-disk-access-speed-for-a-java-application-818577561.html
-    mount &> ${_work_dir%/}/mount_df.out    # findmnt -T /path for specific location's mount options
+    mount &> ${_work_dir%/}/mount_df.out    # findmnt -T /path for specific location's mount options (util-linux)
     df -Th &> ${_work_dir%/}/mount_df.out
     grep -wE "(nfs|nfs4)" /proc/mounts > mounts_nfs.out # to check NFS version
     vmstat 1 3 &> ${_work_dir%/}/vmstat.out &
