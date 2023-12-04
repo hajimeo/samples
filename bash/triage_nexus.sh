@@ -63,6 +63,7 @@ function f_upload_download_tests() {
     done
 }
 
+#tar --diff -f /tmp/nexus-3.62.0-01-unix.tar.gz nexus-3.62.0-01/system -C ./nexus-3.62.0-01/system | grep -vE '(Uid|Gid) differs'
 function f_verify_install() {
     local __doc__="Compare files with the original tar installer file"
     local _ver="$1" # "3.38.1-01"
