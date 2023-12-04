@@ -1533,9 +1533,9 @@ function f_iostat2csv() {
     local _out_file="${2:-"./blob_iostat.csv"}"
     # Converting ,\d\d\d to .\d\d\d
     rg -q 'org.sonatype.nexus.blobstore.iostat' -m1 -g "${_glob}" || return 1
-    # NOTE "read" and "written" only, no "deleted"
-    rg "^(${_DATE_FORMAT}.\d\d:\d\d:\d\d).([\d]+)[^\[]+\[([^\]]+)\] [^ ]* ([^ ]*) org.sonatype.nexus.blobstore.iostat - blobstore ([^:]+): .+ bytes ([^ ]+) in .+ \((.+) mb/s\)" -o -r '"$1.$2","$3","$4","$5","$6",$7' --no-filename -g "${_glob}" > "${_out_file}" || return $?
-    head -n1 ${_out_file} | rg -q '^date_time' || echo "date_time,thread,user,blobstore,type,mbs
+    # NOTE "read" and "written" only, no "deleted", also always bytes and ms
+    rg "^(${_DATE_FORMAT}.\d\d:\d\d:\d\d).([\d]+)[^\[]+\[([^\]]+)\] [^ ]* ([^ ]*) org.sonatype.nexus.blobstore.iostat - blobstore ([^:]+): (.+) bytes ([^ ]+) in .+ \((.+) mb/s\)" -o -r '"$1.$2","$3","$4","$5",$6,"$7",$8' --no-filename -g "${_glob}" > "${_out_file}" || return $?
+    head -n1 ${_out_file} | rg -q '^date_time' || echo "date_time,thread,user,blobstore,bytes,type,mbs
 $(cat "${_out_file}")" > ${_out_file}
 }
 
