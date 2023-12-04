@@ -149,7 +149,7 @@ func _setGlobals() {
 	_TRUTH = flag.String("src", "BS", "Using database or blobstore as source [BS|DB]") // TODO: not implemented "DB" type yet
 	_DB_CON_STR = flag.String("db", "", "DB connection string or path to properties file")
 	_BLOB_IDS_FILE = flag.String("bF", "", "file path whic contains the list of blob IDs")
-	_BS_NAME = flag.String("bsName", "", "eg. 'default'. If provided, the SQL query will be faster")
+	_BS_NAME = flag.String("bsName", "", "eg. 'default'. If provided, the SQL query will be faster. 3.47 and higher only")
 	_REPO_FORMAT = flag.String("repoFmt", "", "eg. 'maven2'. If provided, the SQL query will be faster")
 	_REMOVE_DEL = flag.Bool("RDel", false, "Remove 'deleted=true' from .properties. Requires -dF")
 	_DEL_DATE_FROM = flag.String("dF", "", "Deleted date YYYY-MM-DD (from). Used to search deletedDateTime")
@@ -776,7 +776,7 @@ func genBlobIdCheckingQuery(blobId string, tableNames []string) string {
 	// Just in case, supporting older version by using "%'"
 	where := "blob_ref LIKE '%" + blobId + "%'"
 	if len(*_BS_NAME) > 0 {
-		// Supporting only 3.47 and higher for performance. blobRef no longer contains NODE_ID.
+		// Supporting only 3.47 and higher for performance (NEXUS-35934 blobRef no longer contains NODE_ID)
 		where = "blob_ref = '" + *_BS_NAME + "@" + blobId + "'"
 	}
 	query := genAssetBlobUnionQuery(tableNames, "asset_id", where, false)
