@@ -1187,9 +1187,15 @@ function f_microk8s() {
 ### troubleshooting helm related issue
     helm3 get manifest <release name>       # https://helm.sh/docs/helm/helm_get_manifest/
     helm3 template [NAME] [CHART]           # https://helm.sh/docs/helm/helm_template/
+### To use storageClassName nfs-csi https://microk8s.io/docs/how-to-nfs
+    microk8s helm3 repo add csi-driver-nfs https://raw.githubusercontent.com/kubernetes-csi/csi-driver-nfs/master/charts
+    microk8s helm3 install csi-driver-nfs csi-driver-nfs/csi-driver-nfs -n kube-system --set kubeletDir=/var/snap/microk8s/common/var/lib/kubelet
+### TODO: To use "nfs-client"???
+    helm repo add nfs-subdir-external-provisioner https://kubernetes-sigs.github.io/nfs-subdir-external-provisioner
+    helm install nfs-subdir-external-provisioner nfs-subdir-external-provisioner/nfs-subdir-external-provisioner --create-namespace --namespace nfs-provisione --set nfs.server=node004.b9tcluster.local --set nfs.path=/data
 ### 'microk8s enable nfs' alternative
-    helm repo add nfs-ganesha-server-and-external-provisioner https://kubernetes-sigs.github.io/nfs-ganesha-server-and-external-provisioner/
-    helm install nfs nfs-ganesha-server-and-external-provisioner/nfs-server-provisioner -n sonatype
+    microk8s helm repo add nfs-ganesha-server-and-external-provisioner https://kubernetes-sigs.github.io/nfs-ganesha-server-and-external-provisioner/
+    microk8s helm install nfs nfs-ganesha-server-and-external-provisioner/nfs-server-provisioner -n kube-system
 
 ## Kubectl
     kubectl config get-contexts             # list available kubectl configs
