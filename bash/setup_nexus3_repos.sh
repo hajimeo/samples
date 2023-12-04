@@ -108,7 +108,7 @@ _RESP_FILE=""
 
 ### Nexus installation functions ##############################################################################
 # To install 1st/2nd instance: _NEXUS_ENABLE_HA=Y f_install_nexus3 "" "nxrmha"
-# To upgrade (from ${_dirpath}/): tar -xvf $HOME/.nexus_executable_cache/nexus-3.61.0-02-mac.tgz
+# To upgrade (from ${_dirpath}/): tar -xvf $HOME/.nexus_executable_cache/nexus-3.62.0-01-mac.tgz
 function f_install_nexus3() {
     local __doc__="Install specific NXRM3 version"
     local _ver="${1:-"${r_NEXUS_VERSION}"}"     # 'latest'
@@ -334,7 +334,7 @@ function f_setup_maven() {
     if ! _is_repo_available "${_prefix}-proxy"; then
         # NOTE: I prefer "maven":{...,"contentDisposition":"ATTACHMENT"...}, but using default for various testings.
         f_apiS '{"action":"coreui_Repository","method":"create","data":[{"attributes":{"maven":{"versionPolicy":"MIXED","layoutPolicy":"PERMISSIVE"},"proxy":{"remoteUrl":"https://repo1.maven.org/maven2/","contentMaxAge":-1,"metadataMaxAge":1440},"httpclient":{"blocked":false,"autoBlock":true,"connection":{"useTrustStore":false}},"storage":{"blobStoreName":"'${_bs_name}'","strictContentTypeValidation":true'${_extra_sto_opt}'},"negativeCache":{"enabled":true,"timeToLive":1440},"cleanup":{"policyName":[]}},"name":"'${_prefix}'-proxy","format":"","type":"","url":"","online":true,"routingRuleId":"","authEnabled":false,"httpRequestSettings":false,"recipe":"maven2-proxy"}],"type":"rpc"}' || return $?
-        echo "NOTE: if 'IQ: Audit and Quarantine' is needed for ${_prefix}-proxy:"
+        echo "NOTE: if 'IQ: Audit and Quarantine' is needed for ${_prefix}-proxy (set _IQ_URL)"
         echo "      f_iq_quarantine \"${_prefix}-proxy\""
         # NOTE: com.fasterxml.jackson.core:jackson-databind:2.9.3 should be quarantined if IQ is configured. May need to delete the component first
         #f_get_asset "maven-proxy" "com/fasterxml/jackson/core/jackson-databind/2.9.3/jackson-databind-2.9.3.jar" "test.jar"
@@ -443,6 +443,8 @@ function f_setup_npm() {
     # If no xxxx-proxy, create it
     if ! _is_repo_available "${_prefix}-proxy"; then
         f_apiS '{"action":"coreui_Repository","method":"create","data":[{"attributes":{"proxy":{"remoteUrl":"https://registry.npmjs.org","contentMaxAge":1440,"metadataMaxAge":1440},"httpclient":{"blocked":false,"autoBlock":true,"connection":{"useTrustStore":false}},"storage":{"blobStoreName":"'${_bs_name}'","strictContentTypeValidation":true'${_extra_sto_opt}'},"negativeCache":{"enabled":true,"timeToLive":1440},"cleanup":{"policyName":[]}},"name":"'${_prefix}'-proxy","format":"","type":"","url":"","online":true,"routingRuleId":"","authEnabled":false,"httpRequestSettings":false,"recipe":"npm-proxy"}],"type":"rpc"}' || return $?
+        echo "NOTE: if 'IQ: Audit and Quarantine' is needed for ${_prefix}-proxy (set _IQ_URL)"
+        echo "      f_iq_quarantine \"${_prefix}-proxy\""
     fi
     # add some data for xxxx-proxy
     _ASYNC_CURL="Y" f_get_asset "${_prefix}-proxy" "lodash/-/lodash-4.17.19.tgz"
@@ -466,8 +468,6 @@ function f_setup_npm() {
     # https://help.sonatype.com/iqserver/managing/policy-management/reference-policy-set-v6
     if ! _is_repo_available "${_prefix}-prop-hosted"; then
         f_apiS '{"action":"coreui_Repository","method":"create","data":[{"attributes":{"storage":{"blobStoreName":"'${_bs_name}'","writePolicy":"ALLOW_ONCE","strictContentTypeValidation":true'${_extra_sto_opt}'},"component":{"proprietaryComponents":true},"cleanup":{"policyName":[]}},"name":"'${_prefix}'-prop-hosted","format":"","type":"","url":"","online":true,"recipe":"npm-hosted"}],"type":"rpc"}' # || return $? # this would fail if version is not 3.30
-        echo "NOTE: if 'IQ: Audit and Quarantine' is needed for ${_prefix}-prop-hosted:"
-        echo "      f_iq_quarantine \"${_prefix}-prop-hosted\""
     fi
 
     # If no xxxx-group, create it
@@ -477,7 +477,7 @@ function f_setup_npm() {
     fi
     # add some data for xxxx-group
     #f_get_asset "${_prefix}-group" "grunt/-/grunt-1.1.0.tgz"
-    _ASYNC_CURL="Y" f_get_asset "${_prefix}-proxy" "@sonatype/policy-demo/-/policy-demo-2.3.0.tgz"
+    _ASYNC_CURL="Y" f_get_asset "${_prefix}-group" "@sonatype/policy-demo"
 }
 
 function f_setup_nuget() {
@@ -2550,12 +2550,6 @@ function f_staging_move() {
     local _move_to_repo="${1}"
     local _tag="${2}"
     local _search="${3}"
-    if [ -n "${_tag}" ]; then
-        # Creating the tag, and not stopping if error (because it already exists)
-        echo "# /service/rest/v1/tags -d '{\"name\":\"${_tag}\"}'"
-        f_api "/service/rest/v1/tags" "{\"name\":\"${_tag}\"}"
-        echo ""
-    fi
     if [ -n "${_search}" ]; then
         if [ -z "${_tag}" ] && [ -z "${_move_to_repo}" ]; then
             # If only search is given, just search
@@ -2566,11 +2560,7 @@ function f_staging_move() {
         fi
         if [ -n "${_tag}" ]; then
             # If tag is given, associate the search matching components to this tag
-            echo "# /service/rest/v1/tags/associate/${_tag}?${_search}"
-            f_api "/service/rest/v1/tags/associate/${_tag}?${_search}" "" "POST"
-            echo ""
-            # NOTE: immediately moving fails with 404
-            sleep 5
+            f_associate_tags "${_search}" "${_tag}" || return $?
         fi
     fi
     # Move!
@@ -2583,17 +2573,19 @@ function f_staging_move() {
     fi
     echo ""
 }
+
 # Test associate only after f_setup_maven & f_upload_dummies_mvn
-function _associate_test() {
-    _tag="tag-test"
-    _search="repository=maven-hosted&maven.groupId=setup.nexus3.repos&maven.artifactId=dummy&maven.baseVersion=3"
+# search: repository=maven-hosted&maven.groupId=setup.nexus3.repos&maven.artifactId=dummy&maven.baseVersion=3
+function f_associate_tags() {
+    local _search="${1}"
+    local _tag="${2:-"tag-test"}"
+    # Ignore if tag association fails
+    echo "# /service/rest/v1/tags -d '{\"name\":\"${_tag}\"}'"
     f_api "/service/rest/v1/tags" "{\"name\":\"${_tag}\"}"
-    f_api "/service/rest/v1/tags/associate/${_tag}?${_search}" "" "POST"
-    sleep 3
-    _search="repository=maven-hosted&maven.groupId=setup.nexus3.repos&maven.artifactId=dummy"
-    f_api "/service/rest/v1/tags/associate/${_tag}?${_search}" "" "POST"
-    sleep 3
-    f_api "/service/rest/v1/search?${_search}"
+    echo "# /service/rest/v1/tags/associate/${_tag}?${_search}"
+    f_api "/service/rest/v1/tags/associate/${_tag}?${_search}" "" "POST" || return $?
+    sleep 3 # Just in case waiting for elastic search
+    echo "To confirm: f_api \"/service/rest/v1/search?${_search}\" | grep '\"${_tag}\"' -c"
 }
 
 # TODO: add `/service/rest/v1/staging/delete`
