@@ -400,7 +400,7 @@ function nxrmDocker() {
     fi
     local _opts="--name=${_name}"
     [ -n "${INSTALL4J_ADD_VM_PARAMS}" ] && _opts="${_opts} -e INSTALL4J_ADD_VM_PARAMS=\"${INSTALL4J_ADD_VM_PARAMS}\""
-    [ -d "${_work_dir%/}" ] && _opts="${_opts} -v ${_work_dir%/}:/var/tmp/share:z"  # :z or :Z for SELinux
+    [ -d "${_work_dir%/}" ] && _opts="${_opts} -v ${_work_dir%/}:/var/tmp/share:z"  # :z or :Z for SELinux https://docs.docker.com/storage/bind-mounts/#configure-the-selinux-label
     [ -d "${_nexus_data%/}" ] && _opts="${_opts} -v ${_nexus_data%/}:/nexus-data"
     [ -n "${_extra_opts}" ] && _opts="${_opts} ${_extra_opts}"  # Should be last to overwrite
     [ -n "${_docker_host}" ] && _docker_host="${_docker_host%/}/"
@@ -491,8 +491,8 @@ function iqConfigUpdate() {
     echo "May want to run 'f_api_nxiq_scm_setup _token' as well"
 }
 
-# To upgrade (from ${_dirname}/): mv -v ./config.yml{,.bak} && tar -xvf $HOME/.nexus_executable_cache/nexus-iq-server-1.165.0-01-bundle.tar.gz
-# NOTE: Above will overwrite config.yml
+# NOTE: Below will overwrite config.yml, so saving and restoring
+# To upgrade (from ${_dirname}/): mv -v ./config.yml{,.orig} && tar -xvf $HOME/.nexus_executable_cache/nexus-iq-server-1.169.0-01-bundle.tar.gz && cp -p -v ./config.yml{.orig,}
 function iqInstall() {
     if [ -s "$HOME/IdeaProjects/samples/bash/setup_nexus3_repos.sh" ]; then
         source "$HOME/IdeaProjects/samples/bash/setup_nexus3_repos.sh" || return $?
@@ -525,7 +525,7 @@ function iqDocker() {
     #-e JAVA_OPTS="-Ddw.database.type=postgresql -Ddw.database.hostname=db-server-name.domain.net"
     [ -n "${JAVA_OPTS}" ] && _java_opts="${_java_opts} ${JAVA_OPTS}"
     [ -n "${_java_opts}" ] && _opts="${_opts} -e JAVA_OPTS=\"${_java_opts}\""
-    [ -d "${_work_dir%/}" ] && _opts="${_opts} -v ${_work_dir%/}:/var/tmp/share:z"  # :z or :Z for SELinux
+    [ -d "${_work_dir%/}" ] && _opts="${_opts} -v ${_work_dir%/}:/var/tmp/share:z"  # :z or :Z for SELinux https://docs.docker.com/storage/bind-mounts/#configure-the-selinux-label
     [ -d "${_nexus_data%/}" ] && _opts="${_opts} -v ${_nexus_data%/}:/sonatype-work"
     [ -s "${_nexus_data%/}/etc/config.yml" ] && _opts="${_opts} -v ${_nexus_data%/}/etc:/etc/nexus-iq-server"
     [ -d "${_nexus_data%/}/log" ] && _opts="${_opts} -v ${_nexus_data%/}/log:/var/log/nexus-iq-server"
