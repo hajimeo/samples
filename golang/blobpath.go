@@ -36,7 +36,8 @@ USAGE EXAMPLE:
     /nexus-data/blobs/default/content/vol-31/chap-32/83e59741-f05d-4915-a1ba-7fc789be34b1.properties
 
 	# Report if .properties file is missing ("Y" in the 4th argument)
-    $ cat /tmp/blobIds.out | xargs -I{} -P3 ./blobpath "{}" ".properties" "/nexus-data/blobs/default/content/" "Y"
+	$ psql -d nxrm3pg -c "\copy (SELECT REGEXP_REPLACE(ab.blob_ref, '.+@', '') as blobId FROM nuget_asset a JOIN nuget_asset_blob ab USING (asset_blob_id) JOIN nuget_content_repository cr USING (repository_id) JOIN repository r ON r.id = cr.config_repository_id and r.name IN ('nuget-proxy') WHERE ab.blob_created < (NOW() - interval '14 days') ORDER BY 1) to '/tmp/blobIds.out' csv;"
+    $ cat /tmp/blobIds.out | xargs -I{} -P3 ./blobpath "{}" "" "/nexus-data/blobs/default/content/" "Y"
     /nexus-data/blobs/default/content/vol-31/chap-32/83e59741-f05d-4915-a1ba-7fc789be34b1.properties
 ADVANCED:
     # NOTE: using xxxxxx@ as blobStore ID/name is not 100% accurate
