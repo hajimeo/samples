@@ -289,7 +289,7 @@ def etl(path="", log_suffix=".log", dist="./_filtered", max_file_size=(1024 * 10
         # extracting from DB export.json files
         _save_json("config/export\.json", "%s/http_client.json" % dist, "records,@class=http_client", "@class",
                    "connection,proxy")
-        _save_json("config/export\.json", "%s/db_repo.json" % dist, "records,@class=repository", "@class",
+        _save_json("config/export\.json", "%s/db_repos.json" % dist, "records,@class=repository", "@class",
                    "recipe_name,repository_name,online,attributes", True)
         saml_config = _save_json("config/export\.json", "", "records,@class:saml", "@class",
                                  "entityId,idpMetadata,mapping,keyStoreBytes,keyStorePassword", True)
@@ -441,7 +441,7 @@ def analyse_logs(path="", log_suffix=".log", tail_num=10000, max_file_size=(1024
 
     if ju.exists("t_request"):
         display_name = "RequestLog_StatusCode_Hourly_aggs"
-        # Join db_repo.json and request.log
+        # Join db_repos.json and request.log
         #   AND UDF_REGEX('.+ /nexus/content/repositories/([^/]+)', t_request.requestURL, 1) IN (SELECT repository_name FROM t_db_repo where t_db_repo.`attributes.storage.blobStoreName` = 'nexus3')
         query = """SELECT substr(`date`, 1, 14) AS date_hour, substr(statusCode, 1, 1) || 'xx' as status_code,
     CAST(MAX(CAST(elapsedTime AS INT)) AS INT) AS max_elaps, 
@@ -553,9 +553,9 @@ FROM t_iq_logs
             pass
         if ju.exists("t_log_task_status"):
             display_name = "Potentially_long_running_tasks"
-            query = """SELECT thread_id, task_name, user, count(*), min(date_time), max(date_time), ((STRFTIME('%s', max(date_time)) - STRFTIME('%s', min(date_time))) / (count(*) / 2)) as avg_duration FROM t_log_task_status
+            query = """SELECT thread_id, task_name, user, count(*)/2 as occurence, min(date_time), max(date_time), ((STRFTIME('%s', max(date_time)) - STRFTIME('%s', min(date_time))) / (count(*) / 2)) as avg_duration FROM t_log_task_status
     GROUP BY 1,2,3
-    HAVING count(*) < 7
+    HAVING avg_duration > 1800
     ORDER BY min(date_time)"""
             try:
                 ju.display(ju.q(query).tail(tail_num), name=display_name, desc=query)
