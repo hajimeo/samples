@@ -1,5 +1,5 @@
-# Check deploy-ing yaml file
-#$ helm template nxiqha sonatype/nexus-iq-server-ha -f ./helm-nxiqha-values.yml -n sonatype-ha >./helm-nxiqha-deployed.yaml
+# To check the deploy-ing yaml file (should use lint?)
+#$ helm template nxiqha sonatype/nexus-iq-server-ha -f ./helm-nxiqha-values.yml -n sonatype-ha >./helm-nxiqha-deploying.yaml
 
 # To install from scratch (not perfectly scratch as persistent volumes remain)
 #$ helm uninstall nxiqha -n sonatype-ha
@@ -35,7 +35,6 @@ iq_server:
     persistentVolumeRetainPolicy: "keep"
     persistentVolumeClaimRetainPolicy: "keep"
     size: "1Gi"
-    storageClassName: "nfs-client"
     accessModes:
       - ReadWriteMany
     nfs:

@@ -1,0 +1,65 @@
+# NAMESPACE="sonatype-helm"
+# kubectl create secret tls nexus-tls -n ${NAMESPACE} --key ~/IdeaProjects/samples/misc/standalone.localdomain.key --cert ~/IdeaProjects/samples/misc/standalone.localdomain.crt
+# kubectl apply -n ${NAMESPACE} -f ./k8s-nexus-helmha-ingress.yaml
+# To check: kubectl cp -n ingress nginx-ingress-microk8s-controller-22p79:/etc/nginx/nginx.conf ./ingress-nginx.conf
+
+apiVersion: networking.k8s.io/v1
+kind: IngressClass
+metadata:
+  labels:
+    app.kubernetes.io/component: controller
+  name: nexushelmha-ingresscontroller
+spec:
+  controller: k8s.io/ingress-nginx
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: nexushelmha-ingress
+  labels:
+    app: nexushelmha
+  annotations:
+    #kubernetes.io/ingress.class: nginx
+    nginx.ingress.kubernetes.io/proxy-body-size: "1023m"
+    nginx.ingress.kubernetes.io/affinity: 'cookie'
+    nginx.ingress.kubernetes.io/affinity-mode: 'persistent'
+    #nginx.ingress.kubernetes.io/session-cookie-name: 'NXJWT'
+    #nginx.ingress.kubernetes.io/session-cookie-expires: '1800'
+    #nginx.ingress.kubernetes.io/session-cookie-max-age: '1800'
+    nginx.ingress.kubernetes.io/proxy-buffering: "off"
+    nginx.ingress.kubernetes.io/proxy-request-buffering: "off"
+    nginx.ingress.kubernetes.io/proxy-read-timeout: "300"
+    nginx.ingress.kubernetes.io/proxy-send-timeout: "120"
+    nginx.ingress.kubernetes.io/ssl-redirect: "false"
+    nginx.ingress.kubernetes.io/force-ssl-redirect: "false"
+    nginx.ingress.kubernetes.io/proxy-http-version: "1.1"
+spec:
+  # Using existing IngressClass
+  #ingressClassName: nginx-ingress-microk8s
+  tls:
+    - hosts:
+        - nxrm3helmha-k8s.standalone.localdomain
+      secretName: nexus-tls
+  rules:
+    - host: nxrm3helmha-k8s.standalone.localdomain
+      http:
+        paths:
+          - path: /
+            backend:
+              service:
+                name: nexus-service
+                port:
+                  number: 8081
+            pathType: Prefix
+    - host: nxrm3helmha-docker-k8s.standalone.localdomain
+      http:
+        paths:
+          - path: /
+            backend:
+              service:
+                name: nexus-docker-service
+                port:
+                  #number: 5000 # httpsPort
+                  number: 4999 # httpPort
+                  #number: 8081
+            pathType: Prefix
