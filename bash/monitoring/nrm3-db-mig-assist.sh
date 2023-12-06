@@ -242,6 +242,8 @@ main() {
     chkDirSize
     chkJavaVer
 
+    prepareDbMigJar
+
     echo ""
     echo "# Please make sure the database and DB user are created"
     echo "# //----------------------------------------"
