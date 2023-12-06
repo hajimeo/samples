@@ -178,41 +178,41 @@ function prepareDbMigJar() {
     local _nexus_url="${2:-"${_NEXUS_URL}"}"
     local _download_dir="${3:-"/tmp"}"
 
-    if [ -z "${_migrator_jar}" ] || [[ "${_migrator_jar}" =~ ^3\.[0-9]+\.[0-9]+-[0-9][0-9]$ ]]; then
+    local _ver=""
+    # If _migrator_jar is version string instead of file path
+    if [[ "${_migrator_jar}" =~ ^3\.[0-9]+\.[0-9]+-[0-9][0-9]$ ]]; then
+        _ver="${BASH_REMATCH[0]}"
         _migrator_jar="${_download_dir%/}/nexus-db-migrator-${_ver}.jar"
         export _MIGRATOR_JAR="${_migrator_jar}"
     fi
 
-    local _ver=""
-    local _pid="$(ps auxwww | grep -F 'org.sonatype.nexus.karaf.NexusMain' | grep -vw grep | awk '{print $2}' | tail -n1)"
-    if [[ "${_migrator_jar}" =~ 3\.[0-9]+\.[0-9]+-[0-9][0-9] ]]; then
-        _ver="${BASH_REMATCH[0]}"
-    elif [ -n "${_pid}" ]; then
-        _ver="$(curl -sSf -I "${_nexus_url%/}/" | sed -n -E '/^server/ s/.*\/([^ ]+).*/\1/p')"
-        if [ -z "${_ver}" ]; then
-            echo "ERROR:${_nexus_url%/} might not be working." >&2
-            return 1
+    # Trying to guess the migrator version
+    if [ -z "${_ver}" ]; then
+        local _pid="$(ps auxwww | grep -F 'org.sonatype.nexus.karaf.NexusMain' | grep -vw grep | awk '{print $2}' | tail -n1)"
+        if [[ "${_migrator_jar}" =~ 3\.[0-9]+\.[0-9]+-[0-9][0-9] ]]; then
+            _ver="${BASH_REMATCH[0]}"
+        elif [ -n "${_pid}" ]; then
+            _ver="$(curl -sSf -I "${_nexus_url%/}/" | sed -n -E '/^server/ s/.*\/([^ ]+).*/\1/p')"
+            if [ -z "${_ver}" ]; then
+                echo "WARN: ${_nexus_url%/} might not be working (PID: ${_pid})" >&2
+            fi
+        else
+            echo "INFO: No NexusMain running (assuming it's stopped)" >&2
         fi
-        #TODO output curl command example for read-only
-    else
-        echo "INFO: No NexusMain running (assuming it's stopped)" >&2
     fi
 
-    if [ -z "${_ver}" ]; then
-        if [ -z "${_migrator_jar}" ] || [ ! -s "${_migrator_jar}" ]; then
-            echo "ERROR:No _MIGRATOR_JAR (-m) specified" >&2
-            return 1
-        fi
+    # If no version, can't download the jar file, so returning
+    if [ -z "${_ver}" ] && [ ! -s "${_migrator_jar}" ]; then
+        echo "ERROR:No _MIGRATOR_JAR (-m) specified" >&2
+        return 1
     fi
 
     if [ ! -s "${_migrator_jar}" ]; then
-        [[ "${_migrator_jar}" =~ nexus-db-migrator-(.+)\.jar ]] && _ver="${BASH_REMATCH[1]}"
         echo "INFO: Downloading DB migrator for version: ${_ver} into ${_migrator_jar} ..." >&2
         local _tmp_dir="$(mktemp -d)"
         curl -Sf -L -o "${_tmp_dir%/}/nexus-db-migrator-${_ver}.jar" "https://download.sonatype.com/nexus/nxrm3-migrator/nexus-db-migrator-${_ver}.jar" || return $?
         mv -v "${_tmp_dir%/}/nexus-db-migrator-${_ver}.jar" "${_MIGRATOR_JAR}" || return $?
     fi
-
 }
 
 function printDbUserCreateSQLs(){
