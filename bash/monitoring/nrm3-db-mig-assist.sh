@@ -167,8 +167,6 @@ function chkDbConn() {
     if [ -n "${_INSTALL_DIR%/}" ]; then
         echo "INFO: Checking PostgreSQL connection ..." >&2
         runDbQuery "SELECT version()" || return $?
-        echo "INFO: Testing permission by creating a temp table ..." >&2
-        runDbQuery "CREATE TEMP TABLE mytemp(c INT)" || return $?
     else
         echo "WARN: No DB connection tests as no _INSTALL_DIR (-i)" >&2
     fi
@@ -179,6 +177,11 @@ function prepareDbMigJar() {
     local _migrator_jar="${1:-"${_MIGRATOR_JAR}"}"
     local _nexus_url="${2:-"${_NEXUS_URL}"}"
     local _download_dir="${3:-"/tmp"}"
+
+    if [ -z "${_migrator_jar}" ] || [[ "${_migrator_jar}" =~ ^3\.[0-9]+\.[0-9]+-[0-9][0-9]$ ]]; then
+        _migrator_jar="${_download_dir%/}/nexus-db-migrator-${_ver}.jar"
+        export _MIGRATOR_JAR="${_migrator_jar}"
+    fi
 
     local _ver=""
     local _pid="$(ps auxwww | grep -F 'org.sonatype.nexus.karaf.NexusMain' | grep -vw grep | awk '{print $2}' | tail -n1)"
@@ -202,11 +205,6 @@ function prepareDbMigJar() {
         fi
     fi
 
-    if [ -z "${_migrator_jar}" ] || [[ "${_migrator_jar}" =~ ^3\.[0-9]+\.[0-9]+-[0-9][0-9]$ ]]; then
-        _migrator_jar="${_download_dir%/}/nexus-db-migrator-${_ver}.jar"
-        export _MIGRATOR_JAR="${_migrator_jar}"
-    fi
-
     if [ ! -s "${_migrator_jar}" ]; then
         [[ "${_migrator_jar}" =~ nexus-db-migrator-(.+)\.jar ]] && _ver="${BASH_REMATCH[1]}"
         echo "INFO: Downloading DB migrator for version: ${_ver} into ${_migrator_jar} ..." >&2
@@ -228,6 +226,7 @@ function printDbUserCreateSQLs(){
     cat << EOF
 CREATE USER "${_dbusr}" WITH LOGIN PASSWORD '${_dbpwd}';
 CREATE DATABASE "${_dbname}" WITH OWNER "${_dbusr}" ENCODING 'UTF8';
+\c "${_dbname}"
 GRANT ALL ON SCHEMA public TO "${_dbusr}";
 -- Also update pg_hba.conf which location can be found with the below
 SELECT setting, context from pg_settings where name = 'hba_file';
