@@ -8,10 +8,7 @@ USAGE:
     bash <(curl -sfL https://raw.githubusercontent.com/hajimeo/samples/master/bash/monitoring/nrm3-db-mig-assist.sh --compressed)
 # Or
     curl -O -sfL https://raw.githubusercontent.com/hajimeo/samples/master/bash/monitoring/nrm3-db-mig-assist.sh --compressed
-    bash ./nrm3-db-mig-assist.sh [-s /path/to/nexus-store.properties]
-
-# Specify DB Migrator version:
-    bash ./nrm3-db-mig-assist.sh -m 3.63.0-01
+    bash ./nrm3-db-mig-assist.sh [-s /path/to/nexus-store.properties] [-m migrator_ver_or_jar_path]
 
 # If Nexus is not running, specify '-i <installDir>' for connection test (and '-s' or 'export' for DB connection):
     bash ./nrm3-db-mig-assist.sh -i ./nexus-3.62.0-01/ -s ./sonatype-work/nexus3/etc/fabric/nexus-store.properties
