@@ -10,6 +10,9 @@ USAGE:
     curl -O -sfL https://raw.githubusercontent.com/hajimeo/samples/master/bash/monitoring/nrm3-db-mig-assist.sh --compressed
     bash ./nrm3-db-mig-assist.sh [-s /path/to/nexus-store.properties]
 
+# Specify DB Migrator version:
+    bash ./nrm3-db-mig-assist.sh -m 3.63.0-01
+
 # If Nexus is not running, specify '-i <installDir>' for connection test (and '-s' or 'export' for DB connection):
     bash ./nrm3-db-mig-assist.sh -i ./nexus-3.62.0-01/ -s ./sonatype-work/nexus3/etc/fabric/nexus-store.properties
 EOF
@@ -123,6 +126,7 @@ function setGlobals() { # Best effort. may not return accurate dir path
 }
 
 function chkDirSize() {
+    local __doc__="Check temp directory size and if no _min_gb, compare with DB directory"
     local _tmp="${1:-"${TMPDIR:-"/tmp"}"}"
     local _min_gb="${2}"    # default is "4"
     if [ ! -d "${_tmp%/}" ]; then
@@ -130,11 +134,14 @@ function chkDirSize() {
         return 1
     fi
     if [ -z "${_min_gb}" ]; then
-        if [ -d "${_WORK_DIR%/}" ]; then
+        if [ -z "${_DB_DIR%/}" ] && [ -d "${_WORK_DIR%/}" ]; then
+            _DB_DIR="${_WORK_DIR%/}/db/component"
+        fi
+        if [ -d "${_DB_DIR%/}" ]; then
             # No _idx.* size + 2 GB
-            _min_gb="$(find "${_WORK_DIR%/}/db/component" -type f ! -name "*_idx.*" -printf '%s\n'  | awk '{ s+=$1 }; END { printf "%d\n", s / 1024 / 1024 / 1024 + 2 }')"
+            _min_gb="$(find "${_DB_DIR%/}" -maxdepth 1 -type f ! -name "*_idx.*" -printf '%s\n'  | awk '{ s+=$1 }; END { printf "%d\n", s / 1024 / 1024 / 1024 + 2 }')"
             if [ -n "${_min_gb}" ] && [ ${_min_gb} -gt 10 ]; then
-                echo "WARN: ${_WORK_DIR%/}/db/component is very large (${_min_gb} GB)" >&2
+                echo "WARN: ${_DB_DIR%/} is very large (${_min_gb} GB)" >&2
             fi
         fi
         if [ -z "${_min_gb}" ]; then
@@ -174,7 +181,10 @@ function prepareDbMigJar() {
     local _download_dir="${3:-"/tmp"}"
 
     local _ver=""
-    if ps auxwww | grep -qF 'org.sonatype.nexus.karaf.NexusMain'; then
+    local _pid="$(ps auxwww | grep -F 'org.sonatype.nexus.karaf.NexusMain' | grep -vw grep | awk '{print $2}' | tail -n1)"
+    if [[ "${_migrator_jar}" =~ 3\.[0-9]+\.[0-9]+-[0-9][0-9] ]]; then
+        _ver="${BASH_REMATCH[0]}"
+    elif [ -n "${_pid}" ]; then
         _ver="$(curl -sSf -I "${_nexus_url%/}/" | sed -n -E '/^server/ s/.*\/([^ ]+).*/\1/p')"
         if [ -z "${_ver}" ]; then
             echo "ERROR:${_nexus_url%/} might not be working." >&2
@@ -192,7 +202,7 @@ function prepareDbMigJar() {
         fi
     fi
 
-    if [ -z "${_migrator_jar}" ]; then
+    if [ -z "${_migrator_jar}" ] || [[ "${_migrator_jar}" =~ ^3\.[0-9]+\.[0-9]+-[0-9][0-9]$ ]]; then
         _migrator_jar="${_download_dir%/}/nexus-db-migrator-${_ver}.jar"
         export _MIGRATOR_JAR="${_migrator_jar}"
     fi
@@ -242,9 +252,9 @@ main() {
     echo "# Below makes this OrientDB read-only/freeze (should not unfreeze after completing the migration)"
     echo "curl -sSf -X POST -u \"${_ADMIN_CRED}\" -k \"${_NEXUS_URL%/}/service/rest/v1/read-only/freeze\""
     echo ""
-    echo "# Example DB migrator command ('-Xmx<N>g', --debug', '--force=true' may be required)"
-    echo "java -jar ${_MIGRATOR_JAR} --migration_type=postgres --db_url="" --orient.folder=\"$(readlink -f "${_WORK_DIR%/}/db")\" --yes"
-    echo "# Optional Parameters: https://help.sonatype.com/repomanager3/installation-and-upgrades/migrating-to-a-new-database#MigratingtoaNewDatabase-OptionalParametersOptionalParam"
+    echo "# Example DB migrator command ('-Xmx<N>g', --debug', '--force=true', '--yes' may be required)"
+    echo "java -jar ${_MIGRATOR_JAR} --migration_type=postgres --db_url="${jdbcUrl%?}?user=${username}&password=${password}" --orient.folder=\"$(readlink -f "${_DB_DIR%/}")\""
+    echo "# More info: https://help.sonatype.com/repomanager3/installation-and-upgrades/migrating-to-a-new-database#MigratingtoaNewDatabase-MigratingtoPostgreSQL"
 }
 
 

@@ -10,6 +10,9 @@ helm install nxrm3-test sonatype/nexus-repository-manager -n default
 ```
 ## Create a test DB user and a test DB on PostgreSQL server as DB superuser
 Check printDbUserCreateSQLs()
+## Set username, password, jdbcUrl environment variables:
+export username="nxrm" password="nxrm123" jdbcUrl="jdbc:postgresql://localhost:5432/nxrm"
+
 EOF
 }
 
@@ -85,6 +88,36 @@ function test_setGlobals() {
         _error "_WORK_DIR: ${_WORK_DIR%/} != '.'"
     fi
     wait
+}
+
+function test_chkDirSize() {
+    if ! chkDirSize; then
+        _error
+    fi
+}
+
+function test_chkJavaVer() {
+    if ! chkJavaVer; then
+        _error
+    fi
+}
+
+function test_chkDbConn() {
+    if ! _INSTALL_DIR="" chkDbConn; then
+        _error
+    fi
+}
+
+function test_prepareDbMigJar() {
+    if ! prepareDbMigJar "3.63.0-01"; then
+        _error
+    fi
+}
+
+function test_printDbUserCreateSQLs() {
+    if ! printDbUserCreateSQLs >/dev/null; then
+        _error
+    fi
 }
 
 
