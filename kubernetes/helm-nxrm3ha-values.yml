@@ -5,15 +5,17 @@
 #   Can't (or need to be careful) use special characters such as double-quotes and dollar mark.
 
 #$ helm repo add sonatype-helm https://sonatype.github.io/helm3-charts/
-#$ kubectl -n sonatype-helm create secret generic sonatype-license --from-file sonatype-license.lic=/var/tmp/share/sonatype/sonatype-license.lic
+#$ helm repo update sonatype-helm
 
-#$ NAME_SPACE="sonatype-helm" RELEASE_NAME="nxrm3ha"
-#$ LICENSE_B64="$(base64 -i /var/tmp/share/sonatype/sonatype-license.lic)"
+#$ NAME_SPACE="sonatype-helm" RELEASE_NAME="nxrm3ha" ADMIN_PWD="admin123" LICENSE_B64="$(base64 -i /var/tmp/share/sonatype/sonatype-license.lic)"
+#$ NFS_SERVER="192.168.1.31" SHARE_DIR="/var/tmp/share/sonatype/${RELEASE_NAME}-nfs"
+#$ eval "echo \"$(cat ./k8s-nfs-pv-pvc-tmpl.yaml | grep -v '^\s*#')\"" > ./${RELEASE_NAME}-nfs-pv-pvc.yaml
+#$ kubectl apply -f ./${RELEASE_NAME}-nfs-pv-pvc.yaml -n ${NAME_SPACE}
+
 #$ eval "echo \"$(cat ./helm-nxrm3ha-values.yml | grep -v '^\s*#')\"" > ./${RELEASE_NAME}.yaml
 #$ helm install ${RELEASE_NAME} ${NAME_SPACE}/nxrm-ha -f ./${RELEASE_NAME}.yaml --debug #--dry-run
-
 # To update the values (specify --version with Chart version)
-#$ helm upgrade ${RELEASE_NAME} ${NAME_SPACE}/nxrm-ha -f ./${RELEASE_NAME}.yaml --version 62.0.0 --debug
+#$ helm upgrade ${RELEASE_NAME} ${NAME_SPACE}/nxrm-ha -f ./${RELEASE_NAME}.yaml --version 63.0.0 --debug
 
 # For troubleshooting
 #$ helm template nxrm3ha sonatype-helm/nxrm-ha -f ./helm-nxrm3ha-values.yml -n sonatype-helm >./helm-nxrm3ha-deploying.yaml
@@ -21,21 +23,19 @@
 
 namespaces:
   nexusNs: ${NAME_SPACE}  # Why need namespace???
+
 statefulset:
   name: nxrm-statefulset
   serviceName: nxrm-statefulset-service
   replicaCount: 1
-  initContainer:
-    image:
-      repository: busybox
-      tag: 1.33.1
-    resources:
-      limits:
-        cpu: '0.2'
-        memory: '512Mi'
-      requests:
-        cpu: '0.1'
-        memory: '256Mi'
+  clustered: true
+  additionalVolumeMounts:
+    - name: nexus-blobs-volume
+      mountPath: /nexus-data/blobs
+  additionalVolumes:
+    - name: nexus-blobs-volume
+      persistentVolumeClaim:
+        claimName: ${RELEASE_NAME}-nfs-pv-claim
   container:
     image:
       repository: sonatype/nexus3
@@ -54,41 +54,8 @@ statefulset:
     env:
       nexusDBName: nxrm3helmha
       nexusDBPort: 5432
-      install4jAddVmParams: '-Xms2703m -Xmx2703m'
+      install4jAddVmParams: '-Xms1024m -Xmx2703m'
       jdbcUrlParams: null # Must start with a '?' e.g. '?foo=bar&baz=foo'
-  requestLogContainer:
-    image:
-      repository: busybox
-      tag: 1.33.1
-    resources:
-      limits:
-        cpu: '0.2'
-        memory: '512Mi'
-      requests:
-        cpu: '0.1'
-        memory: '256Mi'
-  auditLogContainer:
-    image:
-      repository: busybox
-      tag: 1.33.1
-    resources:
-      limits:
-        cpu: '0.2'
-        memory: '512Mi'
-      requests:
-        cpu: '0.1'
-        memory: '256Mi'
-  taskLogContainer:
-    image:
-      repository: busybox
-      tag: 1.33.1
-    resources:
-      limits:
-        cpu: '0.2'
-        memory: '512Mi'
-      requests:
-        cpu: '0.1'
-        memory: '256Mi'
   livenessProbe:
     failureThreshold: 6
     initialDelaySeconds: 120
@@ -135,7 +102,7 @@ secret:
     alias: 'admin-nxrm-password-alias'
   nexusAdminSecret:
     enabled: true
-    adminPassword: admin123
+    adminPassword: '${ADMIN_PWD}'
   license:
     name: nexus-repo-license.lic
     licenseSecret:
