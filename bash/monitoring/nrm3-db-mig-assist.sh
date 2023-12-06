@@ -134,14 +134,14 @@ function chkDirSize() {
         return 1
     fi
     if [ -z "${_min_gb}" ]; then
-        if [ -z "${_DB_DIR%/}" ] && [ -d "${_WORK_DIR%/}" ]; then
-            _DB_DIR="${_WORK_DIR%/}/db/component"
+        if [ -z "${_DB_DIR%/}" ] && [ -d "${_WORK_DIR%/}/db" ]; then
+            _DB_DIR="${_WORK_DIR%/}/db"
         fi
         if [ -d "${_DB_DIR%/}" ]; then
             # No _idx.* size + 2 GB
-            _min_gb="$(find "${_DB_DIR%/}" -maxdepth 1 -type f ! -name "*_idx.*" -printf '%s\n'  | awk '{ s+=$1 }; END { printf "%d\n", s / 1024 / 1024 / 1024 + 2 }')"
+            _min_gb="$(find "${_DB_DIR%/}/component" -maxdepth 1 -type f ! -name "*_idx.*" -printf '%s\n'  | awk '{ s+=$1 }; END { printf "%d\n", s / 1024 / 1024 / 1024 + 2 }')"
             if [ -n "${_min_gb}" ] && [ ${_min_gb} -gt 10 ]; then
-                echo "WARN: ${_DB_DIR%/} is very large (${_min_gb} GB)" >&2
+                echo "WARN: ${_DB_DIR%/}/component is very large (${_min_gb} GB)" >&2
             fi
         fi
         if [ -z "${_min_gb}" ]; then
