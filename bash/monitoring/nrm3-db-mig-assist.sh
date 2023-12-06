@@ -4,11 +4,14 @@ usage() {
 Output necessary commands to migrate the DB on this Nexus
 
 USAGE:
+# Set DB connection related environment variables:
     export username="nxrm" password="nxrm123" jdbcUrl="jdbc:postgresql://localhost:5432/nxrm"
+
+# Oneliner command:
     bash <(curl -sfL https://raw.githubusercontent.com/hajimeo/samples/master/bash/monitoring/nrm3-db-mig-assist.sh --compressed)
-# Or
+# Or, to specify DB Migrator version with '-m':
     curl -O -sfL https://raw.githubusercontent.com/hajimeo/samples/master/bash/monitoring/nrm3-db-mig-assist.sh --compressed
-    bash ./nrm3-db-mig-assist.sh [-s /path/to/nexus-store.properties] [-m migrator_ver_or_jar_path]
+    bash ./nrm3-db-mig-assist.sh -m 3.63.0-01
 
 # If Nexus is not running, specify '-i <installDir>' for connection test (and '-s' or 'export' for DB connection):
     bash ./nrm3-db-mig-assist.sh -i ./nexus-3.62.0-01/ -s ./sonatype-work/nexus3/etc/fabric/nexus-store.properties
