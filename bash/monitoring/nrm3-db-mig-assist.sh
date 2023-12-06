@@ -254,7 +254,7 @@ main() {
     echo "curl -sSf -X POST -u \"${_ADMIN_CRED}\" -k \"${_NEXUS_URL%/}/service/rest/v1/read-only/freeze\""
     echo ""
     echo "# Example DB migrator command ('-Xmx<N>g', --debug', '--force=true', '--yes' may be required)"
-    echo "java -jar ${_MIGRATOR_JAR} --migration_type=postgres --db_url=\"${jdbcUrl%?}?user=${username}&password=${password}\" --orient.folder=\"$(readlink -f "${_DB_DIR%/}")\""
+    echo "java -jar ${_MIGRATOR_JAR} --migration_type=postgres --db_url=\"${jdbcUrl}?user=${username}&password=${password}\" --orient.folder=\"$(readlink -f "${_DB_DIR%/}")\""
     echo "# More info: https://help.sonatype.com/repomanager3/installation-and-upgrades/migrating-to-a-new-database#MigratingtoaNewDatabase-MigratingtoPostgreSQL"
 }
 
