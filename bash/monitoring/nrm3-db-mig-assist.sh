@@ -4,14 +4,11 @@ usage() {
 Output necessary commands to migrate the DB on this Nexus
 
 USAGE:
+    export username="nxrm" password="nxrm123" jdbcUrl="jdbc:postgresql://localhost:5432/nxrm"
     bash <(curl -sfL https://raw.githubusercontent.com/hajimeo/samples/master/bash/monitoring/nrm3-db-mig-assist.sh --compressed)
 # Or
     curl -O -sfL https://raw.githubusercontent.com/hajimeo/samples/master/bash/monitoring/nrm3-db-mig-assist.sh --compressed
     bash ./nrm3-db-mig-assist.sh [-s /path/to/nexus-store.properties]
-
-# If no 'nexus-store.properties', use 'export:
-    export username="nxrm" password="nxrm123" jdbcUrl="jdbc:postgresql://localhost:5432/nxrm"
-    bash ./nrm3-db-mig-assist.sh ...
 
 # If Nexus is not running, specify '-i <installDir>' for connection test (and '-s' or 'export' for DB connection):
     bash ./nrm3-db-mig-assist.sh -i ./nexus-3.62.0-01/ -s ./sonatype-work/nexus3/etc/fabric/nexus-store.properties
@@ -136,7 +133,7 @@ function chkDirSize() {
         if [ -d "${_WORK_DIR%/}" ]; then
             # No _idx.* size + 2 GB
             _min_gb="$(find "${_WORK_DIR%/}/db/component" -type f ! -name "*_idx.*" -printf '%s\n'  | awk '{ s+=$1 }; END { printf "%d\n", s / 1024 / 1024 / 1024 + 2 }')"
-            if [ -n "${_min_gb}" ] && [ ${_min_gb} -lt 10 ]; then
+            if [ -n "${_min_gb}" ] && [ ${_min_gb} -gt 10 ]; then
                 echo "WARN: ${_WORK_DIR%/}/db/component is very large (${_min_gb} GB)" >&2
             fi
         fi
@@ -211,14 +208,18 @@ function prepareDbMigJar() {
 }
 
 function printDbUserCreateSQLs(){
-    local _dbname="${1:-"testnexusdb"}"
-    local _dbusr="${2:-"testdbuser"}"
-    local _dbpwd="${3:-"testdbuserpwd"}"
+    local _dbname="${1}"
+    local _dbusr="${2:-"${username:-"testDbUser"}"}"
+    local _dbpwd="${3:-"${password:-"testDbUserPwd"}"}"
+    if [ -z "${_dbname}" ]; then
+        [ -n "${jdbcUrl}" ] && _dbname="$(basename "${jdbcUrl}")"
+        [ -z "${_dbname}" ] && _dbname="testDbName"
+    fi
     cat << EOF
 CREATE USER "${_dbusr}" WITH LOGIN PASSWORD '${_dbpwd}';
 CREATE DATABASE "${_dbname}" WITH OWNER "${_dbusr}" ENCODING 'UTF8';
 GRANT ALL ON SCHEMA public TO "${_dbusr}";
--- Also update pg_hba.conf which you can find from the below
+-- Also update pg_hba.conf which location can be found with the below
 SELECT setting, context from pg_settings where name = 'hba_file';
 -- After updating pg_hba.conf, reload (not restart)
 SELECT pg_reload_conf();
@@ -231,13 +232,16 @@ main() {
     chkDbConn
     chkDirSize
     chkJavaVer
-    
+
+    echo ""
     echo "# Please make sure the database and DB user are created"
     echo "# //----------------------------------------"
     printDbUserCreateSQLs
     echo "# ----------------------------------------//"
+    echo ""
     echo "# Below makes this OrientDB read-only/freeze (should not unfreeze after completing the migration)"
     echo "curl -sSf -X POST -u \"${_ADMIN_CRED}\" -k \"${_NEXUS_URL%/}/service/rest/v1/read-only/freeze\""
+    echo ""
     echo "# Example DB migrator command ('-Xmx<N>g', --debug', '--force=true' may be required)"
     echo "java -jar ${_MIGRATOR_JAR} --migration_type=postgres --db_url="" --orient.folder=\"$(readlink -f "${_WORK_DIR%/}/db")\" --yes"
     echo "# Optional Parameters: https://help.sonatype.com/repomanager3/installation-and-upgrades/migrating-to-a-new-database#MigratingtoaNewDatabase-OptionalParametersOptionalParam"
