@@ -8,9 +8,9 @@ USAGE:
     export username="nxrm" password="nxrm123" jdbcUrl="jdbc:postgresql://localhost:5432/nxrm"
 
 # Oneliner command:
-    bash <(curl -sfL https://raw.githubusercontent.com/hajimeo/samples/master/bash/monitoring/nrm3-db-mig-assist.sh --compressed)
+    bash <(curl -sSfL https://raw.githubusercontent.com/hajimeo/samples/master/bash/monitoring/nrm3-db-mig-assist.sh --compressed)
 # Or, to specify DB Migrator version with '-m':
-    curl -O -sfL https://raw.githubusercontent.com/hajimeo/samples/master/bash/monitoring/nrm3-db-mig-assist.sh --compressed
+    curl -O -sSfL https://raw.githubusercontent.com/hajimeo/samples/master/bash/monitoring/nrm3-db-mig-assist.sh --compressed
     bash ./nrm3-db-mig-assist.sh -m 3.63.0-01
 
 # If Nexus is not running, specify '-i <installDir>' for connection test (and '-s' or 'export' for DB connection):
@@ -238,17 +238,17 @@ EOF
 main() {
     setGlobals "${_PID}"
 
-    chkDbConn
+    if ! chkDbConn; then
+        echo "# Please make sure the database and DB user are created"
+        echo "# //----------------------------------------"
+        printDbUserCreateSQLs
+        echo "# ----------------------------------------//"
+    fi
     chkDirSize
     chkJavaVer
 
     prepareDbMigJar
 
-    echo ""
-    echo "# Please make sure the database and DB user are created"
-    echo "# //----------------------------------------"
-    printDbUserCreateSQLs
-    echo "# ----------------------------------------//"
     echo ""
     echo "# Below makes this OrientDB read-only/freeze (should not unfreeze after completing the migration)"
     echo "curl -sSf -X POST -u \"${_ADMIN_CRED}\" -k \"${_NEXUS_URL%/}/service/rest/v1/read-only/freeze\""
