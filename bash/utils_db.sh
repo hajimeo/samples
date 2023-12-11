@@ -130,6 +130,7 @@ function _postgresql_configure() {
     # https://www.postgresql.org/docs/current/pgstatstatements.html
     if ${_psql_as_admin} -d template1 -c "CREATE EXTENSION IF NOT EXISTS pg_stat_statements;"; then
         _shared_preload_libraries="${_shared_preload_libraries},pg_stat_statements"
+        # @see https://www.postgresql.org/docs/current/pgstatstatements.html
         # SELECT pg_stat_statements_reset();
         # NOTE: column name is slightly different by version. eg: total_time instead of total_exec_time
         # SELECT ROUND(mean_exec_time) mean_ms, ROUND(stddev_exec_time) stddev, ROUND(max_exec_time) max_ms, ROUND(total_exec_time) ttl_ms, ROUND(100.0 * shared_blks_hit / nullif(shared_blks_hit + shared_blks_read, 0)) AS hit_percent, calls, rows, query FROM pg_stat_statements WHERE total_exec_time/calls > 100 ORDER BY 1 DESC LIMIT 100;
