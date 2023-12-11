@@ -192,6 +192,7 @@ public class H2Console {
                 // Catch ignorable exceptions in here
             } catch (java.lang.RuntimeException e) {
                 System.err.println(e.getMessage());
+                // NOTE: use this when some exceptions happen
                 //removeLineFromHistory(q);
                 //needHistoryReload = true;
             } finally {
@@ -290,48 +291,6 @@ public class H2Console {
             throw new RuntimeException(e);
         } catch (SQLException e) {
             throw new RuntimeException(e);
-        }
-    }
-
-    // TODO: use this method when some exceptions happen
-    private static void removeLineFromHistory(String inputToRemove) {
-        BufferedReader reader = null;
-        BufferedWriter writer = null;
-
-        try {
-            File inputFile = new File(historyPath);
-            File tempFile = Files.createTempFile(null, null).toFile();
-
-            reader = new BufferedReader(new FileReader(inputFile));
-            writer = new BufferedWriter(new FileWriter(tempFile));
-            String currentLine;
-
-            while ((currentLine = reader.readLine()) != null) {
-                try {
-                    if (currentLine.matches("^[0-9]+:" + inputToRemove + "$")) {
-                        continue;
-                    }
-                } catch (IllegalArgumentException ee) {
-                    // It's OK to ignore most of the errors/exception from matches
-                    log(ee.getMessage());
-                    continue;
-                }
-                writer.write(currentLine + System.getProperty("line.separator"));
-            }
-            tempFile.renameTo(inputFile);
-        } catch (IOException e) {
-            e.printStackTrace();
-        } finally {
-            try {
-                if (writer != null) {
-                    writer.close();
-                }
-                if (reader != null) {
-                    reader.close();
-                }
-            } catch (IOException e) {
-                e.printStackTrace();
-            }
         }
     }
 
