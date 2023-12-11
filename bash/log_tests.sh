@@ -490,6 +490,8 @@ function t_system() {
     _test_template "$(rg -g jmx.json -g wrapper.conf -q -- '-XX:\+UseG1GC' || rg -g jmx.json -- '-Xmx')" "WARN" "No '-XX:+UseG1GC' for below Xmx (only for Java 8)" "Also consider using -XX:+ExplicitGCInvokesConcurrent"
     _test_template "$(rg -g jmx.json 'UseCGroupMemoryLimitForHeap')" "WARN" "UseCGroupMemoryLimitForHeap is specified (not required from 8v191)"
     _test_template "$(rg -g jmx.json -- '-Djavax\.net\.ssl..+=')" "WARN" "javax.net.ssl.xxxx is used in jmx.json: java.lang:type=Runtime,InputArguments"
+    _test_template "$(rg -g jmx.json -m1 '1\.8\.0.(29[2-9]|30[01])\b')" "WARN" "Java version might be 1.8.0_292, which has critical bug: https://bugs.java.com/bugdatabase/view_bug?bug_id=JDK-8266929 (JDK-8266261)" "java.security.NoSuchAlgorithmException: unrecognized algorithm name: PBEWithSHA1AndDESede"
+
     if ! _rg -g jmx.json -q 'x86_64'; then
         _head "WARN" "No 'x86_64' found in jmx.json. Might be 32 bit Java or Windows, check the top of jvm.log)"
     fi
