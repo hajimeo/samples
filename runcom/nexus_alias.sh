@@ -486,7 +486,7 @@ function iqConfigUpdate() {
     local _iq_url="$1"
     _iq_url="$(_get_iq_url "${_iq_url}")" || return $?
     _iqConfigAPI '{"hdsUrl":"https://clm-staging.sonatype.com/"}' "${_iq_url}"
-    _iqConfigAPI '{"baseUrl":"https://clm-staging.sonatype.com/","forceBaseUrl":false}' "${_iq_url}"
+    _iqConfigAPI '{"baseUrl":"'${_iq_url}'/","forceBaseUrl":false}' "${_iq_url}"
     _iqConfigAPI '{"enableDefaultPasswordWarning":false}' "${_iq_url}"
     echo "May want to run 'f_api_nxiq_scm_setup _token' as well"
 }
@@ -601,10 +601,10 @@ function mvn-package() {
 
 # Example to generate 10 versions / snapshots (NOTE: in bash heredoc, 'EOF' and just EOF is different)
 : <<'EOF'
-mvn-arch-gen
 _REPO_URL="http://localhost:8081/repository/maven-snapshots/"
 #_REPO_URL="http://dh1:8081/nexus/content/repositories/releases/"
 _SNAPSHOT="-SNAPSHOT"
+mvn-arch-gen
 #mvn-deploy "${_REPO_URL}" "" "nexus"
 for v in {1..3}; do
   for a in {1..3}; do
@@ -616,7 +616,7 @@ for v in {1..3}; do
     done || break
   done || break
 done
-# Test (need to use group repo):
+# Download test (need to use group repo):
 set -x;mvn-get "com.example1:my-app2:1.3-SNAPSHOT" "http://dh1:8081/repository/maven-public/";set +x
 EOF
 # Example for testing version sort order
