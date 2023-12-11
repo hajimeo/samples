@@ -8,6 +8,7 @@ function test_usage() {
 
 function test_genDbConnTest() {
     if [ -z "${_DB_CONN_TEST_FILE}" ]; then
+        _error "No _DB_CONN_TEST_FILE set"
         return
     fi
     if [ -f "${_DB_CONN_TEST_FILE}" ]; then
@@ -22,8 +23,12 @@ function test_genDbConnTest() {
 }
 
 function test_runDbQuery() {
-    if ! runDbQuery 2>/dev/null; then
-        _error "Not implemented yet." "TODO"
+    # If no ${_STORE_FILE}, should fail
+    if [ -z "${_STORE_FILE}" ] && runDbQuery 2>/dev/null; then
+        _error "runDbQuery should fail"
+    fi
+    if [ -n "${_STORE_FILE}" ] && ! runDbQuery "SELECT version()"; then
+        _error "runDbQuery should not fail for 'SELECT version()'"
     fi
 }
 
