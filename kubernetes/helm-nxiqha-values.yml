@@ -3,7 +3,6 @@
 
 # To install from scratch (not perfectly scratch as persistent volumes remain)
 #$ helm uninstall nxiqha -n sonatype-ha
-
 #$ helm install nxiqha sonatype/nexus-iq-server-ha -f ./helm-nxiqha-values.yml --set-file iq_server.license=/var/tmp/share/sonatype/sonatype-license.lic -n sonatype-ha
 
 #$ helm repo update sonatype
@@ -11,8 +10,8 @@
 #$ helm upgrade nxiqha sonatype/nexus-iq-server-ha -f ./helm-nxiqha-values.yml -n sonatype-ha --dry-run
 
 # Or until CLM-28041 will be fixed,
-#$ cd ~/IdeaProjects/nexus-iq-server-ha/; git pull && git fetch
-#$ helm upgrade nxiqha ./chart -f ~/IdeaProjects/samples/kubernetes/helm-nxiqha-values.yml -n sonatype-ha #--version 1.162.0 --dry-run
+#$ git -C ~/IdeaProjects/nexus-iq-server-ha pull && git -C ~/IdeaProjects/nexus-iq-server-ha fetch
+#$ helm upgrade nxiqha ~/IdeaProjects/nexus-iq-server-ha/chart -f ~/IdeaProjects/samples/kubernetes/helm-nxiqha-values.yml -n sonatype-ha #--version 1.162.0 --dry-run
 # NOTE --version uses CHART VERSION not APP VERSION
 
 iq_server:
@@ -20,7 +19,7 @@ iq_server:
   imageRegistry: # Container image registry, if not specified the Docker public registry will be used
   image: "sonatype/nexus-iq-server"
   tag: "latest"
-  imagePullPolicy: "IfNotPresent" # "Always" fails with this helm chart
+  imagePullPolicy: "Always" # Default "IfNotPresent", and "Always" fails with this helm chart
   javaOpts: "-Xms2g -Xmx4g"
   #javaOpts: "-Xms2g -Xmx4g -Djava.util.prefs.userRoot=/sonatype-work/javaprefs"
   database:
@@ -41,6 +40,7 @@ iq_server:
       server: "192.168.1.31"
       path: "/var/tmp/share/sonatype/nxiqha"
   replicas: 1
+  pvOwnershipOverride:  "chown -v 1000:1000 /sonatype-work/clm-cluster && find /sonatype-work/clm-cluster -mindepth 1 -maxdepth 1 ! -uid 1000 | xargs -P3 -I{} -t chown -R 1000:1000 {}"
 
 # Load balancer (not using ingress)
 ingress:
