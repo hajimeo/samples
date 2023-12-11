@@ -1605,6 +1605,7 @@ function f_h2_shell() {
         java -Xmx${_Xmx} -cp $HOME/IdeaProjects/libs/h2-${_h2_ver}.jar org.h2.tools.Shell -url "${_url};TRACE_LEVEL_SYSTEM_OUT=2" -user sa -password "" -driver org.h2.Driver
     fi
 }
+
 function f_csv2h2() {
     local _file="${1:-"./request.csv"}"
     local _saveTo="${2}"
