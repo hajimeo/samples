@@ -1,13 +1,15 @@
 #!/usr/bin/env bash
 # BASH script to setup NXRM3 repositories.
 # Based on functions in start_hdp.sh from 'samples' and install_sonatype.sh from 'work'.
+#   bash <(curl -sSfL https://raw.githubusercontent.com/hajimeo/samples/master/bash/setup_nexus3_repos.sh --compressed) -A
 #
 # For local test:
 #   _import() { source /var/tmp/share/sonatype/$1; } && export -f _import
 #
 # How to source:
-#   source /dev/stdin <<< "$(curl -sfL https://raw.githubusercontent.com/hajimeo/samples/master/bash/setup_nexus3_repos.sh --compressed)"
+#   source /dev/stdin <<< "$(curl -sSfL https://raw.githubusercontent.com/hajimeo/samples/master/bash/setup_nexus3_repos.sh --compressed)"
 #   #export _NEXUS_URL="http://localhost:8081/"
+#   _AUTO=true main
 #
 _DL_URL="${_DL_URL:-"https://raw.githubusercontent.com/hajimeo/samples/master"}"
 type _import &>/dev/null || _import() { [ ! -s /tmp/${1} ] && curl -sf --compressed "${_DL_URL%/}/bash/$1" -o /tmp/${1}; . /tmp/${1}; }
@@ -367,7 +369,10 @@ function f_setup_maven() {
         f_apiS '{"action":"coreui_Repository","method":"create","data":[{"attributes":{"storage":{"blobStoreName":"'${_bs_name}'","strictContentTypeValidation":true'${_extra_sto_opt}'},"group":{"memberNames":["'${_prefix}'-hosted","'${_prefix}'-proxy"]}},"name":"'${_prefix}'-group","format":"","type":"","url":"","online":true,"recipe":"maven2-group"}],"type":"rpc"}' || return $?
     fi
     # add some data for xxxx-group ("." in groupdId should be changed to "/")
-    _ASYNC_CURL="Y" f_get_asset "${_prefix}-group" "org/apache/httpcomponents/httpclient/4.5.12/httpclient-4.5.12.jar"
+    if [ -s "${_TMP%/}/junit-4.12.jar" ]; then  # no _ASYNC_CURL="Y"
+        f_upload_asset "${_prefix}-hosted" -F maven2.groupId=junit -F maven2.artifactId=junit -F maven2.version=99.99 -F maven2.asset1=@${_TMP%/}/junit-4.12.jar -F maven2.asset1.extension=jar >/dev/null
+        _ASYNC_CURL="Y" f_get_asset "${_prefix}-group" "junit/junit/maven-metadata.xml"
+    fi
 }
 
 function f_setup_pypi() {
@@ -447,7 +452,8 @@ function f_setup_npm() {
         echo "      f_iq_quarantine \"${_prefix}-proxy\""
     fi
     # add some data for xxxx-proxy
-    _ASYNC_CURL="Y" f_get_asset "${_prefix}-proxy" "lodash/-/lodash-4.17.19.tgz"
+    #_ASYNC_CURL="Y" f_get_asset "${_prefix}-proxy" "lodash/-/lodash-4.17.19.tgz"
+    _ASYNC_CURL="Y" f_get_asset "${_prefix}-proxy" "es5-ext/-/es5-ext-0.10.62.tgz"
     _ASYNC_CURL="Y" f_get_asset "${_prefix}-proxy" "@sonatype/policy-demo/-/policy-demo-2.0.0.tgz"
 
     if [ -n "${_source_nexus_url}" ] && [ -n "${_extra_sto_opt}" ] && ! _is_repo_available "${_prefix}-repl-proxy"; then
@@ -2207,8 +2213,9 @@ function f_upload_dummies_mvn() {
     local _parallel="${3:-"3"}"
     local _file_prefix="${4:-"test_"}"
     local _file_suffix="${5:-".txt"}"
-    local _usr="${6:-"${_ADMIN_USER}"}"
-    local _pwd="${7:-"${_ADMIN_PWD}"}"
+    local _ver_sfx="${6:-"${_MVN_VER_SFX}"}"   # Can't use '-SNAPSHOT' as "Upload to snapshot repositories not supported"
+    local _usr="${7:-"${_ADMIN_USER}"}"
+    local _pwd="${8:-"${_ADMIN_PWD}"}"
     # _SEQ_START is for continuing
     local _seq_start="${_SEQ_START:-1}"
     local _seq_end="$((${_seq_start} + ${_how_many} - 1))"
@@ -2228,7 +2235,7 @@ function f_upload_dummies_mvn() {
     # Does not work with Mac's bash...
     #export -f f_upload_asset
     for i in $(eval "${_seq}"); do
-      echo "$i"
+      echo "$i${_ver_sfx}"
     done | xargs -I{} -P${_parallel} curl -sSf -u "${_usr}:${_pwd}" -w "%{http_code} ${_g}:${_a}:{} (%{time_total}s)\n" -H "accept: application/json" -H "Content-Type: multipart/form-data" -X POST -k "${_NEXUS_URL%/}/service/rest/v1/components?repository=${_repo_name}" -F maven2.groupId=${_g} -F maven2.artifactId=${_a} -F maven2.version={} -F maven2.asset1=@${_filepath} -F maven2.asset1.extension=jar
     # NOTE: xargs only stops if exit code is 255
 }
