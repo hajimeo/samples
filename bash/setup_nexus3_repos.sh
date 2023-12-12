@@ -2057,7 +2057,7 @@ function f_start_saml_server() {
     fi
     # Not implemented to use credential, so for now using _sp_meta_file
     if [ -n "${_sp_meta_url}" ] && [ ! -s "${_sp_meta_file}" ]; then
-        curl -sfL -o ${_sp_meta_file} -u "${_sp_meta_cred}" "${_sp_meta_url}"   # It's OK if fails
+        curl -sSfL -o ${_sp_meta_file} -u "${_sp_meta_cred}" "${_sp_meta_url}"   # It's OK if fails
     fi
     if [ ! -s ./myidp.key ]; then
         openssl req -x509 -newkey rsa:2048 -keyout ./myidp.key -out ./myidp.crt -days 365 -nodes -subj "/CN=$(hostname -f)" || return $?
