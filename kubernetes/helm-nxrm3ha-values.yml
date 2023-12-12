@@ -4,25 +4,37 @@
 # LIMITATION:
 #   Can't (or need to be careful) use special characters such as double-quotes and dollar mark.
 
-#$ helm repo add sonatype-helm https://sonatype.github.io/helm3-charts/
-#$ helm repo update sonatype-helm
+#$ HELM_NAME="sonatype-helm" NAME_SPACE="${HELM_NAME}" RELEASE_NAME="nxrm3ha" ADMIN_PWD="admin123" LICENSE_B64="$(base64 -i /var/tmp/share/sonatype/sonatype-license.lic)" NFS_SERVER="192.168.1.31" SHARE_DIR="/var/tmp/share/sonatype/${RELEASE_NAME}-nfs"
 
-#$ NAME_SPACE="sonatype-helm" RELEASE_NAME="nxrm3ha" ADMIN_PWD="admin123" LICENSE_B64="$(base64 -i /var/tmp/share/sonatype/sonatype-license.lic)"
-#$ NFS_SERVER="192.168.1.31" SHARE_DIR="/var/tmp/share/sonatype/${RELEASE_NAME}-nfs"
+# Most likely only once
+#$ helm repo add ${HELM_NAME} https://sonatype.github.io/helm3-charts/
+#$ helm repo update ${HELM_NAME}
+#$ kubectl create namespace ${NAME_SPACE}
+
+# Setting up NFS PV and PVC
 #$ eval "echo \"$(cat ./k8s-nfs-pv-pvc-tmpl.yaml | grep -v '^\s*#')\"" > ./${RELEASE_NAME}-nfs-pv-pvc.yaml
 #$ kubectl apply -f ./${RELEASE_NAME}-nfs-pv-pvc.yaml -n ${NAME_SPACE}
 
-#$ eval "echo \"$(cat ./helm-nxrm3ha-values.yml | grep -v '^\s*#')\"" > ./${RELEASE_NAME}.yaml
-#$ helm install ${RELEASE_NAME} ${NAME_SPACE}/nxrm-ha -f ./${RELEASE_NAME}.yaml --debug #--dry-run
+#$ eval "echo \"$(cat ./helm-nxrm3ha-values.yml | grep -v '^\s*#')\"" > ./${RELEASE_NAME}_values.yaml
+#$ helm install ${RELEASE_NAME} ${HELM_NAME}/nxrm-ha -f ./${RELEASE_NAME}_values.yaml -n ${NAME_SPACE} --debug #--dry-run
+# or
+#$ git -C ~/IdeaProjects/nxrm3-ha-repository pull && git -C ~/IdeaProjects/nxrm3-ha-repository fetch
+#$ helm install ${RELEASE_NAME} ~/IdeaProjects/nxrm3-ha-repository/nxrm-ha -f ./${RELEASE_NAME}_values.yaml -n ${NAME_SPACE} --debug
+
 # To update the values (specify --version with Chart version)
-#$ helm upgrade ${RELEASE_NAME} ${NAME_SPACE}/nxrm-ha -f ./${RELEASE_NAME}.yaml --version 63.0.0 --debug
+#$ helm upgrade ${RELEASE_NAME} ${HELM_NAME}/nxrm-ha -f ./${RELEASE_NAME}_values.yaml -n ${NAME_SPACE} --debug #--version 63.0.0
 
 # For troubleshooting
+#$ git -C ~/IdeaProjects/nxrm3-ha-repository pull && git -C ~/IdeaProjects/nxrm3-ha-repository fetch
+#$ helm upgrade ${RELEASE_NAME} ~/IdeaProjects/nxrm3-ha-repository/nxrm-ha -f ./${RELEASE_NAME}_values.yaml --dry-run > ${RELEASE_NAME}_dry-run.yaml
+
 #$ helm template nxrm3ha sonatype-helm/nxrm-ha -f ./helm-nxrm3ha-values.yml -n sonatype-helm >./helm-nxrm3ha-deploying.yaml
 #$ kubectl -n sonatype-helm apply -f ./helm-nxrm3ha-deploying.yaml
 
 namespaces:
-  nexusNs: ${NAME_SPACE}  # Why need namespace???
+  nexusNs:
+    enabled: false
+    name: ${NAME_SPACE}
 
 statefulset:
   name: nxrm-statefulset
@@ -71,13 +83,14 @@ statefulset:
 service:  #Nexus Repo NodePort Service
   nexus:
     enabled: true
-    name: 'nexus-service'
+    # TODO: The name seems stopped working from 3.63?
+    #name: 'nexus-service'
     type: NodePort
     protocol: TCP
-    port: 80
+    port: 8081
     targetPort: 8081
   docker:  #Nodeport Service for Docker Service
-    name: 'nexus-docker-service'
+    #name: 'nexus-docker-service'
     enabled: true
     type: NodePort
     protocol: TCP
