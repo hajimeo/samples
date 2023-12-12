@@ -661,7 +661,8 @@ function mvn-dep-file() {
         local _v="${BASH_REMATCH[3]}"
         [ -n "${_remote_repo}" ] && _options="${_options% } -Durl=${_remote_repo}"
         [ -n "${_server_id}" ] && _options="${_options% } -DrepositoryId=${_server_id}"
-        mvn `_mvn_settings "${_remote_repo}"` deploy:deploy-file -DcreateChecksum=true -Daether.checksums.algorithms="SHA256,SHA512" -DgroupId=${_g} -DartifactId=${_a} -Dversion=${_v} -DgeneratePom=true -Dfile=${_file} ${_options}
+        # -Daether.checksums.algorithms="SHA256,SHA512"
+        mvn `_mvn_settings "${_remote_repo}"` deploy:deploy-file -DcreateChecksum=true -DgroupId=${_g} -DartifactId=${_a} -Dversion=${_v} -DgeneratePom=true -Dfile=${_file} ${_options}
     fi
 }
 
