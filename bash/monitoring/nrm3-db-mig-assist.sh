@@ -256,6 +256,8 @@ main() {
     echo "# Example DB migrator command ('-Xmx<N>g', --debug', '--force=true', '--yes' may be required)"
     echo "java -jar ${_MIGRATOR_JAR} --migration_type=postgres --db_url=\"${jdbcUrl}?user=${username}&password=${password}\" --orient.folder=\"$(readlink -f "${_DB_DIR%/}")\""
     echo "# More info: https://help.sonatype.com/repomanager3/installation-and-upgrades/migrating-to-a-new-database#MigratingtoaNewDatabase-MigratingtoPostgreSQL"
+    echo ""
+    echo "# If this is for HA and if blobs are stored in the local disk, please copy blobs to some network share."
     #echo "curl -L -O https://github.com/kha7iq/ncp/releases/download/v0.1.5/ncp_Linux_x86_64.tar.gz"
     # Pod doesn't have gzip
 }
