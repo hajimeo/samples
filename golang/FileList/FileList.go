@@ -71,6 +71,8 @@ var _LIST_DIRS *bool
 var _WITH_PROPS *bool
 var _NO_HEADER *bool
 var _USE_REGEX *bool
+var _SAVE_TO *string
+var _SAVE_TO_F *os.File
 
 // as it should have only .bytes and .properties, probably not needed any more
 //var _EXCLUDE_FILE *string
@@ -134,6 +136,7 @@ func _setGlobals() {
 	_WITH_BLOB_SIZE = flag.Bool("BSize", false, "If true, includes .bytes size (When -f is '.properties')")
 	_FILTER_P = flag.String("fP", "", "Filter for the content of the .properties files (eg: 'deleted=true')")
 	_FILTER_PX = flag.String("fPX", "", "Excluding Filter for .properties (eg: 'BlobStore.blob-name=.+/maven-metadata.xml.*')")
+	_SAVE_TO = flag.String("s", "", "Save the output (TSV text) into the specified path")
 	_USE_REGEX = flag.Bool("R", false, "If true, .properties content is *sorted* and -fP|-fPX string is treated as regex")
 	//_EXCLUDE_FILE = flag.String("sk", "", "Blob IDs in this file will be skipped from the check") // TODO
 	//_INCLUDE_FILE = flag.String("sk", "", "ONLY blob IDs in this file will be checked")           // TODO
@@ -147,7 +150,7 @@ func _setGlobals() {
 
 	// Reconcile / orphaned blob finding related
 	_TRUTH = flag.String("src", "BS", "Using database or blobstore as source [BS|DB]") // TODO: not implemented "DB" type yet
-	_DB_CON_STR = flag.String("db", "", "DB connection string or path to properties file")
+	_DB_CON_STR = flag.String("db", "", "DB connection string or path to DB connection properties file")
 	_BLOB_IDS_FILE = flag.String("bF", "", "file path whic contains the list of blob IDs")
 	_BS_NAME = flag.String("bsName", "", "eg. 'default'. If provided, the SQL query will be faster. 3.47 and higher only")
 	_REPO_FORMAT = flag.String("repoFmt", "", "eg. 'maven2'. If provided, the SQL query will be faster")
@@ -225,6 +228,14 @@ func _setGlobals() {
 			_log("INFO", "-RDel is experimental for S3.")
 		}
 	}
+
+	if len(*_SAVE_TO) > 0 {
+		var err error
+		_SAVE_TO_F, err = os.OpenFile(*_SAVE_TO, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+		if err != nil {
+			panic(err)
+		}
+	}
 	_log("DEBUG", "_setGlobals completed.")
 }
 
@@ -241,6 +252,13 @@ func _log(level string, message string) {
 		log.Printf("%-5s %s\n", level, message)
 		return
 	}
+}
+
+func _println(line string) (n int, err error) {
+	if _SAVE_TO_F != nil {
+		return fmt.Fprintln(_SAVE_TO_F, line)
+	}
+	return fmt.Println(line)
 }
 
 // TODO: this may output too frequently
@@ -501,7 +519,7 @@ func printLineS3(client *s3.Client, item types.Object, db *sql.DB) {
 	if len(output) > 0 {
 		atomic.AddInt64(&_PRINTED_N, 1)
 		atomic.AddInt64(&_TTL_SIZE, item.Size+blobSize)
-		fmt.Println(output)
+		_println(output)
 		return
 	}
 	return
@@ -541,7 +559,7 @@ func printLine(path string, fInfo os.FileInfo, db *sql.DB) {
 	if len(output) > 0 {
 		atomic.AddInt64(&_PRINTED_N, 1)
 		atomic.AddInt64(&_TTL_SIZE, fInfo.Size()+blobSize)
-		fmt.Println(output)
+		_println(output)
 		return
 	}
 	return
@@ -779,6 +797,7 @@ func genBlobIdCheckingQuery(blobId string, tableNames []string) string {
 		// Supporting only 3.47 and higher for performance (NEXUS-35934 blobRef no longer contains NODE_ID)
 		where = "blob_ref = '" + *_BS_NAME + "@" + blobId + "'"
 	}
+	// As using LEFT JOIN 'asset_id' can be NULL (nil), but rows size is not 0
 	query := genAssetBlobUnionQuery(tableNames, "asset_id", where, false)
 	return query
 }
@@ -865,6 +884,7 @@ func isBlobMissingInDB(contents string, blobId string, db *sql.DB) bool {
 				}
 			}
 			vals := getRow(rows, cols)
+			// As using LEFT JOIN 'asset_id' can be NULL (nil), but rows size is not 0
 			_log("DEBUG", fmt.Sprintf("blobId: %s row: %v", blobId, vals))
 		}
 		noRows = false
@@ -1123,9 +1143,9 @@ func printMissingBlobLines(blobIdsFile string, dbConStr string, conc int) {
 					if isBlobMissingInDB("", blobId, db) {
 						_log("WARN", "blobId:"+blobId+" does not exist in database.")
 						if blobId != line {
-							fmt.Println(line)
+							_println(line)
 						} else {
-							fmt.Println(genBlobPath(blobId) + ".*")
+							_println(genBlobPath(blobId) + ".*")
 						}
 					} else {
 						_log("INFO", "blobId:"+blobId+" exists in database.")
@@ -1315,20 +1335,20 @@ func main() {
 
 	// Printing headers (unless no header)
 	if !*_NO_HEADER {
-		fmt.Printf("Path%sLastModified%sSize", _SEP, _SEP)
+		header := fmt.Sprintf("Path%sLastModified%sSize", _SEP, _SEP)
 		if *_WITH_BLOB_SIZE && *_FILTER == _PROP_EXT {
-			fmt.Printf("%sBlobSize", _SEP)
+			header += fmt.Sprintf("%sBlobSize", _SEP)
 		}
 		if *_WITH_PROPS {
-			fmt.Printf("%sProperties", _SEP)
+			header += fmt.Sprintf("%sProperties", _SEP)
 		}
 		if *_WITH_OWNER {
-			fmt.Printf("%sOwner", _SEP)
+			header += fmt.Sprintf("%sOwner", _SEP)
 		}
 		if *_WITH_TAGS {
-			fmt.Printf("%sTags", _SEP)
+			header += fmt.Sprintf("%sTags", _SEP)
 		}
-		fmt.Println("")
+		_println(header)
 	}
 
 	wg := sync.WaitGroup{}
