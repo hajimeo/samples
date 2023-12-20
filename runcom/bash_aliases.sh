@@ -181,6 +181,7 @@ if [ -d $HOME/IdeaProjects/samples/bash ]; then
     alias logT="pyvN; source $HOME/IdeaProjects/samples/bash/log_tests.sh"
     alias logTest="pyvN;$HOME/IdeaProjects/samples/bash/log_tests.sh"
     alias setupNexus3="source $HOME/IdeaProjects/samples/bash/setup_nexus3_repos.sh"
+    alias setupIq="source $HOME/IdeaProjects/samples/bash/setup_nexus_iq.sh"
     alias ss="bash $HOME/IdeaProjects/samples/bash/setup_standalone.sh"
 fi
 if [ -d $HOME/IdeaProjects/work/bash ]; then

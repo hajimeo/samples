@@ -20,8 +20,6 @@ _import "utils.sh"
 _import "utils_db.sh"
 _import "utils_container.sh"
 
-type python &>/dev/null || alias python=python3  # For M1 Mac workaround
-
 function usage() {
     local _filename="$(basename $BASH_SOURCE)"
     echo "Main purpose of this script is to create repositories with some sample components.
@@ -31,7 +29,7 @@ Also functions in this script can be used for testing downloads and uploads.
 ./${_filename} -A
 
 DOWNLOADS:
-    curl ${_DL_URL%/}/bash/setup_nexus3_repos.sh -o ${_WORK_DIR%/}/sonatype/setup_nexus3_repos.sh
+    curl ${_DL_URL%/}/bash/${_filename} -o ${_WORK_DIR%/}/sonatype/${_filename}
 
 REQUIREMENTS / DEPENDENCIES:
     If Mac, 'gsed' and 'ggrep' are required.
@@ -62,7 +60,7 @@ Start script with interview mode:
 Using default values and NO interviews:
     sudo ${_filename} -A
 
-Create Nexus 3.24.0 container and setup available formats:
+Create Nexus 3.24.0 and setup available formats:
     sudo ${_filename} -v 3.24.0 [-A]
 
 Setup docker repositories only (and populate some data if 'docker' command is available):
@@ -200,126 +198,7 @@ EOF
         type nxrmStart &>/dev/null && echo "      Or: nxrmStart"
     fi
 }
-function f_install_iq() {
-    local __doc__="Install specific IQ version"
-    local _ver="${1}"     # 'latest'
-    local _dbname="${2}"
-    local _dbusr="${3:-"nxrm"}"     # Specifying default as do not want to create many users/roles
-    local _dbpwd="${4:-"${_dbusr}123"}"
-    local _port="${5:-"${_IQ_INSTALL_PORT}"}"      # If not specified, checking from 8070
-    local _dirpath="${6}"    # If not specified, create a new dir under current dir
-    local _download_dir="${7}"
-    local _starting="${_NEXUS_START}"
-    if [ -z "${_ver}" ] || [ "${_ver}" == "latest" ]; then
-        local _location="$(curl -sSf -I "https://download.sonatype.com/clm/server/latest.tar.gz" | grep -i '^location:')"
-        if [[ "${_location}" =~ nexus-iq-server-([0-9.]+-[0-9]+)-bundle.tar.gz ]]; then
-            _ver="${BASH_REMATCH[1]}"
-        fi
-    fi
-    [ -z "${_ver}" ] && return 1
-    if [ -z "${_port}" ]; then
-        _port="$(_find_port "8070" "" "^8071$")"
-        [ -z "${_port}" ] && return 1
-        _log "INFO" "Using port: ${_port}" >&2
-    fi
-    if [ -n "${_dbname}" ]; then
-        if [[ "${_dbname}" =~ _ ]]; then
-            _log "WARN" "PostgreSQL allows '_' but not this function, so removing"
-            _dbname="$(echo "${_dbname}" | tr -d '_')"
-        fi
-        # I think PostgreSQL doesn't work with mixed case.
-        _dbname="$(echo "${_dbname}" | tr '[:upper:]' '[:lower:]')"
-    fi
-    if [ -z "${_dirpath}" ]; then
-        _dirpath="./nxiq_${_ver}"
-        [ -n "${_dbname}" ] && _dirpath="${_dirpath}_${_dbname}"
-        [ "${_port}" != "8070" ] && _dirpath="${_dirpath}_${_port}"
-    fi
-    _prepare_install "${_dirpath}" "https://download.sonatype.com/clm/server/nexus-iq-server-${_ver}-bundle.tar.gz" "${r_NEXUS_LICENSE_FILE}" || return $?
-    local _license_path="${_LICENSE_PATH}"
 
-    local _jar_file="$(find ${_dirpath%/} -maxdepth 2 -type f -name 'nexus-iq-server*.jar' 2>/dev/null | sort | tail -n1)"
-    [ -z "${_jar_file}" ] && return 11
-    local _cfg_file="$(find ${_dirpath%/} -maxdepth 2 -type f -name 'config.yml' 2>/dev/null | sort | tail -n1)"
-    [ -z "${_cfg_file}" ] && return 12
-
-    if [ ! -f "${_cfg_file}.orig" ]; then
-        cp -p "${_cfg_file}" "${_cfg_file}.orig"
-    fi
-    # TODO: From v138, most of configs need to use API: https://help.sonatype.com/iqserver/automating/rest-apis/configuration-rest-api---v2
-    grep -qE '^hdsUrl:' "${_cfg_file}" || echo -e "hdsUrl: https://clm-staging.sonatype.com/\n$(cat "${_cfg_file}")" > "${_cfg_file}"
-    grep -qE '^licenseFile' "${_cfg_file}" || echo -e "licenseFile: ${_license_path%/}\n$(cat "${_cfg_file}")" > "${_cfg_file}"
-    grep -qE '^\s*port: 8070' "${_cfg_file}" && sed -i.tmp 's/port: 8070/port: '${_port}'/g' "${_cfg_file}"
-    grep -qE '^\s*port: 8071' "${_cfg_file}" && sed -i.tmp 's/port: 8071/port: '$((${_port} + 1))'/g' "${_cfg_file}"
-
-    if [ -n "${_dbname}" ]; then
-        # NOTE: currently assuming "database:" is the end of file
-        cat << EOF > ${_cfg_file}
-$(sed -n '/^database:/q;p' ${_cfg_file})
-database:
-  type: postgresql
-  hostname: $(hostname -f)
-  port: 5432
-  name: ${_dbname}
-  username: ${_dbusr}
-  password: ${_dbpwd}
-EOF
-        if ! _postgresql_create_dbuser "${_dbusr}" "${_dbpwd}" "${_dbname}"; then
-            _log "WARN" "Failed to create ${_dbusr} or ${_dbname}"
-        fi
-    fi
-
-    [ ! -d ./log ] && mkdir -m 777 ./log
-    if _isYes "${_starting}"; then
-        echo "Starting with: java -jar ${_jar_file} server ${_cfg_file} >./log/iq-server.out 2>./log/iq-server.err &"; sleep 3
-        eval "java -jar ${_jar_file} server ${_cfg_file} >./log/iq-server.out 2>./log/iq-server.err &"
-    else
-        cd "${_dirpath%/}" || return $?
-        echo "To start: java -jar ${_jar_file} server ${_cfg_file} 2>./log/iq-server.err"
-        type iqStart &>/dev/null && echo "      Or: iqStart"
-    fi
-}
-_LICENSE_PATH=""
-function _prepare_install() {
-    local _extract_path="$1"
-    local _url="$2"
-    local _def_license_path="${3}"
-    local _download_dir="${4}"
-
-    local _tgz_name="$(basename "${_url}")"
-    if [ -z "${_download_dir%/}" ]; then
-        if [ -d "${HOME%/}/.nexus_executable_cache" ]; then
-            _download_dir="${HOME%/}/.nexus_executable_cache"
-        elif [ -d "${_SHARE_DIR%/}/sonatype" ]; then
-            _download_dir="${_SHARE_DIR%/}/sonatype"
-        fi
-    fi
-    local _tgz="${_download_dir:-"."}/${_tgz_name}"
-    local _extractTar=true
-    if [ -d "${_extract_path}" ]; then
-        echo "WARN ${_extract_path} exists, so not extracting ${_tgz}"
-        return
-    fi
-    if [ ! -s "${_tgz}" ]; then
-        echo "no ${_tgz}. Downloading from ${_url} ..."
-        curl -sf -o "/tmp/${_tgz_name}" -L "${_url}" || return $?
-        [ -s "/tmp/${_tgz_name}" ] || return 101
-        mv -v -f /tmp/${_tgz_name} ${_tgz} || return $?
-    fi
-    mkdir -v -p "${_extract_path}" || return $?
-    tar -C ${_extract_path%/} -xf ${_tgz} || return $?
-
-    # NOTE: can't use 'echo' as there are other outputs in this function
-    if [ -f "${_def_license_path}" ]; then
-        _LICENSE_PATH="${_def_license_path}"
-    elif [ -f "${HOME%/}/.nexus_executable_cache/license/nexus.lic" ]; then
-        _LICENSE_PATH="${HOME%/}/.nexus_executable_cache/license/nexus.lic"
-    else
-        _LICENSE_PATH="$(find ${_SHARE_DIR%/}/sonatype -maxdepth 1 -name '*.lic' -print | head -n1)"
-        # should return 0, i guess?
-        return 0
-    fi
-}
 
 ### Repository setup functions ################################################################################
 # Eg: r_NEXUS_URL="http://dh1.standalone.localdomain:8081/" f_setup_xxxxx

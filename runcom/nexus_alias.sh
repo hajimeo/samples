@@ -112,7 +112,8 @@ function iqCli() {
     #       Mac uses "TMPDIR" (and can't change), which is like java.io.tmpdir = /var/folders/ct/cc2rqp055svfq_cfsbvqpd1w0000gn/T/ + nexus-iq
     #       Newer IQ CLI removes scan-6947340794864341803.xml.gz, so no point of changing the tmpdir...
     local _ts="$(date +'%Y%m%d%H%M%S')"
-    local _cmd="java -jar ${_iq_cli_jar} ${_iq_cli_opt} -s ${_iq_url} -a 'admin:admin123' -i ${_iq_app_id} -t ${_iq_stage} -r ./iq_result_${_ts}.json -X ${_path}"
+    # -D includeSha256=true is for BFS
+    local _cmd="java -jar ${_iq_cli_jar} ${_iq_cli_opt} -s ${_iq_url} -a 'admin:admin123' -i ${_iq_app_id} -t ${_iq_stage} -D includeSha256=true -r ./iq_result_${_ts}.json -X ${_path}"
     echo "[$(date +'%Y-%m-%d %H:%M:%S')] Executing: ${_cmd} | tee ./iq_cli_${_ts}.out" >&2
     eval "${_cmd} | tee ./iq_cli_${_ts}.out"
     echo "[$(date +'%Y-%m-%d %H:%M:%S')] Completed ($?)." >&2
@@ -162,7 +163,10 @@ function iqMvn() {
 #  INSERT INTO http_client_configuration (id, proxy) VALUES (1, '{"http": {"host": "localhost", "port": 28080, "enabled": true, "authentication": null}, "https": null, "nonProxyHosts": null}' FORMAT JSON);
 function nxrmStart() {
     local _base_dir="${1:-"."}"
-    local _java_opts=${2-"-agentlib:jdwp=transport=dt_socket,server=y,address=5005,suspend=${_SUSPEND:-"n"}"}
+    # -Xrunhprof:cpu=samples,interval=30,thread=y,monitor=y,cutoff=0.001,doe=n,file=/tmp/cpu_samples_$$.hprof
+    # -Xrunhprof:heap=sites,format=b,file=${_base_dir%/}/heap_sites_$$.hprof
+    # addming monitor and heap=sites (and cpu=times) make the process too slow
+    local _java_opts=${2-"-Xrunjdwp:transport=dt_socket,server=y,address=5005,suspend=${_SUSPEND:-"n"} -Xrunhprof:cpu=samples,interval=30,thread=y,cutoff=0.005,file=/tmp/cpu_samples_$$.hprof"}
     local _mode=${3} # if NXRM2, not 'run' but 'console'
     #local _java_opts=${@:2}
     _base_dir="$(realpath "${_base_dir}")"
@@ -494,8 +498,8 @@ function iqConfigUpdate() {
 # NOTE: Below will overwrite config.yml, so saving and restoring
 # To upgrade (from ${_dirname}/): mv -v ./config.yml{,.orig} && tar -xvf $HOME/.nexus_executable_cache/nexus-iq-server-1.169.0-01-bundle.tar.gz && cp -p -v ./config.yml{.orig,}
 function iqInstall() {
-    if [ -s "$HOME/IdeaProjects/samples/bash/setup_nexus3_repos.sh" ]; then
-        source "$HOME/IdeaProjects/samples/bash/setup_nexus3_repos.sh" || return $?
+    if [ -s "$HOME/IdeaProjects/samples/bash/setup_nexus_iq.sh" ]; then
+        source "$HOME/IdeaProjects/samples/bash/setup_nexus_iq.sh" || return $?
         f_install_iq "$@"
     fi
 }
