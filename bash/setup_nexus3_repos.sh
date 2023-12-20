@@ -11,6 +11,8 @@
 #   #export _NEXUS_URL="http://localhost:8081/"
 #   _AUTO=true main
 #
+# TODO: some of functions uses python, which does not exist in the image
+#
 _DL_URL="${_DL_URL:-"https://raw.githubusercontent.com/hajimeo/samples/master"}"
 type _import &>/dev/null || _import() { [ ! -s /tmp/${1} ] && curl -sf --compressed "${_DL_URL%/}/bash/$1" -o /tmp/${1}; . /tmp/${1}; }
 
@@ -585,11 +587,11 @@ function f_setup_docker() {
     _populate_docker_proxy "hello-world" "${r_DOCKER_GROUP}" "15000 4999"
 }
 
-#_populate_docker_proxy "" "nxrm3ha-docker-k8s.standalone.localdomain"
+#_populate_docker_proxy "" "m1mac.standalone.localdomain:15000"
 function _populate_docker_proxy() {
     local _img_name="${1:-"alpine:3.7"}"
     local _host_port="${2:-"${r_DOCKER_PROXY:-"${r_DOCKER_GROUP:-"${r_NEXUS_URL:-"${_NEXUS_URL}"}"}"}"}"
-    local _backup_ports="${3-"18179 18178"}"
+    local _backup_ports="${3-"18179 18178 15000 443"}"
     local _cmd="${4-"${r_DOCKER_CMD}"}"
     [ -z "${_cmd}" ] && _cmd="$(_docker_cmd)"
     [ -z "${_cmd}" ] && return 0    # If no docker command, just exist
@@ -606,10 +608,11 @@ function _populate_docker_proxy() {
 }
 #ssh -2CNnqTxfg -L18182:localhost:18182 node3250    #ps aux | grep 2CNnqTxfg
 #_populate_docker_hosted "" "localhost:18182"
+#_populate_docker_hosted "" "m1mac.standalone.localdomain:15000"
 function _populate_docker_hosted() {
     local _base_img="${1:-"alpine:latest"}"    # dh1.standalone.localdomain:15000/alpine:3.7
     local _host_port="${2:-"${r_DOCKER_PROXY:-"${r_DOCKER_GROUP:-"${r_NEXUS_URL:-"${_NEXUS_URL}"}"}"}"}"
-    local _backup_ports="${3-"18182 18181"}"
+    local _backup_ports="${3-"18182 18181 15000 443"}"
     local _cmd="${4-"${r_DOCKER_CMD}"}"
     local _tag_to="${5:-"${_TAG_TO}"}"
     local _num_layers="${6:-"${_NUM_LAYERS:-"1"}"}"
@@ -924,7 +927,8 @@ function f_setup_conda() {
     [ -n "${_ds_name}" ] && _extra_sto_opt=',"dataStoreName":"'${_ds_name}'"'
     # If no xxxx-proxy, create it (NOTE: No HA)
     if ! _is_repo_available "${_prefix}-proxy"; then
-        # Or https://repo.anaconda.com/pkgs/
+        # Or https://repo.anaconda.com/pkgs/ or https://repo.continuum.io/pkgs/
+        # At this moment, https://conda.anaconda.org/conda-forge/ is not working with `/main` in the client config
         f_apiS '{"action":"coreui_Repository","method":"create","data":[{"attributes":{"proxy":{"remoteUrl":"https://repo.continuum.io/pkgs/","contentMaxAge":1440,"metadataMaxAge":1440},"httpclient":{"blocked":false,"autoBlock":true,"connection":{"useTrustStore":false}},"storage":{"blobStoreName":"'${_bs_name}'","strictContentTypeValidation":true'${_extra_sto_opt}'},"negativeCache":{"enabled":true,"timeToLive":1440},"cleanup":{"policyName":[]}},"name":"'${_prefix}'-proxy","format":"","type":"","url":"","online":true,"routingRuleId":"","authEnabled":false,"httpRequestSettings":false,"recipe":"conda-proxy"}],"type":"rpc"}' || return $?
     fi
     # TODO: add some data for xxxx-proxy
@@ -1412,8 +1416,8 @@ function f_apiS() {
     local _pwd="${4-${r_ADMIN_PWD:-"${_ADMIN_PWD}"}}"   # Accept an empty password
     local _nexus_url="${5:-${r_NEXUS_URL:-"${_NEXUS_URL}"}}"
 
-    local _usr_b64="$(_b64_url_enc "${_usr}")"
-    local _pwd_b64="$(_b64_url_enc "${_pwd}")"
+    local _usr_b64="$(echo -n "${_usr}" | base64)"
+    local _pwd_b64="$(echo -n "${_pwd}" | base64)"
     local _user_pwd="username=${_usr_b64}&password=${_pwd_b64}"
     [ -n "${_data}" ] && [ -z "${_method}" ] && _method="POST"
     [ -z "${_method}" ] && _method="GET"
@@ -1610,7 +1614,7 @@ function f_reset_client_configs() {
     _repo_url="${_base_url%/}/repository/npm-group"
     if _is_url_reachable "${_repo_url}"; then
         _log "INFO" "Create a sample ${_home%/}/.npmrc ..."
-        local _cred="$(python -c "import sys, base64; print(base64.b64encode('${_usr}:${_pwd}'))")"
+        local _cred="$(echo -n "${_usr}:${_pwd}" | base64)"
         cat << EOF > ${_home%/}/.npmrc
 strict-ssl=false
 registry=${_repo_url%/}
@@ -2594,7 +2598,6 @@ function f_associate_tags() {
     sleep 3 # Just in case waiting for elastic search
     echo "To confirm: f_api \"/service/rest/v1/search?${_search}\" | grep '\"${_tag}\"' -c"
 }
-
 # TODO: add `/service/rest/v1/staging/delete`
 
 function f_run_tasks_by_type() {
