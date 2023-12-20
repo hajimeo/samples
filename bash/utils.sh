@@ -754,6 +754,48 @@ function _download_and_extract() {
     fi
 }
 
+function _prepare_install() {
+    local __doc__="Prepare application installation. _LICENSE_PATH is also set."
+    local _extract_path="$1"
+    local _url="$2"
+    local _license_path="${3}"
+    local _download_dir="${4}"
+
+    local _tgz_name="$(basename "${_url}")"
+    if [ -z "${_download_dir%/}" ]; then
+        if [ -d "${HOME%/}/.nexus_executable_cache" ]; then
+            _download_dir="${HOME%/}/.nexus_executable_cache"
+        elif [ -d "${_SHARE_DIR%/}/sonatype" ]; then
+            _download_dir="${_SHARE_DIR%/}/sonatype"
+        fi
+    fi
+    local _tgz="${_download_dir:-"."}/${_tgz_name}"
+    local _extractTar=true
+    if [ -d "${_extract_path}" ]; then
+        echo "WARN ${_extract_path} exists, so not extracting ${_tgz}"
+        return
+    fi
+    if [ ! -s "${_tgz}" ]; then
+        echo "no ${_tgz}. Downloading from ${_url} ..."
+        curl -sf -o "/tmp/${_tgz_name}" -L "${_url}" || return $?
+        [ -s "/tmp/${_tgz_name}" ] || return 101
+        mv -v -f /tmp/${_tgz_name} ${_tgz} || return $?
+    fi
+    mkdir -v -p "${_extract_path}" || return $?
+    tar -C ${_extract_path%/} -xf ${_tgz} || return $?
+
+    # NOTE: can't use 'echo' as there are other outputs in this function, so using export
+    if [ -f "${_license_path}" ]; then
+        export _LICENSE_PATH="${_license_path}"
+    elif [ ! -s "${_LICENSE_PATH}" ]; then
+        if [ -f "${HOME%/}/.nexus_executable_cache/license/nexus.lic" ]; then
+            export _LICENSE_PATH="${HOME%/}/.nexus_executable_cache/license/nexus.lic"
+        else
+            export _LICENSE_PATH="$(find ${_SHARE_DIR%/}/sonatype -maxdepth 1 -name '*.lic' -print | head -n1)"
+        fi
+    fi
+}
+
 function _upsert() {
     local __doc__="Modify the given file with given name and value."
     local _file_path="$1"
