@@ -2136,9 +2136,16 @@ function f_bitbucket() {
     if git --version | grep -E 'git version (1\.|2\.2)'; then
         _info "BitBucket requires git 2.31 or higher (as of v8.9.8). Trying to update git in 5 seconds ..."; sleep 5
         if type apt &>/dev/null; then
-            apt-add-repository ppa:git-core/ppa -y
+            #apt remove git  # Not using -y intentionally
+            apt install libcurl4-gnutls-dev libexpat1-dev gettext libz-dev libssl-dev build-essential -y
+            #apt install asciidoc -y
+            _download_and_extract "https://mirrors.edge.kernel.org/pub/software/scm/git/git-2.42.1.tar.gz" "/tmp/git"
+            cd /tmp/git/git-2.42.1
+            make prefix=/usr install install-doc install-html install-info
+            cd -
+            #apt-add-repository ppa:git-core/ppa -y
             #apt-get update
-            apt install git -y
+            #apt install git -y # This installs 2.43.0 which is not compatible: https://confluence.atlassian.com/bitbucketserver/supported-platforms-776640981.html
         else
             # TODO: below might be too old so may not work anymore
             yum install -y https://repo.ius.io/ius-release-el7.rpm https://dl.fedoraproject.org/pub/epel/epel-release-latest-7.noarch.rpm
