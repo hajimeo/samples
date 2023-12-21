@@ -42,6 +42,7 @@ import com.orientechnologies.orient.core.db.ODatabase;
 import com.orientechnologies.orient.core.db.document.ODatabaseDocumentTx;
 import com.orientechnologies.orient.core.db.tool.ODatabaseExport;
 import com.orientechnologies.orient.core.db.tool.ODatabaseImport;
+import com.orientechnologies.orient.core.db.tool.ODatabaseRepair;
 import com.orientechnologies.orient.core.id.ORID;
 import com.orientechnologies.orient.core.index.ODefaultIndexFactory;
 import com.orientechnologies.orient.core.index.OIndex;
@@ -63,39 +64,24 @@ import static java.lang.Math.*;
 
 public class AssetDupeCheckV2 {
     private static String EXTRACT_DIR = "";
-
     private static String LOG_PATH = "";
-
     private static String DB_DIR_PATH = "";
-
     private static Path TMP_DIR = null;
-
     private static String TABLE_NAME = "";
-
     private static String INDEX_NAME = "";
-
     private static String[] DROP_TABLES;
-
     // First one is the default index to be checked
     private static final List<String> SUPPORTED_INDEX_NAMES =
             Arrays.asList("asset_bucket_component_name_idx", "component_bucket_group_name_version_idx");
-
     private static final List<String> UPDATED_COMP_IDS = new ArrayList<>();
-
     private static Long DUPE_COUNTER = 0L;
-
     private static boolean IS_REPAIRING = false;
-
     private static boolean IS_REBUILDING = false;
-
     private static boolean IS_REIMPORTING = false;
-
     private static boolean IS_EXPORTING = false;
-
+    private static boolean IS_DB_REPAIRING = false;
     private static boolean IS_REUSING_EXPORTED = false;
-
     private static boolean IS_NO_INDEX_CHECK = false;
-
     private static boolean IS_DEBUG = false;
 
     private AssetDupeCheckV2() {
@@ -119,6 +105,7 @@ public class AssetDupeCheckV2 {
         System.out.println("  -DindexName=component_bucket_group_name_version_idx   # or '*'");
         System.out.println("  -DtableName=component               # NOTE: be careful of repairing component");
         System.out.println("  -DdropTables=deleted_blob_index     # Only for export/import");
+        System.out.println("  -DdbRepair=true                     # Experimental: REPAIR DATABASE --fix-links");
     }
 
     private static String getCurrentLocalDateTimeStamp() {
@@ -260,6 +247,15 @@ public class AssetDupeCheckV2 {
         log("Completed rebuilding indexName:" + indexName + " size:" + idxSize2 + " bytes (" + prct + "%)");
     }
 
+    private static void repairDb(ODatabaseDocumentTx db) {
+        log("[INFO] Repairing this DB");
+        ODatabaseRepair repair = new ODatabaseRepair();
+        repair.setOptions("-removeBrokenLinks=true");
+        repair.setVerbose(true);
+        repair.setDatabase(db);
+        repair.run();
+    }
+
     private static void exportDb(ODatabaseDocumentTx db, String exportTo) throws IOException {
         OCommandOutputListener listener = System.out::print;
         ODatabaseExport exp = new ODatabaseExport(db, exportTo, listener);
@@ -317,12 +313,14 @@ public class AssetDupeCheckV2 {
             if ((new File(exportTo + ".gz")).exists() && IS_REUSING_EXPORTED) {
                 log("[WARN] " + exportTo + ".gz exists. Re-using...");
             } else {
+                log("[INFO] Exporting DB to " + exportTo);
                 // OrientDB automatically delete the exportTo if exists.
                 exportDb(db, exportTo);
             }
             if (IS_EXPORTING) {
                 log("[INFO] Export Only is set so not importing.");
             } else {
+                log("[INFO] Importing DB from " + exportTo);
                 // TODO: it seems to work without dropping, but should I drop?
                 importDb(db, exportTo);
             }
@@ -667,6 +665,8 @@ public class AssetDupeCheckV2 {
         String dropTables = System.getProperty("dropTables", "");
         debug("dropTables: " + dropTables);
         DROP_TABLES = dropTables.split(",");
+        IS_DB_REPAIRING = Boolean.getBoolean("dbRepair");
+        debug("dbRepair: " + IS_DB_REPAIRING);
         EXTRACT_DIR = System.getProperty("extractDir", "");
         debug("extDir: " + EXTRACT_DIR);
         LOG_PATH = System.getProperty("logPath", "./asset-dupe-checker-v2.log");
@@ -747,6 +747,10 @@ public class AssetDupeCheckV2 {
                     } else {
                         rebuildIndex(db, INDEX_NAME);
                     }
+                }
+
+                if (IS_DB_REPAIRING) {
+                    repairDb(db);
                 }
 
                 if (IS_REIMPORTING || IS_EXPORTING) {
