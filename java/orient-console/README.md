@@ -44,7 +44,7 @@ with open(sys.argv[2], 'w') as w:
     w.write("%s\n" % js['name'].lstrip('/'))
 EOF
 
-python extract.py ./results.json ./delete_name_list.out
+python extract.py ./result.json ./delete_name_list.out
 cat delete_name_list.out | xargs -P4 -I{} echo curl -sf -w '%{http_code} {}\n' -X DELETE -u 'admin:admin123' 'http://localhost:8081/repository/test-repo/{}'
 ```
 ```
@@ -59,7 +59,25 @@ with open(sys.argv[2], 'w') as w:
         w.write("TRUNCATE RECORD %s;\n" % dup)
 EOF
 
-python transform2sql.py ./results.json ./truncates.sql
+python transform2sql.py ./result.json ./truncates.sql
+```
+```
+echo "SELECT @rid as comp_rid, tags FROM component WHERE tags.size() > 0 LIMIT -1" | java -DexportPath=./component_tags.json -jar ~/IdeaProjects/samples/misc/orient-console.jar ./component
+echo "SELECT @rid as rid FROM tag LIMIT -1" | java -DexportPath=./tag_rids.json -jar ~/IdeaProjects/samples/misc/orient-console.jar ./component
+cat << EOF > usedTags.py
+import sys, json
+with open(sys.argv[1]) as f:
+  compTags = json.load(f)
+usedTags = set()
+for row in compTags:
+  for tag in row['tags']:
+    usedTags.add(tag)
+for ut in usedTags:
+  print(ut)
+EOF
+
+python usedTags.py component_tags.json > usedTags.out
+cat usedTags.out | while read -r _ut; do rg -q '"'${_ut}'"' ./tag_rids.json || echo "Missing ${_ut}"; done
 ```
 
 ## TODOs:
