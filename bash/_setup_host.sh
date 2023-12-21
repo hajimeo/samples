@@ -2127,9 +2127,10 @@ Then, '3 hour expiration for all Atlassian host products'"
 
 function f_bitbucket() {
     # @see: https://confluence.atlassian.com/bitbucketserver/install-a-bitbucket-trial-867192384.html
-    local _ver="${1:-"7.14.0"}"
+    local _ver="${1:-"8.9.8"}"
     local _user="${2-"bitbucket"}"
-    local _data_dir="${3-"/var/bitbucket-home"}" # some persistent location if docker
+    local _data_dir="${3:-"/var/bitbucket-home"}" # some persistent location if docker
+    local _inst_dir="${4:-"/opt/bitbucket"}"
     # rm -rf /opt/bitbucket/* /var/bitbucket-home/*
     # Git version 2 or higher is required
     if ! git --version | grep -qE 'git version [2345]'; then
@@ -2143,11 +2144,11 @@ function f_bitbucket() {
         yum remove -y git*
         yum insatll ${_git_ver} -y   # even if fails, keep going...
     fi
-    _download_and_extract "https://product-downloads.atlassian.com/software/stash/downloads/atlassian-bitbucket-${_ver}.tar.gz" "/opt/bitbucket" "" "" "${_user}" || return $?
     if [ -n "${_user}" ]; then
         f_useradd "${_user}" || return $?
-        chown -R "${_user}:" "/opt/bitbucket/atlassian-bitbucket-${_ver}"
+        [ -d "${_inst_dir%/}" ] && chown -R "${_user}:${_user}" "${_inst_dir%/}"
     fi
+    _download_and_extract "https://product-downloads.atlassian.com/software/stash/downloads/atlassian-bitbucket-${_ver}.tar.gz" "${_inst_dir%/}" "" "" "${_user}" || return $?
     local _java_home="$(dirname $(dirname $(readlink -f $(which java))))"
     if [ -z "${_java_home%/}" ]; then
         _error "No java home detected."
@@ -2156,7 +2157,7 @@ function f_bitbucket() {
     sudo -i -u ${_user} bash -c 'grep -q "export JAVA_HOME=" $HOME/.bash_profile || echo "export JAVA_HOME='${_java_home%/}'" >> $HOME/.bash_profile'
     [ -d "${_data_dir%/}" ] || mkdir -p -m 777 "${_data_dir%/}"
     sudo -i -u ${_user} bash -c 'grep -q "export BITBUCKET_HOME=" $HOME/.bash_profile || echo "export BITBUCKET_HOME='${_data_dir%/}'" >> $HOME/.bash_profile'
-    sudo -i -u "${_user}" bash /opt/bitbucket/atlassian-bitbucket-${_ver}/bin/start-bitbucket.sh || return $?
+    sudo -i -u "${_user}" bash ${_inst_dir%/}/atlassian-bitbucket-${_ver}/bin/start-bitbucket.sh || return $?
     _info "Access http://$(hostname -f):7990/
 For trial license: https://developer.atlassian.com/platform/marketplace/timebomb-licenses-for-testing-server-apps/
 Then, '3 hour expiration for all Atlassian host products'"
