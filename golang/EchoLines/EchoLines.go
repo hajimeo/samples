@@ -26,32 +26,9 @@ Read one file and output only necessary lines.
 # HOW TO USE:
 	echolines [some_file1,some_file2] START_REGEX [END_REGEX] [OUT_DIR]
 
-## NOTE:
-If END_REGEXP is provided but without any capture group, the end line is not echoed (not included).
-If the first argument is empty, the script accepts the STDIN.
-
-### NXRM2 thread dumps:
-	echolines "wrapper.log.2,wrapper.log.1,wrapper.log" "^jvm 1    \| \d\d\d\d-\d\d-\d\d \d\d:\d\d:\d\d$" "(^\s+class space.+)" | sed 's/^jvm 1    | //' > threads.txt
-### NXRM3 thread dumps:
-	HTML_REMOVE=Y echolines "./jvm.log" "^\d\d\d\d-\d\d-\d\d \d\d:\d\d:\d\d$" "(^\s+class space.+)" "threads"
-	# If would like to split per thread:
-	echolines "threads.txt" "^\".+" "" "./threads_per_thread"
-	find ./threads -type f -name '[0-9]*_*.out' | xargs -P3 -t -I{} bash -c '_d="$(basename "{}" ".out")";echolines "{}" "^\".+" "" "./threads_per_thread/${_d}"'
-
-### Get duration of each line:
-    export ELAPSED_REGEX="^\d\d\d\d-\d\d-\d\d.(\d\d:\d\d:\d\d.\d\d\d)" ASCII_DISABLED=Y
-	echolines "./log/nexus.log" "^\d\d\d\d-\d\d-\d\d.\d\d:\d\d:\d\d.\d\d\d" "^\d\d\d\d-\d\d-\d\d.\d\d:\d\d:\d\d.\d\d\d"
-### Get duration of NXRM3 queries, and sort by the longuest:
-    export ELAPSED_REGEX="^\d\d\d\d-\d\d-\d\d.(\d\d:\d\d:\d\d.\d\d\d)"
-	echolines "./log/nexus.log" "Preparing:" "(^.+Total:.+)" | rg '^# \d\d' | sort -t'|' -k2nr
-### Get duration of S3 pool (with org.apache.http = DEBUG, also 'Connection leased'):
-	rg -m30 '\[s3-parallel-.+ Connection (request|leased|released):' ./log/nexus.log > connections.out
-    export ELAPSED_REGEX="^\d\d\d\d-\d\d-\d\d.(\d\d:\d\d:\d\d.\d\d\d)" ELAPSED_KEY_REGEX="\[(s3-parallel-[^\]]+)"
-	sed -n "1,30p" connections.out | echolines "" " leased:" "(^.+ released:.+)" | rg '^# '
-### Get duration of IQ Evaluate a File, and sort by threadId and time
-    rg 'POST /rest/scan/.+Scheduling scan task (\S+)' -o -r '$1' log/clm-server.log | xargs -I{} rg -w "{}" ./log/clm-server.log | sort | uniq > scan_tasks.log
-    export ELAPSED_REGEX="^\d\d\d\d-\d\d-\d\d.(\d\d:\d\d:\d\d.\d\d\d)"
-	ELAPSED_KEY_REGEX="\[([^ \]]+)" echolines ./scan_tasks.log "Running scan task" "(^.+Completed scan task.+)" | rg '^# \d\d' | sort -t'|' -k3,3 -k1,1
+# NOTE:
+	If END_REGEXP is provided but *without any capture group*, the end line is not echoed (not included).
+	If the first argument is empty, the script accepts the STDIN.
 
 # ENV VARIABLES:
 	SPLIT_FILE=Y
@@ -75,6 +52,34 @@ If the first argument is empty, the script accepts the STDIN.
 		To disable ascii chart (for slightly faster processing)
 	ASCII_ROTATE_NUM=<num>
 		(experimental) To make ASCII chart width shorter by rotating per <num> lines
+
+# USAGE EXAMPLES:
+## NXRM2 thread dumps:
+	echolines "wrapper.log.2,wrapper.log.1,wrapper.log" "^jvm 1    \| \d\d\d\d-\d\d-\d\d \d\d:\d\d:\d\d$" "(^\s+class space.+)" | sed 's/^jvm 1    | //' > threads.txt
+## NXRM3 thread dumps:
+	HTML_REMOVE=Y echolines "./jvm.log" "^\d\d\d\d-\d\d-\d\d \d\d:\d\d:\d\d$" "(^\s+class space.+)" "threads"
+	# If would like to split per thread:
+	echolines "threads.txt" "^\".+" "" "./threads_per_thread"
+	find ./threads -type f -name '[0-9]*_*.out' | xargs -P3 -t -I{} bash -c '_d="$(basename "{}" ".out")";echolines "{}" "^\".+" "" "./threads_per_thread/${_d}"'
+
+## Get duration of each line:
+    export ELAPSED_REGEX="^\d\d\d\d-\d\d-\d\d.(\d\d:\d\d:\d\d.\d\d\d)" ASCII_DISABLED=Y
+	echolines "./log/nexus.log" "^\d\d\d\d-\d\d-\d\d.\d\d:\d\d:\d\d.\d\d\d" "^\d\d\d\d-\d\d-\d\d.\d\d:\d\d:\d\d.\d\d\d"
+## Get duration of NXRM3 queries, and sort by the longuest:
+    export ELAPSED_REGEX="^\d\d\d\d-\d\d-\d\d.(\d\d:\d\d:\d\d.\d\d\d)"
+	echolines "./log/nexus.log" "Preparing:" "(^.+Total:.+)" | rg '^# \d\d' | sort -t'|' -k2nr
+## Get duration of the first 30 S3 pool requests (with org.apache.http = DEBUG. This example also checks 'Connection leased'):
+    export ELAPSED_REGEX="^\d\d\d\d-\d\d-\d\d.(\d\d:\d\d:\d\d.\d\d\d)" ELAPSED_KEY_REGEX="\[(s3-parallel-[^\]]+)"
+	rg -m30 '\[s3-parallel-.+ Connection (request|leased|released):' ./log/nexus.log > connections.out
+	sed -n "1,30p" connections.out | echolines "" " leased:" "(^.+ released:.+)" | rg '^# '
+## Get duration of Tasks
+    export ELAPSED_REGEX="^\d\d\d\d-\d\d-\d\d.(\d\d:\d\d:\d\d.\d\d\d)" ELAPSED_KEY_REGEX="Task '([^']+)'" ASCII_DISABLED=Y
+	echolines "./log/nexus.log" "QuartzTaskInfo .+ -> RUNNING" "(^.+QuartzTaskInfo .+ RUNNING -> .+)" | rg '^#'
+
+## Get duration of IQ Evaluate a File, and sort by threadId and time
+    rg 'POST /rest/scan/.+Scheduling scan task (\S+)' -o -r '$1' log/clm-server.log | xargs -I{} rg -w "{}" ./log/clm-server.log | sort | uniq > scan_tasks.log
+    export ELAPSED_REGEX="^\d\d\d\d-\d\d-\d\d.(\d\d:\d\d:\d\d.\d\d\d)"
+	ELAPSED_KEY_REGEX="\[([^ \]]+)" echolines ./scan_tasks.log "Running scan task" "(^.+Completed scan task.+)" | rg '^# \d\d' | sort -t'|' -k3,3 -k1,1
 END`)
 }
 
