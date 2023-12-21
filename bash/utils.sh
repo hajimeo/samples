@@ -731,7 +731,7 @@ function _download_and_extract() {
     [ -z "${_file}" ] && _file="`basename "${_url}"`"
     if [ -d "${_save_dir}" ]; then
         mkdir -v -p "${_save_dir}" || return $?
-        [ -n "${_as_user}" ] && chown ${_as_user}: "${_save_dir}"
+        [ -n "${_as_user}" ] && chown ${_as_user}:${_as_user} "${_save_dir}"
     fi
 
     _download "${_url}" "${_save_dir%/}/${_file}" "Y" "Y" "${_no_tmp}" || return $?
@@ -740,7 +740,7 @@ function _download_and_extract() {
     if [ -n "${_extract_to}" ]; then
         if [ ! -d "${_extract_to}" ]; then
             mkdir -p "${_extract_to}" || return $?
-            [ -n "${_as_user}" ] && chown ${_as_user}: "${_extract_to}"
+            [ -n "${_as_user}" ] && chown ${_as_user}:${_as_user} "${_extract_to}"
         fi
         #local _extension="${_file##*.}"
         #if [[ "${_extension}" =~ \.(tar|gz|tgz|zip)$ ]]; then
