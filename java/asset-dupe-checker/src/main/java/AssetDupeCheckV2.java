@@ -249,11 +249,13 @@ public class AssetDupeCheckV2 {
 
     private static void repairDb(ODatabaseDocumentTx db) {
         log("[INFO] Repairing this DB");
-        ODatabaseRepair repair = new ODatabaseRepair();
-        repair.setOptions("-removeBrokenLinks=true");
-        repair.setVerbose(true);
-        repair.setDatabase(db);
-        repair.run();
+        OCommandOutputListener listener = System.out::print;
+        new ODatabaseRepair()
+                .setDatabase(db)
+                .setOutputListener(listener)
+                .setOptions("-removeBrokenLinks=true")
+                .setVerbose(true)
+                .run();
     }
 
     private static void exportDb(ODatabaseDocumentTx db, String exportTo) throws IOException {
