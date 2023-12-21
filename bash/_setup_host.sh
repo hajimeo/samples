@@ -2133,16 +2133,23 @@ function f_bitbucket() {
     local _inst_dir="${4:-"/opt/bitbucket"}"
     # rm -rf /opt/bitbucket/* /var/bitbucket-home/*
     # Git version 2 or higher is required
-    if ! git --version | grep -qE 'git version [2345]'; then
-        # TODO: this script is for Ubuntu or generic, but using 'yum' (but as Ubuntu doesn't use git v1, should be OK)
-        yum install -y https://repo.ius.io/ius-release-el7.rpm https://dl.fedoraproject.org/pub/epel/epel-release-latest-7.noarch.rpm
-        local _git_ver="$(yum list available | grep -E '^git[0-9]+\.x86_64\s+.+\s+ius' | sort | tail -n1 | awk '{print $1}')"
-        if [ -z "${_git_ver}" ]; then
-            _error "Cannot install Git v2"
-            return 1
+    if git --version | grep -E 'git version (1\.|2\.2)'; then
+        _info "BitBucket requires git 2.31 or higher (as of v8.9.8). Trying to update git in 5 seconds ..."; sleep 5
+        if type apt &>/dev/null; then
+            apt-add-repository ppa:git-core/ppa -y
+            #apt-get update
+            apt install git -y
+        else
+            # TODO: below might be too old so may not work anymore
+            yum install -y https://repo.ius.io/ius-release-el7.rpm https://dl.fedoraproject.org/pub/epel/epel-release-latest-7.noarch.rpm
+            local _git_ver="$(yum list available | grep -E '^git[0-9]+\.x86_64\s+.+\s+ius' | sort | tail -n1 | awk '{print $1}')"
+            if [ -z "${_git_ver}" ]; then
+                _error "Cannot install Git v2"
+                return 1
+            fi
+            yum remove -y git*
+            yum insatll ${_git_ver} -y   # even if fails, keep going...
         fi
-        yum remove -y git*
-        yum insatll ${_git_ver} -y   # even if fails, keep going...
     fi
     if [ -n "${_user}" ]; then
         f_useradd "${_user}" || return $?
