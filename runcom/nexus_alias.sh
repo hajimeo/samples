@@ -814,6 +814,7 @@ function npmInit() {
   "license": "ISC"
 }
 EOF
+    echo "npm install --package-lock-only"
 }
 
 alias npm-deploy='npmDeploy'

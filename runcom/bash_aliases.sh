@@ -666,7 +666,7 @@ function ssh_remote_mount() {
 alias _ssh='ssh $(basename "$PWD" | cut -d"_" -f1)'
 
 # Start PostgreSQL (on Mac)
-# NOTE: if brew upgraded postgresql, may need to run 'brew postgresql-upgrade-database'
+# NOTE: if 'brew upgraded postgresql', may need to run 'brew postgresql-upgrade-database'
 function pgStatus() {
     local _cmd="${1:-"status"}"
     local _pg_data="${2:-"/usr/local/var/postgresql@14"}"
@@ -685,7 +685,8 @@ function pgStatus() {
         pg_ctl -D ${_pg_data} -l ${_log_path} ${_cmd}
     else
         pg_ctl -D ${_pg_data} ${_cmd}
-    fi
+    fi || return $?
+    export PGDATA="${_pg_data}"
     # To connect: psql template1
     # If 'The data directory was initialized by PostgreSQL version', then brew postgresql-upgrade-database
     # and also check postgresql.conf : listen_addresses
