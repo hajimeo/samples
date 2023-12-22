@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"log"
 	"os"
+	"reflect"
 	"strconv"
 	"strings"
 	"time"
@@ -68,7 +69,7 @@ func GetEnvInt64(key string, fallback int64) int64 {
 	return fallback
 }
 
-func GetBoolEnv(key string, fallback bool) bool {
+func GetEnvBool(key string, fallback bool) bool {
 	value, exists := os.LookupEnv(key)
 	if exists {
 		switch strings.ToLower(value) {
@@ -82,6 +83,10 @@ func GetBoolEnv(key string, fallback bool) bool {
 	return fallback
 }
 
+func GetBoolEnv(key string, fallback bool) bool {
+	return GetEnvBool(key, fallback)
+}
+
 func DeferPanic() {
 	// Use this function with 'defer' to recover from panic if occurred. Set err to nil otherwise.
 	if r := recover(); r != nil {
@@ -93,6 +98,25 @@ func PanicIfErr(err error) {
 	if err != nil {
 		panic(err)
 	}
+}
+
+func UniqueSlice(a interface{}) interface{} {
+	v := reflect.ValueOf(a) // interface can't use len()
+	l := v.Len()
+	if l == 0 {
+		return a // don't need to do anything
+	}
+	u := make(map[string]bool, l)
+	obj := make([]interface{}, len(u))
+	for i := 0; i < l; i++ {
+		val := v.Index(i).Interface()
+		k := val.(string)
+		if _, ok := u[k]; !ok {
+			obj = append(obj, val)
+			u[k] = true
+		}
+	}
+	return obj
 }
 
 type StoreProps map[string]string
