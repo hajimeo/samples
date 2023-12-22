@@ -99,16 +99,15 @@ func PanicIfErr(err error) {
 	}
 }
 
-func UniqueSlice[T any](a []T) []any {
-	u := make(map[any]bool, len(a))
-	obj := make([]any, 0)
+func UniqueSlice[T any](a []T) (obj []any) {
+	u := make(map[any]bool)
 	for _, val := range a {
 		if _, ok := u[val]; !ok {
 			obj = append(obj, val)
 			u[val] = true
 		}
 	}
-	return obj
+	return
 }
 
 type StoreProps map[string]string
