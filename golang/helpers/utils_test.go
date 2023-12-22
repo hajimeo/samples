@@ -71,6 +71,20 @@ func TestGetEnv(t *testing.T) {
 	}
 }
 
+func TestUniqueSlice(t *testing.T) {
+	s := []string{"aaaa", "bbbb", "cccc", "bbbb", "dddd", "aaaa"}
+	rtn := UniqueSlice(s)
+	if len(rtn) != 4 {
+		t.Errorf("Result length should be 4 but got %d (%v)", len(rtn), rtn)
+	}
+	i := []int{1, 2, 3, 2, 5, 1}
+	rtn = UniqueSlice(i)
+	if len(rtn) != 4 {
+		t.Errorf("Result length should be 4 but got %d (%v)", len(rtn), rtn)
+	}
+	//t.Logf("type: %T, value:%v", rtn, rtn)
+}
+
 func TestReadPropertiesFile(t *testing.T) {
 	t.Logf("TODO: not implemented")
 }

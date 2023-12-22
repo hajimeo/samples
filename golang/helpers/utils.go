@@ -4,7 +4,6 @@ import (
 	"bufio"
 	"log"
 	"os"
-	"reflect"
 	"strconv"
 	"strings"
 	"time"
@@ -100,20 +99,13 @@ func PanicIfErr(err error) {
 	}
 }
 
-func UniqueSlice(a interface{}) interface{} {
-	v := reflect.ValueOf(a) // interface can't use len()
-	l := v.Len()
-	if l == 0 {
-		return a // don't need to do anything
-	}
-	u := make(map[string]bool, l)
-	obj := make([]interface{}, len(u))
-	for i := 0; i < l; i++ {
-		val := v.Index(i).Interface()
-		k := val.(string)
-		if _, ok := u[k]; !ok {
+func UniqueSlice[T any](a []T) []any {
+	u := make(map[any]bool, len(a))
+	obj := make([]any, len(u))
+	for _, val := range a {
+		if _, ok := u[val]; !ok {
 			obj = append(obj, val)
-			u[k] = true
+			u[val] = true
 		}
 	}
 	return obj
