@@ -810,7 +810,8 @@ function f_setup_conda() {
         # At this moment, https://conda.anaconda.org/conda-forge/ is not working with `/main` in the client config
         f_apiS '{"action":"coreui_Repository","method":"create","data":[{"attributes":{"proxy":{"remoteUrl":"https://repo.continuum.io/pkgs/","contentMaxAge":1440,"metadataMaxAge":1440},"httpclient":{"blocked":false,"autoBlock":true,"connection":{"useTrustStore":false}},"storage":{"blobStoreName":"'${_bs_name}'","strictContentTypeValidation":true'${_extra_sto_opt}'},"negativeCache":{"enabled":true,"timeToLive":1440},"cleanup":{"policyName":[]}},"name":"'${_prefix}'-proxy","format":"","type":"","url":"","online":true,"routingRuleId":"","authEnabled":false,"httpRequestSettings":false,"recipe":"conda-proxy"}],"type":"rpc"}' || return $?
     fi
-    # TODO: add some data for xxxx-proxy
+    # add some data for xxxx-proxy
+    _ASYNC_CURL="Y" f_get_asset "${_prefix}-proxy" "main/linux-64/pytest-3.10.1-py37_0.tar.bz2"
 }
 
 function f_setup_cocoapods() {

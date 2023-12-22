@@ -1040,7 +1040,7 @@ function f_splitScriptLog() {
     if [[ "${_full_split}" =~ [yY] ]]; then
         [ -s ./threads.txt ] && f_threads ./threads.txt
         if [ -s ./tops_netstats.txt ]; then
-            f_splitTopNetstat ./tops_netstats.txt
+            f_splitTopNetstat ./tops_netstats.txt >/dev/null
             f_hexTids_from_topH ./tops_netstats.txt
             f_check_netstat ./tops_netstats.txt
         fi

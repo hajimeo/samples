@@ -32,6 +32,33 @@ function _get_psql_as_admin() {
     echo "${_psql_as_admin}"
 }
 
+function _huge_page() {
+    # @see: https://www.enterprisedb.com/blog/improving-postgresql-performance-without-making-changes-postgresql
+    local _size="${1-"7602"}"   # Empty "" means check only
+    local _port="${2:-"5432"}"
+    cat /proc/cpuinfo | grep -m1 -w -o -E '(pse|pdpe1gb)'
+    if type pmap &>/dev/null; then
+        local _pid="$(_pid_by_port "${_port}")" #lsof -ti:${_port:-5432} -sTCP:LISTEN
+        if [ -n "${_pid}" ]; then
+            pmap -x "${_pid}" | grep -E "(^${_pid}|^Address|hugepage|^total)"  # anon_hugepage (deleted)
+        fi
+        # total kB / Hugepagesize (2048 kB) = (min) nr_hugepages
+    fi
+
+    #if cat /proc/meminfo | grep -E '^HugePages_Total:\s+0$'; then
+    if sysctl -a | grep -E '^vm.nr_hugepages\s*=\s*0$'; then
+        # TODO: /sys/kernel/mm/hugepages/hugepages-1048576kB
+        [ -z "${_size}" ] && return 1
+        echo "${_size}" > /proc/sys/vm/nr_hugepages
+        if [ -f /etc/sysctl.conf ] && ! grep 'vm.nr_hugepages' /etc/sysctl.conf; then
+            echo "vm.nr_hugepages = ${_size}" >> /etc/sysctl.conf
+        fi
+        sysctl -p
+    fi
+    # From v15
+    #sudo -i -u postgres postgres --shared-buffers=20GB -D $PGDATA -C shared_memory_size_in_huge_pages
+}
+
 function _postgresql_configure() {
     # @see: https://wiki.postgresql.org/wiki/Tuning_Your_PostgreSQL_Server
     local __doc__="Update postgresql.conf and pg_hba.conf. Need to run from the PostgreSQL server (localhost)"
@@ -47,16 +74,20 @@ function _postgresql_configure() {
     if [ ! -f "${_postgresql_conf}" ]; then
         _postgresql_conf="$(${_psql_as_admin} -tAc 'SHOW config_file')" || return $?
     fi
-
     if [ -z "${_postgresql_conf}" ] || [ ! -s "${_postgresql_conf}" ]; then
         _log "ERROR" "No postgresql config file specified."
         return 1
     fi
-
     local _conf_dir="$(dirname "${_postgresql_conf}")"
     [ ! -s "${_conf_dir%/}/postgresql.conf.orig" ] && cp -f "${_postgresql_conf}" "${_conf_dir%/}/postgresql.conf.orig"
-
     _log "INFO" "Updating ${_postgresql_conf} ..."
+
+    if ! _huge_page ""; then
+        _log "WARN" "Huge Page might not be enabled."
+    fi
+    #_upsert ${_postgresql_conf} "huge_pages" "try" "#huge_pages"
+    #_upsert ${_postgresql_conf} "huge_page_size" "0"    # Use default kernel setting
+
     ### Performance tuning (so not mandatory). Expecting the server has at least 4GB RAM
     _upsert ${_postgresql_conf} "max_connections" "200" "#max_connections"   # NOTE: work_mem * max_conn < shared_buffers.
     # @see: https://pgtune.leopard.in.ua/#/ and https://pgpedia.info/index.html
