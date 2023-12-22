@@ -101,7 +101,7 @@ func PanicIfErr(err error) {
 
 func UniqueSlice[T any](a []T) []any {
 	u := make(map[any]bool, len(a))
-	obj := make([]any, len(u))
+	obj := make([]any, 0)
 	for _, val := range a {
 		if _, ok := u[val]; !ok {
 			obj = append(obj, val)
