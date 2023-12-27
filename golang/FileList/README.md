@@ -171,11 +171,22 @@ NOTE: the above outputs blobs with properties content, which are not in <format>
 
 ### Check orphaned files from the text file (-bF ./blobIds.txt), which contains Blob IDs, against 'default' blob store (-bsName 'default')
 ```
-file-list -b ./content -p vol- -c 10 -db "host=localhost port=5432 user=nxrm3pg password=******** dbname=nxrm3pg" -bF ./blobIds.txt -bsName "default" 2>/tmp/orphaned_verify.log 1>/tmp/orphaned_list.out
+file-list -b ./content -p vol- -c 10 -db "host=localhost port=5432 user=nxrm3pg password=******** dbname=nxrm3pg" -bF ./blobIds.txt -bsName "default" -s /tmp/orphaned_list.out 2>/tmp/orphaned_verify.log
 # If the file contains unnecessary lines (eg: .bytes), use '-bf -'
 cat ./blobIds.txt | grep -v '.bytes' | file-list -b ./content -p vol- -c 10 -db "host=localhost port=5432 user=nxrm3pg password=******** dbname=nxrm3pg" -bsName default -bF - -s ./orphaned.out
 ```
 Above /tmp/result.err contains the line `17:58:13.814063 WARN  blobId:81ab5a69-e099-44a1-af1a-7a406bc305e9 does not exist in database.`, or `INFO` if the blobId exists in the DB.
+
+### Check dead files from the database (-src DB -db <connection>), which contains Blob IDs, against 'default' blob store (-bsName 'default')
+```
+cd ./sonatype-work/nexus3/
+file-list -b ./blobs/default/content -p vol- -c 10 -src DB -db ./etc/fabric/nexus-store.properties -repos "raw-hosted" -X -s ./dead-list.out 2>./dead-list.log 
+```
+Above /tmp/result.err contains the line `17:58:13.814063 WARN  blobId:81ab5a69-e099-44a1-af1a-7a406bc305e9 does not exist in database.`, or `INFO` if the blobId exists in the DB.
+```
+file-list -S3 -b "apac-support-bucket" -p "filelist_test/content/vol-" -c 10 -src DB -db ./etc/fabric/nexus-store.properties -bsName "s3-test" -s ./dead-list_s3.out -X 2>./dead-list_s3.log 
+```
+In above example, `filelist_test` is the S3 bucket prefix and `-X` is for debug (verbose) output.
 
 ###  List specific .properties/.bytes files then delete with xargs + rm:
 ```

@@ -1,10 +1,14 @@
 #!/usr/bin/env bash
 # FileList system testing
+#   _FORCE=Y ./FileList_test.sh
 #   _FORCE=Y _WITH_S3=Y ./FileList_test.sh
+#   _FORCE=Y _WITH_S3=Y _NO_ASSETS_DELETE=Y ./FileList_test.sh
 #
 #   source ./FileList_test.sh
-#   cd ./nxrm-3.62.0-01
+#   cd ./nxrm-3.61.0-02
 #   TestFileList 0 default
+#   TestFileList 0 default "" Y
+#   TestFileList 0 s3-test Y Y
 
 # Download automate scripts
 source /dev/stdin <<<"$(curl -sfL "https://raw.githubusercontent.com/hajimeo/samples/master/bash/utils.sh" --compressed)" || return $?
@@ -16,25 +20,27 @@ _FILE_LIST="${1}" # If not specified, will try from the PATH
 _DBUSER="${2:-"nxrm"}"
 _DBPWD="${3:-"${_DBUSER}123"}"
 _DBNAME="${4:-"${_DBUSER}filelisttest"}" # Use some unique name (lowercase)
-_VER="${5:-"3.61.0-02"}"         # Specify your nexus version (3.62 and 3.63 are not suitable)
+_VER="${5:-"3.61.0-02"}"         # Specify your nexus version (NOTE: 3.62 and 3.63 are not suitable)
 _NEXUS_TGZ_DIR="${6:-"$HOME/.nexus_executable_cache"}"
 
 #_FORCE="N"
+#_NO_ASSETS_DELETE="N"  # for testing dead blobs finding
 #_NOT_STOP_AFTER_TEST="N"
 _NEXUS_DEFAULT_PORT="18081"
-_TEST_REPO_NAME="raw-hosted"
 _ASSET_CREATE_NUM=100
 _PID=""
 #_WITH_S3="N"
 _AWS_S3_BUCKET="apac-support-bucket"
 _AWS_S3_PREFIX="filelist_test"
 _S3_BLOBTORE_NAME="s3-test"
-# Currently can't specify S3 repo name, always raw-s3-hosted
+# Currently can't specify repo names, always raw-hosted and raw-s3-hosted
+
 
 function TestFileList() {
     local _expected_num="${1:-0}"
     local _bsName="${2:-"default"}"
     local _is_s3="${3}"
+    local _dead_blob_test="${4}"
 
     if [ 10 -gt ${_expected_num} ]; then
         _log "WARN" "_expected_num (${_expected_num}) might be incorrect"
@@ -43,25 +49,38 @@ function TestFileList() {
     # -b = base directory or S3 bucket name, -p sub directory prefix usually always 'vol-'
     local _opt="-b ./sonatype-work/nexus3/blobs/${_bsName}/content -p vol-"
     [[ "${_is_s3}" =~ ^[yY] ]] && _opt="-b ${_AWS_S3_BUCKET} -p ${_AWS_S3_PREFIX%/}/content/vol- -S3"
+
+    if [[ "${_dead_blob_test}" =~ ^[yY] ]]; then
+        _opt="${_opt} -src DB"
+        _opt="${_opt} -mF $(date +%Y-%m-%d)"
+    else
+        _opt="${_opt} -dF $(date +%Y-%m-%d)"
+    fi
     if [ -s ./sonatype-work/nexus3/etc/fabric/nexus-store.properties ]; then
         # -db = providing DB conn start checking Orphaned blobs finding because _TRUTH = 'BS'
         _opt="${_opt} -db ./sonatype-work/nexus3/etc/fabric/nexus-store.properties"
     fi
 
-    local _cmd="${_FILE_LIST:-"file-list"} -c 10 -bsName ${_bsName} ${_opt}"
+    if [ -s "./file-list_${_bsName}.tsv" ]; then
+        rm -v -f ./file-list_${_bsName}.tsv || return $?
+    fi
+    # TODO: -dF may not work if the test runs multiple times in one day
+    local _cmd="${_FILE_LIST:-"file-list"} ${_opt} -c 10 -bsName ${_bsName} -s ./file-list_${_bsName}.tsv"
     _log "INFO" "Executing '${_cmd}' ..."
-    if ! time ${_cmd} -X >./file-list.out 2>./file-list.log; then
+    if ! time ${_cmd} -X 2>./file-list.log; then
         cat ./file-list.log
         return 1
     fi
-    local _file_list_ln="$(cat ./file-list.out | wc -l | tr -d '[:space:]')"
+    local _file_list_ln="$(cat ./file-list_${_bsName}.tsv | wc -l | tr -d '[:space:]')"
+    _file_list_ln=$((${_file_list_ln} - 1)) # as this includes header line
 
     if [ 0 -eq ${_file_list_ln} ]; then
         _log "ERROR" "Test failed. file-list didn't find any blobs (${_file_list_ln})"
     fi
 
-    if [ ${_file_list_ln} -gt ${_expected_num} ] || [ ${_file_list_ln} -lt ${_ASSET_CREATE_NUM} ]; then
-        _log "ERROR" "Test failed. file-list.out line number ${_file_list_ln} is not between ${_ASSET_CREATE_NUM} and ${_expected_num}"
+    local _created_num=$((${_ASSET_CREATE_NUM} + 1))
+    if [ ${_file_list_ln} -gt ${_expected_num} ] || [ ${_file_list_ln} -lt ${_created_num} ]; then
+        _log "ERROR" "Test failed. file-list_${_bsName}.tsv line number ${_file_list_ln} is not between ${_created_num} and ${_expected_num}"
     fi
 
     # File type only test/check:
@@ -214,14 +233,19 @@ EOF
         fi
     fi
 
-    _log "INFO" "Deleting all assets (${_NEXUS_URL%/}) ..."
-    f_delete_all_assets "" "Y"
-    local _expected_num=$(cat /tmp/f_get_all_assets_$$.out | wc -l | tr -d '[:space:]')
-    sleep 3
-    _log "INFO" "Running assetBlob.cleanup (${_NEXUS_URL%/}) ..."
-    f_run_tasks_by_type "assetBlob.cleanup"
-    sleep 5
-    if f_run_tasks_by_type "" | grep '"currentState": "RUNNING"'; then
+    if [[ ! "${_NO_ASSETS_DELETE}" =~ ^[yY] ]]; then
+        _log "INFO" "Deleting all assets (${_NEXUS_URL%/}) ..."
+        sleep 5
+        f_delete_all_assets "" "Y"
+        local _expected_num=$(cat /tmp/f_get_all_assets_$$.out | wc -l | tr -d '[:space:]')
+        sleep 3
+        _log "INFO" "Running assetBlob.cleanup (${_NEXUS_URL%/}) ..."
+        f_run_tasks_by_type "assetBlob.cleanup" &>/dev/null
+        sleep 5
+        if f_run_tasks_by_type "" | grep '"currentState": "RUNNING"'; then
+            sleep 5
+        fi
+        f_run_tasks_by_type "assetBlob.cleanup" &>/dev/null
         sleep 5
     fi
 
@@ -231,13 +255,13 @@ EOF
     _log "INFO" "Executing 'TestFileList \"${_expected_num}\" \"${_BLOBTORE_NAME:-"default"}\"' ..."
     sleep 3
     TestFileList "${_expected_num}" "${_BLOBTORE_NAME:-"default"}"
-    if ! TestFileList "${_expected_num}" "${_BLOBTORE_NAME:-"default"}"; then
+    if ! TestFileList "${_expected_num}" "${_BLOBTORE_NAME:-"default"}" "" "${_NO_ASSETS_DELETE}"; then
         _log "INFO" "'TestFileList failed ($?)'"
         return 1
     fi
     if [[ "${_WITH_S3}" =~ ^[yY] ]]; then
         _log "INFO" "Executing 'TestFileList \"${_expected_num}\" \"${_S3_BLOBTORE_NAME}\"' ..."
-        if ! TestFileList "${_expected_num}" "${_S3_BLOBTORE_NAME}" "${_WITH_S3}"; then
+        if ! TestFileList "${_expected_num}" "${_S3_BLOBTORE_NAME}" "${_WITH_S3}" "${_NO_ASSETS_DELETE}"; then
             _log "INFO" "'TestFileList failed ($?)'"
             return 1
         fi
@@ -248,7 +272,7 @@ EOF
     echo "    https://sonatype.atlassian.net/browse/NEXUS-40708, so needs to wait for one hour. If version is 3.62 and 3.63"
     echo "    Re-run file-list command to make sure 'deleted=true' is removed."
     echo "    ${_FILE_LIST} ${_opt} -c 10 -db ./sonatype-work/nexus3/etc/fabric/nexus-store.properties -bsName ${_bsName} -dF $(date '+%Y-%m-%d') -RDel -X > ./file-list_del.out 2> ./file-list_del.log"
-    echo "    Run the Reconcile with Since 1 days and with file-list.out."
+    echo "    Run the Reconcile with Since 1 days and with file-list_${_bsName}.tsv."
 }
 
 if [ "$0" = "$BASH_SOURCE" ]; then

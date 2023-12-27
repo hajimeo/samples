@@ -157,8 +157,8 @@ func _setGlobals() {
 	_REMOVE_DEL = flag.Bool("RDel", false, "Remove 'deleted=true' from .properties. Requires -dF")
 	_DEL_DATE_FROM = flag.String("dF", "", "Deleted date YYYY-MM-DD (from). Used to search deletedDateTime")
 	_DEL_DATE_TO = flag.String("dT", "", "Deleted date YYYY-MM-DD (to). To exclude newly deleted assets")
-	_MOD_DATE_FROM = flag.String("mF", "", "File modification date YYYY-MM-DD from")
-	_MOD_DATE_TO = flag.String("mT", "", "File modification date YYYY-MM-DD to")
+	_MOD_DATE_FROM = flag.String("mF", "", "File modification date YYYY-MM-DD (from). For DB, used against blob_created")
+	_MOD_DATE_TO = flag.String("mT", "", "File modification date YYYY-MM-DD (to). For DB, used against blob_created")
 
 	// AWS S3 related
 	_CONC_2 = flag.Int("c2", 8, "AWS S3: Concurrent number for retrieving AWS Tags")
@@ -202,25 +202,25 @@ func _setGlobals() {
 		db.Close()
 	}
 
+	if len(*_DEL_DATE_FROM) > 0 {
+		_DEL_DATE_FROM_ts = datetimeStrToTs(*_DEL_DATE_FROM)
+	}
+	if len(*_DEL_DATE_TO) > 0 {
+		_DEL_DATE_TO_ts = datetimeStrToTs(*_DEL_DATE_TO)
+	}
+	if len(*_MOD_DATE_FROM) > 0 {
+		_MOD_DATE_FROM_ts = datetimeStrToTs(*_MOD_DATE_FROM)
+	}
+	if len(*_MOD_DATE_TO) > 0 {
+		_MOD_DATE_TO_ts = datetimeStrToTs(*_MOD_DATE_TO)
+	}
+
 	if *_REMOVE_DEL {
 		*_FILTER = _PROP_EXT
 		if len(*_FILTER_P) == 0 {
 			*_FILTER_P = "deleted=true"
 		}
-		if len(*_DEL_DATE_FROM) > 0 {
-			_DEL_DATE_FROM_ts = datetimeStrToTs(*_DEL_DATE_FROM)
-		}
-		if len(*_DEL_DATE_TO) > 0 {
-			_DEL_DATE_TO_ts = datetimeStrToTs(*_DEL_DATE_TO)
-		}
-		if len(*_MOD_DATE_FROM) > 0 {
-			_MOD_DATE_FROM_ts = datetimeStrToTs(*_MOD_DATE_FROM)
-		}
-		if len(*_MOD_DATE_TO) > 0 {
-			_MOD_DATE_TO_ts = datetimeStrToTs(*_MOD_DATE_TO)
-		}
-	}
-	if *_REMOVE_DEL {
+
 		if len(*_DEL_DATE_FROM) == 0 {
 			_log("WARN", "Disabling -RDel as no -dF.")
 			*_REMOVE_DEL = false
@@ -481,12 +481,12 @@ func printLineS3(client *s3.Client, item types.Object, db *sql.DB) {
 
 	atomic.AddInt64(&_CHECKED_N, 1)
 
-	if _MOD_DATE_FROM_ts > 0 && modTimeTs < _MOD_DATE_FROM_ts {
-		_log("DEBUG2", fmt.Sprintf("path:%s modTime %d is less than %d", path, modTimeTs, _MOD_DATE_FROM_ts))
+	if _MOD_DATE_FROM_ts > 0 && modTimeTs <= _MOD_DATE_FROM_ts {
+		_log("DEBUG2", fmt.Sprintf("path:%s modTime %d <= %d", path, modTimeTs, _MOD_DATE_FROM_ts))
 		return
 	}
-	if _MOD_DATE_TO_ts > 0 && modTimeTs > _MOD_DATE_TO_ts {
-		_log("DEBUG2", fmt.Sprintf("path:%s modTime %d is newer than %d", path, modTimeTs, _MOD_DATE_TO_ts))
+	if _MOD_DATE_TO_ts > 0 && modTimeTs >= _MOD_DATE_TO_ts {
+		_log("DEBUG2", fmt.Sprintf("path:%s modTime %d >= %d", path, modTimeTs, _MOD_DATE_TO_ts))
 		return
 	}
 
@@ -544,12 +544,12 @@ func printLine(path string, fInfo os.FileInfo, db *sql.DB) {
 
 	atomic.AddInt64(&_CHECKED_N, 1)
 
-	if _MOD_DATE_FROM_ts > 0 && modTimeTs < _MOD_DATE_FROM_ts {
-		_log("DEBUG2", fmt.Sprintf("path:%s modTime %d is less than %d", path, modTimeTs, _MOD_DATE_FROM_ts))
+	if _MOD_DATE_FROM_ts > 0 && modTimeTs <= _MOD_DATE_FROM_ts {
+		_log("DEBUG2", fmt.Sprintf("path:%s modTime %d <= %d", path, modTimeTs, _MOD_DATE_FROM_ts))
 		return
 	}
-	if _MOD_DATE_TO_ts > 0 && modTimeTs > _MOD_DATE_TO_ts {
-		_log("DEBUG2", fmt.Sprintf("path:%s modTime %d is newer than %d", path, modTimeTs, _MOD_DATE_TO_ts))
+	if _MOD_DATE_TO_ts > 0 && modTimeTs >= _MOD_DATE_TO_ts {
+		_log("DEBUG2", fmt.Sprintf("path:%s modTime %d >= %d", path, modTimeTs, _MOD_DATE_TO_ts))
 		return
 	}
 
@@ -1199,13 +1199,31 @@ func printMissingBlobsFromDB(dbConStr string, conc int, s3Client *s3.Client) {
 			rnSlice = append(rnSlice, k)
 		}
 	}
-	query = genAssetBlobUnionQueryFromRepoNames(rnSlice, "a.asset_id, ab.blob_ref", "", false)
+
+	afterWhere := ""
+	if _MOD_DATE_FROM_ts > 0 {
+		if len(afterWhere) > 0 {
+			afterWhere += " and "
+		}
+		afterWhere += fmt.Sprintf("ab.blob_created >= TO_TIMESTAMP(%d)", _MOD_DATE_FROM_ts)
+	}
+	if _MOD_DATE_TO_ts > 0 {
+		if len(afterWhere) > 0 {
+			afterWhere += " and "
+		}
+		afterWhere += fmt.Sprintf("ab.blob_created <= TO_TIMESTAMP(%d)", _MOD_DATE_TO_ts)
+	}
+	_log("DEBUG", fmt.Sprintf("genAssetBlobUnionQueryFromRepoNames with %v and %s", rnSlice, afterWhere))
+
+	query = genAssetBlobUnionQueryFromRepoNames(rnSlice, "a.asset_id, ab.blob_ref", afterWhere, false)
 	rows := queryDb(query, db)
 	defer rows.Close()
 	cols, _ := rows.Columns()
 	if cols == nil || len(cols) == 0 {
 		panic("No columns against query:" + query)
 	}
+
+	_println(fmt.Sprintf("ASSET_ID%sBLOB_REF", _SEP))
 
 	var wg sync.WaitGroup
 	guard := make(chan struct{}, conc)
@@ -1228,7 +1246,7 @@ func printMissingBlobsFromDB(dbConStr string, conc int, s3Client *s3.Client) {
 				} else {
 					_log("WARN", fmt.Sprintf("%s are unreadable.", path+".*"))
 				}
-				_println(fmt.Sprintf("%s%s%s", vals[0], _SEP, vals[1]))
+				_println(fmt.Sprintf("%d%s%s", vals[0], _SEP, vals[1]))
 			} else if isSoftDeleted(path+_PROP_EXT, s3Client) {
 				_log("WARN", fmt.Sprintf("%s is soft-deleted.", path+_PROP_EXT))
 			}

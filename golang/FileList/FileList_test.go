@@ -10,7 +10,7 @@ import (
 )
 
 // To create DB, an easy way is running ./FileList_test.sh
-// var TEST_DB_CONN_STR = "host=localhost port=5432 user=nxrm password=nxrm123 dbname=nxrmtest"
+// var TEST_DB_CONN_STR = "host=localhost port=5432 user=nxrm password=nxrm123 dbname=nxrmfilelisttest"
 var TEST_DB_CONN_STR = ""
 var DUMMY_FILE_PATH = "/tmp/00000000-abcd-ef00-1234-123456789abc.properties"
 var DUMMY_PROP_TXT = `#2021-06-02 22:56:12,617+0000
@@ -29,11 +29,11 @@ size=63`
 var DUMMY_DB_PROPS_PATH = "/tmp/dummy-store.properties"
 var DUMMY_DB_PROP_TXT = `#2022-08-14 20:58:43,970+0000
 #Sun Aug 14 20:58:43 UTC 2022
-password=xxxxxxxx
+password=nexus123
 maximumPoolSize=10
-jdbcUrl=jdbc\:postgresql\://192.168.1.1\:5433/nxrm3pg?ssl\=true&sslfactory\=org.postgresql.ssl.NonValidatingFactory
+jdbcUrl=jdbc\:postgresql\://localhost\:5432/nxrmfilelisttest?ssl\=true&sslfactory\=org.postgresql.ssl.NonValidatingFactory
 advanced=maxLifetime\=600000
-username=nxrm3pg`
+username=nexus`
 var DUMMY_BLOB_IDS_PATH = "/tmp/dummy-blobids.txt"
 var DUMMY_BLOB_IDS_TXT = `./vol-25/chap-40/79a659c7-32a1-4a72-84e0-1a7d07a9f11f.properties
 ./vol-24/chap-01/d04770e3-cc0e-4a37-a562-1bfd6150cb8a.properties
@@ -90,7 +90,7 @@ func TestOpenDb(t *testing.T) {
 func TestInitRpoFmtMap(t *testing.T) {
 	*_BS_NAME = ""
 	*_DEBUG = true
-	conStr := "host=localhost port=5432 user=nexus password=nexus123 dbname=nxrmlatest"
+	conStr := "host=localhost port=5432 user=nexus password=nexus123 dbname=nxrmfilelisttest"
 	defer DeferPanic()
 	db := openDb(conStr)
 	defer db.Close()
@@ -161,7 +161,7 @@ func TestPrintMissingBlobLines(t *testing.T) {
 	t.Log("NOTE: 'blobIdsFile:/not/existing/file cannot be opened. open /not/existing/file: no such file or directory' is expected.")
 
 	//TEST_DB_CONN_STR = ""
-	conStr := "host=localhost port=5432 user=nexus password=nexus123 dbname=nxrm"
+	conStr := "host=localhost port=5432 user=nexus password=nexus123 dbname=nxrmfilelisttest"
 	// To improve the query speed
 	*_BS_NAME = "default"
 	//*_DEBUG = true
@@ -216,7 +216,7 @@ func TestGetContents(t *testing.T) {
 
 func TestGenDbConnStr(t *testing.T) {
 	dbConnStr := genDbConnStrFromFile(DUMMY_DB_PROPS_PATH)
-	if !strings.Contains(dbConnStr, "host=192.168.1.1 port=5433 user=nxrm3pg password=xxxxxxxx dbname=nxrm3pg") {
+	if !strings.Contains(dbConnStr, "host=localhost port=5432 user=nexus password=nexus123 dbname=nxrmfilelisttest ssl=true sslfactory=org.postgresql.ssl.NonValidatingFactory") {
 		t.Errorf("DB connection string: %s is incorrect.", dbConnStr)
 	}
 }
