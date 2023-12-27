@@ -12,6 +12,8 @@ cd /opt/sonatype/sonatype-work/nexus3/blobs/default/
 file-list -b ./content -p vol- -c 4 -db /opt/sonatype/sonatype-work/nexus3/etc/fabric/nexus-store.properties -bsName default > ./$(date '+%Y-%m-%d') 2> ./file-list_$(date +"%Y%m%d").log &
 
 Fr S3: https://pkg.go.dev/github.com/aws/aws-sdk-go/service/s3
+
+TODO: update https://support.sonatype.com/hc/en-us/articles/8402517424531-Restore-undelete-accidentally-soft-deleted-blobs
 */
 
 package main
@@ -30,12 +32,12 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/s3/types"
 	_ "github.com/lib/pq"
 	"github.com/pkg/errors"
+	regexp "github.com/wasilibs/go-re2"
 	"io"
 	"log"
 	"math"
 	"os"
 	"path/filepath"
-	"regexp"
 	"slices" // 1.21 or higher
 	"sort"
 	"strconv"
@@ -85,7 +87,7 @@ var _DB_CON_STR *string
 var _BLOB_IDS_FILE *string
 var _TRUTH *string
 var _BS_NAME *string
-var _REPO_FORMAT *string
+var _REPO_NAMES *string
 var _DEL_DATE_FROM *string
 var _DEL_DATE_FROM_ts int64
 var _DEL_DATE_TO *string
@@ -138,8 +140,6 @@ func _setGlobals() {
 	_FILTER_PX = flag.String("fPX", "", "Excluding Filter for .properties (eg: 'BlobStore.blob-name=.+/maven-metadata.xml.*')")
 	_SAVE_TO = flag.String("s", "", "Save the output (TSV text) into the specified path")
 	_USE_REGEX = flag.Bool("R", false, "If true, .properties content is *sorted* and -fP|-fPX string is treated as regex")
-	//_EXCLUDE_FILE = flag.String("sk", "", "Blob IDs in this file will be skipped from the check") // TODO
-	//_INCLUDE_FILE = flag.String("sk", "", "ONLY blob IDs in this file will be checked")           // TODO
 	_TOP_N = flag.Int64("n", 0, "Return first N lines (0 = no limit). (TODO: may return more than N)")
 	_CONC_1 = flag.Int("c", 1, "Concurrent number for reading directories")
 	_LIST_DIRS = flag.Bool("L", false, "If true, just list directories and exit")
@@ -149,11 +149,11 @@ func _setGlobals() {
 	_DRY_RUN = flag.Bool("Dry", false, "If true, RDel does not do anything")
 
 	// Reconcile / orphaned blob finding related
-	_TRUTH = flag.String("src", "BS", "Using database or blobstore as source [BS|DB]") // TODO: not implemented "DB" type yet
+	_TRUTH = flag.String("src", "BS", "Using database or blobstore as source [BS|DB]")
 	_DB_CON_STR = flag.String("db", "", "DB connection string or path to DB connection properties file")
 	_BLOB_IDS_FILE = flag.String("bF", "", "file path whic contains the list of blob IDs")
 	_BS_NAME = flag.String("bsName", "", "eg. 'default'. If provided, the SQL query will be faster. 3.47 and higher only")
-	_REPO_FORMAT = flag.String("repoFmt", "", "eg. 'maven2'. If provided, the SQL query will be faster")
+	_REPO_NAMES = flag.String("repos", "", "Repository names. eg. 'maven-central,raw-hosted,npm-proxy', only with -src=DB")
 	_REMOVE_DEL = flag.Bool("RDel", false, "Remove 'deleted=true' from .properties. Requires -dF")
 	_DEL_DATE_FROM = flag.String("dF", "", "Deleted date YYYY-MM-DD (from). Used to search deletedDateTime")
 	_DEL_DATE_TO = flag.String("dT", "", "Deleted date YYYY-MM-DD (to). To exclude newly deleted assets")
@@ -261,7 +261,7 @@ func _println(line string) (n int, err error) {
 	return fmt.Println(line)
 }
 
-// TODO: this may output too frequently
+// NOTE: this may output too frequently
 func _elapsed(startTsMs int64, message string, thresholdMs int64) {
 	//elapsed := time.Since(start)
 	elapsed := time.Now().UnixMilli() - startTsMs
@@ -374,6 +374,9 @@ func initRepoFmtMap(db *sql.DB) {
 	_ASSET_TABLES = make([]string, 0)
 
 	query := "SELECT name, REGEXP_REPLACE(recipe_name, '-.+', '') AS fmt FROM repository"
+	if len(*_BS_NAME) > 0 {
+		query += " WHERE attributes->'storage'->>'blobStoreName' = '" + *_BS_NAME + "'"
+	}
 	rows := queryDb(query, db)
 	if rows == nil { // For unit tests
 		_log("DEBUG", fmt.Sprintf("No result with %s", query))
@@ -413,7 +416,7 @@ func genDbConnStrFromFile(filePath string) string {
 	}
 	params := ""
 	if len(matches) > 3 {
-		// TODO: probably need to escape?
+		// NOTE: probably need to escape the 'params'?
 		params = " " + strings.ReplaceAll(matches[4], "&", " ")
 	}
 	connStr := fmt.Sprintf("host=%s port=%s user=%s password=%s dbname=%s%s", hostname, port, props["username"], props["password"], database, params)
@@ -422,17 +425,23 @@ func genDbConnStrFromFile(filePath string) string {
 	return connStr
 }
 
-func getBlobSize(propPath string) int64 {
-	blobPath := getPathWithoutExt(propPath) + ".bytes"
+func getBlobSize(path string, client *s3.Client) int64 {
+	if _IS_S3 != nil && *_IS_S3 {
+		return getBlobSizeS3(path, client)
+	} else {
+		return getBlobSizeFile(path)
+	}
+}
+
+func getBlobSizeFile(blobPath string) int64 {
 	info, err := os.Stat(blobPath)
 	if err != nil {
-		return 0
+		return -1
 	}
 	return info.Size()
 }
 
-func getBlobSizeS3(propPath string, client *s3.Client) int64 {
-	blobPath := getPathWithoutExt(propPath) + ".bytes"
+func getBlobSizeS3(blobPath string, client *s3.Client) int64 {
 	if _DEBUG != nil && *_DEBUG {
 		defer _elapsed(time.Now().UnixMilli(), "DEBUG HeadObject to "+blobPath, 0)
 	} else {
@@ -445,6 +454,7 @@ func getBlobSizeS3(propPath string, client *s3.Client) int64 {
 	result, err := client.HeadObject(context.TODO(), &headObj)
 	if err != nil {
 		_log("WARN", "Failed to request "+blobPath)
+		return -1
 	}
 	return result.ContentLength
 }
@@ -484,7 +494,8 @@ func printLineS3(client *s3.Client, item types.Object, db *sql.DB) {
 
 	// If .properties file is checked and _WITH_BLOB_SIZE, then get the size of .bytes file
 	if *_WITH_BLOB_SIZE && *_FILTER == _PROP_EXT && strings.HasSuffix(path, _PROP_EXT) {
-		blobSize = getBlobSizeS3(path, client)
+		blobPath := getPathWithoutExt(path) + ".bytes"
+		blobSize = getBlobSizeS3(blobPath, client)
 		output = fmt.Sprintf("%s%s%d", output, _SEP, blobSize)
 	}
 
@@ -546,7 +557,8 @@ func printLine(path string, fInfo os.FileInfo, db *sql.DB) {
 
 	// If .properties file is checked and _WITH_BLOB_SIZE, then get the size of .bytes file
 	if *_WITH_BLOB_SIZE && *_FILTER == _PROP_EXT && strings.HasSuffix(path, _PROP_EXT) {
-		blobSize = getBlobSize(path)
+		blobPath := getPathWithoutExt(path) + ".bytes"
+		blobSize = getBlobSizeFile(blobPath)
 		output = fmt.Sprintf("%s%s%d", output, _SEP, blobSize)
 	}
 
@@ -584,9 +596,6 @@ func _printLineExtra(output string, path string, modTimeTs int64, db *sql.DB, cl
 		if *_TRUTH == "BS" && !isBlobMissingInDB("", blobId, db) {
 			_log("DEBUG2", "path:"+path+" exists in Database. Skipping.")
 			return ""
-		} else if *_TRUTH == "DB" && !isBlobMissingInBlobStore(blobId, client) {
-			_log("DEBUG2", "path:"+path+" exists in Blobstore. Skipping.")
-			return ""
 		}
 		return output
 	}
@@ -608,11 +617,6 @@ func _printLineExtra(output string, path string, modTimeTs int64, db *sql.DB, cl
 		if *_TRUTH == "BS" {
 			// Script is asked to output if this blob is missing in DB
 			if !isBlobMissingInDB(contents, blobId, db) {
-				return ""
-			}
-		} else if *_TRUTH == "DB" {
-			// Script is asked to output if this blob is missing in Blobstore
-			if !isBlobMissingInBlobStore(blobId, client) {
 				return ""
 			}
 		}
@@ -758,60 +762,116 @@ func getRow(rowCur *sql.Rows, cols []string) []interface{} {
 	return vals
 }
 
-func genAssetBlobUnionQuery(tableNames []string, columns string, where string, includeTableName bool) string {
-	if len(tableNames) == 0 {
-		_log("DEBUG", "tableNames is empty.")
+func genAssetBlobUnionQuery(assetTableNames []string, columns string, afterWhere string, includeTableName bool) string {
+	if len(assetTableNames) == 0 {
+		_log("DEBUG", "assetTableNames is empty.")
 		return ""
 	}
 	if len(columns) == 0 {
 		columns = "a.asset_id, a.repository_id, a.path, a.kind, a.component_id, a.last_downloaded, a.last_updated, ab.*"
 	}
-	if len(where) > 0 {
-		where = " WHERE " + where
+	if len(afterWhere) > 0 {
+		afterWhere = " WHERE " + afterWhere
 	}
-	queryPrefix := "SELECT " + columns
 	elements := make([]string, 0)
-	for _, tableName := range tableNames {
-		element := queryPrefix
+	for _, tableName := range assetTableNames {
+		element := "SELECT " + columns
 		if includeTableName {
 			element = element + ", '" + tableName + "' as tableName"
 		}
 		element = fmt.Sprintf("%s FROM %s_blob ab", element, tableName)
 		// NOTE: Left Join is required otherwise when Cleanup unused asset blob task has not been run, this script thinks that blob is orphaned, which is not true
-		element = fmt.Sprintf("%s LEFT JOIN %s a ON a.asset_blob_id = ab.asset_blob_id", element, tableName)
-		element = fmt.Sprintf("%s%s", element, where)
-		element = fmt.Sprintf("%s LIMIT 1", element)
+		element = fmt.Sprintf("%s LEFT JOIN %s a USING (asset_blob_id)", element, tableName)
+		element = fmt.Sprintf("%s%s", element, afterWhere)
 		elements = append(elements, element)
 	}
-	query := elements[0]
-	if len(elements) > 1 {
+	query := ""
+	if len(elements) == 1 {
+		query = elements[0]
+	} else if len(elements) > 1 {
 		query = "(" + strings.Join(elements, ") UNION ALL (") + ")"
 	}
 	return query
 }
 
+func genAssetBlobUnionQueryFromRepoNames(repoNames []string, columns string, afterWhere string, includeRepoName bool) string {
+	if len(columns) == 0 {
+		columns = "a.asset_id, a.repository_id, a.path, a.kind, a.component_id, a.last_downloaded, a.last_updated, ab.*"
+	}
+	if len(afterWhere) > 0 {
+		afterWhere = " WHERE " + afterWhere
+	}
+	elements := make([]string, 0)
+	for _, repoName := range repoNames {
+		element := "SELECT " + columns
+		if includeRepoName {
+			element = element + ", '" + repoName + "' as repoName"
+		}
+		format := getFmtFromRepName(repoName)
+		if len(format) == 0 {
+			continue
+		}
+		tableName := format + "_asset"
+		tableNameCR := format + "_content_repository"
+		element = fmt.Sprintf("%s FROM %s_blob ab", element, tableName)
+		// NOTE: Using INNER Join otherwise can't get repository
+		element = fmt.Sprintf("%s INNER JOIN %s a USING (asset_blob_id)", element, tableName)
+		element = fmt.Sprintf("%s INNER JOIN %s cr USING (repository_id)", element, tableNameCR)
+		element = fmt.Sprintf("%s INNER JOIN repository r ON cr.config_repository_id = r.id AND r.name = '%s'", element, repoName)
+		element = fmt.Sprintf("%s%s", element, afterWhere)
+		elements = append(elements, element)
+	}
+
+	query := ""
+	if len(elements) == 1 {
+		query = elements[0]
+	} else if len(elements) > 1 {
+		query = "(" + strings.Join(elements, ") UNION ALL (") + ")"
+	}
+	// TODO: UNION-ing per repo affects performance? (probably not or not siginificant)
+	return query
+}
+
 func genBlobIdCheckingQuery(blobId string, tableNames []string) string {
 	// Just in case, supporting older version by using "%'"
-	where := "blob_ref LIKE '%" + blobId + "%'"
+	where := "blob_ref LIKE '%" + blobId + "%' LIMIT 1"
 	if len(*_BS_NAME) > 0 {
 		// Supporting only 3.47 and higher for performance (NEXUS-35934 blobRef no longer contains NODE_ID)
-		where = "blob_ref = '" + *_BS_NAME + "@" + blobId + "'"
+		where = "blob_ref = '" + *_BS_NAME + "@" + blobId + "' LIMIT 1"
 	}
 	// As using LEFT JOIN 'asset_id' can be NULL (nil), but rows size is not 0
 	query := genAssetBlobUnionQuery(tableNames, "asset_id", where, false)
 	return query
 }
 
-// only works on postgres
-func getAssetTables(contents string) []string {
-	result := make([]string, 0)
-	// If _REPO_FORMAT is specified, use this one
-	if len(*_REPO_FORMAT) > 0 {
-		result = append(result, *_REPO_FORMAT+"_asset")
-		return result
+func getFmtFromRepName(repoName string) string {
+	if repoFmt, ok := _REPO_TO_FMT[repoName]; ok {
+		if len(repoFmt) > 0 {
+			return repoFmt
+		}
 	}
-	// NOTE: should not initiarise in here because of coroutine
+	_log("WARN", fmt.Sprintf("repoName: %s is not in reposToFmt\n%v", repoName, _REPO_TO_FMT))
+	return ""
+}
+
+func convRepoNamesToAssetTableName(repoNames string) (result []string) {
+	rnSlice := strings.Split(repoNames, ",")
+	u := make(map[string]bool)
+	for _, repoName := range rnSlice {
+		tableName := getFmtFromRepName(repoName) + "_asset"
+		if len(tableName) > 0 {
+			if _, ok := u[tableName]; !ok {
+				result = append(result, tableName)
+				u[tableName] = true
+			}
+		}
+	}
+	return result
+}
+
+func getAssetTables(contents string) []string {
 	if _REPO_TO_FMT == nil || len(_REPO_TO_FMT) == 0 {
+		// NOTE: should not initiarise/populate _REPO_TO_FMT in here because of coroutine
 		_log("ERROR", "getAssetTables requires _REPO_TO_FMT but empty.")
 		return nil
 	}
@@ -823,30 +883,12 @@ func getAssetTables(contents string) []string {
 			// At this moment, if no blobName, assuming NOT missing...
 			return nil
 		}
-		repoName := m[1]
-		if repoFmt, ok := _REPO_TO_FMT[repoName]; ok {
-			result = append(result, repoFmt+"_asset")
-			return result
-		} else {
-			_log("WARN", fmt.Sprintf("repoName: %s is not in reposToFmt\n%v", repoName, _REPO_TO_FMT))
-		}
-	} else if len(_ASSET_TABLES) > 0 {
+		return convRepoNamesToAssetTableName(m[1])
+	}
+	if len(_ASSET_TABLES) > 0 {
 		return _ASSET_TABLES
 	}
-	return result
-}
-
-// Checking from DB to blobstore, like DeadBlobsFinder
-func isBlobMissingInBlobStore(blobId string, client *s3.Client) bool {
-	// TODO: implement for S3 as well (eg: will be similar to getContentsS3)
-	/*if _IS_S3 != nil && *_IS_S3 {
-		readFromS3(path, client)
-		return false
-	}
-	if _, err := os.Stat(path); err == nil {
-		return false
-	}*/
-	return false
+	return nil
 }
 
 func isBlobMissingInDB(contents string, blobId string, db *sql.DB) bool {
@@ -891,6 +933,15 @@ func isBlobMissingInDB(contents string, blobId string, db *sql.DB) bool {
 		break
 	}
 	return noRows
+}
+
+func isSoftDeleted(path string, s3Client *s3.Client) bool {
+	contents, err := getContents(path, s3Client)
+	if err != nil {
+		_log("WARN", fmt.Sprintf("isSoftDeleted for path:%s failed with '%s', assuming not soft-deleted.", path, err.Error()))
+		return false
+	}
+	return _R_DELETED.MatchString(contents)
 }
 
 func removeDel(contents string, path string, client *s3.Client) bool {
@@ -1084,9 +1135,10 @@ func genBlobPath(blobId string) string {
 }
 
 func softDeletedCount(dbConStr string) {
-	query := "SELECT source_blob_store_name, count(*), min(deleted_date) FROM soft_deleted_blobs group by 1"
 	db := openDb(dbConStr)
 	defer db.Close()
+
+	query := "SELECT source_blob_store_name, count(*), min(deleted_date) FROM soft_deleted_blobs group by 1"
 	rows := queryDb(query, db)
 	defer rows.Close()
 	cols, _ := rows.Columns()
@@ -1101,7 +1153,7 @@ func softDeletedCount(dbConStr string) {
 	}
 }
 
-func printMissingBlobLines(blobIdsFile string, dbConStr string, conc int) {
+func printMissingBlobsFromFile(blobIdsFile string, dbConStr string, conc int) {
 	if conc < 1 {
 		_log("ERROR", "Incorrect concurrency:"+strconv.Itoa(conc))
 		return
@@ -1118,6 +1170,75 @@ func printMissingBlobLines(blobIdsFile string, dbConStr string, conc int) {
 	}
 	defer f.Close()
 
+	printMissingBlobs(f, dbConStr, conc)
+}
+
+func printMissingBlobsFromDB(dbConStr string, conc int, s3Client *s3.Client) {
+	if conc < 1 {
+		_log("ERROR", "Incorrect concurrency:"+strconv.Itoa(conc))
+		return
+	}
+
+	db := openDb(dbConStr)
+	if db == nil {
+		panic("Cannot open the database.") // Can't output _DB_CON_STR as it may include password
+	} else {
+		defer db.Close()
+	}
+
+	if len(_ASSET_TABLES) == 0 {
+		initRepoFmtMap(db)
+	}
+	query := ""
+	var rnSlice []string
+	if _REPO_NAMES != nil && len(*_REPO_NAMES) > 0 {
+		rnSlice = strings.Split(*_REPO_NAMES, ",")
+	} else if (_REPO_NAMES == nil || len(*_REPO_NAMES) == 0) && len(*_BS_NAME) > 0 {
+		// If no repo name (empty rnSlice), should get only related repos of the blobstore
+		for k := range _REPO_TO_FMT {
+			rnSlice = append(rnSlice, k)
+		}
+	}
+	query = genAssetBlobUnionQueryFromRepoNames(rnSlice, "a.asset_id, ab.blob_ref", "", false)
+	rows := queryDb(query, db)
+	defer rows.Close()
+	cols, _ := rows.Columns()
+	if cols == nil || len(cols) == 0 {
+		panic("No columns against query:" + query)
+	}
+
+	var wg sync.WaitGroup
+	guard := make(chan struct{}, conc)
+	for rows.Next() {
+		vals := getRow(rows, cols)
+		_log("DEBUG2", fmt.Sprintf("printMissingBlobsFromDB vals: %v", vals))
+
+		guard <- struct{}{}
+		wg.Add(1)
+		go func(vals []interface{}, s3Client *s3.Client) {
+			defer wg.Done()
+			blobId := extractBlobIdFromString(vals[1].(string))
+			_log("DEBUG", fmt.Sprintf("printMissingBlobsFromDB, checking blobId: %v", blobId))
+			path := *_BASEDIR + string(filepath.Separator) + genBlobPath(blobId)
+			size := getBlobSize(path+_PROP_EXT, s3Client)
+			if size < 0 {
+				size2 := getBlobSize(path+_PROP_EXT, s3Client)
+				if size2 >= 0 {
+					_log("WARN", fmt.Sprintf("Only %s is unreadable.", path+_PROP_EXT))
+				} else {
+					_log("WARN", fmt.Sprintf("%s are unreadable.", path+".*"))
+				}
+				_println(fmt.Sprintf("%s%s%s", vals[0], _SEP, vals[1]))
+			} else if isSoftDeleted(path+_PROP_EXT, s3Client) {
+				_log("WARN", fmt.Sprintf("%s is soft-deleted.", path+_PROP_EXT))
+			}
+			<-guard
+		}(vals, s3Client)
+	}
+	wg.Wait()
+}
+
+func printMissingBlobs(f *os.File, dbConStr string, conc int) {
 	var wg sync.WaitGroup
 	guard := make(chan struct{}, conc)
 	scanner := bufio.NewScanner(f)
@@ -1133,7 +1254,7 @@ func printMissingBlobLines(blobIdsFile string, dbConStr string, conc int) {
 			if len(blobId) == 0 {
 				_log("DEBUG", "line:"+line+" doesn't contain blibId.")
 			} else {
-				// TODO: Opening DB connection from outside of goroutine may not execute it concurrently? so doing in here
+				// NOTE: Suspecting `openDb` from the outside of Goroutine may not open concurrent connections, so doing in here
 				db := openDb(dbConStr)
 				if db == nil {
 					panic("Cannot open the database.") // Can't output _DB_CON_STR as it may include password
@@ -1150,9 +1271,6 @@ func printMissingBlobLines(blobIdsFile string, dbConStr string, conc int) {
 					} else {
 						_log("INFO", "blobId:"+blobId+" exists in database.")
 					}
-				} else if *_TRUTH == "DB" {
-					_log("WARN", "_TRUSE == DB is not implemented yet.")
-					// isBlobMissingInBlobStore(blobId, client)
 				} else {
 					_log("ERROR", "_TRUSE == "+*_TRUTH+" is not implemented yet.")
 				}
@@ -1184,7 +1302,7 @@ func listObjectsS3(client *s3.Client, dir string) {
 		FetchOwner: *_WITH_OWNER,
 		Prefix:     &dir,
 	}
-	// TODO: probaly below won't work as StartAfter should be Key
+	// TODO: below does not seem to be working, as StartAfter should be Key
 	//if _MOD_DATE_FROM_ts > 0 {
 	//	input.StartAfter = aws.String(time.Unix(_MOD_DATE_FROM_ts, 0).UTC().Format("2006-01-02T15:04:05.000Z"))
 	//}
@@ -1290,13 +1408,35 @@ func main() {
 		os.Exit(1)
 	}
 
-	if len(*_BLOB_IDS_FILE) > 0 {
+	var client *s3.Client
+	if _IS_S3 != nil && *_IS_S3 {
+		cfg, err := config.LoadDefaultConfig(context.TODO())
+		if _DEBUG2 != nil && *_DEBUG2 {
+			// https://aws.github.io/aws-sdk-go-v2/docs/configuring-sdk/logging/
+			cfg, err = config.LoadDefaultConfig(context.TODO(), config.WithClientLogMode(aws.LogRetries|aws.LogRequest))
+		}
+		if err != nil {
+			panic("configuration error, " + err.Error())
+		}
+		client = s3.NewFromConfig(cfg)
+	}
+
+	if len(*_TRUTH) > 0 && *_TRUTH == "DB" && len(*_DB_CON_STR) > 0 && len(*_BLOB_IDS_FILE) == 0 {
+		_log("INFO", "The source is 'DB' and no Blobs ID file, so reading from DB")
+		printMissingBlobsFromDB(*_DB_CON_STR, *_CONC_1, client)
+		println("")
+		_log("INFO", fmt.Sprintf("Completed. (elapsed:%ds)", time.Now().Unix()-_START_TIME_ts))
+		return
+	}
+
+	// If a file which contains blob IDs, check those IDs are in the DB
+	if len(*_DB_CON_STR) > 0 && len(*_BLOB_IDS_FILE) > 0 {
 		_log("INFO", "Reading "+*_BLOB_IDS_FILE)
 		if len(*_DB_CON_STR) == 0 {
 			_log("ERROR", "DB connection string (-db) is required")
 			return
 		}
-		printMissingBlobLines(*_BLOB_IDS_FILE, *_DB_CON_STR, *_CONC_1)
+		printMissingBlobsFromFile(*_BLOB_IDS_FILE, *_DB_CON_STR, *_CONC_1)
 		if len(*_DB_CON_STR) > 0 && (_IS_S3 == nil || !*_IS_S3) {
 			println("")
 			softDeletedCount(*_DB_CON_STR)
@@ -1308,19 +1448,9 @@ func main() {
 
 	// Start outputting ..
 	var subDirs []string
-	var client *s3.Client
 
 	_log("INFO", fmt.Sprintf("Retriving sub directories under %s", *_BASEDIR))
 	if _IS_S3 != nil && *_IS_S3 {
-		cfg, err := config.LoadDefaultConfig(context.TODO())
-		if _DEBUG2 != nil && *_DEBUG2 {
-			// https://aws.github.io/aws-sdk-go-v2/docs/configuring-sdk/logging/
-			cfg, err = config.LoadDefaultConfig(context.TODO(), config.WithClientLogMode(aws.LogRetries|aws.LogRequest))
-		}
-		if err != nil {
-			panic("configuration error, " + err.Error())
-		}
-		client = s3.NewFromConfig(cfg)
 		subDirs = getDirsS3(client)
 	} else {
 		subDirs = getDirs(*_BASEDIR, *_PREFIX)

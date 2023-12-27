@@ -8,6 +8,7 @@ require (
 	github.com/aws/aws-sdk-go-v2/service/s3 v1.29.6
 	github.com/lib/pq v1.10.7
 	github.com/pkg/errors v0.9.1
+	github.com/wasilibs/go-re2 v1.4.1
 )
 
 require (
@@ -26,8 +27,6 @@ require (
 	github.com/aws/aws-sdk-go-v2/service/ssooidc v1.13.10 // indirect
 	github.com/aws/aws-sdk-go-v2/service/sts v1.17.7 // indirect
 	github.com/aws/smithy-go v1.13.5 // indirect
-	github.com/chzyer/readline v1.5.1 // indirect
-	github.com/google/pprof v0.0.0-20230912144702-c363fe2c2ed8 // indirect
-	github.com/ianlancetaylor/demangle v0.0.0-20230524184225-eabc099b10ab // indirect
-	golang.org/x/sys v0.12.0 // indirect
+	github.com/magefile/mage v1.14.0 // indirect
+	github.com/tetratelabs/wazero v1.5.0 // indirect
 )

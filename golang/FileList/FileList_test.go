@@ -2,6 +2,7 @@
 package main
 
 import (
+	"log"
 	"os"
 	"strings"
 	"testing"
@@ -41,6 +42,13 @@ var DUMMY_BLOB_IDS_TXT = `./vol-25/chap-40/79a659c7-32a1-4a72-84e0-1a7d07a9f11f.
 ./vol-36/chap-43/a4ee5b0d-f9b3-4dd0-a95d-62feb2900694.properties
 ./vol-16/chap-36/b5e06792-4487-4925-bac8-3fbb78d3f561.properties`
 
+func DeferPanic() {
+	// Use this function with 'defer' to recover from panic if occurred. Set err to nil otherwise.
+	if r := recover(); r != nil {
+		log.Println("Panic occurred:", r)
+	}
+}
+
 func TestMain(m *testing.M) {
 	err := writeContentsFile(DUMMY_FILE_PATH, DUMMY_PROP_TXT)
 	if err != nil {
@@ -79,17 +87,30 @@ func TestOpenDb(t *testing.T) {
 	}
 }
 
-func TestGenRpoFmtMap(t *testing.T) {
-	if len(TEST_DB_CONN_STR) == 0 {
-		t.Log("No DB conn string provided in TEST_DB_CONN_STR. Skipping TestGenRpoFmtMap.")
-		return
-	}
-	db := openDb(TEST_DB_CONN_STR)
+func TestInitRpoFmtMap(t *testing.T) {
+	*_BS_NAME = ""
+	*_DEBUG = true
+	conStr := "host=localhost port=5432 user=nexus password=nexus123 dbname=nxrmlatest"
+	defer DeferPanic()
+	db := openDb(conStr)
+	defer db.Close()
+
 	initRepoFmtMap(db)
-	db.Close()
 	t.Log(_REPO_TO_FMT)
 	if _REPO_TO_FMT == nil || len(_REPO_TO_FMT) == 0 {
 		t.Errorf("initRepoFmtMap didn't return any _REPO_TO_FMT.")
+	}
+	*_BS_NAME = "default"
+	initRepoFmtMap(db)
+	t.Log(_REPO_TO_FMT)
+	if _REPO_TO_FMT == nil || len(_REPO_TO_FMT) == 0 {
+		t.Errorf("initRepoFmtMap didn't return any _REPO_TO_FMT for default blobstore.")
+	}
+	*_BS_NAME = "aaaaaaaaaaaaaa"
+	initRepoFmtMap(db)
+	t.Log(_REPO_TO_FMT)
+	if _REPO_TO_FMT != nil && len(_REPO_TO_FMT) > 0 {
+		t.Errorf("initRepoFmtMap should not return any _REPO_TO_FMT.")
 	}
 }
 
@@ -136,27 +157,42 @@ func TestGenBlobPath(t *testing.T) {
 
 func TestPrintMissingBlobLines(t *testing.T) {
 	// Just to test if panics
-	printMissingBlobLines("/not/existing/file", "not working DB conn", 1)
-	t.Log("NOTE: 'ERROR blobIdsFile:/not/existing/file cannot be opened. ...' is expected.")
+	printMissingBlobsFromFile("/not/existing/file", "not working DB conn", 1)
+	t.Log("NOTE: 'blobIdsFile:/not/existing/file cannot be opened. open /not/existing/file: no such file or directory' is expected.")
 
 	//TEST_DB_CONN_STR = ""
-	TEST_DB_CONN_STR = "host=localhost port=5432 user=nexus password=nexus123 dbname=nxrm"
+	conStr := "host=localhost port=5432 user=nexus password=nexus123 dbname=nxrm"
 	// To improve the query speed
 	*_BS_NAME = "default"
 	//*_DEBUG = true
-	db := openDb(TEST_DB_CONN_STR)
-	initRepoFmtMap(db)
-	printMissingBlobLines(DUMMY_BLOB_IDS_PATH, TEST_DB_CONN_STR, 2)
-	db.Close()
-	if len(TEST_DB_CONN_STR) == 0 {
+	defer DeferPanic()
+	db := openDb(conStr)
+	if db == nil {
+		t.Logf("Connecting to the DB: %s failed.", TEST_DB_CONN_STR)
+	} else {
+		initRepoFmtMap(db)
+		printMissingBlobsFromFile(DUMMY_BLOB_IDS_PATH, TEST_DB_CONN_STR, 2)
+		db.Close()
+	}
+	if len(conStr) == 0 {
 		t.Log("NOTE: 'ERROR Cannot open the database.' is expected.")
 	}
 }
 
 func TestGetBlobSize(t *testing.T) {
-	size := getBlobSize(DUMMY_FILE_PATH)
-	if size != 0 {
-		t.Errorf("As no .bytes file, should be 0")
+	blobPath := getPathWithoutExt(DUMMY_FILE_PATH) + ".bytes"
+	size := getBlobSizeFile(blobPath)
+	if size != -1 {
+		t.Errorf("As no .bytes file, should be -1: %v", size)
+	}
+	blobPath = getPathWithoutExt(DUMMY_FILE_PATH) + ".properties"
+	size = getBlobSizeFile(blobPath)
+	if size < 1 {
+		t.Errorf("As .properties file should exist, should be positive integer: %v", size)
+	}
+	size = getBlobSize(blobPath, nil)
+	if size < 1 {
+		t.Errorf("As .properties file should exist, should be positive integer: %v", size)
 	}
 }
 
@@ -195,20 +231,58 @@ func TestQueryDb(t *testing.T) {
 
 func TestGenAssetBlobUnionQuery(t *testing.T) {
 	tableNames := make([]string, 0)
-	tableNames = append(tableNames, "maven2_asset_blob")
-	tableNames = append(tableNames, "pypi_asset_blob")
+	tableNames = append(tableNames, "maven2_asset")
+	tableNames = append(tableNames, "pypi_asset")
 	query := genAssetBlobUnionQuery(tableNames, "", "", false)
-	if !strings.Contains(query, "pypi_asset_blob") {
-		t.Errorf("Returned query query:%s is not expected result", query)
-	}
-	query = genAssetBlobUnionQuery(tableNames, "test, test2", "aaaa like 'bbbb'", false)
-	if !strings.Contains(query, "aaaa like 'bbbb'") {
-		t.Errorf("Returned query query:%s is not expected result", query)
+	if !strings.Contains(query, " pypi_asset_blob ") {
+		t.Errorf("Returned query:%s is not expected result", query)
 	}
 	query = genAssetBlobUnionQuery(tableNames, "", "", true)
-	if !strings.Contains(query, "'maven2_asset_blob' as tableName") {
-		t.Errorf("Returned query query:%s is not expected result", query)
+	if !strings.Contains(query, "'maven2_asset' as tableName") {
+		t.Errorf("Returned query:%s is not expected result", query)
 	}
+	query = genAssetBlobUnionQuery(tableNames, "test, test2", "aaaa like 'bbbb' LIMIT 1", false)
+	if !strings.Contains(query, "aaaa like 'bbbb' LIMIT 1") {
+		t.Errorf("Returned query:%s is not expected result", query)
+	}
+	//t.Log(query)
+	query = genAssetBlobUnionQuery(tableNames, "blob_ref", "", true)
+	if !strings.Contains(query, "blob_ref") {
+		t.Errorf("Returned query:%s is not expected result", query)
+	}
+}
+
+func TestGenAssetBlobUnionQueryFromRepoNames(t *testing.T) {
+	repoNames := make([]string, 0)
+	repoNames = append(repoNames, "npm-proxy")
+	repoNames = append(repoNames, "maven-hosted")
+
+	query := genAssetBlobUnionQueryFromRepoNames(repoNames, "", "", false)
+	if len(query) > 0 {
+		t.Errorf("Returned query:%s should be empty", query)
+	}
+
+	_REPO_TO_FMT = make(map[string]string)
+	_REPO_TO_FMT["npm-proxy"] = "raw"
+	_REPO_TO_FMT["maven-hosted"] = "maven2"
+
+	query = genAssetBlobUnionQueryFromRepoNames(repoNames, "", "", false)
+	if !strings.Contains(query, " maven2_asset a ") {
+		t.Errorf("Returned query:%s is not expected result", query)
+	}
+	query = genAssetBlobUnionQueryFromRepoNames(repoNames, "", "", true)
+	if !strings.Contains(query, "'maven-hosted'") {
+		t.Errorf("Returned query:%s is not expected result", query)
+	}
+	query = genAssetBlobUnionQueryFromRepoNames(repoNames, "blob_ref", "", true)
+	if !strings.Contains(query, " blob_ref, ") {
+		t.Errorf("Returned query:%s is not expected result", query)
+	}
+	query = genAssetBlobUnionQueryFromRepoNames(repoNames, "blob_ref", "1=1 LIMIT 1", true)
+	if !strings.Contains(query, " LIMIT 1") {
+		t.Errorf("Returned query:%s is not expected result", query)
+	}
+	//t.Log(query)
 }
 
 func TestGenBlobIdCheckingQuery(t *testing.T) {
@@ -223,7 +297,22 @@ func TestGenBlobIdCheckingQuery(t *testing.T) {
 	}
 }
 
-func TestGetAssetBlobTables(t *testing.T) {
+func TestGetFmtFromRepName(t *testing.T) {
+	t.Log("TODO: as _REPO_TO_FMT needs to be populated first")
+}
+
+func TestConvRepoNamesToAssetTableName(t *testing.T) {
+	t.Log("TODO: as _REPO_TO_FMT needs to be populated first (as getFmtFromRepName is used")
+}
+
+func TestIsSoftDeleted(t *testing.T) {
+	r := isSoftDeleted(DUMMY_FILE_PATH, nil)
+	if !r {
+		t.Errorf("Should be soft-deleted")
+	}
+}
+
+func TestGetAssetTables(t *testing.T) {
 	*_DEBUG = true
 	rtn := getAssetTables("")
 	t.Log("NOTE: 'ERROR getAssetTables requires _REPO_TO_FMT but empty.' can be ignored.")
@@ -273,6 +362,17 @@ func TestDatetimeStrToTs(t *testing.T) {
 		t.Errorf("Result should be timestanmp (int64) but got %v", result)
 	}
 	//result = datetimeStrToTs("aaaaa")
+}
+
+func TestReadPropertiesFile(t *testing.T) {
+	props, err := readPropertiesFile(DUMMY_FILE_PATH)
+	if err != nil {
+		t.Errorf("Error: %v", err)
+	}
+	if len(props) == 0 {
+		t.Errorf("Error: %v", props)
+	}
+	//t.Log(props)
 }
 
 // TODO: TestGenOutputFromProp (and some others)
