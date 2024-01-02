@@ -110,7 +110,7 @@ _RESP_FILE=""
 
 ### Nexus installation functions ##############################################################################
 # To install 1st/2nd instance: _NEXUS_ENABLE_HA=Y f_install_nexus3 "" "nxrmha"
-# To upgrade (from ${_dirpath}/): tar -xvf $HOME/.nexus_executable_cache/nexus-3.62.0-01-mac.tgz
+# To upgrade (from ${_dirpath}/): tar -xvf $HOME/.nexus_executable_cache/nexus-3.63.0-01-mac.tgz
 function f_install_nexus3() {
     local __doc__="Install specific NXRM3 version"
     local _ver="${1:-"${r_NEXUS_VERSION}"}"     # 'latest'
@@ -1373,7 +1373,7 @@ function f_api() {
     local _content_type="Content-Type: application/json"
     [ "${_data:0:1}" != "{" ] && [ "${_data:0:1}" != "[" ] && _content_type="Content-Type: text/plain"
 
-    local _curl="curl -sf"
+    local _curl="curl -sSf"
     ${_DEBUG} && _curl="curl -vf"
     if [ -z "${_data}" ]; then
         # GET and DELETE *can not* use Content-Type json

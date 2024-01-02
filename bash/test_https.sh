@@ -350,8 +350,16 @@ function keytool_v() {
 }
 
 #keytool -printcert -rfc -sslserver ${_host}:${_port}
-# Accept _PROXY_HOST_PORT _PROXY_USER_PWD
+# If HTTP proxy with username and password, (at least Mac's) keytool doesn't work?
+#keytool -J-Djavax.net.debug=all -J-Dhttps.proxyHost=dh1.standalone.localdomain -J-Dhttps.proxyPort=28080 -printcert -rfc -sslserver ${_host}:${_port}
+#$ openssl s_client -help 2>&1 | grep proxy
+# -proxy val                 Connect to via specified proxy to the real server
+# -proxy_user val            UserID for proxy authentication
+# -proxy_pass val            Proxy authentication password source
+# -allow_proxy_certs         allow the use of proxy certificates
+#openssl s_client -proxy "dh1.standalone.localdomain:28080" -showcerts -connect files.pythonhosted.org:443 </dev/null | openssl x509 -outform PEM | tee certificates.pem
 function get_cert_from_https() {
+    # Accept _PROXY_HOST_PORT _PROXY_USER_PWD
     local _host="$1"
     local _port="${2:-443}"
     local _import_truststore="$3"   # If provided, import the cert into this store
