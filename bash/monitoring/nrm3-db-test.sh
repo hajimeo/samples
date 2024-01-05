@@ -2,9 +2,9 @@
 usage() {
     cat <<EOF
 USAGE:
-    bash <(curl -sfL https://raw.githubusercontent.com/hajimeo/samples/master/bash/monitoring/nrm3-db-test.sh --compressed)
+    bash <(curl -sfL https://raw.githubusercontent.com/sonatype-nexus-community/nexus-monitoring/main/scripts/nrm3-db-test.sh --compressed)
 # Or
-    curl -O -sfL https://raw.githubusercontent.com/hajimeo/samples/master/bash/monitoring/nrm3-db-test.sh --compressed
+    curl -O -sfL https://raw.githubusercontent.com/sonatype-nexus-community/nexus-monitoring/main/scripts/nrm3-db-test.sh --compressed
     bash ./nrm3-db-test.sh [-i <installDir>] [-s /path/to/nexus-store.properties] [-q "query"]
 
 # If no 'nexus-store.properties', use 'export:

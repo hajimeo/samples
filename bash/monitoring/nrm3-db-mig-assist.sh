@@ -8,9 +8,9 @@ USAGE:
     export username="nxrm" password="nxrm123" jdbcUrl="jdbc:postgresql://localhost:5432/nxrm"
 
 # Oneliner command:
-    bash <(curl -sSfL https://raw.githubusercontent.com/hajimeo/samples/master/bash/monitoring/nrm3-db-mig-assist.sh --compressed)
+    bash <(curl -sSfL https://raw.githubusercontent.com/sonatype-nexus-community/nexus-monitoring/main/scripts/nrm3-db-mig-assist.sh --compressed)
 # Or, to specify DB Migrator version with '-m':
-    curl -O -sSfL https://raw.githubusercontent.com/hajimeo/samples/master/bash/monitoring/nrm3-db-mig-assist.sh --compressed
+    curl -O -sSfL https://raw.githubusercontent.com/sonatype-nexus-community/nexus-monitoring/main/scripts/nrm3-db-mig-assist.sh --compressed
     bash ./nrm3-db-mig-assist.sh -m 3.63.0-01
 
 # If Nexus is not running, specify '-i <installDir>' for connection test (and '-s' or 'export' for DB connection):
