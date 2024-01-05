@@ -227,6 +227,8 @@ function miscChecks() {
     local __doc__="Gather Misc. information"
     local _pid="$1"
     set -x
+    # STDOUT / STDERR
+    ls -l /proc/${_pid}/fd/{1,2}
     # OS / kernel related
     uname -a
     cat /etc/*-release
