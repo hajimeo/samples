@@ -163,10 +163,11 @@ function iqMvn() {
 #  INSERT INTO http_client_configuration (id, proxy) VALUES (1, '{"http": {"host": "localhost", "port": 28080, "enabled": true, "authentication": null}, "https": null, "nonProxyHosts": null}' FORMAT JSON);
 function nxrmStart() {
     local _base_dir="${1:-"."}"
-    # -Xrunhprof:cpu=samples,interval=30,thread=y,monitor=y,cutoff=0.001,doe=n,file=/tmp/cpu_samples_$$.hprof
+    # Adding monitor and heap=sites (and cpu=times) make the process too slow
+    # -Xrunhprof:cpu=samples,interval=30,thread=y,cutoff=0.005,file=/tmp/cpu_samples_$$.hprof
+    # -Xrunhprof:cpu=times,interval=30,thread=y,monitor=y,cutoff=0.001,doe=n,file=/tmp/cpu_samples_$$.hprof
     # -Xrunhprof:heap=sites,format=b,file=${_base_dir%/}/heap_sites_$$.hprof
-    # addming monitor and heap=sites (and cpu=times) make the process too slow
-    local _java_opts=${2-"-Xrunjdwp:transport=dt_socket,server=y,address=5005,suspend=${_SUSPEND:-"n"} -Xrunhprof:cpu=samples,interval=30,thread=y,cutoff=0.005,file=/tmp/cpu_samples_$$.hprof"}
+    local _java_opts=${2-"-Xrunjdwp:transport=dt_socket,server=y,address=5005,suspend=${_SUSPEND:-"n"}"}
     local _mode=${3} # if NXRM2, not 'run' but 'console'
     #local _java_opts=${@:2}
     _base_dir="$(realpath "${_base_dir}")"
@@ -316,6 +317,7 @@ function _updateNexusProps() {
 }
 
 # https://issues.sonatype.org/browse/NEXUS-29730 java.lang.NoClassDefFoundError: com/sun/jna/Platform
+# https://docs.oracle.com/javase/8/docs/technotes/guides/standards/#:~:text=endorsed.,endorsed.
 function _nexus29730() {
     local _base_dir="${1:-"."}"
     local _good_jar_root="${2:-"/var/tmp/share/java/libs"}"
@@ -323,6 +325,9 @@ function _nexus29730() {
         echo "WARN: No good jar (${_good_jar_root%/}/system/net/java/dev/jna/jna/5.11.0/jna-5.11.0.jar)"
         return 1
     fi
+    #local _endorsed="$(find ${_base_dir%/} -maxdepth 4 -type d -name endorsed -path '*/lib/*'| sort | tail -n1)"
+    #cp -v -f ${_good_jar_root%/}/system/net/java/dev/jna/jna/5.11.0/jna-5.11.0.jar ${_endorsed%/}/ || return $?
+    #cp -v -f ${_good_jar_root%/}/system/net/java/dev/jna/jna-platform/5.11.0/jna-platform-5.11.0.jar ${_endorsed%/}/ || return $?
     find ${_base_dir%/}/nexus-3.* -type f -path '*/system/net/java/dev/jna/jna/*' -name "jna-*.jar" | while read -r _jar; do
         if [[ "${_jar}" =~ /jna-[0-5]\.[0-9]\.[0-9]\.jar ]]; then
             cp -v -f ${_good_jar_root%/}/system/net/java/dev/jna/jna/5.11.0/jna-5.11.0.jar ${_jar}
@@ -478,9 +483,13 @@ function _iqConfigAPI() {
     local _d="$1"
     local _iq_url="$2"
     _iq_url="$(_get_iq_url "${_iq_url}")" || return $?
-    local _cmd="curl -D- -u \"admin:admin123\" \"${_iq_url%/}/api/v2/config\""
-    if [ -n "${_d}" ]; then
-        _cmd="${_cmd} -H \"Content-Type: application/json\" -X PUT -d '${_d}'"
+    local _cmd="curl -D- -u \"admin:admin123\" \"${_iq_url%/}/api/v2/config"
+    if [[ "${_d}" =~ ^property= ]]; then
+        _cmd="${_cmd}?${_d}\""
+    elif [ -n "${_d}" ]; then
+        _cmd="${_cmd}\" -H \"Content-Type: application/json\" -X PUT -d '${_d}'"
+    else
+        _cmd="${_cmd}\""
     fi
     echo "${_cmd}"
     eval "${_cmd}" || return $?
@@ -913,6 +922,11 @@ function nxrm3Scripting() {
         # TODO: why need to use text/plain?
         curl -D- -u admin:admin123 -X POST -H 'Content-Type: text/plain' "${_nexus_url%/}/service/rest/v1/script/${_script_name}/run" -d@/tmp/${FUNCNAME}_args.json
     fi
+}
+
+#rg '".typeId": "script"' _filtered/db_job_details.json | extGroovy
+function extGroovy() {
+    sed "s/,$//" | while read -r _l;do echo "${_l}" | python -c "import sys,json;print(json.load(sys.stdin)['jobDataMap']['source'])" && echo "// --- end of script --- //" >&2; done
 }
 
 # Convert the DeadBlobsFinder result (deadBlobResult-YYYYMMDD-hhmmss.json) to a simple list
