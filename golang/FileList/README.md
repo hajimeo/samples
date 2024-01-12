@@ -28,7 +28,7 @@ Usage of file-list:
   -H    If true, no header line
   -L    If true, just list directories and exit
   -O    AWS S3: If true, get the owner display name
-  -P    If true, read and output the .properties files
+  -P    If true, the .properties file content is included in the output
   -R    If true, .properties content is *sorted* and -fP|-fPX string is treated as regex
   -RDel
         Remove 'deleted=true' from .properties. Requires -dF
@@ -117,7 +117,7 @@ file-list -b ./content -p 'vol-' -c 10 -fP "deleted=true" -n 1 -s /tmp/file-list
 ### Check the total count and size of all .bytes files
 This would be useful to compare with the counters in the Blobstore page.
 ```
-$ file-list -b ./content -p 'vol-' -f ".bytes" >/dev/null
+file-list -b ./content -p 'vol-' -f ".bytes" >/dev/null
 2021/12/31 14:24:15 INFO: Generating list with ./sonatype-work/nexus3/blobs/default ...
 ... (snip) ...
 13:52:46.972949 INFO  Printed 136895 of 136895 (size:2423593014) in ./content and sub-dir starts with vol- (elapsed:26s)
@@ -152,7 +152,7 @@ file-list -b ./content -p "vol-" -c 10 -dF "$(date -d "1 day ago" +%Y-%m-%d)" -R
 
 ### Check files, which were soft-deleted since 1 day ago (-dF), including .properties file contents (-P -f ".properties")
 ```
-$ file-list -b ./content -p vol- -c 10 -dF "$(date -d "1 day ago" +%Y-%m-%d)" -P -f ".properties" -s ./$(date '+%Y-%m-%d').tsv 2>./file-list_$(date +"%Y%m%d%H%M%S").log
+file-list -b ./content -p vol- -c 10 -dF "$(date -d "1 day ago" +%Y-%m-%d)" -P -f ".properties" -s ./$(date '+%Y-%m-%d').tsv 2>./file-list_$(date +"%Y%m%d%H%M%S").log
 ```
 NOTE: If using -RDel to remove "deleted=true", recommend to save the STDERR into a file (like above) in case of reverting.
 
@@ -161,15 +161,15 @@ NOTE: If using -RDel to remove "deleted=true", recommend to save the STDERR into
 file-list -RDel -dF "$(date -d "1 day ago" +%Y-%m-%d)" -S3 -b "apac-support-bucket" -p "node-nxrm-ha1/content/vol-" -R -fP "@Bucket\.repo-name=raw-s3-hosted,.+deleted=true" -P -c 10 -s ./undelete_raw-s3-hosted.out -Dry
 ```
 
-### Check orphaned files by querying against PostgreSQL (-db "\<conn string or nexus-store.properties file path) with max 10 DB connections (-c 10), and using -P as it's faster because of generating better SQL query
+### Check orphaned files by querying against PostgreSQL (-db "\<conn string or nexus-store.properties file path) with max 10 DB connections (-c 10), and using -P as it's faster because of generating better SQL query, and checking only *.properties files with -f (excluding .bytes files)
 ```
-file-list -b ./content -p vol- -c 10 -db "host=localhost port=5432 user=nxrm3pg password=******** dbname=nxrm3pg" -P
+file-list -b ./content -p vol- -c 10 -db "host=localhost port=5432 user=nxrm3pg password=******** dbname=nxrm3pg" -P -f ".properties"
 # or
-file-list -b ./content -p vol- -c 10 -db /nexus-data/etc/fabric/nexus-store.properties -P
+file-list -b ./content -p vol- -c 10 -db /nexus-data/etc/fabric/nexus-store.properties -P -f ".properties"
 ```
 NOTE: the above outputs blobs with properties content, which are not in <format>_asset table, which means it doesn't check the asset_blobs which are soft-deleted by Cleanup unused asset blobs task.
 
-### Check orphaned files from the text file (-bF ./blobIds.txt), which contains Blob IDs, against 'default' blob store (-bsName 'default')
+### Check orphaned files from the text file (-bF ./blobIds.txt), which contains Blob IDs, instead of walking blobs directory, against 'default' blob store (-bsName 'default')
 ```
 file-list -b ./content -p vol- -c 10 -db "host=localhost port=5432 user=nxrm3pg password=******** dbname=nxrm3pg" -bF ./blobIds.txt -bsName "default" -s /tmp/orphaned_list.out 2>/tmp/orphaned_verify.log
 # If the file contains unnecessary lines (eg: .bytes), use '-bf -'
@@ -181,14 +181,18 @@ Above /tmp/result.err contains the line `17:58:13.814063 WARN  blobId:81ab5a69-e
 ```
 cd ./sonatype-work/nexus3/
 file-list -b ./blobs/default/content -p vol- -c 10 -src DB -db ./etc/fabric/nexus-store.properties -repos "raw-hosted" -X -s ./dead-list.out 2>./dead-list.log 
+file-list -b ./blobs/default/content -p vol- -c 10 -src DB -db "host=localhost port=5432 user=nxrm3pg dbname=nxrm3pg password=********" -bsName default -X -s ./dead-list.out 2>./dead-list.log 
 ```
-Above /tmp/result.err contains the line `17:58:13.814063 WARN  blobId:81ab5a69-e099-44a1-af1a-7a406bc305e9 does not exist in database.`, or `INFO` if the blobId exists in the DB.
 ```
 file-list -S3 -b "apac-support-bucket" -p "filelist_test/content/vol-" -c 10 -src DB -db ./etc/fabric/nexus-store.properties -bsName "s3-test" -s ./dead-list_s3.out -X 2>./dead-list_s3.log 
 ```
 In above example, `filelist_test` is the S3 bucket prefix and `-X` is for debug (verbose) output.
-
+### For OrientDB
+```
+cd ./sonatype-work/nexus3/
+echo "select blob_ref from asset" | orient-console ./db/component/ | file-list -b ./blobs/default/content -p vol- -c 10 -src DB -bF "-" -bsName default -X -s ./dead-list_fromOrient.out 2>./dead-list_fromOrient.log
+```
 ###  List specific .properties/.bytes files then delete with xargs + rm:
 ```
-$ file-list -b ./sonatype-work/nexus3/blobs/default/content -p "vol-" -c 4 -fP "@BlobStore\.blob-name=/@sonatype/policy-demo,.+@Bucket\.repo-name=npm-hosted" -R -H | cut -d '.' -f1 | xargs -I{} -t rm -v -f {}.{properties,bytes}
+file-list -b ./sonatype-work/nexus3/blobs/default/content -p "vol-" -c 4 -fP "@BlobStore\.blob-name=/@sonatype/policy-demo,.+@Bucket\.repo-name=npm-hosted" -R -H | cut -d '.' -f1 | xargs -I{} -t rm -v -f {}.{properties,bytes}
 ```

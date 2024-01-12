@@ -2,6 +2,7 @@
 package main
 
 import (
+	regexp "github.com/wasilibs/go-re2"
 	"log"
 	"os"
 	"strings"
@@ -115,12 +116,14 @@ func TestInitRpoFmtMap(t *testing.T) {
 }
 
 // TODO: think about good testing
-func TestPrintLine(t *testing.T) {
+func TestGenOutput(t *testing.T) {
 	//_setGlobals()
 	fInfo, _ := os.Lstat(DUMMY_FILE_PATH)
-	printLine(DUMMY_FILE_PATH, fInfo, nil)
-	//t.Errorf("printLine failed with all default global variables")
-	//flag.PrintDefaults()
+	output := genOutput(DUMMY_FILE_PATH, fInfo.ModTime(), fInfo.Size(), 0, nil)
+	if !strings.Contains(output, DUMMY_FILE_PATH) {
+		t.Errorf("%s didn't contain '%s'", output, DUMMY_FILE_PATH)
+	}
+	//t.Log(output)
 }
 
 func TestGetPathWithoutExt(t *testing.T) {
@@ -157,7 +160,7 @@ func TestGenBlobPath(t *testing.T) {
 
 func TestPrintMissingBlobLines(t *testing.T) {
 	// Just to test if panics
-	printMissingBlobsFromFile("/not/existing/file", "not working DB conn", 1)
+	printOrphanedBlobsFromIdFile("/not/existing/file", "not working DB conn", 1)
 	t.Log("NOTE: 'blobIdsFile:/not/existing/file cannot be opened. open /not/existing/file: no such file or directory' is expected.")
 
 	//TEST_DB_CONN_STR = ""
@@ -171,7 +174,7 @@ func TestPrintMissingBlobLines(t *testing.T) {
 		t.Logf("Connecting to the DB: %s failed.", TEST_DB_CONN_STR)
 	} else {
 		initRepoFmtMap(db)
-		printMissingBlobsFromFile(DUMMY_BLOB_IDS_PATH, TEST_DB_CONN_STR, 2)
+		printOrphanedBlobsFromIdFile(DUMMY_BLOB_IDS_PATH, TEST_DB_CONN_STR, 2)
 		db.Close()
 	}
 	if len(conStr) == 0 {
@@ -350,6 +353,77 @@ func TestIsTimestampBetween(t *testing.T) {
 	if result {
 		t.Errorf("should not be return for %d < %d < %d", 1622592000000, 1622674572617, 1622592000)
 	}
+}
+
+func TestGenOutputFromProp(t *testing.T) {
+	contents := "#2024-01-03 10:19:21,102+1000,#Wed Jan 03 10:19:21 AEST 2024,@BlobStore.blob-name=/dummies/test_41.txt,@BlobStore.content-type=text/plain,@BlobStore.created-by-ip=127.0.0.1,@BlobStore.created-by=admin,@Bucket.repo-name=raw-hosted,creationTime=1704241147460,deleted=true,deletedDateTime=1704241161102,deletedReason=Removing unused asset blob,sha1=0b66bf353f0f43663786e1873b0714700dc5742f,size=48"
+	props, skipReason := genOutputFromProp(contents)
+	if len(props) == 0 {
+		t.Errorf("'props' should not be empty")
+		t.Logf("%v", props)
+		t.Logf("%v", skipReason)
+	}
+
+	*_USE_REGEX = true
+	regexStr := "@Bucket.repo-name=raw-hosted.+deleted=true"
+	_RX = nil
+	_R, _ = regexp.Compile(regexStr)
+	props, skipReason = genOutputFromProp(contents)
+	if len(props) == 0 {
+		t.Errorf("'props' should not be empty with regex: %s", regexStr)
+		t.Logf("%v", props)
+		t.Logf("%v", skipReason)
+	}
+	_RX, _ = regexp.Compile(regexStr)
+	_R = nil
+	props, skipReason = genOutputFromProp(contents)
+	if len(props) > 0 {
+		t.Errorf("'props' should be empty with exclude regex: %s", regexStr)
+		t.Logf("%v", props)
+		t.Logf("%v", skipReason)
+	}
+
+	*_USE_REGEX = false
+	_R = nil
+	_RX = nil
+
+	*_FILTER_PX = ""
+	*_FILTER_P = "@Bucket.repo-name=raw-hosted.+deleted=true"
+	props, skipReason = genOutputFromProp(contents)
+	if len(props) > 0 {
+		t.Errorf("'props' should be empty with string: %s (as '.+')", regexStr)
+		t.Logf("%v", props)
+		t.Logf("%v", skipReason)
+	}
+	*_FILTER_PX = ""
+	*_FILTER_P = "@Bucket.repo-name=raw-hosted,creationTime="
+	props, skipReason = genOutputFromProp(contents)
+	if len(props) == 0 {
+		t.Errorf("'props' should not be empty with string: %s", regexStr)
+		t.Logf("%v", props)
+		t.Logf("%v", skipReason)
+	}
+
+	*_FILTER_PX = "@Bucket.repo-name=raw-hosted.+deleted=true"
+	*_FILTER_P = ""
+	props, skipReason = genOutputFromProp(contents)
+	if len(props) == 0 {
+		t.Errorf("'props' should not be empty with string: %s", *_FILTER_PX)
+		t.Logf("%v", props)
+		t.Logf("%v", skipReason)
+	}
+	*_FILTER_PX = "@Bucket.repo-name=raw-hosted,creationTime="
+	*_FILTER_P = ""
+	props, skipReason = genOutputFromProp(contents)
+	if len(props) > 0 {
+		t.Errorf("'props' should be empty with string: %s", *_FILTER_PX)
+		t.Logf("%v", props)
+		t.Logf("%v", skipReason)
+	}
+
+	*_USE_REGEX = false
+	*_FILTER_P = ""
+	*_FILTER_PX = ""
 }
 
 func TestDatetimeStrToTs(t *testing.T) {

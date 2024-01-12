@@ -133,7 +133,7 @@ func _setGlobals() {
 	//_BASEDIR = flag.String("b", "", "S3 Bucket name")
 	_DIR_DEPTH = flag.Int("dd", 2, "NOT IN USE: Directory Depth to find sub directories (eg: 'vol-NN', 'chap-NN')")
 	_PREFIX = flag.String("p", "", "Prefix of sub directories (eg: 'vol-') This is not recursive")
-	_WITH_PROPS = flag.Bool("P", false, "If true, read and output the .properties files")
+	_WITH_PROPS = flag.Bool("P", false, "If true, the .properties file content is included in the output")
 	_FILTER = flag.String("f", "", "Filter for the file path (eg: '.properties' to include only this extension)")
 	_WITH_BLOB_SIZE = flag.Bool("BSize", false, "If true, includes .bytes size (When -f is '.properties')")
 	_FILTER_P = flag.String("fP", "", "Filter for the content of the .properties files (eg: 'deleted=true')")
@@ -236,7 +236,7 @@ func _setGlobals() {
 			panic(err)
 		}
 	}
-	_log("DEBUG", "_setGlobals completed.")
+	_log("DEBUG", "_setGlobals completed for "+strings.Join(os.Args[1:], " "))
 }
 
 func _log(level string, message string) {
@@ -255,6 +255,10 @@ func _log(level string, message string) {
 }
 
 func _println(line string) (n int, err error) {
+	// At this moment, excluding empty line
+	if len(line) == 0 {
+		return
+	}
 	if _SAVE_TO_F != nil {
 		return fmt.Fprintln(_SAVE_TO_F, line)
 	}
@@ -460,6 +464,7 @@ func getBlobSizeS3(blobPath string, client *s3.Client) int64 {
 }
 
 func tags2str(tagset []types.Tag) string {
+	// Convert AWS S3 tags to string
 	str := ""
 	for _, _t := range tagset {
 		if len(str) == 0 {
@@ -473,41 +478,18 @@ func tags2str(tagset []types.Tag) string {
 
 func printLineS3(client *s3.Client, item types.Object, db *sql.DB) {
 	path := *item.Key
-	//_log("DEBUG", fmt.Sprintf("printLine-ing for path:%s", path))
 	modTime := item.LastModified
-	modTimeTs := modTime.Unix()
-	output := ""
 	var blobSize int64 = 0
-
-	atomic.AddInt64(&_CHECKED_N, 1)
-
-	if _MOD_DATE_FROM_ts > 0 && modTimeTs <= _MOD_DATE_FROM_ts {
-		_log("DEBUG2", fmt.Sprintf("path:%s modTime %d <= %d", path, modTimeTs, _MOD_DATE_FROM_ts))
-		return
-	}
-	if _MOD_DATE_TO_ts > 0 && modTimeTs >= _MOD_DATE_TO_ts {
-		_log("DEBUG2", fmt.Sprintf("path:%s modTime %d >= %d", path, modTimeTs, _MOD_DATE_TO_ts))
-		return
-	}
-
-	output = fmt.Sprintf("%s%s%s%s%d", path, _SEP, modTime, _SEP, item.Size)
-
 	// If .properties file is checked and _WITH_BLOB_SIZE, then get the size of .bytes file
 	if *_WITH_BLOB_SIZE && *_FILTER == _PROP_EXT && strings.HasSuffix(path, _PROP_EXT) {
 		blobPath := getPathWithoutExt(path) + ".bytes"
 		blobSize = getBlobSizeS3(blobPath, client)
-		output = fmt.Sprintf("%s%s%d", output, _SEP, blobSize)
 	}
-
-	// If .properties file is checked, depending on other flags, output can be changed.
-	if strings.HasSuffix(path, _PROP_EXT) {
-		output = _printLineExtra(output, path, modTimeTs, db, client)
-	}
+	output := genOutput(path, *modTime, item.Size, blobSize, db)
 
 	if *_WITH_OWNER {
 		output = fmt.Sprintf("%s%s%s", output, _SEP, *item.Owner.DisplayName)
 	}
-
 	// Get tags if -with-tags is presented.
 	if *_WITH_TAGS {
 		_log("DEBUG", fmt.Sprintf("Getting tags for %s", path))
@@ -525,40 +507,37 @@ func printLineS3(client *s3.Client, item types.Object, db *sql.DB) {
 			output = fmt.Sprintf("%s%s%s", output, _SEP, tag_output)
 		}
 	}
-
-	// Updating counters and return
-	if len(output) > 0 {
-		atomic.AddInt64(&_PRINTED_N, 1)
-		atomic.AddInt64(&_TTL_SIZE, item.Size+blobSize)
-		_println(output)
-		return
-	}
-	return
+	_println(output)
 }
 
-func printLine(path string, fInfo os.FileInfo, db *sql.DB) {
-	//_log("DEBUG", fmt.Sprintf("printLine-ing for path:%s", path))
+func printLineFile(path string, fInfo os.FileInfo, db *sql.DB) {
 	modTime := fInfo.ModTime()
-	modTimeTs := modTime.Unix()
 	var blobSize int64 = 0
-
-	atomic.AddInt64(&_CHECKED_N, 1)
-
-	if _MOD_DATE_FROM_ts > 0 && modTimeTs <= _MOD_DATE_FROM_ts {
-		_log("DEBUG2", fmt.Sprintf("path:%s modTime %d <= %d", path, modTimeTs, _MOD_DATE_FROM_ts))
-		return
-	}
-	if _MOD_DATE_TO_ts > 0 && modTimeTs >= _MOD_DATE_TO_ts {
-		_log("DEBUG2", fmt.Sprintf("path:%s modTime %d >= %d", path, modTimeTs, _MOD_DATE_TO_ts))
-		return
-	}
-
-	output := fmt.Sprintf("%s%s%s%s%d", path, _SEP, modTime, _SEP, fInfo.Size())
-
 	// If .properties file is checked and _WITH_BLOB_SIZE, then get the size of .bytes file
 	if *_WITH_BLOB_SIZE && *_FILTER == _PROP_EXT && strings.HasSuffix(path, _PROP_EXT) {
 		blobPath := getPathWithoutExt(path) + ".bytes"
 		blobSize = getBlobSizeFile(blobPath)
+	}
+	output := genOutput(path, modTime, fInfo.Size(), blobSize, db)
+	_println(output)
+}
+
+func genOutput(path string, modTime time.Time, size int64, blobSize int64, db *sql.DB) string {
+	atomic.AddInt64(&_CHECKED_N, 1)
+
+	modTimeTs := modTime.Unix()
+	if _MOD_DATE_FROM_ts > 0 && modTimeTs <= _MOD_DATE_FROM_ts {
+		_log("DEBUG2", fmt.Sprintf("path:%s modTime %d <= %d", path, modTimeTs, _MOD_DATE_FROM_ts))
+		return ""
+	}
+	if _MOD_DATE_TO_ts > 0 && modTimeTs >= _MOD_DATE_TO_ts {
+		_log("DEBUG2", fmt.Sprintf("path:%s modTime %d >= %d", path, modTimeTs, _MOD_DATE_TO_ts))
+		return ""
+	}
+
+	output := fmt.Sprintf("%s%s%s%s%d", path, _SEP, modTime, _SEP, size)
+
+	if *_WITH_BLOB_SIZE {
 		output = fmt.Sprintf("%s%s%d", output, _SEP, blobSize)
 	}
 
@@ -570,11 +549,9 @@ func printLine(path string, fInfo os.FileInfo, db *sql.DB) {
 	// Updating counters and return
 	if len(output) > 0 {
 		atomic.AddInt64(&_PRINTED_N, 1)
-		atomic.AddInt64(&_TTL_SIZE, fInfo.Size()+blobSize)
-		_println(output)
-		return
+		atomic.AddInt64(&_TTL_SIZE, size+blobSize)
 	}
-	return
+	return output
 }
 
 // To handle a bit complicated conditions
@@ -583,20 +560,8 @@ func _printLineExtra(output string, path string, modTimeTs int64, db *sql.DB, cl
 		_log("INFO", "path:"+path+" is recently modified, so skipping ("+strconv.FormatInt(modTimeTs, 10)+" > "+strconv.FormatInt(_START_TIME_ts, 10)+")")
 		return ""
 	}
-	// TODO: probably do not need this check when _DEL_DATE_FROM_ts is gven
-	/*if _DEL_DATE_FROM_ts > 0 && modTimeTs < _DEL_DATE_FROM_ts {
-		_log("DEBUG2", "path:"+path+" mod time is older than _DEL_DATE_FROM_ts, so skipping ("+strconv.FormatInt(modTimeTs, 10)+" < "+strconv.FormatInt(_DEL_DATE_FROM_ts, 10)+")")
-		return ""
-	}*/
-	// NOTE: Not doing same for _DEL_DATE_TO_ts as some task may touch.
-
-	// no deleted date from/to, should not need to open a file
-	if (!*_WITH_PROPS) && len(*_DB_CON_STR) > 0 && len(*_TRUTH) > 0 && _DEL_DATE_FROM_ts == 0 && _DEL_DATE_TO_ts == 0 {
-		blobId := extractBlobIdFromString(path)
-		if *_TRUTH == "BS" && !isBlobMissingInDB("", blobId, db) {
-			_log("DEBUG2", "path:"+path+" exists in Database. Skipping.")
-			return ""
-		}
+	// no need to open the properties file no _WITH_PROPS and if no DB connection (or not BS) and no _DEL_DATE_FROM/TO
+	if (!*_WITH_PROPS) && (len(*_DB_CON_STR) == 0 || *_TRUTH != "BS") && _DEL_DATE_FROM_ts == 0 && _DEL_DATE_TO_ts == 0 {
 		return output
 	}
 
@@ -608,24 +573,22 @@ func _printLineExtra(output string, path string, modTimeTs int64, db *sql.DB, cl
 		return ""
 	}
 	if len(contents) == 0 {
-		_log("WARN", "getContents for "+path+" returned 0 size.")
+		_log("WARN", "getContents for "+path+" returned 0 size.") // But still can check orphan
 	}
 
 	// If 'contents' is given, get the repository name and use it in the query.
-	if len(*_DB_CON_STR) > 0 && len(*_TRUTH) > 0 {
+	if len(*_DB_CON_STR) > 0 && len(*_TRUTH) > 0 && *_TRUTH == "BS" {
 		blobId := extractBlobIdFromString(path)
-		if *_TRUTH == "BS" {
-			// Script is asked to output if this blob is missing in DB
-			if !isBlobMissingInDB(contents, blobId, db) {
-				return ""
-			}
+		// Script is asked to output if this blob is missing in DB
+		if !isBlobMissingInDB(contents, blobId, db) {
+			return ""
 		}
 	}
 
 	if *_WITH_PROPS || len(*_FILTER_P) > 0 || len(*_FILTER_PX) > 0 {
-		props, skipReason := genOutputFromProp(contents, path)
+		props, skipReason := genOutputFromProp(contents)
 		if skipReason != nil {
-			_log("DEBUG", skipReason.Error())
+			_log("DEBUG", fmt.Sprintf("%s: %s", path, skipReason.Error()))
 			return ""
 		}
 		if *_WITH_PROPS && len(props) > 0 {
@@ -1000,7 +963,7 @@ func isTimestampBetween(tMsec int64, fromTsMsec int64, toTsMsec int64) bool {
 	return true
 }
 
-func genOutputFromProp(contents string, path string) (string, error) {
+func genOutputFromProp(contents string) (string, error) {
 	// To use simpler regex, sorting line and converting to single line first
 	lines := strings.Split(contents, "\n")
 	sort.Strings(lines)
@@ -1008,25 +971,24 @@ func genOutputFromProp(contents string, path string) (string, error) {
 
 	// Exclude check first
 	if _RX != nil && len(_RX.String()) > 0 && _RX.MatchString(sortedContents) {
-		return "", errors.New(fmt.Sprintf("%s matches with the exclude regex filter: %s. Skipping.", path, *_FILTER_PX))
+		return "", errors.New(fmt.Sprintf("Matched with the exclude regex: %s. Skipping.", _RX.String()))
 	}
 
 	if _R != nil && len(_R.String()) > 0 {
 		if _R.MatchString(sortedContents) {
-			_log("DEBUG2", fmt.Sprintf("%s match with the regex filter: %s.", path, *_FILTER_P))
 			return sortedContents, nil
 		} else {
-			return "", errors.New(fmt.Sprintf("%s does NOT match with the regex filter %s. Skipping.", path, *_FILTER_P))
+			_log("DEBUG2", fmt.Sprintf("Sorted content: '%s'", sortedContents))
+			return "", errors.New(fmt.Sprintf("Does NOT match with the regex: %s. Skipping.", _R.String()))
 		}
 	}
 
-	if len(*_FILTER_PX) > 0 && strings.Contains(sortedContents, *_FILTER_PX) {
-		return "", errors.New(fmt.Sprintf("%s contain exclude filter: %s. Skipping.", path, *_FILTER_PX))
+	// Not treating as regex
+	if _RX == nil && len(*_FILTER_PX) > 0 && strings.Contains(sortedContents, *_FILTER_PX) {
+		return "", errors.New(fmt.Sprintf("Contains excluding string '%s'. Skipping.", *_FILTER_PX))
 	}
-
-	// If not regex (eg: 'deleted=true')
-	if len(*_FILTER_P) > 0 && !strings.Contains(sortedContents, *_FILTER_P) {
-		return "", errors.New(fmt.Sprintf("%s does not contain %s. Skipping.", path, *_FILTER_P))
+	if _R == nil && len(*_FILTER_P) > 0 && !strings.Contains(sortedContents, *_FILTER_P) {
+		return "", errors.New(fmt.Sprintf("Does not contain '%s'. Skipping.", *_FILTER_P))
 	}
 
 	// If no _FILTER_P, just return the contents as single line. Should also escape '"'?
@@ -1138,7 +1100,7 @@ func softDeletedCount(dbConStr string) {
 	db := openDb(dbConStr)
 	defer db.Close()
 
-	query := "SELECT source_blob_store_name, count(*), min(deleted_date) FROM soft_deleted_blobs group by 1"
+	query := "SELECT source_blob_store_name, count(*), min(deleted_date) FROM soft_deleted_blobs group by 1 order by 1"
 	rows := queryDb(query, db)
 	defer rows.Close()
 	cols, _ := rows.Columns()
@@ -1153,32 +1115,45 @@ func softDeletedCount(dbConStr string) {
 	}
 }
 
-func printMissingBlobsFromFile(blobIdsFile string, dbConStr string, conc int) {
-	if conc < 1 {
-		_log("ERROR", "Incorrect concurrency:"+strconv.Itoa(conc))
-		return
-	}
-
+func openInOrFIle(path string) *os.File {
 	f := os.Stdin
-	if blobIdsFile != "-" {
+	if path != "-" {
 		var err error
-		f, err = os.Open(blobIdsFile)
+		f, err = os.Open(path)
 		if err != nil {
-			_log("ERROR", "blobIdsFile:"+blobIdsFile+" cannot be opened. "+err.Error())
-			return
+			_log("ERROR", "path:"+path+" cannot be opened. "+err.Error())
+			return nil
 		}
 	}
-	defer f.Close()
-
-	printMissingBlobs(f, dbConStr, conc)
+	return f
 }
 
-func printMissingBlobsFromDB(dbConStr string, conc int, s3Client *s3.Client) {
-	if conc < 1 {
-		_log("ERROR", "Incorrect concurrency:"+strconv.Itoa(conc))
-		return
-	}
+func printDeadBlobsFromIdFile(blobIdsFile string, conc int, s3Client *s3.Client) {
+	f := openInOrFIle(blobIdsFile)
+	defer f.Close()
 
+	_println(fmt.Sprintf("ASSET_ID%sBLOB_REF", _SEP))
+
+	var wg sync.WaitGroup
+	guard := make(chan struct{}, conc)
+	scanner := bufio.NewScanner(f)
+	for scanner.Scan() {
+		line := scanner.Text()
+		_log("DEBUG2", fmt.Sprintf("printDeadBlobsFromDb line: %s", line))
+
+		guard <- struct{}{}
+		wg.Add(1)
+		go func(line string, s3Client *s3.Client) {
+			defer wg.Done()
+			// TODO: Havn't decided how to retrieve the asset_id
+			printDeadBlob(0, line, s3Client)
+			<-guard
+		}(line, s3Client)
+	}
+	wg.Wait()
+}
+
+func printDeadBlobsFromDb(dbConStr string, conc int, s3Client *s3.Client) {
 	db := openDb(dbConStr)
 	if db == nil {
 		panic("Cannot open the database.") // Can't output _DB_CON_STR as it may include password
@@ -1229,34 +1204,45 @@ func printMissingBlobsFromDB(dbConStr string, conc int, s3Client *s3.Client) {
 	guard := make(chan struct{}, conc)
 	for rows.Next() {
 		vals := getRow(rows, cols)
-		_log("DEBUG2", fmt.Sprintf("printMissingBlobsFromDB vals: %v", vals))
+		_log("DEBUG2", fmt.Sprintf("printDeadBlobsFromDb vals: %v", vals))
 
 		guard <- struct{}{}
 		wg.Add(1)
 		go func(vals []interface{}, s3Client *s3.Client) {
 			defer wg.Done()
-			blobId := extractBlobIdFromString(vals[1].(string))
-			_log("DEBUG", fmt.Sprintf("printMissingBlobsFromDB, checking blobId: %v", blobId))
-			path := *_BASEDIR + string(filepath.Separator) + genBlobPath(blobId)
-			size := getBlobSize(path+_PROP_EXT, s3Client)
-			if size < 0 {
-				size2 := getBlobSize(path+_PROP_EXT, s3Client)
-				if size2 >= 0 {
-					_log("WARN", fmt.Sprintf("Only %s is unreadable.", path+_PROP_EXT))
-				} else {
-					_log("WARN", fmt.Sprintf("%s are unreadable.", path+".*"))
-				}
-				_println(fmt.Sprintf("%d%s%s", vals[0], _SEP, vals[1]))
-			} else if isSoftDeleted(path+_PROP_EXT, s3Client) {
-				_log("WARN", fmt.Sprintf("%s is soft-deleted.", path+_PROP_EXT))
-			}
+			printDeadBlob(vals[0].(int64), vals[1].(string), s3Client)
 			<-guard
 		}(vals, s3Client)
 	}
 	wg.Wait()
 }
 
-func printMissingBlobs(f *os.File, dbConStr string, conc int) {
+func printDeadBlob(assetId int64, blobRef string, s3Client *s3.Client) {
+	blobId := extractBlobIdFromString(blobRef)
+	if len(blobId) == 0 {
+		_log("DEBUG", fmt.Sprintf("printDeadBlobsFromDb, skipping %v", blobRef))
+		return
+	}
+	_log("DEBUG", fmt.Sprintf("printDeadBlobsFromDb, checking blobId: %v", blobId))
+	path := *_BASEDIR + string(filepath.Separator) + genBlobPath(blobId)
+	size := getBlobSize(path+_PROP_EXT, s3Client)
+	if size < 0 { // At this moment, accepting 0 bytes .properties file...
+		// At this moment, not checkinb .bytes for performance
+		/*size2 := getBlobSize(path+".bytes", s3Client)
+		if size2 >= 0 {
+			_log("WARN", fmt.Sprintf("%s exists.", path+".bytes"))
+		}*/
+		_log("WARN", fmt.Sprintf("%s is unreadable.", path+_PROP_EXT))
+		_println(fmt.Sprintf("%d%s%s", assetId, _SEP, blobRef))
+	} else if isSoftDeleted(path+_PROP_EXT, s3Client) {
+		_log("WARN", fmt.Sprintf("%s is soft-deleted.", path+_PROP_EXT))
+	}
+}
+
+func printOrphanedBlobsFromIdFile(blobIdsFile string, dbConStr string, conc int) {
+	f := openInOrFIle(blobIdsFile)
+	defer f.Close()
+
 	var wg sync.WaitGroup
 	guard := make(chan struct{}, conc)
 	scanner := bufio.NewScanner(f)
@@ -1304,16 +1290,8 @@ func printMissingBlobs(f *os.File, dbConStr string, conc int) {
 	}
 }
 
-func listObjectsS3(client *s3.Client, dir string) {
-	startMs := time.Now().UnixMilli()
+func listObjectsS3(dir string, db *sql.DB, client *s3.Client) int64 {
 	var subTtl int64
-	// As this method is used in the goroutine, open own DB and close
-	db := openDb(*_DB_CON_STR)
-	if db == nil {
-		_log("DEBUG", "Cannot open the database.") // Can't output _DB_CON_STR as it may include password
-	} else {
-		defer db.Close()
-	}
 	input := &s3.ListObjectsV2Input{
 		Bucket:     _BASEDIR,
 		MaxKeys:    int32(*_MAXKEYS),
@@ -1367,19 +1345,12 @@ func listObjectsS3(client *s3.Client, dir string) {
 			break
 		}
 	}
-	_elapsed(startMs, fmt.Sprintf("INFO  %s checked %d files (current total: %d)", dir, subTtl, _CHECKED_N), 0)
+	return subTtl
 }
 
-func listObjects(dir string) {
-	startMs := time.Now().UnixMilli()
+func listObjectsFile(dir string, db *sql.DB) int64 {
 	var subTtl int64
 	// As this method is used in the goroutine, open own DB and close
-	db := openDb(*_DB_CON_STR)
-	if db == nil {
-		_log("DEBUG", "Cannot open the database.") // Can't output _DB_CON_STR as it may include password
-	} else {
-		defer db.Close()
-	}
 	// Below line does not work because currently Glob does not support ./**/*
 	//list, err := filepath.Glob(dir + string(filepath.Separator) + *_FILTER)
 	// Somehow WalkDir is slower in this code
@@ -1391,7 +1362,7 @@ func listObjects(dir string) {
 		if !f.IsDir() {
 			if len(*_FILTER) == 0 || strings.Contains(f.Name(), *_FILTER) {
 				subTtl++
-				printLine(path, f, db)
+				printLineFile(path, f, db)
 				if *_TOP_N > 0 && *_TOP_N <= _PRINTED_N {
 					_log("DEBUG", fmt.Sprintf("Printed %d >= %d", _PRINTED_N, *_TOP_N))
 					return io.EOF
@@ -1404,7 +1375,24 @@ func listObjects(dir string) {
 		println("Got error retrieving list of files:")
 		panic(err.Error())
 	}
-	_elapsed(startMs, fmt.Sprintf("INFO  %s checked %d files (current total: %d)", dir, subTtl, _CHECKED_N), 0)
+	return subTtl
+}
+
+func listObjects(dir string, client *s3.Client) {
+	startMs := time.Now().UnixMilli()
+	var subTtl int64
+	// As this method is used in the goroutine, open own DB and close
+	db := openDb(*_DB_CON_STR)
+	if db != nil {
+		defer db.Close()
+	}
+	if _IS_S3 != nil && *_IS_S3 {
+		subTtl = listObjectsS3(dir, db, client)
+	} else {
+		subTtl = listObjectsFile(dir, db)
+	}
+	// Always log this elapsed time by using 0 thresholdMs
+	_elapsed(startMs, fmt.Sprintf("INFO  Completed %s for %d files (current total: %d)", dir, subTtl, _CHECKED_N), 0)
 }
 
 // Define, set, and validate command arguments
@@ -1439,22 +1427,30 @@ func main() {
 		client = s3.NewFromConfig(cfg)
 	}
 
-	if len(*_TRUTH) > 0 && *_TRUTH == "DB" && len(*_DB_CON_STR) > 0 && len(*_BLOB_IDS_FILE) == 0 {
-		_log("INFO", "The source is 'DB' and no Blobs ID file, so reading from DB")
-		printMissingBlobsFromDB(*_DB_CON_STR, *_CONC_1, client)
+	if len(*_TRUTH) > 0 && *_TRUTH == "DB" {
+		if len(*_BLOB_IDS_FILE) > 0 {
+			_log("INFO", "The source is 'DB' and Blobs ID file: "+*_BLOB_IDS_FILE+"")
+			printDeadBlobsFromIdFile(*_BLOB_IDS_FILE, *_CONC_1, client)
+		} else if len(*_DB_CON_STR) > 0 {
+			_log("INFO", "The source is 'DB' and no Blobs ID file, so reading from DB")
+			printDeadBlobsFromDb(*_DB_CON_STR, *_CONC_1, client)
+		} else {
+			_log("ERROR", "No DB connection or blob IDs file.")
+			return
+		}
 		println("")
 		_log("INFO", fmt.Sprintf("Completed. (elapsed:%ds)", time.Now().Unix()-_START_TIME_ts))
 		return
 	}
 
 	// If a file which contains blob IDs, check those IDs are in the DB
-	if len(*_DB_CON_STR) > 0 && len(*_BLOB_IDS_FILE) > 0 {
-		_log("INFO", "Reading "+*_BLOB_IDS_FILE)
+	if len(*_TRUTH) > 0 && *_TRUTH == "BS" && len(*_BLOB_IDS_FILE) > 0 {
 		if len(*_DB_CON_STR) == 0 {
 			_log("ERROR", "DB connection string (-db) is required")
 			return
 		}
-		printMissingBlobsFromFile(*_BLOB_IDS_FILE, *_DB_CON_STR, *_CONC_1)
+		_log("INFO", "Reading "+*_BLOB_IDS_FILE)
+		printOrphanedBlobsFromIdFile(*_BLOB_IDS_FILE, *_DB_CON_STR, *_CONC_1)
 		if len(*_DB_CON_STR) > 0 && (_IS_S3 == nil || !*_IS_S3) {
 			println("")
 			softDeletedCount(*_DB_CON_STR)
@@ -1464,10 +1460,8 @@ func main() {
 		return
 	}
 
-	// Start outputting ..
-	var subDirs []string
-
 	_log("INFO", fmt.Sprintf("Retriving sub directories under %s", *_BASEDIR))
+	var subDirs []string
 	if _IS_S3 != nil && *_IS_S3 {
 		subDirs = getDirsS3(client)
 	} else {
@@ -1509,19 +1503,11 @@ func main() {
 		_log("DEBUG", s+" starting ...")
 		guard <- struct{}{}
 		wg.Add(1)
-		if _IS_S3 != nil && *_IS_S3 {
-			go func(client *s3.Client, subdir string) {
-				defer wg.Done()
-				listObjectsS3(client, subdir)
-				<-guard
-			}(client, s)
-		} else {
-			go func(subdir string) {
-				defer wg.Done()
-				listObjects(subdir)
-				<-guard
-			}(s)
-		}
+		go func(client *s3.Client, subdir string) {
+			defer wg.Done()
+			listObjects(subdir, client)
+			<-guard
+		}(client, s)
 	}
 	wg.Wait()
 	if len(*_DB_CON_STR) > 0 && (_IS_S3 == nil || !*_IS_S3) {
