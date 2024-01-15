@@ -6,10 +6,10 @@
 #$ helm install nxiqha sonatype/nexus-iq-server-ha -f ./helm-nxiqha-values.yml --set-file iq_server.license=/var/tmp/share/sonatype/sonatype-license.lic -n sonatype-ha
 
 #$ helm repo update sonatype
-#$ helm search repo sonatype/nexus-iq-server-ha
+#$ helm search repo sonatype/nexus-iq-server-ha  --versions | head
 #$ helm upgrade nxiqha sonatype/nexus-iq-server-ha -f ./helm-nxiqha-values.yml -n sonatype-ha --dry-run
 
-# Or until CLM-28041 will be fixed,
+# Or use github (eg: older versions due to CLM-28041)
 #$ git -C ~/IdeaProjects/nexus-iq-server-ha pull && git -C ~/IdeaProjects/nexus-iq-server-ha fetch
 #$ helm upgrade nxiqha ~/IdeaProjects/nexus-iq-server-ha/chart -f ~/IdeaProjects/samples/kubernetes/helm-nxiqha-values.yml -n sonatype-ha #--version 1.162.0 --dry-run
 # NOTE --version uses CHART VERSION not APP VERSION
@@ -20,8 +20,9 @@ iq_server:
   image: "sonatype/nexus-iq-server"
   tag: "latest"
   imagePullPolicy: "Always" # Default "IfNotPresent", and "Always" fails with this helm chart
-  javaOpts: "-Xms2g -Xmx4g"
-  #javaOpts: "-Xms2g -Xmx4g -Djava.util.prefs.userRoot=/sonatype-work/javaprefs"
+  javaOpts: "-Xms2g -Xmx4g -XX:+UseG1GC -XX:ActiveProcessorCount=2 -XX:+LogVMOutput -XX:LogFile=/sonatype-work/clm-cluster/log/jvm.log"
+  # -XX:+PrintGCDetails -XX:+PrintGCDateStamps -XX:+PrintGCCause -XX:+PrintClassHistogramAfterFullGC -XX:+UseGCLogFileRotation -XX:NumberOfGCLogFiles=10 -XX:GCLogFileSize=100M -Xloggc:/sonatype-work/clm-cluster/log/gc.%t.log
+  #It seems -Djava.util.prefs.userRoot=/sonatype-work/javaprefs is no longer required?
   database:
     hostname: "192.168.1.31"
     port: 5432
