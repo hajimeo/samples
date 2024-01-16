@@ -139,22 +139,20 @@ file-list -b ./content -p "vol-" -c 10 -f ".properties" -P -fPX "BlobStore\.blob
 file-list -b ./content -p "vol-" -c 10 -mF "$(date -d "1 day ago" +%Y-%m-%d)" -s ./$(date '+%Y-%m-%d').tsv
 ```
 
-### List files which were soft-deleted since one day ago (-dF "YYYY-MM-DD")
-```
-file-list -b ./content -p "vol-" -c 10 -dF "$(date -d "1 day ago" +%Y-%m-%d)" -s ./$(date '+%Y-%m-%d').tsv
-```
-To use the output for the Reconcile Task's Since log, remove `-s` and append ` | rg '/([0-9a-f\-]+)\..+(\d\d\d\d.\d\d.\d\d.\d\d:\d\d:\d\d)' -o -r '$2,$1'`
-
-### **DANGEROUS** Remove 'deleted=true' (-RDel and -dF "YYYY-MM-DD")
-```
-file-list -b ./content -p "vol-" -c 10 -dF "$(date -d "1 day ago" +%Y-%m-%d)" -RDel -s ./$(date '+%Y-%m-%d').tsv
-```
-
 ### Check files, which were soft-deleted since 1 day ago (-dF), including .properties file contents (-P -f ".properties")
 ```
-file-list -b ./content -p vol- -c 10 -dF "$(date -d "1 day ago" +%Y-%m-%d)" -P -f ".properties" -s ./$(date '+%Y-%m-%d').tsv 2>./file-list_$(date +"%Y%m%d%H%M%S").log
+file-list -b ./content -p vol- -c 10 -dF "$(date -d "1 day ago" +%Y-%m-%d)" -P -f ".properties" -s ./$(date '+%Y-%m-%d').tsv
 ```
+
+### **DANGEROUS** Remove 'deleted=true' (-RDel and -dF "YYYY-MM-DD") for 'raw-hosted' repository
 NOTE: If using -RDel to remove "deleted=true", recommend to save the STDERR into a file (like above) in case of reverting.
+```
+file-list -b ./content -p "vol-" -c 10 -P -fP "@Bucket.repo-name=raw-hosted.+deleted=true" -dF "$(date -d "1 day ago" +%Y-%m-%d)" -RDel -s ./$(date '+%Y-%m-%d').tsv 2>./file-list_$(date +"%Y%m%d%H%M%S").log
+```
+Create a text file for the Reconcile Task with **Since 0 day** (if S3, Since 1 day)
+```
+sed -n -E 's/.+([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})\..+([0-9]{4}.[0-9]{2}.[0-9]{2}.[0-9]{2}:[0-9]{2}:[0-9]{2}).+/\2,\1/p' ./$(date '+%Y-%m-%d').tsv > "./reconciliation/$(date '+%Y-%m-%d')"
+```
 
 ### Remove 'deleted=true' (-RDel) which soft-deleted within 1 day (-dF <YYYY-MM-DD>) against S3 (-S3 -b <bucket> -p <prefix>/content/vol-) but only "raw-s3-hosted" (-R -fP <regex>) , and outputs the contents of .properties (-P) to check, but *Dry Run* (-Dry)
 ```

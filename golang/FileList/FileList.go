@@ -485,7 +485,7 @@ func printLineS3(client *s3.Client, item types.Object, db *sql.DB) {
 		blobPath := getPathWithoutExt(path) + ".bytes"
 		blobSize = getBlobSizeS3(blobPath, client)
 	}
-	output := genOutput(path, *modTime, item.Size, blobSize, db)
+	output := genOutput(path, *modTime, item.Size, blobSize, db, client)
 
 	if *_WITH_OWNER {
 		output = fmt.Sprintf("%s%s%s", output, _SEP, *item.Owner.DisplayName)
@@ -518,11 +518,11 @@ func printLineFile(path string, fInfo os.FileInfo, db *sql.DB) {
 		blobPath := getPathWithoutExt(path) + ".bytes"
 		blobSize = getBlobSizeFile(blobPath)
 	}
-	output := genOutput(path, modTime, fInfo.Size(), blobSize, db)
+	output := genOutput(path, modTime, fInfo.Size(), blobSize, db, nil)
 	_println(output)
 }
 
-func genOutput(path string, modTime time.Time, size int64, blobSize int64, db *sql.DB) string {
+func genOutput(path string, modTime time.Time, size int64, blobSize int64, db *sql.DB, client *s3.Client) string {
 	atomic.AddInt64(&_CHECKED_N, 1)
 
 	modTimeTs := modTime.Unix()
@@ -543,7 +543,7 @@ func genOutput(path string, modTime time.Time, size int64, blobSize int64, db *s
 
 	// If .properties file is checked, depending on other flags, output can be changed.
 	if strings.HasSuffix(path, _PROP_EXT) {
-		output = _printLineExtra(output, path, modTimeTs, db, nil)
+		output = _printLineExtra(output, path, modTimeTs, db, client)
 	}
 
 	// Updating counters and return
@@ -675,7 +675,7 @@ func getContentsS3(path string, client *s3.Client) (string, error) {
 
 func openDb(dbConnStr string) *sql.DB {
 	if len(dbConnStr) == 0 {
-		_log("DEBUG", "Empty DB connection string")
+		_log("DEBUG2", "Empty DB connection string")
 		return nil
 	}
 	if !strings.Contains(dbConnStr, "sslmode") {
