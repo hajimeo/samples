@@ -497,15 +497,15 @@ public class AssetDupeCheckV2 {
         int dupeCounter = 0;
         ORID docId = doc.getIdentity();
         // This may cause NullPointerException when index does not exist,
-        // or java.lang.ArrayIndexOutOfBoundsException if doc is corrupted
         List<String> fields = index.getDefinition().getFields();
         Object[] vals = new Object[fields.size()];
         try {
             for (int i = 0; i < vals.length; i++) {
                 vals[i] = doc.field(fields.get(i));
             }
-        } catch (ArrayIndexOutOfBoundsException e) {
-            log("[WARN] Data corruption for docId: " + docId + "\n" + e.getMessage());
+        } catch (Exception e) {
+            log("[ERROR] Data corruption found for docId: " + docId + ".\n" + e.getMessage());
+            // StringIndexOutOfBoundsException or ArrayIndexOutOfBounds tends to happen. Similar to https://github.com/orientechnologies/orientdb/issues/9943
             // can't see the value with doc.toString and can't delete with db.delete.
         }
         Object indexKey = index.getDefinition().createValue(vals);
@@ -530,9 +530,10 @@ public class AssetDupeCheckV2 {
             try {
                 // Regardless of IS_REPAIRING, needs to put to detect next duplicates for same key.
                 index.put(indexKey, docId);
-                debug("Put key: " + indexKey.toString() + ", values: " + docId.toString());
-            } catch (ORecordDuplicatedException e) {
-                log("[ERROR] " + e.getMessage());
+                // TODO: below toString() causes exception when the doc is corrupted
+                //debug("Put key: " + indexKey.toString() + ", values: " + docId.toString());
+            } catch (Exception e) {
+                log("[ERROR] Updating index failed for docId: " + docId + ".\n" + e.getMessage());
             }
         }
         return dupeCounter;
@@ -590,8 +591,12 @@ public class AssetDupeCheckV2 {
         out("TRUNCATE RECORD " + deletingId + ";");
 
         if (IS_REPAIRING) {
-            db.delete(deletingId);
-            log("[WARN] Deleted duplicate: " + deletingId);
+            try {
+                db.delete(deletingId);
+                log("[WARN] Deleted duplicate: " + deletingId);
+            } catch (Exception e) {
+                log("[ERROR] Deleting duplicate: " + deletingId + " failed (keepingId = " + keepingId + ")\n" + e.getMessage());
+            }
         } else {
             // Need to remove this one to detect another duplicates for same key (if repairing, above delete() also remove from index
             index.remove(indexKey, deletingId);
