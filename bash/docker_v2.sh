@@ -3,6 +3,8 @@
 # Testing Docker V2 API with curl
 
 # Simpler test:
+#   _TOKEN="$(curl -u admin "${_DOCKER_REGISTRY_URL%/}/v2/token" --get --data-urlencode "account=admin&scope=repository:alpine:pull,push&service=${_DOCKER_REGISTRY_URL%/}" | sed -E 's/.+"token":"([^"]+)".+/\1/')"
+#
 #   curl -I -u "${_USER}:${_PWD}" -L -k "${_DOCKER_REGISTRY_URL%/}/v2/"
 # To get the image names, then tags, then a tag (json):
 #   curl -u "${_USER}:${_PWD}" -L -k "${_DOCKER_REGISTRY_URL%/}/v2/_catalog"
@@ -30,6 +32,7 @@
 
 _CURL="curl -sfLk --compressed ${_CURL_OPTS}"
 _TMP="/tmp"
+_UPLOAD_TEST="" # eg. "alpine"
 
 function get_token() {
     local _token_server_url="${1:-"${_TOKEN_SERVER_URL}"}"
@@ -79,6 +82,18 @@ done
 DEBU[0000] Trying to reuse cached location sha256:d3470daaa19c14ddf4ec500a3bb4f073fa9827aa4f19145222d459016ee9193e compressed with gzip in node-nxrm-ha1.standalone.localdomain:18183/alpine
 DEBU[0000] HEAD https://node-nxrm-ha1.standalone.localdomain:18183/v2/alpine/blobs/sha256:6dbb9cc54074106d46d4ccb330f2a40a682d49dda5f4844962b7dce9fe44aaec
 DEBU[0000] POST https://node-nxrm-ha1.standalone.localdomain:18183/v2/alpine/blobs/uploads/
+    # probably no payload but with below headers
+    Content-Length: 0
+    Authorization: Bearer DockerToken.cdbbae08-ae4e-3551-8522-a2e0c3857e0c   <<< if allow anonymous pull
+    Docker-Distribution-Api-Version: registry/2.0
+    Accept-Encoding: gzip
+    # Then gets:
+    Range: 0-0
+    Docker-Distribution-Api-Version: registry/2.0
+    Docker-Upload-UUID: e4efc743-cf71-4524-b524-a87db6655965
+    Location: /v2/alpine/blobs/uploads/e4efc743-cf71-4524-b524-a87db6655965
+    Content-Length: 0
+
 DEBU[0000] PATCH https://node-nxrm-ha1.standalone.localdomain:18183/v2/alpine/blobs/uploads/232cde37-563d-4a28-aec0-245a6acb5999
 DEBU[0000] PUT https://node-nxrm-ha1.standalone.localdomain:18183/v2/alpine/manifests/3.13
 EOF
@@ -118,6 +133,14 @@ main() {
                 echo "### sha256 of ${_PATH#/}" >&2
                 sha256sum ${_TMP%/}/path_result.out
             fi
+        fi
+
+        if [ -n "${_UPLOAD_TEST}" ]; then
+            echo "### Requesting POST '${_DOCKER_REGISTRY_URL%/}/v2/${_UPLOAD_TEST}/blobs/uploads/'" >&2
+            # TODO: Bearer is send when "Allow anonymous docker pull" is enabled (forceBasicAuth is false), so need some check
+            ${_CURL} -H "Authorization: Bearer ${_TOKEN}" -X POST "${_DOCKER_REGISTRY_URL%/}/v2/${_UPLOAD_TEST}/blobs/uploads/"
+            #${_CURL} -u "${_USER}:${_PWD}" -X POST "${_DOCKER_REGISTRY_URL%/}/v2/${_UPLOAD_TEST}/blobs/uploads/"
+            # Then gets "Location:" header to upload with -X PATCH
         fi
     fi
 }
