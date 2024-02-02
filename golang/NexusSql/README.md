@@ -22,7 +22,8 @@ No UPDATE/INSERT/DELETE support, read (SELECT) only.
 
 ## USAGE EXAMPLE:
 ```
-NexusSql -t nxrm3 -c ./etc/fabric/nexus-store.properties -a
+nexus-sql -c "host=localhost port=5432 user=nexus password=nexus123 dbname=nxrm" -q "SELECT version()"
+// TODO: NexusSql -t nxrm3 -c ./etc/fabric/nexus-store.properties -a
 ```
 
 ## Misc. / TODO:

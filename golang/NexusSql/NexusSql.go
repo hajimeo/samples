@@ -22,6 +22,7 @@ import (
 	"log"
 	"os"
 	"regexp"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -40,6 +41,7 @@ HOW-TO and USAGE EXAMPLES:
 // var _ACTION *string
 var _DB_CON_STR *string
 var _SQL *string
+var _NUM *int
 var _DEBUG *bool
 
 func _setGlobals() {
@@ -47,8 +49,10 @@ func _setGlobals() {
 	//_ACTION = flag.String("a", "", "empty for all or [db-check|data-size|data-export]")
 	_DB_CON_STR = flag.String("c", "./", "DB Connection string or path to DB connection config file (nexus-store.properties or config.yml")
 	_SQL = flag.String("q", "SELECT 'ok' as connection", "SQL query")
+	_NUM = flag.Int("n", 1, "Repeat query N times")
 	_DEBUG = flag.Bool("X", false, "If true, verbose logging")
 	flag.Parse()
+	helpers.DEBUG = *_DEBUG
 }
 
 type AppConfigProperties map[string]string
@@ -89,7 +93,7 @@ func readPropertiesFile(filename string) (AppConfigProperties, error) {
 func buildConnStringFromFileForNXRM(filePath string) string {
 	config, err := readPropertiesFile(filePath)
 	if err != nil {
-		helpers.Log("ERROR", err.Error())
+		helpers.ULog("ERROR", err.Error())
 		return ""
 	}
 	return genDbConnStrNXRM(config)
@@ -129,6 +133,11 @@ func _elapsed(startTsMs int64, message string, thresholdMs int64) {
 }
 
 func openDb(dbConnStr string) *sql.DB {
+	if _DEBUG != nil && *_DEBUG {
+		defer _elapsed(time.Now().UnixMilli(), "DEBUG: DB connection opened", 0)
+	} else {
+		defer _elapsed(time.Now().UnixMilli(), "WARN: Slow DB connection", 100)
+	}
 	if len(dbConnStr) == 0 {
 		return nil
 	}
@@ -147,9 +156,9 @@ func openDb(dbConnStr string) *sql.DB {
 
 func queryDb(query string, db *sql.DB) *sql.Rows {
 	if _DEBUG != nil && *_DEBUG {
-		defer _elapsed(time.Now().UnixMilli(), "DEBUG Executed "+query, 0)
+		defer _elapsed(time.Now().UnixMilli(), "DEBUG: query:"+query, 0)
 	} else {
-		defer _elapsed(time.Now().UnixMilli(), "WARN  slow query:"+query, 100)
+		defer _elapsed(time.Now().UnixMilli(), "WARN: slow query:"+query, 100)
 	}
 	if db == nil { // For unit tests
 		return nil
@@ -175,55 +184,56 @@ func main() {
 	if db != nil {
 		defer db.Close()
 	}
-	rows := queryDb(*_SQL, db)
-	if rows == nil { // For unit tests
-		return
-	}
-	defer rows.Close()
-	columns, err := rows.Columns()
-	if err != nil {
-		panic(err)
-	}
-	count := len(columns)
-	//tableData := make([]map[string]interface{}, 0)
-	values := make([]interface{}, count)
-	valuePtrs := make([]interface{}, count)
-	fmt.Print("[")
-	isFirstLine := true
-	for rows.Next() {
-		for i := 0; i < count; i++ {
-			valuePtrs[i] = &values[i]
+
+	defer _elapsed(time.Now().UnixMilli(), "Completed. Repeated "+strconv.Itoa(*_NUM)+" times", 0)
+	for i := 0; i < *_NUM; i++ {
+		rows := queryDb(*_SQL, db)
+		if rows == nil { // For unit tests
+			return
 		}
-		rows.Scan(valuePtrs...)
-		entry := make(map[string]interface{})
-		for i, col := range columns {
-			var v interface{}
-			val := values[i]
-			b, ok := val.([]byte)
-			if ok {
-				v = string(b)
-			} else {
-				v = val
-			}
-			entry[col] = v
-		}
-		jsonData, err := json.Marshal(entry)
-		//jsonData, err := json.MarshalIndent(entry, "", "  ")
+		defer rows.Close()
+		columns, err := rows.Columns()
 		if err != nil {
 			panic(err)
 		}
-		line := string(jsonData)
-		if len(line) > 0 {
-			if !isFirstLine {
-				fmt.Print(",")
-			} else {
-				fmt.Println()
-				//fmt.Print("  ")
+		count := len(columns)
+		//tableData := make([]map[string]interface{}, 0)
+		values := make([]interface{}, count)
+		valuePtrs := make([]interface{}, count)
+		fmt.Print("[")
+		isFirstLine := true
+		for rows.Next() {
+			for i := 0; i < count; i++ {
+				valuePtrs[i] = &values[i]
 			}
-			fmt.Println(string(jsonData))
-			isFirstLine = false
+			rows.Scan(valuePtrs...)
+			entry := make(map[string]interface{})
+			for i, col := range columns {
+				var v interface{}
+				val := values[i]
+				b, ok := val.([]byte)
+				if ok {
+					v = string(b)
+				} else {
+					v = val
+				}
+				entry[col] = v
+			}
+			jsonData, err := json.Marshal(entry)
+			//jsonData, err := json.MarshalIndent(entry, "", "  ")
+			if err != nil {
+				panic(err)
+			}
+			line := string(jsonData)
+			if len(line) > 0 {
+				if !isFirstLine {
+					fmt.Println(",")
+				}
+				fmt.Print(string(jsonData))
+				isFirstLine = false
+			}
+			//tableData = append(tableData, entry)
 		}
-		//tableData = append(tableData, entry)
+		fmt.Println("]")
 	}
-	fmt.Println("]")
 }
