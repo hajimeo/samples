@@ -63,23 +63,28 @@ Read one file and output only necessary lines.
 	find ./threads -type f -name '[0-9]*_*.out' | xargs -P3 -t -I{} bash -c '_d="$(basename "{}" ".out")";echolines "{}" "^\".+" "" "./threads_per_thread/${_d}"'
 
 ## Get duration of each line:
-    export ELAPSED_REGEX="^\d\d\d\d-\d\d-\d\d.(\d\d:\d\d:\d\d.\d\d\d)" ASCII_DISABLED=Y
+	export ELAPSED_REGEX="^\d\d\d\d-\d\d-\d\d.(\d\d:\d\d:\d\d.\d\d\d)" ASCII_DISABLED=Y
 	echolines "./log/nexus.log" "^\d\d\d\d-\d\d-\d\d.\d\d:\d\d:\d\d.\d\d\d" "^\d\d\d\d-\d\d-\d\d.\d\d:\d\d:\d\d.\d\d\d"
 ## Get duration of NXRM3 queries, and sort by the longuest:
-    export ELAPSED_REGEX="^\d\d\d\d-\d\d-\d\d.(\d\d:\d\d:\d\d.\d\d\d)"
+	export ELAPSED_REGEX="^\d\d\d\d-\d\d-\d\d.(\d\d:\d\d:\d\d.\d\d\d)"
 	echolines "./log/nexus.log" "Preparing:" "(^.+Total:.+)" | rg '^# \d\d' | sort -t'|' -k2nr
 ## Get duration of the first 30 S3 pool requests (with org.apache.http = DEBUG. This example also checks 'Connection leased'):
-    export ELAPSED_REGEX="^\d\d\d\d-\d\d-\d\d.(\d\d:\d\d:\d\d.\d\d\d)" ELAPSED_KEY_REGEX="\[(s3-parallel-[^\]]+)"
+	export ELAPSED_REGEX="^\d\d\d\d-\d\d-\d\d.(\d\d:\d\d:\d\d.\d\d\d)" ELAPSED_KEY_REGEX="\[(s3-parallel-[^\]]+)"
 	rg -m30 '\[s3-parallel-.+ Connection (request|leased|released):' ./log/nexus.log > connections.out
 	sed -n "1,30p" connections.out | echolines "" " leased:" "(^.+ released:.+)" | rg '^# '
 ## Get duration of Tasks
-    export ELAPSED_REGEX="^\d\d\d\d-\d\d-\d\d.(\d\d:\d\d:\d\d.\d\d\d)" ELAPSED_KEY_REGEX="Task '([^']+)'" ASCII_DISABLED=Y
+	export ELAPSED_REGEX="^\d\d\d\d-\d\d-\d\d.(\d\d:\d\d:\d\d.\d\d\d)" ELAPSED_KEY_REGEX="Task '([^']+)'" ASCII_DISABLED=Y
 	echolines "./log/nexus.log" "QuartzTaskInfo .+ -> RUNNING" "(^.+QuartzTaskInfo .+ RUNNING -> .+)" | rg '^#'
 
 ## Get duration of IQ Evaluate a File, and sort by threadId and time
-    rg 'POST /rest/scan/.+Scheduling scan task (\S+)' -o -r '$1' log/clm-server.log | xargs -I{} rg -w "{}" ./log/clm-server.log | sort | uniq > scan_tasks.log
-    export ELAPSED_REGEX="^\d\d\d\d-\d\d-\d\d.(\d\d:\d\d:\d\d.\d\d\d)"
+	rg 'POST /rest/scan/.+Scheduling scan task (\S+)' -o -r '$1' log/clm-server.log | xargs -I{} rg -w "{}" ./log/clm-server.log | sort | uniq > scan_tasks.log
+	export ELAPSED_REGEX="^\d\d\d\d-\d\d-\d\d.(\d\d:\d\d:\d\d.\d\d\d)"
 	ELAPSED_KEY_REGEX="\[([^ \]]+)" echolines ./scan_tasks.log "Running scan task" "(^.+Completed scan task.+)" | rg '^# \d\d' | sort -t'|' -k3,3 -k1,1
+
+## Get duration of mvn download (need org.slf4j.simpleLogger.showDateTime=true org.slf4j.simpleLogger.dateTimeFormat=yyyy-MM-dd HH:mm:ss.SSS)
+	export ELAPSED_REGEX="^\d\d\d\d-\d\d-\d\d.(\d\d:\d\d:\d\d.\d\d\d)"
+	export ELAPSED_KEY_REGEX="https?://\S+"
+	ASCII_DISABLED=Y echolines ./mvn.log "Downloading from nexus: \S+" "(^.+Downloaded from nexus: \S+)"
 END`)
 }
 
@@ -179,6 +184,12 @@ func processFile(inFile *os.File) {
 
 	if len(DURATIONS) > 0 {
 		echoDurations(DURATIONS)
+	}
+	if len(START_DATETIMES) > 0 {
+		for k, v := range START_DATETIMES {
+			pad := len(v)
+			fmt.Printf("# %s|%-"+strconv.Itoa(pad)+"s|%8sms|%s\n", v, "<none>", " ", k)
+		}
 	}
 }
 
@@ -306,7 +317,7 @@ func calcDuration(endLine string) {
 	}
 	elapsedEndMatches := ELAPSED_REGEXP.FindStringSubmatch(endLine)
 	if len(elapsedEndMatches) == 0 {
-		_dlog("No match for '" + ELAPSED_REGEX + "' from " + endLine)
+		_dlog("No end time match with '" + ELAPSED_REGEX + "' for " + endLine)
 		return
 	}
 	_dlog("elapsedEndMatches = " + elapsedEndMatches[0])
@@ -329,6 +340,7 @@ func calcDuration(endLine string) {
 			key:          key,
 		}
 		DURATIONS = append(DURATIONS, dura)
+		delete(START_DATETIMES, key)
 	} else {
 		_, _ = fmt.Fprintf(os.Stderr, "[WARN] No start datetime found for key:%s end datetime:%s.\n", key, endTimeStr)
 	}
@@ -395,9 +407,9 @@ func echoDurationInner(dura Duration, maxKeyLen int, divideMs int64) {
 	}
 	if dura.key == NO_KEY {
 		// As "sec,ms" contains comma, using "|". Also "<num> ms" for easier sorting (it was "ms:<num>")
-		fmt.Printf("# %s %s|%8dms%s\n", dura.startTimeStr, dura.endTimeStr, dura.durationMs, ascii)
+		fmt.Printf("# %s|%s|%8dms%s\n", dura.startTimeStr, dura.endTimeStr, dura.durationMs, ascii)
 	} else {
-		fmt.Printf("# %s-%s|%8dms|%*s%s\n", dura.startTimeStr, dura.endTimeStr, dura.durationMs, KEY_PADDING, dura.key, ascii)
+		fmt.Printf("# %s|%s|%8dms|%*s%s\n", dura.startTimeStr, dura.endTimeStr, dura.durationMs, KEY_PADDING, dura.key, ascii)
 	}
 }
 
