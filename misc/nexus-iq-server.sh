@@ -34,19 +34,20 @@ JAVA_OPTIONS="${JAVA_OPTIONS} -XX:+UnlockDiagnosticVMOptions -XX:+LogVMOutput -X
 
 # GC log related options are different by Java version.
 #JAVA_OPTIONS="${JAVA_OPTIONS} -XX:OnOutOfMemoryError='kill %p'"    # TODO: this doesn't work (maybe because IQ already kill the process automatically)
-if ${JAVA} -XX:+PrintFlagsFinal -version 2>/dev/null | grep -q PrintClassHistogramBeforeFullGC; then
-    # probably java 8 (-verbose:gc = -XX:+PrintGC) -XX:+PrintClassHistogramAfterFullGC
-    JAVA_OPTIONS="${JAVA_OPTIONS} -XX:+UseG1GC -XX:+ExplicitGCInvokesConcurrent -XX:+PrintGCApplicationStoppedTime -XX:+PrintClassHistogramBeforeFullGC -XX:+TraceClassLoading -XX:+TraceClassUnloading"
+if ${JAVA} -XX:+PrintFlagsFinal -version 2>/dev/null | grep -q PrintClassHistogramAfterFullGC; then
+    # probably java 8 (-verbose:gc = -XX:+PrintGC)
+    JAVA_OPTIONS="${JAVA_OPTIONS} -XX:+UseG1GC -XX:+ExplicitGCInvokesConcurrent -XX:+PrintGCApplicationStoppedTime -XX:+TraceClassLoading -XX:+TraceClassUnloading"
     # https://confluence.atlassian.com/confkb/how-to-enable-garbage-collection-gc-logging-300813751.html
-    JAVA_OPTIONS="${JAVA_OPTIONS} -XX:+PrintGCDetails -XX:+PrintGCDateStamps -XX:+PrintTenuringDistribution -XX:+PrintGCCause -XX:+UseGCLogFileRotation -XX:NumberOfGCLogFiles=10 -XX:GCLogFileSize=100M -Xloggc:${NEXUS_IQ_SONATYPEWORK}/log/gc.%t.log"
-    JAVA_OPTIONS="${JAVA_OPTIONS} -XX:+HeapDumpOnOutOfMemoryError -XX:HeapDumpPath=${NEXUS_IQ_SONATYPEWORK}/log"    # or 'user.dir'
+    # -XX:+PrintTenuringDistribution -XX:+PrintClassHistogramBeforeFullGC
+    JAVA_OPTIONS="${JAVA_OPTIONS} -XX:+PrintGCDetails -XX:+PrintGCDateStamps -XX:+PrintGCCause -XX:+PrintClassHistogramAfterFullGC -XX:+UseGCLogFileRotation -XX:NumberOfGCLogFiles=10 -XX:GCLogFileSize=100M -Xloggc:${NEXUS_IQ_SONATYPEWORK}/log/gc.%t.log"
+    JAVA_OPTIONS="${JAVA_OPTIONS} -XX:+HeapDumpOnOutOfMemoryError -XX:HeapDumpPath=${NEXUS_IQ_SONATYPEWORK}/log"    # or 'user.dir' if not specified
     JAVA_OPTIONS="${JAVA_OPTIONS} -Dcom.sun.management.jmxremote -Dcom.sun.management.jmxremote.port=6786 -Dcom.sun.management.jmxremote.local.only=false -Dcom.sun.management.jmxremote.authenticate=false -Dcom.sun.management.jmxremote.ssl=false"
 else
     # default, expecting java 11 (more: https://foojay.io/today/embracing-jvm-unified-logging/ )
     JAVA_OPTIONS="${JAVA_OPTIONS} -Xlog:gc*:file=${NEXUS_IQ_SONATYPEWORK}/log/gc.%t.log:time,uptime:filecount=10,filesize=100m,classhisto*=trace"
 fi
 # for testing
-JAVA_OPTIONS="${JAVA_OPTIONS} -Dinsight.threads.monitor=3"
+#JAVA_OPTIONS="${JAVA_OPTIONS} -Dinsight.threads.monitor=3"
 
 chmod a+w /tmp/nexus_iq_server.out /tmp/nexus_iq_server.err &>/dev/null
 do_start()
