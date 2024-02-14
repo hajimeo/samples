@@ -63,6 +63,13 @@ function get_handler()
 {
     $req = $_SERVER['REQUEST_URI'];
 
+    if (stripos($req, "/junit-4.12.pom") > 0) {
+        header("Content-Type: junit-4.12.pom");
+        _return_file('./junit-4.12.pom');
+        _log("    Handled $req " . PHP_EOL);
+        return;
+    }
+
     /*
      * dd if=/dev/zero of=./some-test-3.0.496-RELEASE.jar bs=89552991 count=1
      * #zip -0 ./some-test-3.0.496-RELEASE.jar ./dummy.img   # this still changes the size
@@ -71,7 +78,7 @@ function get_handler()
     if (stripos($req, "/some-test-3.0.496-RELEASE.jar") > 0) {
         header("Content-Type: application/gzip");
         _return_file('./some-test-3.0.496-RELEASE.jar');
-        _log("    Handled {$req} " . PHP_EOL);
+        _log("    Handled $req " . PHP_EOL);
         return;
     }
 
@@ -79,7 +86,7 @@ function get_handler()
         header("Docker-Content-Digest: sha256:c46d23046a71f0216a881f6976a67f9f2309d9420d7e0585db5f3dd11dc333dc");
         header("Content-Type: application/vnd.docker.distribution.manifest.v1+prettyjws");
         _return_file('./5.3.33-66ddce6-click-path-on-ui.json');
-        _log("    Handled {$req} " . PHP_EOL);
+        _log("    Handled $req " . PHP_EOL);
         return;
     }
 
@@ -87,7 +94,7 @@ function get_handler()
         header("etag: \"b46d217ef54c01c394b798e22f253c19\"");
         header("Content-Type: application/gzip");
         _return_file('./caniuse-lite-1.0.30001159.tgz');
-        _log("    Handled {$req} " . PHP_EOL);
+        _log("    Handled $req " . PHP_EOL);
         return;
     }
 
@@ -102,10 +109,10 @@ function get_handler()
 
         header("Content-Type: application/json");
         _return_file($name);
-        _log("    Handled {$req} " . PHP_EOL);
+        _log("    Handled $req " . PHP_EOL);
         return;
     }
-    _log("    No handler for {$req} " . PHP_EOL);
+    _log("    No handler for $req " . PHP_EOL);
 }
 
 function _return_file($path)
