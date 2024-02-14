@@ -64,7 +64,8 @@ function get_handler()
     $req = $_SERVER['REQUEST_URI'];
 
     if (stripos($req, "/junit-4.12.pom") > 0) {
-        header("Content-Type: junit-4.12.pom");
+        header("Content-Type: application/x-maven-pom+xml");    // works
+        //header("Content-Type: application/x-maven-pom xml");      // doesn't work
         _return_file('./junit-4.12.pom');
         _log("    Handled $req " . PHP_EOL);
         return;
