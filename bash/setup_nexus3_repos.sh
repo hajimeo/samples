@@ -94,7 +94,7 @@ Just get the repositories setting:
 : ${_SHARE_DIR:="/var/tmp/share"}
 : ${_IS_NXRM2:="N"}
 : ${_NO_DATA:="N"}          # To just create repositories
-: ${_ASYNC_CURL:="N"}   # _get_asset won't wait for the result
+: ${_ASYNC_CURL:="N"}       # _get_asset won't wait for the result
 : ${_BLOBTORE_NAME:=""}     # eg: default. Empty means auto
 : ${_IS_NEWDB:=""}
 : ${_DATASTORE_NAME:=""}    # If Postgres (or H2), needs to add attributes.storage.dataStoreName = "nexus"
@@ -123,7 +123,7 @@ function f_install_nexus3() {
     local _schema="${_DB_SCHEMA}"
     local _starting="${_NEXUS_START}"
     if [ -z "${_ver}" ] || [ "${_ver}" == "latest" ]; then
-      _ver="$(curl -s -I https://github.com/sonatype/nexus-public/releases/latest | _sed -n -r '/^location/ s/^location: http.+\/release-([0-9\.-]+).*$/\1/p')"
+      _ver="$(curl -s -I https://github.com/sonatype/nexus-public/releases/latest | sed -n -E '/^location/ s/^location: http.+\/release-([0-9\.-]+).*$/\1/p')"
     fi
     [ -z "${_ver}" ] && return 1
     if [ -z "${_port}" ]; then
@@ -196,6 +196,7 @@ EOF
         cd "${_dirpath%/}" || return $?
         echo "To start: ./nexus-${_ver}/bin/nexus run"
         type nxrmStart &>/dev/null && echo "      Or: nxrmStart"
+        type f_nexus_https_config &>/dev/null && echo "      ssl: f_nexus_https_config <port>"
     fi
 }
 
@@ -225,7 +226,9 @@ function f_setup_maven() {
     fi
     # add some data for xxxx-proxy
     # If NXRM2: _get_asset_NXRM2 "${_prefix}-proxy" "junit/junit/4.12/junit-4.12.jar"
+    _ASYNC_CURL="Y" f_get_asset "${_prefix}-proxy" "junit/junit/4.12/junit-4.12.pom"
     f_get_asset "${_prefix}-proxy" "junit/junit/4.12/junit-4.12.jar" "${_TMP%/}/junit-4.12.jar"
+    # TODO: https://repo1.maven.org/maven2/org/sonatype/maven-policy-demo/
 
     if [ -n "${_source_nexus_url}" ] && [ -n "${_extra_sto_opt}" ] && ! _is_repo_available "${_prefix}-repl-proxy"; then
         f_apiS '{"action":"coreui_Repository","method":"create","data":[{"attributes":{"maven":{"versionPolicy":"MIXED","layoutPolicy":"PERMISSIVE"},"proxy":{"remoteUrl":"'${_source_nexus_url%/}'/repository/'${_prefix}'-hosted/","contentMaxAge":60,"metadataMaxAge":60},"replication":{"preemptivePullEnabled":true,"assetPathRegex":""},"httpclient":{"blocked":false,"autoBlock":true,"connection":{"useTrustStore":true}},"storage":{"blobStoreName":"'${_bs_name}'","strictContentTypeValidation":true'${_extra_sto_opt}'},"negativeCache":{"enabled":true,"timeToLive":1440},"cleanup":{"policyName":[]}},"name":"'${_prefix}'-repl-proxy","format":"","type":"","url":"","online":true,"routingRuleId":"","authEnabled":false,"httpRequestSettings":false,"recipe":"maven2-proxy"}],"type":"rpc"}' || return $?
@@ -271,6 +274,9 @@ function f_setup_pypi() {
     fi
     # add some data for xxxx-proxy
     _ASYNC_CURL="Y" f_get_asset "${_prefix}-proxy" "packages/unit/0.2.2/Unit-0.2.2.tar.gz"
+    # NOTE: https://pypi.org/project/python-policy-demo/#history
+    #for i in {1..3}; do f_get_asset "pypi-proxy" "packages/python_policy_demo/1.$i.0/python_policy_demo-1.$i.0-py3-none-any.whl"; done
+
 
     # If no xxxx-hosted, create it
     if ! _is_repo_available "${_prefix}-hosted"; then
@@ -335,7 +341,8 @@ function f_setup_npm() {
     # add some data for xxxx-proxy
     #_ASYNC_CURL="Y" f_get_asset "${_prefix}-proxy" "lodash/-/lodash-4.17.19.tgz"
     _ASYNC_CURL="Y" f_get_asset "${_prefix}-proxy" "es5-ext/-/es5-ext-0.10.62.tgz"
-    _ASYNC_CURL="Y" f_get_asset "${_prefix}-proxy" "@sonatype/policy-demo/-/policy-demo-2.0.0.tgz"
+    _ASYNC_CURL="Y" f_get_asset "${_prefix}-proxy" "@sonatype/policy-demo/-/policy-demo-2.0.0.tgz" # Good one
+    #for i in {1..3}; do f_get_asset "npm-proxy" "@sonatype/policy-demo/-/policy-demo-2.$i.0.tgz"; done
 
     if [ -n "${_source_nexus_url}" ] && [ -n "${_extra_sto_opt}" ] && ! _is_repo_available "${_prefix}-repl-proxy"; then
         f_apiS '{"action":"coreui_Repository","method":"create","data":[{"attributes":{"npm":{"removeNonCataloged":false,"removeQuarantinedVersions":false},"proxy":{"remoteUrl":"'${_source_nexus_url%/}'/repository/'${_prefix}'-hosted/","contentMaxAge":60,"metadataMaxAge":60},"replication":{"preemptivePullEnabled":true,"assetPathRegex":""},"httpclient":{"blocked":false,"autoBlock":true,"connection":{"useTrustStore":true}},"storage":{"blobStoreName":"'${_bs_name}'","strictContentTypeValidation":true'${_extra_sto_opt}'},"negativeCache":{"enabled":true,"timeToLive":1440},"cleanup":{"policyName":[]}},"name":"'${_prefix}'-repl-proxy","format":"","type":"","url":"","online":true,"routingRuleId":"","authEnabled":false,"httpRequestSettings":false,"recipe":"npm-proxy"}],"type":"rpc","tid"' || return $?
@@ -468,7 +475,7 @@ function f_setup_docker() {
 
 #_populate_docker_proxy "" "m1mac.standalone.localdomain:15000"
 function _populate_docker_proxy() {
-    local _img_name="${1:-"alpine:3.7"}"
+    local _img_name="${1:-"alpine:3.7"}"    # To test OCI image: jenkins/jenkins:lts
     local _host_port="${2:-"${r_DOCKER_PROXY:-"${r_DOCKER_GROUP:-"${r_NEXUS_URL:-"${_NEXUS_URL}"}"}"}"}"
     local _backup_ports="${3-"18179 18178 15000 443"}"
     local _cmd="${4-"${r_DOCKER_CMD}"}"
@@ -486,20 +493,24 @@ function _populate_docker_proxy() {
     ${_cmd} pull ${_host_port}/${_img_name} || return $?
 }
 #ssh -2CNnqTxfg -L18182:localhost:18182 node3250    #ps aux | grep 2CNnqTxfg
-#_populate_docker_hosted "" "localhost:18182"
-#_populate_docker_hosted "" "m1mac.standalone.localdomain:15000"
+# then: _populate_docker_hosted "" "local.standalone.localdomain:18182"
+# Create an image which uses blobs from proxy (pull & push from group repo)
+# After deleting alpine_hosted (and 'docker system prune -a'):
+#   _populate_docker_hosted "local.standalone.localdomain:15000/alpine:latest" "local.standalone.localdomain:15000"
+#   _TAG_TO="thrivent-web/doi-invite" _populate_docker_hosted "local.standalone.localdomain:15000/alpine:latest" "local.standalone.localdomain:15000"
 function _populate_docker_hosted() {
     local _base_img="${1:-"alpine:latest"}"    # dh1.standalone.localdomain:15000/alpine:3.7
     local _host_port="${2:-"${r_DOCKER_PROXY:-"${r_DOCKER_GROUP:-"${r_NEXUS_URL:-"${_NEXUS_URL}"}"}"}"}"
     local _backup_ports="${3-"18182 18181 15000 443"}"
     local _cmd="${4-"${r_DOCKER_CMD}"}"
     local _tag_to="${5:-"${_TAG_TO}"}"
-    local _num_layers="${6:-"${_NUM_LAYERS:-"1"}"}"
+    local _num_layers="${6:-"${_NUM_LAYERS:-"1"}"}" # Can be used to test overwriting image
     [ -z "${_cmd}" ] && _cmd="$(_docker_cmd)"
     [ -z "${_cmd}" ] && return 0    # If no docker command, just exist
     _host_port="$(_docker_login "${_host_port}" "${_backup_ports}" "${r_ADMIN_USER:-"${_ADMIN_USER}"}" "${r_ADMIN_PWD:-"${_ADMIN_PWD}"}" "${_cmd}")" || return $?
 
-    if [ -z "${_tag_to}" ] && [[ "${_base_img}" =~ ([^:]+):?.* ]]; then
+    local _base_image_base="$(basename "${_base_img}")"
+    if [ -z "${_tag_to}" ] && [[ "${_base_image_base}" =~ ([^:]+):?.* ]]; then
         _tag_to="${BASH_REMATCH[1]}_hosted"
     fi
 
@@ -521,12 +532,13 @@ function _populate_docker_hosted() {
     for i in $(seq 1 ${_num_layers}); do
         _build_str="${_build_str}\nRUN echo 'Adding layer ${i} for ${_tag_to}' > /var/tmp/layer_${i}"
     done
+    #echo -e "FROM alpine:3.7\nRUN apk add --no-cache mysql-client\nCMD echo 'Built ${_tag_to} from image:${_base_img}' > Dockerfile
     echo -e "${_build_str}" > Dockerfile
     ${_cmd} build --rm -t ${_tag_to} .
     local _rc=$?
     cd -  && mv -v ${_build_dir} ${_TMP%/}/
     if [ ${_rc} -ne 0 ]; then
-        _log "ERROR" "'${_cmd} build --rm -t ${_tag_to} .' failed (${_rc}, ${_TMP%/}/${_build_dir})"
+        _log "ERROR" "'${_cmd} build --rm -t ${_tag_to} .' failed (${_rc}, ${_TMP%/}/$(basename "${_build_dir}"))"
         return ${_rc}
     fi
     # It seems newer docker appends "localhost/" so trying this one first.
@@ -536,7 +548,6 @@ function _populate_docker_hosted() {
     _log "DEBUG" "${_cmd} push ${_host_port}/${_tag_to}"
     ${_cmd} push ${_host_port}/${_tag_to} || return $?
 }
-#echo -e "FROM alpine:3.7\nRUN apk add --no-cache mysql-client\nCMD echo 'Built ${_tag_to} from image:${_base_img}' > /var/tmp/_populate_docker_hosted.out" > Dockerfile && ${_cmd} build --rm -t ${_tag_to} .
 
 function f_setup_yum() {
     local __doc__="Create Yum(rpm) proxy/hosted/group repositories with dummy data"
@@ -968,7 +979,7 @@ function f_setup_raw() {
     [ -z "${_ds_name}" ] && _ds_name="$(_get_datastore_name)"
     [ -n "${_ds_name}" ] && _extra_sto_opt=',"dataStoreName":"'${_ds_name}'"'
     # NOTE: using "strictContentTypeValidation":false for raw repositories
-    # If no xxxx-proxy, create it
+    # If no xxxx-proxy, create it (but no standard remote URL for Raw format)
     if ! _is_repo_available "${_prefix}-jenkins-proxy"; then
         f_apiS '{"action":"coreui_Repository","method":"create","data":[{"attributes":{"raw":{"contentDisposition":"ATTACHMENT"},"proxy":{"remoteUrl":"https://updates.jenkins.io/","contentMaxAge":1440,"metadataMaxAge":1440},"httpclient":{"blocked":false,"autoBlock":true,"connection":{"useTrustStore":false}},"storage":{"blobStoreName":"'${_bs_name}'","strictContentTypeValidation":false'${_extra_sto_opt}'},"negativeCache":{"enabled":true,"timeToLive":1440},"cleanup":{"policyName":[]}},"name":"'${_prefix}'-jenkins-proxy","format":"","type":"","url":"","online":true,"routingRuleId":"","authEnabled":false,"httpRequestSettings":false,"recipe":"raw-proxy"}],"type":"rpc"}' || return $?
     fi
@@ -979,13 +990,16 @@ function f_setup_raw() {
     if ! _is_repo_available "${_prefix}-hosted"; then
         f_apiS '{"action":"coreui_Repository","method":"create","data":[{"attributes":{"storage":{"blobStoreName":"'${_bs_name}'","writePolicy":"ALLOW","strictContentTypeValidation":false'${_extra_sto_opt}'},"cleanup":{"policyName":[]}},"name":"'${_prefix}'-hosted","format":"","type":"","url":"","online":true,"recipe":"raw-hosted"}],"type":"rpc"}' || return $?
     fi
-    # creating a dummy 1K file (not real 1K file)
-    dd if=/dev/zero of=${_TMP%/}/test_1k.img bs=1 count=0 seek=1024
-    if [ -s "${_TMP%/}/test_1k.img" ]; then
-        _ASYNC_CURL="Y" f_upload_asset "${_prefix}-hosted" -F raw.directory=test -F raw.asset1=@${_TMP%/}/test_1k.img -F raw.asset1.filename=test_1k.img
-    fi
-    # Quicker way: --limit-rate=4k
-    # curl -D- -u 'admin:admin123' -T <(echo 'test') "${_NEXUS_URL%/}/repository/raw-hosted/test/test.txt"
+
+    # Quicker way: NOTE --limit-rate=4k can be a handy option to test:
+    #   time curl -D- -u 'admin:admin123' -T <(echo 'test') "${_NEXUS_URL%/}/repository/raw-hosted/test/test.txt"
+    # Creating a dummy 1K file (not real 1K file): _TMP="/tmp"
+    dd if=/dev/zero of=${_TMP%/}/test_1k.img bs=1 count=0 seek=1024 && \
+    _ASYNC_CURL="Y" f_upload_asset "${_prefix}-hosted" -F raw.directory=test -F raw.asset1=@${_TMP%/}/test_1k.img -F raw.asset1.filename=test_1k.img
+    #   time curl -D- -u 'admin:admin123' -T ${_TMP%/}/test_1k.img "${_NEXUS_URL%/}/repository/raw-hosted/test/test_1k.img"
+    #   time curl -D- -u 'admin:admin123' -o/dev/null "${_NEXUS_URL%/}/repository/raw-hosted/test/test_1k.img"
+    # Upload a large dummy file
+    #   dd if=/dev/zero of=${_TMP%/}/test_100m.img bs=1 count=0 seek=104857600 && curl -D- -u 'admin:admin123' -T ${_TMP%/}/test_100m.img "${_NEXUS_URL%/}/repository/raw-hosted/test/test_100m.img"
 
     # If no xxxx-group, create it
     if ! _is_repo_available "${_prefix}-group"; then
@@ -1004,16 +1018,17 @@ function f_branding() {
 
 ### Nexus related Misc. functions #################################################################
 function _get_inst_dir() {
-    local _install_dir="$(ps auxwww | _sed -n -E '/org.sonatype.nexus.karaf.NexusMain/ s/.+-Dexe4j.moduleName=([^ ]+)\/bin\/nexus .+/\1/p' | head -1)"
+    local _install_dir="$(ps auxwww | sed -n -E '/org.sonatype.nexus.karaf.NexusMain/ s/.+-Dexe4j.moduleName=([\S]+)\/bin\/nexus .+/\1/p' | head -1)"
     [ -z "${_install_dir}" ] && _install_dir="$(find . -mindepth 1 -maxdepth 1 -type d -name 'nexus*' 2>/dev/null | sort | tail -n1)"
     readlink -f "${_install_dir%/}"
 }
 function _get_work_dir() {
     local _install_dir="$(_get_inst_dir)"
     [ -z "${_install_dir}" ] && return 1
-    local _work_dir="$(ps auxwww | _sed -n -E '/org.sonatype.nexus.karaf.NexusMain/ s/.+-Dkaraf.data=([^ ]+) .+/\1/p' | head -n1)"
+    local _work_dir="$(ps auxwww | sed -n -E '/org.sonatype.nexus.karaf.NexusMain/ s/.+-Dkaraf.data=([\S]+) .+/\1/p' | head -n1)"
+    [ -n "${_work_dir}" ] && _work_dir="${_install_dir%/}/${_work_dir%/}"
     [ -z "${_work_dir}" ] && _work_dir="$(find . -mindepth 1 -maxdepth 2 -type d -path '*/sonatype-work/*' -name 'nexus3' | sort | tail -n1)"
-    readlink -f "${_install_dir%/}/${_work_dir%/}"
+    readlink -f "${_work_dir}"
 }
 function _get_blobstore_name() {
     local _bs_name="default"
@@ -1796,7 +1811,7 @@ function f_nexus_csel() {
 }
 
 # Create a test user and test role
-function f_nexus_testuser() {
+function f_create_testuser() {
     local _userid="${1:-"testuser"}"
     local _privs="${2-"\"nx-repository-view-*-*-*\",\"nx-search-read\",\"nx-component-upload\""}" # NOTE: nx-usertoken-current does not work with OSS as no User Token
     local _role="${3-"test-role"}"
@@ -1866,8 +1881,12 @@ function f_nexus_https_config() {
             _sed -i 's@class=\"org.eclipse.jetty.util.ssl.SslContextFactory\"@class=\"org.eclipse.jetty.util.ssl.SslContextFactory\$Server\"@g' ${_work_dir%/}/etc/jetty/jetty-https.xml
         fi
     fi
-    _log "INFO" "Please restart service. To check the connection:
-    curl -svkf \"https://${_NEXUS_HOSTNAME}:${_port}/\" -o/dev/null 2>&1 | grep 'Server certificate:' -A 5"
+    _log "INFO" "Please restart service.
+Also update _NEXUS_URL. For example: export _NEXUS_URL=\"https://local.standalone.localdomain:${_port}/\""
+    if [[ "${_NEXUS_URL}" =~ https?://([^:/]+) ]]; then
+        echo "To check the SSL connection:
+    curl -svf -k \"https://${BASH_REMATCH[1]}:${_port}/\" -o/dev/null 2>&1 | grep 'Server certificate:' -A 5"
+    fi
 
     if [ -s "${_ca_pem}" ]; then
         _trust_ca "${_ca_pem}" || return $?
@@ -1882,37 +1901,6 @@ function f_nexus_mount_volume() {
     fi
     echo "${_v}"
 }
-
-#    if _isYes "${r_NEXUS_MOUNT}"; then
-function f_nexus_init_properties() {
-    local _sonatype_work="$1"
-    [ -z "${_sonatype_work}" ] && return 0  # Nothing to do
-
-    if [ ! -d "${_sonatype_work%/}/etc/jetty" ]; then
-        mkdir -p ${_sonatype_work%/}/etc/jetty || return $?
-        chmod -R a+w ${_sonatype_work%/}
-    else
-        _log "INFO" "Mount directory:${_sonatype_work%/} already exists. Reusing..."
-    fi
-
-    # If the file exists, at this moment, not adding misc. nexus properties
-    if [ ! -s "${_sonatype_work%/}/etc/nexus.properties" ]; then
-        echo 'nexus.onboarding.enabled=false
-nexus.scripts.allowCreation=true' > ${_sonatype_work%/}/etc/nexus.properties || return $?
-    fi
-
-    # HTTPS/SSL/TLS setup
-    f_nexus_https_config "${_sonatype_work%/}" || return $?
-
-    # A license file in local
-    local _license="${r_NEXUS_LICENSE_FILE}"
-    [ -z "${_license}" ] && _license="$(ls -1t ${_WORK_DIR%/}/sonatype/sonatype-*.lic 2>/dev/null | head -n1)"
-    if [ -s "${_license}" ]; then
-        [ -d "${_SHARE_DIR}" ] && cp -f "${_license}" "${_SHARE_DIR%/}/sonatype/"
-        _upsert ${_sonatype_work%/}/etc/nexus.properties "nexus.licenseFile" "${_SHARE_DIR%/}/sonatype/$(basename "${_license}")" || return $?
-    fi
-}
-
 
 
 # SAML server: https://github.com/hajimeo/samples/blob/master/golang/SamlTester/README.md
@@ -2632,7 +2620,7 @@ function questions() {
     if _isYes "${r_NEXUS_INSTALL}"; then
         _ask "Nexus version" "latest" "r_NEXUS_VERSION" "N" "Y"
         if [ "${r_NEXUS_VERSION}" == "latest" ]; then
-            r_NEXUS_VERSION="$(curl -s -I https://github.com/sonatype/nexus-public/releases/latest | _sed -n -r '/^location/ s/^location: http.+\/release-([0-9\.-]+).*$/\1/p')"
+            r_NEXUS_VERSION="$(curl -s -I https://github.com/sonatype/nexus-public/releases/latest | sed -n -E '/^location/ s/^location: http.+\/release-([0-9\.-]+).*$/\1/p')"
         fi
         #local _ver_num=$(echo "${r_NEXUS_VERSION}" | sed 's/[^0-9]//g')
         local _port="$(_find_port "8081")"
@@ -2851,8 +2839,8 @@ main() {
     _log "INFO" "Adding a sample Content Selector (CSEL) ..."
     f_nexus_csel &>/dev/null  # it's OK if this fails
     _log "INFO" "Creating 'testuser' if it hasn't been created."
-    f_nexus_testuser &>/dev/null
-    #f_nexus_testuser "testuser" "\"csel-test-priv\"" "test-role"
+    f_create_testuser &>/dev/null
+    #f_create_testuser "testuser" "\"csel-test-priv\"" "test-role"
 
     if _isYes "${r_NEXUS_CLIENT_INSTALL}"; then
         _log "INFO" "Installing a client container ..."
