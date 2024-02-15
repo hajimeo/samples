@@ -7,7 +7,7 @@
 #
 # How to source:
 #   source /dev/stdin <<< "$(curl -sSfL https://raw.githubusercontent.com/hajimeo/samples/master/bash/setup_nexus_iq.sh --compressed)"
-#   #export _NEXUS_URL="http://localhost:8070/"
+#   #export _IQ_URL="http://localhost:8070/"
 #   _AUTO=true main
 #
 # TODO: some of functions uses python, which does not exist in the image
@@ -23,7 +23,7 @@ function usage() {
     echo "Main purpose of this script is to create repositories with some sample components.
 Also functions in this script can be used for testing downloads and uploads.
 
-#export _NEXUS_URL='http://SOME_REMOTE_IQ:8070/'
+#export _IQ_URL='http://SOME_REMOTE_IQ:8070/'
 ./${_filename} -A
 
 DOWNLOADS:
@@ -35,7 +35,7 @@ REQUIREMENTS / DEPENDENCIES:
 
 COMMAND OPTIONS:
     -A
-        Automatically setup repositories against _NEXUS_URL Nexus (best effort)
+        Automatically setup repositories against _IQ_URL Nexus (best effort)
     -r <response_file_path>
         Specify your saved response file. Without -A, you can review your responses.
     -f <format1,format2,...>
@@ -69,14 +69,22 @@ Using previously saved response file and NO interviews:
 "
 }
 
+## Global variables
+: ${_ADMIN_USER:="admin"}
+: ${_ADMIN_PWD:="admin123"}
+: ${_IQ_URL:="http://localhost:8070/"}
+
+
 # TODO: Direct / Transitive example for Java and NPM
 # TODO: SCM setup
 
+
+# To upgrade (from ${_dirname}/): mv -v ./config.yml{,.orig} && tar -xvf $HOME/.nexus_executable_cache/nexus-iq-server-1.172.0-01-bundle.tar.gz && cp -p -v ./config.yml{.orig,}
 function f_install_iq() {
     local __doc__="Install specific IQ version"
     local _ver="${1}"     # 'latest'
     local _dbname="${2}"
-    local _dbusr="${3:-"nxrm"}"     # Specifying default as do not want to create many users/roles
+    local _dbusr="${3:-"nexus"}"     # Specifying default as do not want to create many users/roles
     local _dbpwd="${4:-"${_dbusr}123"}"
     local _port="${5:-"${_IQ_INSTALL_PORT}"}"      # If not specified, checking from 8070
     local _dirpath="${6}"    # If not specified, create a new dir under current dir
@@ -149,11 +157,169 @@ EOF
         cd "${_dirpath%/}" || return $?
         echo "To start: java -jar ${_jar_file} server ${_cfg_file} 2>./log/iq-server.err"
         type iqStart &>/dev/null && echo "      Or: iqStart"
+        type iqConfigUpdate &>/dev/null && echo "      also: iqConfigUpdate"
     fi
 }
 
+function f_create_testuser() {
+    echo "Not implemented yet"
+}
 
 
+### API related
+function f_api_config() {
+    local _d="$1"
+    local _iq_url="${2:-"${_IQ_URL%/}"}"
+    local _cmd="curl -sSf -u \"admin:admin123\" \"${_iq_url%/}/api/v2/config"
+    if [[ "${_d}" =~ ^property= ]]; then
+        _cmd="${_cmd}?${_d}\""
+    elif [ -n "${_d}" ]; then
+        _cmd="${_cmd}\" -H \"Content-Type: application/json\" -X PUT -d '${_d}'"
+    else
+        return 11
+    fi
+    echo "${_cmd}"
+    eval "${_cmd}" || return $?
+}
+
+function _api_appIntId() {
+    local _app_pub_id="${1}"
+    curl -sSf -u "${_ADMIN_USER}:${_ADMIN_PWD}" "${_IQ_URL%/}/api/v2/applications?publicId=${_app_pub_id}" | python -c "import sys,json
+a=json.loads(sys.stdin.read())
+if len(a['applications']) > 0:
+    print(a['applications'][0]['id'])"
+}
+
+function f_eval_gav() {
+    local _gav="${1}"
+    local _app_pub_id="${2:-"sandbox-application"}"
+    [[ "${_gav}" =~ ^" "*([^: ]+)" "*:" "*([^: ]+)" "*:" "*([^: ]+)" "*$ ]] || return 11
+    local _g="${BASH_REMATCH[1]}"
+    local _a="${BASH_REMATCH[2]}"
+    local _v="${BASH_REMATCH[3]}"
+    local _app_int_id="$(_api_appIntId "${_app_pub_id}")" || return $?
+
+    curl -sSf -u "${_ADMIN_USER}:${_ADMIN_PWD}" "${_IQ_URL%/}/api/v2/evaluation/applications/${_app_int_id}" -X POST -H "Content-Type: application/json" -d '{"components": [{"hash": null,"componentIdentifier": {"format": "maven","coordinates": {"artifactId": "'${_a}'","groupId": "'${_g}'","version": "'${_v}'","extension":"jar"}}}]}'
+}
+
+
+# Integration setup related
+function f_setup_iq_scm_for_bitbucket() {
+    echo "docker run -v /var/tmp/share/bitbucket:/var/atlassian/application-data/bitbucket --name=bitbucket -d -p 7990:7990 -p 7999:7999 atlassian/bitbucket"
+    cat << 'EOF'
+1. Setup Bitbucket
+    mkdir -p -m 777 /var/tmp/share/bitbucket
+    docker run -v /var/tmp/share/bitbucket:/var/atlassian/application-data/bitbucket \
+        --name=bitbucket -d -p 7990:7990 -p 7999:7999 atlassian/bitbucket:8.9.8
+    # Or use _setup_host.sh, f_bitbucket
+2. Create a Project and a Repository
+3. Create an access token 'http://localhost:7990/plugins/servlet/access-tokens/users/${_user}/manage'
+    Write for Repository (read for Project)
+4. Setup IQ SCM for Bitbucket-DC, then import this test-repo
+5. Add something
+    #git config --global user.name "${_user}"
+    #git config --global user.email "${_user_email}"
+    git clone http://${_user}:${_pwd}@localhost:7990/scm/test/test-repo.git
+    cd test-repo
+    git fetch; git pull
+    # add something (eg: f_gen_npm_dummy_meta)
+    git add --all
+    git commit -m "Initial Commit"
+    git push
+EOF
+}
+
+function f_scan_maven_demo() {
+    if [ ! -s "maven-policy-demo-1.1.0.jar" ]; then
+        curl -sSf -O "https://repo1.maven.org/maven2/org/sonatype/maven-policy-demo/1.1.0/maven-policy-demo-1.1.0.jar" || return $?
+    fi
+    echo "Please scan ./maven-policy-demo-1.1.0.jar"
+}
+
+function f_gen_npm_dummy_meta() {
+    local _name="${1:-"lodash-vulnerable"}"
+    local _ver="${2:-"1.0.0"}"
+    # "jsonwebtoken": "^0.4.0"
+    cat << EOF > ./package.json
+{
+  "name": "${_name}",
+  "version": "${_ver}",
+  "description": "",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 0"
+  },
+  "keywords": [],
+  "author": "",
+  "dependencies" : {
+    "lodash": "4.17.4",
+    "on-finished": "2.3.0"
+  },
+  "license": "ISC"
+}
+EOF
+    echo "npm install --package-lock-only" >&2
+    cat << EOF > ./package-lock.json
+{
+  "name": "${_name}",
+  "version": "${_ver}",
+  "lockfileVersion": 2,
+  "requires": true,
+  "packages": {
+    "": {
+      "version": "1.0.0",
+      "license": "ISC",
+      "dependencies": {
+        "lodash": "4.17.4",
+        "on-finished": "2.3.0"
+      }
+    },
+    "node_modules/ee-first": {
+      "version": "1.1.1",
+      "resolved": "https://registry.npmjs.org/ee-first/-/ee-first-1.1.1.tgz",
+      "integrity": "sha512-WMwm9LhRUo+WUaRN+vRuETqG89IgZphVSNkdFgeb6sS/E4OrDIN7t48CAewSHXc6C8lefD8KKfr5vY61brQlow=="
+    },
+    "node_modules/lodash": {
+      "version": "4.17.4",
+      "resolved": "https://registry.npmjs.org/lodash/-/lodash-4.17.4.tgz",
+      "integrity": "sha512-6X37Sq9KCpLSXEh8uM12AKYlviHPNNk4RxiGBn4cmKGJinbXBneWIV7iE/nXkM928O7ytHcHb6+X6Svl0f4hXg=="
+    },
+    "node_modules/on-finished": {
+      "version": "2.3.0",
+      "resolved": "https://registry.npmjs.org/on-finished/-/on-finished-2.3.0.tgz",
+      "integrity": "sha512-ikqdkGAAyf/X/gPhXGvfgAytDZtDbr+bkNUJ0N9h5MI/dmdgCs3l6hoHrcUv41sRKew3jIwrp4qQDXiK99Utww==",
+      "dependencies": {
+        "ee-first": "1.1.1"
+      },
+      "engines": {
+        "node": ">= 0.8"
+      }
+    }
+  },
+  "dependencies": {
+    "ee-first": {
+      "version": "1.1.1",
+      "resolved": "https://registry.npmjs.org/ee-first/-/ee-first-1.1.1.tgz",
+      "integrity": "sha512-WMwm9LhRUo+WUaRN+vRuETqG89IgZphVSNkdFgeb6sS/E4OrDIN7t48CAewSHXc6C8lefD8KKfr5vY61brQlow=="
+    },
+    "lodash": {
+      "version": "4.17.4",
+      "resolved": "https://registry.npmjs.org/lodash/-/lodash-4.17.4.tgz",
+      "integrity": "sha512-6X37Sq9KCpLSXEh8uM12AKYlviHPNNk4RxiGBn4cmKGJinbXBneWIV7iE/nXkM928O7ytHcHb6+X6Svl0f4hXg=="
+    },
+    "on-finished": {
+      "version": "2.3.0",
+      "resolved": "https://registry.npmjs.org/on-finished/-/on-finished-2.3.0.tgz",
+      "integrity": "sha512-ikqdkGAAyf/X/gPhXGvfgAytDZtDbr+bkNUJ0N9h5MI/dmdgCs3l6hoHrcUv41sRKew3jIwrp4qQDXiK99Utww==",
+      "requires": {
+        "ee-first": "1.1.1"
+      }
+    }
+  }
+}
+EOF
+    echo "Please scan ./package-lock.json and ./package.json"
+}
 
 
 
@@ -206,8 +372,8 @@ main() {
         echo "Starting IQ installation..." >&2
         _NEXUS_START="Y" f_install_iq || return $?
     fi
-    if [ -z "${r_NEXUS_URL:-"${_NEXUS_URL}"}" ] || ! _wait_url "${r_NEXUS_URL:-"${_NEXUS_URL}"}"; then
-        _log "ERROR" "${r_NEXUS_URL:-"${_NEXUS_URL}"} is unreachable"
+    if [ -z "${r_IQ_URL:-"${_IQ_URL}"}" ] || ! _wait_url "${r_IQ_URL:-"${_IQ_URL}"}"; then
+        _log "ERROR" "${r_IQ_URL:-"${_IQ_URL}"} is unreachable"
         return 1
     fi
 
