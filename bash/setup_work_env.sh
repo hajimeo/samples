@@ -74,10 +74,25 @@ function f_prepare() {
 }
 
 function f_install_misc() {
+    # https://github.com/orgs/Homebrew/discussions/417#discussioncomment-2556937
+    cat << 'EOF' > /dev/null
+brew bundle dump
+bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/master/install.sh)"
+eval "$(/opt/homebrew/bin/brew shellenv)"
+echo 'eval "$(/opt/homebrew/bin/brew shellenv)"' >> ~/.zshrc
+brew bundle --file Brewfile
+brew update && brew upgrade && brew cleanup
+
+#curl -fsSL -O https://raw.githubusercontent.com/Homebrew/install/HEAD/uninstall.sh
+#sudo bash ./uninstall.sh --path=/usr/local
+#brew cleanup
+EOF
+
     if type brew &>/dev/null; then
+        #arch -x86_64 /usr/local/bin/brew install gnu-sed grep coreutils findutils graphviz
+        brew install gnu-sed grep coreutils findutils graphviz
         # 'q' is installable with brew
-        arch -x86_64 /usr/local/bin/brew install gnu-sed grep coreutils findutils graphviz
-        arch -x86_64 /usr/local/bin/brew install harelba/q/q
+        brew install harelba/q/q
     fi
 }
 
@@ -194,8 +209,10 @@ function f_setup_golang() {
         export GOPATH=$HOME/go
     fi
     # Installing something. Ex: go get -v -u github.com/hajimeo/docker-webui
-    _log "INFO" "Installing/updating gore ..."
-    go get -u github.com/motemen/gore/cmd/gore || return $?
+    _log "INFO" "Installing/updating gomacro ..."
+    go install github.com/cosmos72/gomacro@latest
+    #go install github.com/traefik/yaegi/cmd/yaegi@latest
+    #go get -u github.com/motemen/gore/cmd/gore || return $?
     _log "INFO" "Installing/updating delve/dlv ..."
     # If Mac: brew install go-delve/delve/delve
     go get -u github.com/go-delve/delve/cmd/dlv || return $?
@@ -261,7 +278,8 @@ function f_setup_python() {
     #python3 -m pip install -U pip ${_i_opt} &>/dev/null
     # outdated list
     python3 -m pip list -o ${_i_opt} | tee /tmp/pip_$$.log
-    #python -m pip list -o --format=freeze ${_i_opt} | cut -d'=' -f1 | xargs python -m pip install -U
+    # NOTE: -o with --format=freeze no longer works from pip v22.3
+    #python -m pip list -o --format=json ${_i_opt} | python -c 'import sys,json;js=json.load(sys.stdin);[print(o["name"]+"=="+o["version"]) for o in js]' > /tmp/requirements.txt && python3 -m pip install -U ${_i_opt} -r /tmp/requirements.txt
 
     # My favourite/essential python packages (except jupyter and pandas related)
     python3 -m pip install -U ${_i_opt} wheel lxml xmltodict pyyaml markdown memory_profiler
@@ -280,6 +298,7 @@ function f_setup_python() {
     # Must-have packages. NOTE: Initially I thought pandasql looked good but it's actually using sqlite, and slow, and doesn't look like maintained any more.
     python3 -m pip install -U ${_i_opt} jupyter_kernel_gateway sqlalchemy ipython-sql pivottablejs matplotlib --log /tmp/pip_$$.log
     python3 -m pip install -U ${_i_opt} psycopg2-binary --log /tmp/pip_$$.log
+    #python3 -m pip install -U ${_i_opt} jupyter-ai --log /tmp/pip_$$.log
     # pandas_profiling may fail to install. pixiedust works only with jupyter-notebook
     #python3 -m pip install -U ${_i_opt} pandas_profiling pixiedust --log /tmp/pip_$$.log
     #   import pandas_profiling as pdp
@@ -312,6 +331,9 @@ function f_setup_python() {
     #python3 -m pip install ${_i_opt} JPype1==0.6.3 JayDeBeApi
     # For Google BigQuery (actually one of below)
     #python3 -m pip install ${_i_opt} google-cloud-bigquery pandas-gbq
+
+    # Google Bard/Gemini API
+    #python3 -m pip install ${_i_opt} google-cloud-bigquery pandas-gbqpython
 
     _log "INFO" "Customising Jupyter with f_jupyter_util..."
     f_jupyter_util
