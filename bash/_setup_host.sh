@@ -693,7 +693,7 @@ function f_apache_reverse_proxy() {
     local _redirect="${1}" # http://hostname:port/path
     local _port="${2}"
     local _sever_host="${3:-$(hostname -f)}"
-    local _keytab_file="${4}" # /etc/security/keytabs/HTTP.service.keytab
+    local _keytab_file="${4}" # /etc/security/keytabs/HTTP.service.keytab   For RUT
     local _ssl_ca_file="${5}" # /var/tmp/share/cert/rootCA_standalone.crt
 
     if [ -z "${_port}" ]; then
@@ -1991,13 +1991,13 @@ function f_port_forward() {
 }
 
 function f_gen_keytab() {
-    local __doc__="Generate keytab(s). NOTE: NOT for FreeIPA"
+    local __doc__="Generate keytab(s). NOTE: NOT for FreeIPA and also Mac's kadmin"
     local _principal="${1}" # HTTP/`hosntame -f`@REALM
     local _kadmin_usr="${2:-"admin/admin"}"
     local _kadmin_pwd="${3:-${g_DEFAULT_PASSWORD:-"hadoop"}}"
     local _keytab_dir="${4:-"/etc/security/keytabs"}"
     local _delete_first="${5-${_DELETE_FIRST}}" # default is just creating keytab if already exists
-    local _tmp_dir="${_WORK_DIR}"
+    local _tmp_dir="${_WORK_DIR:-"/tmp"}"
 
     # This function will create the following keytabs:
     # ${_tmp_dir%/}/keytabs/${_user}.headless.keytab
@@ -2044,7 +2044,7 @@ function f_gen_keytab() {
         kadmin -p ${_kadmin_usr} -w ${_kadmin_pwd} -q "add_principal -randkey ${_principal}" || return $?
     fi
 
-    # trying not to update kvno by using a common user/headless keytab and ktutil...
+    # trying not to update kvno by using a common user/headless keytab and ktutil... (so that no ktadd? forgot)
     if [ ! -s "${_tmp_dir%/}/keytabs/${_service}.headless.keytab" ]; then
         kadmin -p ${_kadmin_usr} -w ${_kadmin_pwd} -q "xst -k ${_tmp_dir%/}/keytabs/${_service}.headless.keytab ${_service}" || return $?
     fi
@@ -2178,22 +2178,31 @@ Then, '3 hour expiration for all Atlassian host products'"
 }
 
 function f_s3compatible() {
-    docker run -t -d  -p 9000:9000 -p 9001:9001 --name minio  minio/minio server /data --console-address ":9001" || return $?
+    local _port="${1:-"9000"}"
+    docker run -t -d -p ${_port}:9000 -p $((${_port} + 1)):9001 --name minio  minio/minio server /data --console-address ":9001" || return $?
     echo "Use reverse proxy for HTTPS. For example:"
-    cat << 'EOF'
+    cat << EOF
 frontend frontend_p9443
   bind *:9443 ssl crt /var/tmp/share/cert/standalone.localdomain.certs.pem alpn h2,http/1.1
   reqadd X-Forwarded-Proto:\ https
-  default_backend backend_p9000
+  default_backend backend_p${_port}
 
-backend backend_p9000
+backend backend_p${_port}
   balance first
   hash-type consistent
   option forwardfor
   http-request set-header X-Forwarded-Port %[dst_port]
   option tcp-check
-  server local_docker_9000 localhost:9000 check inter 5s init-addr none
+  server local_docker_${_port} localhost:${_port} check inter 5s init-addr none
 EOF
+}
+
+function f_tabby() {
+    # https://tabby.tabbyml.com/docs/installation/
+    # https://tabby.tabbyml.com/docs/extensions/installation/intellij
+    local _port="${1:-"8080"}"
+    #docker run -it --gpus all -p 8080:8080 -v $HOME/.tabby:/data tabbyml/tabby serve --model TabbyML/StarCoder-1B --device cuda
+    docker run -t -d -p ${_port:-8080}:8080 -v $HOME/.tabby:/data tabbyml/tabby serve --model TabbyML/StarCoder-1B
 }
 
 function p_basic_setup() {
