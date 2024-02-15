@@ -59,7 +59,7 @@ function git_comp_tags() {
     local _tag1="$1"
     local _tag2="$2"
     local _diff="$3"
-    local _fetched="$(find . -type f -maxdepth 3 -name "FETCH_HEAD" -mmin -60 -print 2>/dev/null)"
+    local _fetched="$(find . -maxdepth 3 -type f -name "FETCH_HEAD" -mmin -60 -print 2>/dev/null)"
     if [ -z "${_fetched}" ]; then
         git fetch
     fi
@@ -101,7 +101,7 @@ alias urldecode='python3 -c "import sys;from urllib import parse; print(parse.un
 # base64 encode/decode (coreutils base64 or openssl base64 -e|-d)
 alias b64encode='python3 -c "import sys, base64; print(base64.b64encode(sys.stdin.read().encode(\"utf-8\")).decode())"'
 #alias b64encode='python -c "import sys, base64; print(base64.b64encode(sys.stdin.read()))"'
-alias b64decode='python3 -c "import sys, base64; print(base64.b64decode(sys.stdin.read()).decode())"'                                                                                   # .decode() to remove "b'xxxx"
+alias b64decode='python3 -c "import sys, base64; b=sys.stdin.read(); b += \"=\" * ((4-len(b)%4)%4); print(base64.b64decode(b).decode())"'                                                                                   # .decode() to remove "b'xxxx"
 # require python3
 alias htmlencode="python -c \"import sys,html;print(html.escape(sys.stdin.read()))\""
 alias htmldecode="python -c \"import sys,html;print(html.unescape(sys.stdin.read()))\""
@@ -139,14 +139,21 @@ alias jp='pyvN && jupyter-lab &> /tmp/jupyter-lab.out'   # not using & as i forg
 alias jn='pyvN && jupyter-notebook &> /tmp/jupyter-notebook.out'
 alias startWeb='python3 -m http.server' # specify port (default:8000) if python2: python -m SimpleHTTPServer 8000
 
+#type zsh &>/dev/null && alias zzhi='env /usr/bin/arch -x86_64 /bin/zsh —-login'
+type zsh &>/dev/null && alias ibrew="arch -x86_64 /usr/local/bin/brew"
+type zsh &>/dev/null && alias pbrew="ALL_PROXY=http://proxyuser:proxypwd@dh1:28081 arch -x86_64 /usr/local/bin/brew"
+
 ## Common software/command but need to install #######################################################################
+type q &>/dev/null && alias qcsv='q -O -d"," -T --disable-double-double-quoting'
+type pgbadger &>/dev/null && alias pgbg='pgbadger --timezone 0'
+alias tabby_start='TABBY_DISABLE_USAGE_COLLECTION=1 tabby serve --device metal --model TabbyML/StarCoder-1B &>/tmp/tabby.out &'
+
+### Docker/K8s/VM related
 type docker &>/dev/null && alias docker_stop="docker stop -t 120"  # 10 seconds is too short
 #alias rdocker="DOCKER_HOST='tcp://dh1:2375' docker"
 alias rdocker="ssh dh1 docker"
 type podman &>/dev/null && alias podmand="podman --log-level debug" && alias podman_login="podman --log-level debug login --tls-verify=false" && alias podman_pull="podman --log-level debug pull --tls-verify=false" && alias podman_push="podman --log-level debug push --tls-verify=false"
 alias podman_delete_all='podman system prune --all'    # --force && podman rmi --all
-type q &>/dev/null && alias qcsv='q -O -d"," -T --disable-double-double-quoting'
-type pgbadger &>/dev/null && alias pgbg='pgbadger --timezone 0'
 #type microk8s &>/dev/null && alias kubectl="microk8s kubectl"
 alias kPods='kubectl get pods --show-labels -A'
 function kBash() {
@@ -170,9 +177,6 @@ if type aws-vault &>/dev/null && [ -s "$HOME/.kube/support_test_config" ]; then
     alias awsSpt='aws-vault exec support -- aws'
     alias kcSpt='aws-vault exec support -- kubectl'
 fi
-#type zsh &>/dev/null && alias zzhi='env /usr/bin/arch -x86_64 /bin/zsh —-login'
-type zsh &>/dev/null && alias ibrew="arch -x86_64 /usr/local/bin/brew"
-type zsh &>/dev/null && alias pbrew="ALL_PROXY=http://proxyuser:proxypwd@dh1:28081 arch -x86_64 /usr/local/bin/brew"
 
 ## Non default (need to install some complex software and/or develop script) alias commands ############################
 # Load/source my own searching utility functions / scripts
@@ -207,8 +211,8 @@ alias tda='java -Xmx4g -jar $HOME/Apps/tda-bin-2.4/tda.jar &>/tmp/tda.out &'    
 alias gcviewer='java -Xmx4g -jar $HOME/Apps/gcviewer/gcviewer-1.36.jar' # &>/tmp/gcviewer.out & # Mac can't stop this so not put in background
 alias gitbucket='java -jar gitbucket.war &> /tmp/gitbucket.out &'   #https://github.com/gitbucket/gitbucket/releases/download/4.34.0/gitbucket.war
 alias groovyi='groovysh -e ":set interpreterMode true"'
-# _JAVA_HOME_11 is set in bash_profile.sh
-alias jenkins='${_JAVA_HOME_11%/}/bin/java -jar $HOME/Apps/jenkins.war'  #curl -o $HOME/Apps/jenkins.war -L https://get.jenkins.io/war-stable/2.346.1/jenkins.war
+# JAVA_HOME_11 is set in bash_profile.sh
+alias jenkins='${JAVA_HOME_11%/}/bin/java -jar $HOME/Apps/jenkins.war'  #curl -o $HOME/Apps/jenkins.war -L https://get.jenkins.io/war-stable/2.426.3/jenkins.war
 # http (but https fails) + reverse proxy server https://www.mock-server.com/mock_server/getting_started.html
 alias mockserver='java -jar $HOME/Apps/mockserver-netty.jar'  #curl -o $HOME/Apps/mockserver-netty.jar -L https://search.maven.org/remotecontent?filepath=org/mock-server/mockserver-netty/5.11.1/mockserver-netty-5.11.1-jar-with-dependencies.jar
 alias jkCli='java -jar $HOME/Apps/jenkins-cli.jar -s http://localhost:8080/ -auth admin:admin123' #curl -o $HOME/Apps/jenkins-cli.jar -L http://localhost:8080/jnlpJars/jenkins-cli.jar
@@ -217,8 +221,8 @@ alias jkCli='java -jar $HOME/Apps/jenkins-cli.jar -s http://localhost:8080/ -aut
 [ -f /var/tmp/share/java/h2-console_v200.jar ] && alias h2-console_v200="java -jar /var/tmp/share/java/h2-console_v200.jar"
 [ -f /var/tmp/share/java/pg-console.jar ] && alias pg-console="java -jar /var/tmp/share/java/pg-console.jar"
 [ -f /var/tmp/share/java/blobpath.jar ] && alias blobpathJ="java -jar /var/tmp/share/java/blobpath.jar"
-# _JAVA_HOME_11 is set in bash_profile.sh
-alias matJ11='/Applications/mat.app/Contents/MacOS/MemoryAnalyzer -vm ${_JAVA_HOME_11%/}/bin'
+# JAVA_HOME_11 is set in bash_profile.sh
+alias matJ11='/Applications/mat.app/Contents/MacOS/MemoryAnalyzer -vm ${JAVA_HOME_11%/}/bin'
 
 ## Chrome aliases for Mac (URL needs to be IP as hostname wouldn't be resolvable on remote)
 #alias shib-local='open -na "Google Chrome" --args --user-data-dir=$HOME/.chromep/local --proxy-server=socks5://localhost:28081'
@@ -261,7 +265,7 @@ function fcat() {
     local _max_depth="${3:-"7"}"
     local _result=1
     # Accept not only file name but also /<dir>/<filename> so that using grep
-    for _f in `find . -type f -maxdepth ${_max_depth} -print | grep -w "${_name}$"`; do
+    for _f in `find . -maxdepth ${_max_depth} -type f -print | grep -w "${_name}$"`; do
         echo "# ${_f}" >&2
         cat "${_f}" && _result=0
         [[ "${_find_all}" =~ ^(y|Y) ]] || break
@@ -276,7 +280,7 @@ function fvim() {
     local _max_depth="${3:-"7"}"
     local _result=1
     # Accept not only file name but also /<dir>/<filename> so that using grep
-    for _f in `find . -type f -maxdepth ${_max_depth} -print | grep -w "${_name}$"`; do
+    for _f in `find . -maxdepth ${_max_depth} -type f -print | grep -w "${_name}$"`; do
         echo "# ${_f}" >&2
         vim "${_f}" && _result=$?
         [[ "${_find_all}" =~ ^(y|Y) ]] || break
@@ -669,7 +673,7 @@ alias _ssh='ssh $(basename "$PWD" | cut -d"_" -f1)'
 # NOTE: if 'brew upgraded postgresql', may need to run 'brew postgresql-upgrade-database'
 function pgStatus() {
     local _cmd="${1:-"status"}"
-    local _pg_data="${2:-"/usr/local/var/postgresql@14"}"
+    local _pg_data="${2:-"/opt/homebrew/var/postgresql@14"}"    #/usr/local/var/postgresql@14
     local _log_path="${3-"${HOME%/}/postgresql.log"}"   # may not have permission on /var/log and /tmp might be small
     local _wal_backup_path="${4:-"$HOME/share/$USER/backups/$(hostname -s)_wal"}"
     #ln -s /Volumes/Samsung_T5/hajime/backups $HOME/share/$USER/backups
@@ -710,8 +714,8 @@ function goBuild() {
     local _winAsWell="$3"
     local _destDir="${4:-"$HOME/IdeaProjects/samples/misc"}"
     [ -z "${_name}" ] && _name="$(basename "${_goFile}" ".go" | tr '[:upper:]' '[:lower:]')"
-    if [ -d /usr/local/opt/go/libexec ]; then
-        export GOROOT=/usr/local/opt/go/libexec
+    if [ -d /opt/homebrew/opt/go/libexec ]; then
+        export GOROOT=/opt/homebrew/opt/go/libexec
     fi
     env GOOS=linux GOARCH=amd64 go build -o "${_destDir%/}/${_name}_Linux_x86_64" ${_goFile} && \
     env GOOS=linux GOARCH=arm64 go build -o "${_destDir%/}/${_name}_Linux_aarch64" ${_goFile} && \
@@ -761,8 +765,8 @@ function backupC() {
         # Blow is bad because extracted files may have old dates
         #${_find} "$HOME/Documents/tests" -type f -mtime +120 -delete 2>/dev/null
         #${_find} $HOME/Documents/tests/* -type d -mtime +2 -empty -print -delete
-        ${_find} "$HOME/Documents/tests" -type d -maxdepth 1 -mtime +120 | rg '(nxrm|nxiq)_[0-9.-]+_([a-zA-Z].+)' -o -r '$2' | rg -v -i -w 'h2' | xargs -I{} -t psql -c "DROP DATABASE {}"
-        ${_find} "$HOME/Documents/tests" -type d -maxdepth 1 -mtime +120 -print0 | xargs -0 -I{} -t rm -rf {}
+        ${_find} "$HOME/Documents/tests" -maxdepth 1 -type d -mtime +120 | rg '(nxrm|nxiq)_[0-9.-]+_([a-zA-Z].+)' -o -r '$2' | rg -v -i -w 'h2' | xargs -I{} -t psql -c "DROP DATABASE {}"
+        ${_find} "$HOME/Documents/tests" -maxdepth 1 -type d -mtime +120 -name 'nx??_[0-9]*' -print0 | xargs -0 -I{} -t rm -rf {}
      fi
 
     [ ! -d "${_src}" ] && return 11
@@ -796,7 +800,7 @@ function backupC() {
     if [ -d "${_ext_backup}" ]; then
         # Should backup something to the external backup location?
         #rsync -Pvaz --bwlimit=10240 --max-size=10000k --modify-window=1 --exclude '*_tmp' --exclude '_*' ${_src%/}/ ${_dst%/}/
-        ${_find} "${_ext_backup%/}" -type d -maxdepth 1 -name "*_wal" -print0 | xargs -0 -P4 -I{} -t ${_find} {} -type f -mtime +30 -delete
+        ${_find} "${_ext_backup%/}" -maxdepth 1 -type d -name "*_wal" -print0 | xargs -0 -P4 -I{} -t ${_find} {} -type f -mtime +30 -delete
     fi
     wait
 
@@ -876,6 +880,7 @@ function pubS() {
     #cp -v -f $HOME/IdeaProjects/work/nexus-groovy/src2/TrustStoreConverter.groovy $HOME/IdeaProjects/nexus-toolbox/scripts/
     [ $HOME/IdeaProjects/samples/java/asset-dupe-checker/src/main/java/AssetDupeCheckV2.java -nt /tmp/pubS.last ] && cp -v -f $HOME/IdeaProjects/samples/java/asset-dupe-checker/src/main/java/AssetDupeCheckV2.java $HOME/IdeaProjects/nexus-toolbox/asset-dupe-checker/src/main/java/ && cp -v -f $HOME/IdeaProjects/samples/misc/asset-dupe-checker-v2.jar $HOME/IdeaProjects/nexus-toolbox/asset-dupe-checker/
     [ $HOME/IdeaProjects/samples/misc/orient-console.jar -nt /tmp/pubS.last ] && scp $HOME/IdeaProjects/samples/misc/orient-console.jar dh1:/var/tmp/share/java/
+    [ $HOME/IdeaProjects/samples/misc/h2-console.jar -nt /tmp/pubS.last ] && scp $HOME/IdeaProjects/samples/misc/h2-console.jar dh1:/var/tmp/share/java/
     [ $HOME/IdeaProjects/samples/misc/filelist_Linux_x86_64 -nt /tmp/pubS.last ] && scp $HOME/IdeaProjects/samples/misc/filelist_Linux_x86_64 dh1:/var/tmp/share/bin/
     sync_nexus_binaries &>/dev/null &
     date | tee /tmp/pubS.last

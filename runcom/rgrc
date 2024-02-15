@@ -12,7 +12,7 @@ web:*.{html,css,js}*
 --glob=!*.ipynb
 --glob=!*tmp
 --glob=!*.swp
---glob=!*.zip
+#--glob=!*.zip
 --glob=!*.tgz
 #--glob='!._*'
 # Set the colors.

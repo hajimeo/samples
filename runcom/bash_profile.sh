@@ -10,20 +10,13 @@ export HISTTIMEFORMAT="%Y-%m-%d %T "
 [ -s $HOME/.bash_aliases ] && source $HOME/.bash_aliases
 #[ -s $HOME/IdeaProjects/samples/runcom/bash_aliases.sh ] && source $HOME/IdeaProjects/samples/runcom/bash_aliases.sh
 
-# @see: https://threkk.medium.com/how-to-use-bookmarks-in-bash-zsh-6b8074e40774
-if [ -d "$HOME/.cdpath" ]; then
-    export CDPATH=".:$HOME/.cdpath:/"
-    alias goto="cd -P"
-    alias gt="cd -P"
-    #bookmark $HOME/Documents/cases
-    function bookmark() {
-        ln -v -s "$(realpath "${1%/}")" "$HOME/.cdpath/$(basename "${1%/}")"
-    }
-fi
-
-if [ -x "/usr/local/opt/curl/bin/curl" ]; then
-    export PATH="/usr/local/opt/curl/bin:$PATH"
-fi
+#eval "$(/opt/homebrew/bin/brew shellenv)" 
+export HOMEBREW_PREFIX="/opt/homebrew";
+export HOMEBREW_CELLAR="/opt/homebrew/Cellar";
+export HOMEBREW_REPOSITORY="/opt/homebrew";
+export PATH="/opt/homebrew/bin:/opt/homebrew/sbin${PATH+:$PATH}";
+export MANPATH="/opt/homebrew/share/man${MANPATH+:$MANPATH}:";
+export INFOPATH="/opt/homebrew/share/info:${INFOPATH:-}";
 
 # nuget/dotnet related
 if [ -s "$HOME/Apps/dotnet/dotnet" ]; then
@@ -36,7 +29,7 @@ fi
 
 # Go/Golang related
 if which go &>/dev/null; then
-    [ -z "${GOROOT}" ] && export GOROOT=/usr/local/opt/go/libexec
+    [ -z "${GOROOT}" ] && export GOROOT=/opt/homebrew/opt/go/libexec
     [[ ":$PATH:" != *":$PATH:$GOROOT/bin:"* ]] && export PATH=${PATH%:}:$GOROOT/bin
     #export GO111MODULE=off   # This is for keeping supporting older than 1.16
     [ -z "${GOPATH}" ] && export GOPATH=$HOME/go
@@ -107,10 +100,10 @@ if [ "$(uname)" = "Darwin" ]; then
         #podman machine init --cpus 2 --disk-size 40 --memory 4096
         # To add my root CA: podman machine ssh, then add pem under /etc/pki/ca-trust/source/anchors/ and update-ca-trust
         alias pd-start='podman machine start'
-    elif type lima &>/dev/null; then
+    #elif type lima &>/dev/null; then
         # "limadocker" is the hostname defined in $HOME/.ssh/config
-        export DOCKER_HOST=ssh://limadocker:60006
-        alias lm-start='limactl start default'
+    #    export DOCKER_HOST=ssh://limadocker:60006
+    #    alias lm-start='limactl start default'
     elif type docker-machine &>/dev/null; then
         alias dm-start='docker-machine start default && eval "$(docker-machine env default)" && docker-machine ssh default "echo \"$(docker-machine ip default) local.standalone.localdomain\" | sudo tee -a /etc/hosts"'
         [ -z "${DOCKER_HOST}" ] && docker-machine status default 2>/dev/null | grep -q "Running" && eval "$(docker-machine env default)"

@@ -59,24 +59,27 @@ function _get_rm_url() {
     _NEXUS_URL="${_rm_url%/}/"
 }
 function _get_iq_url() {
-    local _iq_url="${1:-${_IQ_URL}}"
-    if [ -z "${_iq_url}" ]; then
-        for _url in "http://localhost:8070/" "https://nxiqha-k8s.standalone.localdomain/" "http://dh1:8070/"; do
-            if curl -f -s -I "${_url%/}/" &>/dev/null; then
-                echo "${_url%/}/"
-                return
+    local _iq_url="${1-${_IQ_URL}}"
+    if [ -n "${_iq_url%/}" ]; then
+        if [[ ! "${_iq_url}" =~ ^https?://.+ ]]; then
+            if [[ ! "${_iq_url}" =~ .+:[0-9]+ ]]; then   # Provided hostname only
+                _iq_url="http://${_iq_url%/}:8070/"
+            else
+                _iq_url="http://${_iq_url%/}/"
             fi
-        done
-        return 1
-    fi
-    if [[ ! "${_iq_url}" =~ ^https?://.+ ]]; then
-        if [[ ! "${_iq_url}" =~ .+:[0-9]+ ]]; then   # Provided hostname only
-            _iq_url="http://${_iq_url%/}:8070/"
-        else
-            _iq_url="http://${_iq_url%/}/"
+        fi
+        if curl -f -s -I "${_url%/}/" &>/dev/null; then
+            echo "${_url%/}/"
+            return
         fi
     fi
-    echo "${_iq_url}"
+    for _url in "http://localhost:8070/" "https://nxiqha-k8s.standalone.localdomain/" "http://dh1:8070/"; do
+        if curl -f -s -I "${_url%/}/" &>/dev/null; then
+            echo "${_url%/}/"
+            return
+        fi
+    done
+    return 1
 }
 
 # Start iq CLI
@@ -167,7 +170,8 @@ function nxrmStart() {
     # -Xrunhprof:cpu=samples,interval=30,thread=y,cutoff=0.005,file=/tmp/cpu_samples_$$.hprof
     # -Xrunhprof:cpu=times,interval=30,thread=y,monitor=y,cutoff=0.001,doe=n,file=/tmp/cpu_samples_$$.hprof
     # -Xrunhprof:heap=sites,format=b,file=${_base_dir%/}/heap_sites_$$.hprof
-    local _java_opts=${2-"-Xrunjdwp:transport=dt_socket,server=y,address=5005,suspend=${_SUSPEND:-"n"}"}
+    # only 'root.level' is changeable
+    local _java_opts=${2-"-Droot.level=DEBUG -Xrunjdwp:transport=dt_socket,server=y,address=5005,suspend=${_SUSPEND:-"n"}"}
     local _mode=${3} # if NXRM2, not 'run' but 'console'
     #local _java_opts=${@:2}
     _base_dir="$(realpath "${_base_dir}")"
@@ -420,27 +424,19 @@ function nxrmDocker() {
     docker exec -ti ${_name} cat /nexus-data/admin.password"
 }
 
-# To start local (on Mac) IQ server
-# TODO: delete LDAP
-#TRUNCATE TABLE insight_brain_ods.proxy_server_configuration;INSERT INTO insight_brain_ods.proxy_server_configuration (proxy_server_configuration_id, hostname, port, exclude_hosts) VALUES ('proxy-server-configuration', 'non-existing-hostname', 8080, '*.sonatype.com');
-#java -jar nexus-iq-server-[version].jar reset-admin config.yml
-#export _CUSTOM_DNS="127.0.0.1"
+# To start local (on Mac) IQ server, do not forget to delete LDAP and populate HTTP proxy (and DNS), also reset admin.
+#   _CUSTOM_DNS="127.0.0.1" iqStart
 function iqStart() {
     local _base_dir="${1:-"."}"
     local _java_opts="${2-"-agentlib:jdwp=transport=dt_socket,server=y,address=5006,suspend=${_SUSPEND:-"n"}"}"
     #local _java_opts=${@:2}
 
-    if [ -n "${_CUSTOM_DNS}" ]; then
-        _java_opts="${_java_opts} -Dsun.net.spi.nameservice.nameservers=${_CUSTOM_DNS} -Dsun.net.spi.nameservice.provider.1=dns,sun"
-    fi
-    # NOTE: below does not work for SCM due to the change added in INT-5729
-    #_java_opts="${_java_opts} -Dhttp.proxyHost=non-existing-hostname -Dhttp.proxyPort=8800 -Dhttp.nonProxyHosts=\"*.sonatype.com\""
     _base_dir="$(realpath ${_base_dir%/})"
     local _jar_file="$(find "${_base_dir%/}" -maxdepth 2 -type f -name 'nexus-iq-server*.jar' 2>/dev/null | sort | tail -n1)"
     [ -z "${_jar_file}" ] && return 11
     local _cfg_file="$(find "${_base_dir%/}" -maxdepth 2 -type f -name 'config.yml' 2>/dev/null | sort | tail -n1)"
     [ -z "${_cfg_file}" ] && return 12
-
+    local _work_dir="$(sed -n -E 's/sonatypeWork[[:space:]]*:[[:space:]]*(.+)/\1/p' "${_cfg_file}")"
     local _license="$(ls -1t /var/tmp/share/sonatype/*.lic 2>/dev/null | head -n1)"
     [ -z "${_license}" ] && [ -s "${HOME%/}/.nexus_executable_cache/nexus.lic" ] && _license="${HOME%/}/.nexus_executable_cache/nexus.lic"
     [ -s "${_license}" ] && _java_opts="${_java_opts} -Ddw.licenseFile=${_license}"
@@ -469,9 +465,34 @@ function iqStart() {
         archivedFileCount: 5
 $(sed -n "/^  loggers:/,\$p" ${_cfg_file} | grep -v '^  loggers:')" > "${_cfg_file}"
     fi
+
     if [[ "${_java_opts}" =~ agentlib:jdwp ]] && [[ "${JAVA_TOOL_OPTIONS}" =~ agentlib:jdwp ]]; then
         echo "Unsetting JAVA_TOOL_OPTIONS = ${JAVA_TOOL_OPTIONS}"
         unset JAVA_TOOL_OPTIONS
+    fi
+    if [ -n "${_CUSTOM_DNS}" ]; then
+        _java_opts="${_java_opts} -Dsun.net.spi.nameservice.nameservers=${_CUSTOM_DNS} -Dsun.net.spi.nameservice.provider.1=dns,sun"
+        # NOTE: below does not work for SCM due to the change added in INT-5729
+        _java_opts="${_java_opts} -Dhttp.proxyHost=non-existing-hostname -Dhttp.proxyPort=8800 -Dhttp.nonProxyHosts=\"*.sonatype.com\""
+
+        if [ -s "${_work_dir:-"."}/data/ods.h2.db" ]; then
+            # TODO: for PostgreSQL
+            if ! type h2-console &>/dev/null; then
+                echo "no 'h2-console'"
+                return 11
+            fi
+
+            if [ ! -s "${_work_dir:-"."}/data/ods.h2.db.gz" ]; then
+                echo "gzip-ing ods.h2.db file ..."
+                gzip -k "${_work_dir:-"."}/data/ods.h2.db" || return $?
+            fi
+            java -jar ${_jar_file} reset-admin ${_cfg_file} >/dev/null || return $?
+            echo "DELETE FROM insight_brain_ods.ldap_usermapping;DELETE FROM insight_brain_ods.ldap_connection;DELETE FROM insight_brain_ods.ldap_server" | h2-console "${_work_dir:-"."}/data/ods.h2.db" || return $?
+            echo "DELETE FROM insight_brain_ods.mail_configuration;DELETE FROM insight_brain_ods.ldap_connection" | h2-console "${_work_dir:-"."}/data/ods.h2.db" || return $?
+            echo "UPDATE insight_brain_ods.source_control SET remediation_pull_requests_enabled = false, status_checks_enabled = false, pull_request_commenting_enabled = false, source_control_evaluations_enabled = false" | h2-console "${_work_dir:-"."}/data/ods.h2.db" || return $?
+            echo "DELETE FROM insight_brain_ods.proxy_server_configuration;INSERT INTO insight_brain_ods.proxy_server_configuration (proxy_server_configuration_id, hostname, port, exclude_hosts) VALUES ('proxy-server-configuration', 'non-existing-hostname', 8080, '*.sonatype.com');" | h2-console "${_work_dir:-"."}/data/ods.h2.db" || return $?
+            echo "*** Updated DB directly ***"; sleep 3;
+        fi
     fi
     local _cmd="java -Xms2g -Xmx4g ${_java_opts} -jar \"${_jar_file}\" server \"${_cfg_file}\" 2>/tmp/iq-server.err"
     echo "${_cmd}"; sleep 2
@@ -483,7 +504,7 @@ function _iqConfigAPI() {
     local _d="$1"
     local _iq_url="$2"
     _iq_url="$(_get_iq_url "${_iq_url}")" || return $?
-    local _cmd="curl -D- -u \"admin:admin123\" \"${_iq_url%/}/api/v2/config"
+    local _cmd="curl -sSf -u \"admin:admin123\" \"${_iq_url%/}/api/v2/config"
     if [[ "${_d}" =~ ^property= ]]; then
         _cmd="${_cmd}?${_d}\""
     elif [ -n "${_d}" ]; then
