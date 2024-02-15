@@ -2,13 +2,14 @@
 # DOWNLOAD:
 # curl -o /var/tmp/share/java/patch_java.sh https://raw.githubusercontent.com/hajimeo/samples/master/bash/patch_java.sh
 #
-# REQUIRED: lsof, realpath
+# REQUIRED: lsof (TODO)
 # NOTE: each function should be usable by just copying & pasting (no external function)
 #
 
 # Location to store downloaded JDK
 _JAVA_DIR="${_JAVA_DIR:-"/var/tmp/share/java"}"
 _EXTRA_LIB="${_EXTRA_LIB:-"/var/tmp/share/java/libs"}"
+_TARGET="${_TARGET:-"./target"}"
 
 function usage() {
     cat << EOS
@@ -170,7 +171,7 @@ function f_javaenvs() {
         return 10
     fi
 
-    if [ ! -d "${_port_or_dir}" ]; then
+    if [[ "${_port_or_dir}" =~ ^[0-9]+$ ]]; then
         local _p="$(lsof -ti:${_port_or_dir} -sTCP:LISTEN | tail -n1)"
         if [ -z "${_p}" ]; then
             echo "Nothing running on port:${_port_or_dir}. Manually set JAVA_HOME and CLASSPATH."
@@ -178,7 +179,7 @@ function f_javaenvs() {
         fi
         _user="$(lsof -nP -p ${_p} | head -n2 | tail -n1 | awk '{print $3}')"   # This is slow but stat -c '%U' doesn't work on Mac
         [ -z "${_user}" ] && _user="$USER"
-        export _CWD="$(realpath /proc/${_p}/cwd 2>/dev/null)"
+        export _CWD="$(readlink -f /proc/${_p}/cwd 2>/dev/null)"
     fi
 
     local _jcmd="$(_find_jcmd "${_port_or_dir}")"
@@ -236,15 +237,17 @@ function _find_jcmd() {
         echo "Couldn't find jcmd path. Use export JAVA_HOME= ."
         return 1
     fi
-    echo "$(realpath "${_jcmd}")"
+    echo "$(readlink -f "${_jcmd}")"
 }
 
 function f_set_classpath() {
     local _port_or_dir="${1}"  # port or directory path
     if [ -d "${_port_or_dir}" ]; then
         # NOTE: wouldn't be able to use -maxdepth as can't predict the depth of the Group ID, hence not using -L (symlink)
-        local _tmp_cp="$(find $(realpath "${_port_or_dir%/}") -type f -name '*.jar' | tr '\n' ':')"
+        local _tmp_cp="$(find $(readlink -f "${_port_or_dir%/}") -type f -name '*.jar' | tr '\n' ':')"
         export CLASSPATH=".:${_tmp_cp%:}"
+    elif [ -s "${_port_or_dir}" ]; then
+        export CLASSPATH=".:${_port_or_dir}"
     elif [ -n "${_port_or_dir%/}" ]; then
         local _p=`lsof -ti:${_port_or_dir} -s TCP:LISTEN` || return $?
         local _user="$(lsof -nP -p ${_p} | head -n2 | tail -n1 | awk '{print $3}')" # This is slow but stat -c '%U' doesn't work on Mac
@@ -311,15 +314,17 @@ function f_update_jar() {
     fi
 
     local _jar_filename="$(basename ${_jar_filepath})"
-    if [ "$(realpath "${_jar_filepath}")" != "$(realpath ./${_jar_filename})" ]; then
+    if [ "$(readlink -f "${_jar_filepath}")" != "$(readlink -f ./${_jar_filename})" ]; then
         cp -p ${_jar_filepath} ./${_jar_filename} || return $?
     fi
-    if [ ! -s "${_jar_filename}.orig" ]; then
-        cp -v -p ${_jar_filepath} ./${_jar_filename}.orig || return $?
+    if [ ! -s "${_TARGET%/}/${_jar_filename}.orig" ]; then
+        cp -v -p ${_jar_filepath} ${_TARGET%/}/${_jar_filename}.orig || return $?
     fi
 
-    if [ ! -d "${_compiled_dir}" ]; then
+    if [ ! -d "${_TARGET%/}/${_compiled_dir}" ]; then
+        cd "${_TARGET%/}" || return 11
         _compiled_dir="`dirname "$(find . -name "${_class_name}.class" -print | tail -n1)"`"
+        cd - || return 12
         if [ "${_compiled_dir}" = "." ] || [ -z "${_compiled_dir}" ]; then
             echo "${_class_name}.class shouldn't be located under ${_compiled_dir}."
             return 1
@@ -330,17 +335,21 @@ function f_update_jar() {
     [ -n "${_updating_specific_class}" ] && _class_file_path="${_compiled_dir%/}/${_updating_specific_class}[.$]*class"
 
     echo "Updating ./${_jar_filename} with ${_class_file_path} ..."
+    local _updating_jar="$(readlink -f ./${_jar_filename})"
     #local _updated_date="$(date | _sed -r 's/[0-9][0-9]:[0-9][0-9]:[0-9][0-9].+//')"
     local _updated_time="$(date | grep -oE ' [0-9][0-9]:[0-9][0-9]:[0-9]')"
-    $JAVA_HOME/bin/jar -uvf ./${_jar_filename} ${_class_file_path} || return $?
+    # -C doesn't work with wildcard (*.class)
+    cd ${_TARGET%/} || return 13
+    $JAVA_HOME/bin/jar -uvf ${_updating_jar} ${_class_file_path} || return $?
+    cd - || return 14
     echo "------------------------------------------------------------------------------------"
     echo "Checking if any non-updated class... (zip -d ${_jar_filepath} '/path/to/class')"
-    $JAVA_HOME/bin/jar -tvf ./${_jar_filename} | grep -w ${_class_name} | grep -v "${_updated_time}"
+    $JAVA_HOME/bin/jar -tvf ${_updating_jar} | grep -w ${_class_name} | grep -v "${_updated_time}"
 
-    cp -v -p -f ./${_jar_filename} ${_jar_filename}.patched || return $?
+    cp -v -p -f ${_updating_jar} ${_TARGET%/}/${_jar_filename}.patched || return $?
     echo "Moving ./${_jar_filename} to ${_jar_filepath} (may ask yes or no) ..."
-    ls -l ./${_jar_filename} ${_jar_filepath} || return $?
-    mv -v ./${_jar_filename} ${_jar_filepath} || return $?
+    ls -l ${_updating_jar} ${_jar_filepath} || return $?
+    mv -v ${_updating_jar} ${_jar_filepath} || return $?
     return 0
 }
 
@@ -369,7 +378,7 @@ function f_profile() {
         return 11
     fi
     [ -d "${_dump_path}" ] && _dump_path="${_dump_path%/}/profile_${_name}_${_pid}_$(date +"%Y%m%d%H%M%S").jfr"
-    _dump_path="$(realpath "${_dump_path}")"
+    _dump_path="$(readlink -f "${_dump_path}")"
     local _user="$(lsof -nP -p ${_pid} | head -n2 | tail -n1 | awk '{print $3}')"   # This is slow but $(stat -c '%U') doesn't work on Mac
     local _jcmd="$(_find_jcmd "${_port_or_dir}")" || return $?
     [ "${_user}" != "$USER" ] && _jcmd="sudo -u ${_user} ${_jcmd}"
@@ -469,7 +478,7 @@ if [ "$0" = "$BASH_SOURCE" ]; then
 
     f_javaenvs "$_PORT" || exit $?
     if [ -z "${_JAR_FILEPATH}" ]; then
-        if [ -d "${_PORT}" ]; then
+        if [ -d "${_PORT}" ] || [ -f "${_PORT}" ]; then
             _JAR_FILEPATH="${_PORT}"
         else
             _JAR_FILEPATH="${_CWD:="."}"
@@ -517,7 +526,7 @@ $0 '$1' '$2' '<jar path from above>' '$4' '$5' [Y]"
                 if [ ! -d "${_DIR_PATH}" ]; then
                     mkdir -p "${_DIR_PATH}" || exit $?
                 fi
-                if [ "$(realpath ${_CLASS_FILEPATH})" != "$(realpath ${_DIR_PATH%/}/${_CLASS_FILENAME})" ]; then
+                if [ "$(readlink -f ${_CLASS_FILEPATH})" != "$(readlink -f ${_DIR_PATH%/}/${_CLASS_FILENAME})" ]; then
                     cp -v -p -f ${_CLASS_FILEPATH} ${_DIR_PATH%/}/ || exit $?
                 fi
                 _CLASS_FILEPATH=${_DIR_PATH%/}/${_CLASS_FILENAME}
@@ -527,8 +536,9 @@ $0 '$1' '$2' '<jar path from above>' '$4' '$5' [Y]"
         fi
 
         if [ -z "${_NOT_COMPILING}" ]; then
+            [ -n "${_TARGET%/}" ] && [ ! -d "${_TARGET%/}" ] && mkdir -p -v "${_TARGET%/}"
             # to avoid Java heap space error (default seems to be set to 256m)
-            JAVA_OPTS=-Xmx1024m ${_CMD} "${_CLASS_FILEPATH}" || exit $?
+            JAVA_OPTS=-Xmx1024m ${_CMD} -d "${_TARGET:-"."}" "${_CLASS_FILEPATH}" || exit $?
         fi
     fi
 
