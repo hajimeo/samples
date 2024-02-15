@@ -148,7 +148,7 @@ function _postgresql_configure() {
         _upsert ${_postgresql_conf} "log_autovacuum_min_duration" "0" "#log_autovacuum_min_duration"
         # Also, make sure 'autovacuum' is 'on', autovacuum_analyze_scale_factor (0.1), autovacuum_analyze_threshold (50)
     else
-        _upsert ${_postgresql_conf} "log_line_prefix" "'%m [%p-%l]: db=%d,user=%u,app=%a,client=%h '" "#log_line_prefix"
+        _upsert ${_postgresql_conf} "log_line_prefix" "'%m [%p-%c]: db=%d,user=%u,app=%a,client=%h '" "#log_line_prefix"
         # ALTER system RESET ALL;
         # ALTER system SET log_statement = 'mod';SELECT pg_reload_conf();
         _upsert ${_postgresql_conf} "log_statement" "'mod'" "#log_statement"
@@ -212,7 +212,7 @@ function _postgresql_create_dbuser() {
     _dbadmin="$(_get_dbadmin_user "${_dbadmin}" "${_port}")"
     local _psql_as_admin="$(_get_psql_as_admin "${_dbadmin}")"
 
-    local _pg_hba_conf="$(${_psql_as_admin} -tAc 'SHOW hba_file')"
+    local _pg_hba_conf="$(${_psql_as_admin} -d template1 -tAc 'SHOW hba_file')"
     if [ ! -f "${_pg_hba_conf}" ]; then
         _log "WARN" "No pg_hba.conf (${_pg_hba_conf}) found."
         return 1
@@ -228,9 +228,9 @@ function _postgresql_create_dbuser() {
     [ -r "${_pg_hba_conf}" ] || _sudo="sudo -u ${_dbadmin}"
     if ! ${_sudo} grep -E "host\s+(${_dbname:-"all"}|all)\s+${_dbusr}\s+" "${_pg_hba_conf}"; then
         ${_sudo} bash -c "echo \"host ${_dbname:-"all"} ${_dbusr} 0.0.0.0/0 md5\" >> \"${_pg_hba_conf}\"" || return $?
-        ${_psql_as_admin} -tAc 'SELECT pg_reload_conf()' || return $?
+        ${_psql_as_admin} -d template1 -tAc 'SELECT pg_reload_conf()' || return $?
         #${_psql_as_admin} -tAc 'SELECT pg_read_file('pg_hba.conf');'
-        ${_psql_as_admin} -tAc "select * from pg_hba_file_rules where database = '{${_dbname:-"all"}}' and user_name = '{${_dbusr}}';"
+        ${_psql_as_admin} -d template1 -tAc "select * from pg_hba_file_rules where database = '{${_dbname:-"all"}}' and user_name = '{${_dbusr}}';"
     fi
 
     [ "${_dbusr}" == "all" ] && return 0    # not creating user 'all'
