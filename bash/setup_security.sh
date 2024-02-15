@@ -216,6 +216,7 @@ EOF
     echo '*/admin *' >/etc/krb5kdc/kadm5.acl
     service krb5-kdc restart && service krb5-admin-server restart
     sleep 3
+    # add_principal = addprinc
     kadmin.local -r ${_realm} -q "add_principal -pw ${_password} admin/admin@${_realm}"
     kadmin.local -r ${_realm} -q "add_principal -pw ${_password} kadmin/${_server}@${_realm}"   # AMBARI-24869
     kadmin.local -r ${_realm} -q "add_principal -pw ${_password} kadmin/admin@${_realm}" &>/dev/null # this should exist already
