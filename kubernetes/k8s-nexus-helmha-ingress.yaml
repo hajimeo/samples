@@ -1,4 +1,4 @@
-# NAMESPACE="sonatype-helm"
+# NAMESPACE="nexusrepo"
 # kubectl create secret tls nexus-tls -n ${NAMESPACE} --key ~/IdeaProjects/samples/misc/standalone.localdomain.key --cert ~/IdeaProjects/samples/misc/standalone.localdomain.crt
 #
 # kubectl delete -n ${NAMESPACE} -f ./k8s-nexus-helmha-ingress.yaml

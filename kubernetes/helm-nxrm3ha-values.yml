@@ -4,25 +4,25 @@
 # LIMITATION:
 #   Can't (or need to be careful) use special characters such as double-quotes and dollar mark.
 
-#$ HELM_NAME="sonatype-helm" NAME_SPACE="${HELM_NAME}" RELEASE_NAME="nxrm3ha" ADMIN_PWD="admin123" LICENSE_B64="$(base64 -i /var/tmp/share/sonatype/sonatype-license.lic)" NFS_SERVER="192.168.1.31" SHARE_DIR="/var/tmp/share/sonatype/${RELEASE_NAME}-nfs"
+#$ export HELM_NAME="sonatype-helm" NAME_SPACE="nexusrepo" RELEASE_NAME="nxrm3ha" ADMIN_PWD="admin123" LICENSE_B64="$(base64 -i /var/tmp/share/sonatype/sonatype-license.lic)" NFS_SERVER="192.168.1.31" SHARE_DIR="/var/tmp/share/sonatype/${RELEASE_NAME}-nfs"
 
 # Most likely only once
 #$ helm repo add ${HELM_NAME} https://sonatype.github.io/helm3-charts/
 #$ helm repo update ${HELM_NAME}
-#$ kubectl create namespace ${NAME_SPACE}
+#$ helm search repo ${HELM_NAME}/nxrm-ha --versions | head
+#$ #kubectl create namespace ${NAME_SPACE}
 
 # Setting up NFS PV and PVC
 #$ eval "echo \"$(cat ./k8s-nfs-pv-pvc-tmpl.yaml | grep -v '^\s*#')\"" > ./${RELEASE_NAME}-nfs-pv-pvc.yaml
 #$ kubectl apply -f ./${RELEASE_NAME}-nfs-pv-pvc.yaml -n ${NAME_SPACE}
 
 #$ eval "echo \"$(cat ./helm-nxrm3ha-values.yml | grep -v '^\s*#')\"" > ./${RELEASE_NAME}_values.yaml
-#$ helm install ${RELEASE_NAME} ${HELM_NAME}/nxrm-ha -f ./${RELEASE_NAME}_values.yaml -n ${NAME_SPACE} --debug #--dry-run
-# or
-#$ git -C ~/IdeaProjects/nxrm3-ha-repository pull && git -C ~/IdeaProjects/nxrm3-ha-repository fetch
-#$ helm install ${RELEASE_NAME} ~/IdeaProjects/nxrm3-ha-repository/nxrm-ha -f ./${RELEASE_NAME}_values.yaml -n ${NAME_SPACE} --debug
+#$ #helm uninstall ${RELEASE_NAME} -n ${NAME_SPACE}
+#$ helm install ${RELEASE_NAME} ${HELM_NAME}/nxrm-ha -f ./${RELEASE_NAME}_values.yaml -n ${NAME_SPACE} --version 63.0.0 --debug #--dry-run
 
-# To update the values (specify --version with Chart version)
-#$ helm upgrade ${RELEASE_NAME} ${HELM_NAME}/nxrm-ha -f ./${RELEASE_NAME}_values.yaml -n ${NAME_SPACE} --debug #--version 63.0.0
+# TODO: To update the values (specify --version with Chart version)
+#$ eval "echo \"$(cat ./helm-nxrm3ha-values.yml | grep -v '^\s*#')\"" > ./${RELEASE_NAME}_values.yaml
+#$ helm upgrade ${RELEASE_NAME} ${HELM_NAME}/nxrm-ha -f ./${RELEASE_NAME}_values.yaml -n ${NAME_SPACE} --version 63.0.0 --debug
 
 # For troubleshooting
 #$ git -C ~/IdeaProjects/nxrm3-ha-repository pull && git -C ~/IdeaProjects/nxrm3-ha-repository fetch
@@ -31,10 +31,11 @@
 #$ helm template nxrm3ha sonatype-helm/nxrm-ha -f ./helm-nxrm3ha-values.yml -n sonatype-helm >./helm-nxrm3ha-deploying.yaml
 #$ kubectl -n sonatype-helm apply -f ./helm-nxrm3ha-deploying.yaml
 
-namespaces:
-  nexusNs:
-    enabled: false
-    name: ${NAME_SPACE}
+# Seems broken?
+#namespaces:
+#  nexusNs:
+#    enabled: false
+#    name: ${NAME_SPACE}
 
 statefulset:
   name: nxrm-statefulset
@@ -66,7 +67,7 @@ statefulset:
     env:
       nexusDBName: nxrm3helmha
       nexusDBPort: 5432
-      install4jAddVmParams: '-Xms1024m -Xmx2703m'
+      install4jAddVmParams: '-Xms1024m -Xmx2703m -Dnexus.scripts.allowCreation=true'
       jdbcUrlParams: null # Must start with a '?' e.g. '?foo=bar&baz=foo'
   livenessProbe:
     failureThreshold: 6
