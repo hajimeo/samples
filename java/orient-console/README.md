@@ -79,11 +79,30 @@ EOF
 python usedTags.py component_tags.json > usedTags.out
 cat usedTags.out | while read -r _ut; do rg -q '"'${_ut}'"' ./tag_rids.json || echo "Missing ${_ut}"; done
 ```
+Finding dupe comps
+```
+echo "select @rid as comp_rid, bucket, bucket.repository_name as repo_name, group, name, version from component LIMIT -1" | java -DexportPath=./component_bucket_group_name_version.json -jar ~/IdeaProjects/samples/misc/orient-console.jar ./component
+
+cat << EOF > usedTags.py
+import sys, json
+with open(sys.argv[1]) as f:
+  compTags = json.load(f)
+usedTags = set()
+for row in compTags:
+  for tag in row['tags']:
+    usedTags.add(tag)
+for ut in usedTags:
+  print(ut)
+EOF
+
+python usedTags.py component_tags.json > usedTags.out
+cat usedTags.out | while read -r _ut; do rg -q '"'${_ut}'"' ./tag_rids.json || echo "Missing ${_ut}"; done
+```
+
 
 ## TODOs:
 - Add unit tests 
 - Replace jline3 
 
 ## My note:
-mvn clean package && cp -v -p ./target/orient-console-1.0-SNAPSHOT.jar ../../misc/orient-console.jar
-
+mvn clean package && cp -v -p ./target/orient-console-1.0-SNAPSHOT.jar ../../misc/orient-console.jar && rm -v -f ./dependency-reduced-pom.xml

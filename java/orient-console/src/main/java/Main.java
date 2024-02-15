@@ -106,6 +106,9 @@ public class Main {
     public static final Pattern exportPathPtn =
             Pattern.compile("set exportPath ([^;]+)", Pattern.CASE_INSENSITIVE);
 
+    private Main() {
+    }
+
     private static void usage() {
         System.err.println("https://github.com/hajimeo/samples/blob/master/java/orient-console/README.md");
     }
@@ -249,7 +252,8 @@ public class Main {
             if (o instanceof ORecordBytes) {
                 String str = "";
                 //rawBytes.toOutputStream(System.out);
-                final Map<String, Object> raw = objectMapper.readValue(((ORecordBytes) o).toStream(), new TypeReference<Map<String, Object>>() {});
+                final Map<String, Object> raw = objectMapper.readValue(((ORecordBytes) o).toStream(), new TypeReference<Map<String, Object>>() {
+                });
                 str = gson.toJson(raw);
                 return str;
             }
@@ -385,7 +389,7 @@ public class Main {
                 }
             }
             // Currently using below if the result is only one record.
-            if (! binaryField.isEmpty() && ((List<ODocument>) oDocs).size() > 0) {
+            if (!binaryField.isEmpty() && ((List<ODocument>) oDocs).size() > 0) {
                 for (int i = 1; i <= ((List<ODocument>) oDocs).size(); i++) {
                     ODocument oDoc = ((List<ODocument>) oDocs).get(i);
                     if (fieldNames.length == 0) {
@@ -474,6 +478,16 @@ public class Main {
         if (input.trim().startsWith("--")) {
             return true;
         }
+        if (input.toLowerCase().startsWith("set debug true")) {
+            isDebug = true;
+            System.err.println("OK. isDebug=" + isDebug);
+            return true;
+        }
+        if (input.toLowerCase().startsWith("set debug false")) {
+            isDebug = false;
+            System.err.println("OK. isDebug=" + isDebug);
+            return true;
+        }
         if (input.toLowerCase().startsWith("set pretty true")) { // TODO: not property implementing my own 'set'
             log(input, isDebug);
             jsonFormat = DEFAULT_JSON_FORMAT + ",prettyPrint";
@@ -510,15 +524,11 @@ public class Main {
             if (matcher.find()) {
                 String descType = matcher.group(2);
                 String tableName = matcher.group(3);
-                String query =
-                        "SELECT expand(properties) from (select expand(classes) from metadata:schema) where name = '" + tableName +
-                                "'";
+                String query = "SELECT expand(properties) from (select expand(classes) from metadata:schema) where name = '" + tableName + "';SELECT type, name, indexDefinition, metadata, algorithm from (select expand(indexes) from metadata:indexmanager) where indexDefinition.className = '" + tableName + "' order by name";
                 if (descType.equalsIgnoreCase("index")) {
-                    query =
-                            "SELECT name, indexDefinition, indexDefinition.indexDefinitions as indexDefinitions from (select expand(indexes) from metadata:indexmanager) WHERE name = '" +
-                                    tableName + "'";
+                    query = "SELECT name, indexDefinition, indexDefinition.indexDefinitions as indexDefinitions from (select expand(indexes) from metadata:indexmanager) WHERE name = '" + tableName + "'";
                 }
-                String currentJsonFmt = jsonFormat;
+                //String currentJsonFmt = jsonFormat;
                 //jsonFormat = DEFAULT_JSON_FORMAT + ",prettyPrint";
                 log(query, isDebug);
                 execQueries(db, query);
@@ -676,9 +686,6 @@ public class Main {
         ByteArrayOutputStream baos = new ByteArrayOutputStream();
         OGlobalConfiguration.dumpConfiguration(new PrintStream(baos, true));
         log("Global configuration:\n" + baos.toString("UTF8"));
-    }
-
-    private Main() {
     }
 
     private static void setGlobals() {
