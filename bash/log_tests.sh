@@ -56,7 +56,7 @@ else
     _REQUEST_LOG="${_REQUEST_LOG:-"request.log"}"
     _AUDIT_LOG="${_AUDIT_LOG:-"audit.log"}"
 fi
-: ${_LOG_THRESHOLD_BYTES:=268435456}    # 256MB, usually takes 7s
+: ${_LOG_THRESHOLD_BYTES:=134217728}    # 128MB, usually takes 7s
 : ${_FILTERED_DATA_DIR:="./_filtered"}
 : ${_LOG_GLOB:="*.log"}
 : ${_SKIP_EXTRACT:=""}
@@ -241,6 +241,7 @@ function _app_ver() {
     [ -n "${_result}" ] && [ "${_result}" != "<null>" ] && export _APP_VER="$(echo "${_result}")" && echo "${_APP_VER}"
 }
 function _extract_log_last_start() {
+    local _log_path="$1"
     _head "LOGS" "Instance start time from jmx.json"
     local _tz="$(_find_and_cat "jmx.json" 2>/dev/null | _get_json "java.lang:type=Runtime,SystemProperties,key=user.timezone,value")"
     [ -z "${_tz}" ] && _tz="$(_find_and_cat "sysinfo.json" 2>/dev/null | _get_json "nexus-properties,user.timezone" | _rg '"([^"]+)' -o -r '$1')"
@@ -265,6 +266,7 @@ function _extract_log_last_start() {
 }
 function _check_log_stop_start() {
     local _log_path="$1"
+    [ -z "${_log_path}" ] && _log_path="$(find . -maxdepth 3 -type f -print | grep -m1 -E "/(${_NXRM_LOG}|${_NXIQ_LOG}|server.log)$")"
     [ -z "${_log_path}" ] && return 1
     [ ! -s "${_log_path}" ] && _log_path="-g \"${_log_path}\""
     # NXRM2 stopping/starting, NXRM3 stopping/starting, IQ stopping/starting (IQ doesn't clearly say stopped so that checking 'Stopping')
@@ -549,7 +551,8 @@ for key in fsDicts['system-filestores']:
 
 # TODO: For this one, checking without size limit (not _rg)?
 function t_oome() {
-    _test_template "$(_RG_MAX_FILESIZE="6G" _rg 'java.lang.OutOfMemoryError:.+' -m1 -B1 -g "${_LOG_GLOB}" -g '\!jvm.log' | sort | uniq)" "ERROR" "OutOfMemoryError detected from ${_LOG_GLOB} (Xms is too small?)"
+    # audit.log can contains `attribute.changes` which contains large test and some Nuget package mentions OutOfMemoryError
+    _test_template "$(_RG_MAX_FILESIZE="6G" _rg 'java.lang.OutOfMemoryError:.+' -m1 -B1 -g "${_LOG_GLOB}" -g '\!jvm.log' -g '\!audit*log*' | sort | uniq)" "ERROR" "OutOfMemoryError detected from ${_LOG_GLOB} (Xms is too small?)"
 }
 function t_fips() {
     _test_template "$(_rg -m1 '(KeyStore must be from provider SunPKCS11-NSS-FIPS|PBE AlgorithmParameters not available)' -g "${_LOG_GLOB}")" "WARN" "FIPS mode might be detected from ${_LOG_GLOB}" "-Dcom.redhat.fips=false"
@@ -600,8 +603,9 @@ function t_requests() {
     fi
 
     # NOTE: can't use headerContentLength as some request.log doesn't have it
-    f_reqsFromCSV "request.csv" "7000" "" "20" "AND requestURL NOT LIKE 'GET %/maven-metadata.xml %'" 2>/dev/null >${_FILTERED_DATA_DIR%/}/agg_requests_top20_slow_GET.out
-    _test_template "$(_rg -q '\s+GET\s+' -m1 ${_FILTERED_DATA_DIR%/}/agg_requests_top20_slow_GET.out && cat ${_FILTERED_DATA_DIR%/}/agg_requests_top20_slow_GET.out)" "WARN" "Top 20 slow downloads excluding maven-metadata.xml from ${_FILTERED_DATA_DIR}/request.csv"
+    local _excludes="GET %/maven-metadata.xml %"
+    f_reqsFromCSV "request.csv" "7000" "" "20" "AND requestURL NOT LIKE '${_excludes}'" 2>/dev/null >${_FILTERED_DATA_DIR%/}/agg_requests_top20_slow_GET.out
+    _test_template "$(_rg -q '\s+GET\s+' -m1 ${_FILTERED_DATA_DIR%/}/agg_requests_top20_slow_GET.out && cat ${_FILTERED_DATA_DIR%/}/agg_requests_top20_slow_GET.out)" "WARN" "Top 20 slow downloads excluding '${_excludes}' from ${_FILTERED_DATA_DIR}/request.csv"
 }
 
 
