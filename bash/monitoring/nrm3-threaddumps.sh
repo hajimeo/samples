@@ -152,7 +152,12 @@ function tailStdout() {
         _cmd="tail -n0 -f /proc/${_pid}/fd/1"
     elif [ -n "${_installDir}" ] && [[ "$(ps wwwp ${_pid})" =~ XX:LogFile=([^[:space:]]+) ]]; then
         local jvmLog="${BASH_REMATCH[1]}"
-        _cmd="tail -n0 -f "${_installDir%/}/${jvmLog#/}""
+        # Default is karaf.data (or PWD) + LogFile. Also, LoFile can be absolute path
+        if [[ "${jvmLog}" =~ ^/ ]]; then
+            _cmd="tail -n0 -f ${jvmLog#/}"
+        else
+            _cmd="tail -n0 -f ${_installDir%/}/${jvmLog#/}"
+        fi
     elif readlink -f /proc/${_pid}/fd/1 2>/dev/null | grep -q '/pipe:'; then
         #_cmd="cat /proc/${_pid}/fd/1"
         _cmd=""
