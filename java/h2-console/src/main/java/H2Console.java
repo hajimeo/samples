@@ -553,6 +553,7 @@ public class H2Console {
             System.exit(1);
         }
 
+        int rc = 0;
         setGlobals();
 
         String path = args[0];
@@ -589,11 +590,13 @@ public class H2Console {
             readLineLoop(setupReader());
         } catch (Exception e) {
             e.printStackTrace();
+            rc = 1;
         } finally {
             log("Exiting.");
             if (conn != null) {
                 conn.close();
             }
+            System.exit(rc);
         }
     }
 }
