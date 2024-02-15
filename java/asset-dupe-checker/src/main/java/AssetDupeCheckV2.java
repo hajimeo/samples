@@ -70,9 +70,10 @@ public class AssetDupeCheckV2 {
     private static String TABLE_NAME = "";
     private static String INDEX_NAME = "";
     private static String[] DROP_TABLES;
+    private static String[] DROP_INDEXES;
     // First one is the default index to be checked
     private static final List<String> SUPPORTED_INDEX_NAMES =
-            Arrays.asList("asset_bucket_component_name_idx", "component_bucket_group_name_version_idx");
+            Arrays.asList("asset_bucket_component_name_idx", "component_bucket_group_name_version_idx", "asset_bucket_name_idx");
     private static final List<String> UPDATED_COMP_IDS = new ArrayList<>();
     private static Long DUPE_COUNTER = 0L;
     private static boolean IS_REPAIRING = false;
@@ -104,7 +105,8 @@ public class AssetDupeCheckV2 {
         System.out.println("  -DnoCheckIndex=true                 # Does not check index...");
         System.out.println("  -DindexName=component_bucket_group_name_version_idx   # or '*'");
         System.out.println("  -DtableName=component               # NOTE: be careful of repairing component");
-        System.out.println("  -DdropTables=deleted_blob_index     # Only for export/import");
+        System.out.println("  -DdropTables=deleted_blob_index     # Useful only for export/import");
+        System.out.println("  -DdropIndexes=component_bucket_group_name_version_idx  # Useful only for export/import");
         System.out.println("  -DdbRepair=true                     # Experimental: REPAIR DATABASE --fix-links");
     }
 
@@ -279,18 +281,30 @@ public class AssetDupeCheckV2 {
         System.err.println();
     }
 
-    private static void dropTables(ODatabaseDocumentTx db) {
-        if (DROP_TABLES != null) {
-            for (String dropTable : DROP_TABLES) {
-                try {
-                    if (dropTable.isEmpty()) {
-                        continue;
-                    }
-                    log("[WARN] Dropping " + dropTable + " ...");
-                    db.getMetadata().getSchema().dropClass(dropTable);
-                } catch (Exception ex) {
-                    log("[WARN] Ignoring DROP CLASS " + dropTable + " exception: " + ex.getMessage());
+    private static void dropTables(ODatabaseDocumentTx db, String[] tables) {
+        for (String tblName : tables) {
+            try {
+                if (tblName.isEmpty()) {
+                    continue;
                 }
+                log("[WARN] Dropping " + tblName + " ...");
+                db.getMetadata().getSchema().dropClass(tblName);
+            } catch (Exception ex) {
+                log("[ERROR] DROP CLASS (table) " + tblName + " exception: " + ex.getMessage());
+            }
+        }
+    }
+
+    private static void dropIndexes(ODatabaseDocumentTx db, String[] dropIndexes) {
+        for (String indexName : dropIndexes) {
+            try {
+                if (indexName.isEmpty()) {
+                    continue;
+                }
+                log("[WARN] Dropping " + indexName + " ...");
+                db.getMetadata().getIndexManager().dropIndex(indexName);
+            } catch (Exception ex) {
+                log("[ERROR] DROP INDEX " + indexName + " exception: " + ex.getMessage());
             }
         }
     }
@@ -485,8 +499,13 @@ public class AssetDupeCheckV2 {
             log("Completed the check of indexName:" + indexName + " - total:" + count + " duplicates:" + DUPE_COUNTER);
         } finally {
             if (index != null && isDummyIdxCreated) {
-                index.delete(); // cleaning up unnecessary temp/dummy index
-                debug("Deleted index:dummy_" + indexName);
+                if (index.getName().startsWith("dummy_")) {
+                    db.getMetadata().getIndexManager().dropIndex(index.getName());
+                    // index.delete() doesn't look like dropping the index.
+                    log("Deleted dummy index:" + index.getName());
+                } else {
+                    log("[WARN] Did not delete dummy index:" + index.getName());
+                }
             }
         }
         // If dupes found but not fixed, return false, so that it won't trigger index rebuild
@@ -554,7 +573,7 @@ public class AssetDupeCheckV2 {
             ORID docId,
             OIndex<?> index,
             Object indexKey) {
-        log("Duplicate found " + maybeDupe + " indexKey: " + indexKey.toString() + " (docId:" + docId + ")");
+        log("[WARN] " + maybeDupe + " is duplicate of " + docId + "." + " IndexKey: " + indexKey.toString());
         ORID deletingId = maybeDupe;
         ORID keepingId = docId; // This means default is keeping the older one for UPDATE.
         boolean shouldUpdate;
@@ -588,7 +607,7 @@ public class AssetDupeCheckV2 {
                 }
             }
         }
-        out("TRUNCATE RECORD " + deletingId + ";");
+        out("TRUNCATE RECORD " + deletingId + ";    -- ");
 
         if (IS_REPAIRING) {
             try {
@@ -672,6 +691,9 @@ public class AssetDupeCheckV2 {
         String dropTables = System.getProperty("dropTables", "");
         debug("dropTables: " + dropTables);
         DROP_TABLES = dropTables.split(",");
+        String dropIndexes = System.getProperty("dropIndexes", "");
+        debug("dropIndexes: " + dropIndexes);
+        DROP_INDEXES = dropIndexes.split(",");
         IS_DB_REPAIRING = Boolean.getBoolean("dbRepair");
         debug("dbRepair: " + IS_DB_REPAIRING);
         EXTRACT_DIR = System.getProperty("extractDir", "");
@@ -740,7 +762,13 @@ public class AssetDupeCheckV2 {
                 getIndexFields(db, INDEX_NAME);
 
                 // Doing drop tables first
-                dropTables(db);
+                if (DROP_TABLES != null && DROP_TABLES.length > 0) {
+                    dropTables(db, DROP_TABLES);
+                }
+
+                if (DROP_INDEXES != null && DROP_INDEXES.length > 0) {
+                    dropIndexes(db, DROP_INDEXES);
+                }
 
                 boolean result = true;
                 if (!IS_NO_INDEX_CHECK) {
