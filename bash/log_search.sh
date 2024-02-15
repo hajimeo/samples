@@ -447,9 +447,9 @@ function f_hdfsAuditLogCountPerCommand() {
 
     # TODO: not sure if sed regex is good (seems to work, Mac sed / gsed doesn't like +?)、Also sed doen't support ¥d
     if [ ! -z "$_datetime_regex" ]; then
-        _sed -n "s@\($_datetime_regex\).*\(cmd=[^ ]*\).*src=.*\$@\1,\2@p" $_path | $_cmd
+        _sed -n "s@\($_datetime_regex\).*\(cmd=[\S]*\).*src=.*\$@\1,\2@p" $_path | $_cmd
     else
-        _sed -n 's:^.*\(cmd=[^ ]*\) .*$:\1:p' $_path | $_cmd
+        _sed -n 's:^.*\(cmd=[\S]*\) .*$:\1:p' $_path | $_cmd
     fi
 }
 
@@ -473,9 +473,9 @@ function f_hdfsAuditLogCountPerUser() {
 
     # TODO: not sure if sed regex is good (seems to work, Mac sed / gsed doesn't like +?)
     if [[ "$_per_method" =~ (^y|^Y) ]]; then
-        _sed -n 's:^.*\(ugi=[^ ]*\) .*\(cmd=[^ ]*\).*src=.*$:\1,\2:p' $_path | $_cmd
+        _sed -n 's:^.*\(ugi=[\S]*\) .*\(cmd=[\S]*\).*src=.*$:\1,\2:p' $_path | $_cmd
     else
-        _sed -n 's:^.*\(ugi=[^ ]*\) .*$:\1:p' $_path | $_cmd
+        _sed -n 's:^.*\(ugi=[\S]*\) .*$:\1:p' $_path | $_cmd
     fi
 }
 
@@ -980,7 +980,7 @@ function f_splitTopNetstat() {
         fi
     fi
 
-    local _split_pfx="${_tmpDir%/}/topOrNet_"
+    local _split_pfx="${_tmpDir%/}/_topOrNet_"
     if [ -z "${_netstat_str}" ]; then
         _split_pfx="${_out_dir%/}/top_"
     fi
@@ -992,15 +992,15 @@ function f_splitTopNetstat() {
     for _f in $(ls -1 ${_split_pfx}*); do
         _csplit -z -f "${_out_dir%/}/`basename ${_f}`_" ${_f} "/^${_netstat_str} /" '{*}' || return $?
     done
-    ls -1 ${_out_dir%/}/topOrNet_* | while read _fpath; do
-        [[ "${_fpath}" =~ .+/topOrNet_([0-9]+)_([0-9]+)$ ]]
+    ls -1 ${_out_dir%/}/_topOrNet_* | while read _fpath; do
+        [[ "${_fpath}" =~ .+/_topOrNet_([0-9]+)_([0-9]+)$ ]]
         local _n1="${BASH_REMATCH[1]}"
         local _n2="${BASH_REMATCH[2]}"
         if [ "${_n2}" == "00" ]; then
             mv "${_fpath}" "${_out_dir%/}/top_${_n1}.out"
         elif [ "${_n2}" == "01" ]; then
             if ${_useGonetstat}; then
-                gonetstat "${_fpath}" > "${_out_dir%/}/netstat_${_n1}.out" && rm -f "${_fpath}"
+                gonetstat "${_fpath}" > "${_out_dir%/}/netstat_${_n1}.out" #&& rm -f "${_fpath}"
             else
                 mv "${_fpath}" "${_out_dir%/}/netstat_${_n1}.out"
             fi
@@ -1032,11 +1032,11 @@ function f_wrapper2threads() {
 function f_splitScriptLog() {
     local _script_log="$1"
     local _full_split="$2"
-    sed -n "/^2023-[0-9][0-9]-[0-9][0-9]/,\$p" "${_script_log}" > ./threads.raw
+    sed -n "/^20[0-9][0-9]-[0-9][0-9]-[0-9][0-9]/,\$p" "${_script_log}" > ./threads.raw
     if [ -s ./threads.raw ]; then
         cat ./threads.raw | python3 -c "import sys,html,re;rx=re.compile(r\"<[^>]+>\");print(html.unescape(rx.sub(\"\",sys.stdin.read())))" > threads.txt && rm -f ./threads.raw
     fi
-    sed -n "/^2023-[0-9][0-9]-[0-9][0-9]/q;p" "${_script_log}" > ./tops_netstats.txt
+    sed -n "/^20[0-9][0-9]-[0-9][0-9]-[0-9][0-9]/q;p" "${_script_log}" > ./tops_netstats.txt
     if [[ "${_full_split}" =~ [yY] ]]; then
         [ -s ./threads.txt ] && f_threads ./threads.txt
         if [ -s ./tops_netstats.txt ]; then
@@ -1289,7 +1289,7 @@ function _threads_extra_check() {
     if [ ! -f "${_file}" ]; then
         _file="--no-filename -g \"${_file}\""
     fi
-    rg '(DefaultTimelineIndexer|content_digest|findAssetByContentDigest|touchItemLastRequested|preClose0|sun\.security\.util\.MemoryCache|java\.lang\.Class\.forName|CachingDateFormatter|metrics\.health\.HealthCheck\.execute|WeakHashMap|userId\.toLowerCase|MessageDigest|UploadManagerImpl\.startUpload|UploadManagerImpl\.blobsByName|maybeTrimRepositories|getQuarantinedVersions|nonCatalogedVersions|getProxyDownloadNumbers|RepositoryManagerImpl.retrieveConfigurationByName|\.StorageFacetManagerImpl\.|OTransactionRealAbstract\.isIndexKeyMayDependOnRid|AptFacetImpl.put|componentMetadata|ensureGetUpload)' ${_file} | sort | uniq -c > /tmp/$FUNCNAME_$$.out || return $?
+    rg '(DefaultTimelineIndexer|content_digest|findAssetByContentDigest|touchItemLastRequested|preClose0|sun\.security\.util\.MemoryCache|java\.lang\.Class\.forName|CachingDateFormatter|metrics\.health\.HealthCheck\.execute|WeakHashMap|userId\.toLowerCase|MessageDigest|UploadManagerImpl\.startUpload|UploadManagerImpl\.blobsByName|maybeTrimRepositories|getQuarantinedVersions|nonCatalogedVersions|getProxyDownloadNumbers|RepositoryManagerImpl.retrieveConfigurationByName|\.StorageFacetManagerImpl\.|OTransactionRealAbstract\.isIndexKeyMayDependOnRid|AptFacetImpl.put|componentMetadata|ensureGetUpload|OrientCommonQueryDataService)' ${_file} | sort | uniq -c > /tmp/$FUNCNAME_$$.out || return $?
     if [ -s /tmp/$FUNCNAME_$$.out ]; then
         echo "## Counting:"
         echo "##    'DefaultTimelineIndexer' for NXRM2 System Feeds: timeline-plugin,"
@@ -1315,6 +1315,7 @@ function _threads_extra_check() {
         echo "##    'AptFacetImpl.put' NEXUS-30812 / NEXUS-37102"
         echo "##    'componentMetadata' CLM-26850"
         echo "##    'ensureGetUpload' NEXUS-40177"
+        echo "##    'OrientCommonQueryDataService' NEXUS-41312"
         cat /tmp/$FUNCNAME_$$.out
         echo " "
     fi
