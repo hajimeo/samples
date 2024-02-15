@@ -172,7 +172,8 @@ def update():
     ju.update(file=__file__)
 
 
-def request2table(filepath, tablename="t_request", max_file_size=(1024 * 1024 * 100), time_from_regex=None, time_until_regex=None):
+def request2table(filepath, tablename="t_request", max_file_size=(1024 * 1024 * 100), time_from_regex=None,
+                  time_until_regex=None):
     """
     Convert request.log file to DB table
     :param filepath: File path or glob pattern
@@ -192,9 +193,9 @@ def request2table(filepath, tablename="t_request", max_file_size=(1024 * 1024 * 
         line_until = ju._linenumber(log_path, "\d\d/.../\d\d\d\d:" + time_until_regex)
     (col_names, line_matching) = _gen_regex_for_request_logs(log_path)
     rtn = ju.logs2table(log_path, tablename=tablename, line_beginning="^.",
-                         col_names=col_names, line_matching=line_matching,
-                         max_file_size=max_file_size,
-                         line_from=line_from, line_until=line_until)
+                        col_names=col_names, line_matching=line_matching,
+                        max_file_size=max_file_size,
+                        line_from=line_from, line_until=line_until)
     if not bool(rtn):
         return False
     req2table_post(tablename=tablename, add_startTime=True)
@@ -227,6 +228,7 @@ def req2table_post(tablename="t_request", add_startTime=True, datetime_col="date
             _ = ju.execute(sql=f"UPDATE {tablename} SET startTime = UDF_STARTED_TIME(`{datetime_col}`, {elapsed_col})")
         except Exception as e:
             ju._err(str(e))
+
 
 def applog2table(filepath, tablename="t_applog", max_file_size=(1024 * 1024 * 100), time_from_regex=None,
                  time_until_regex=None):
@@ -337,7 +339,7 @@ def etl(path="", log_suffix=".log", dist="./_filtered", max_file_size=(1024 * 10
 
         # If request.*csv* exists, use that (should be already created by load_csvs and should be loaded by above load_csvs (because it's faster), if not, logs2table, which is slower.
         if ju.exists("t_request") is False:
-            _ = request2table("request"+log_suffix)
+            _ = request2table("request" + log_suffix)
 
         if ju.exists("t_request"):
             # non NXRM3 request.log wouldn't have headerContentLength
@@ -368,10 +370,10 @@ def etl(path="", log_suffix=".log", dist="./_filtered", max_file_size=(1024 * 10
 
         # Thread dump
         _ = ju.logs2table(filename="threads.txt", tablename="t_threads", conn=ju.connect(),
-                                col_names=['thread_name', 'id', 'state', 'stacktrace'],
-                                line_beginning="^[^ ]",
-                                line_matching='^"?([^"]+)"? id=([^ ]+) state=(\w+)(.*)',
-                                size_regex=None, time_regex=None)
+                          col_names=['thread_name', 'id', 'state', 'stacktrace'],
+                          line_beginning="^[^ ]",
+                          line_matching='^"?([^"]+)"? id=([^ ]+) state=(\w+)(.*)',
+                          size_regex=None, time_regex=None)
     except:
         raise
     finally:
@@ -406,6 +408,58 @@ def analyze_log_table(log_table_name, where_sql="", tail_num=10000):
     ju.draw(ju.q(query).tail(tail_num), name=display_name, desc=query, is_x_col_datetime=False)
 
 
+def analyse_request_logs(tablename="t_request", tail_num=10000, use_headerContentLength=False):
+    """
+    Analyse request log. Expecting `t_request` already exists.
+    :param tablename: Request table name
+    :param tail_num: How many rows/records to display. Default is 10K
+    :param use_headerContentLength: In the report, Add a few aggregate collumns which use headerContentLength column
+    :return: void
+    >>> pass    # test should be done in each function
+    """
+    global isHeaderContentLength
+    if use_headerContentLength:
+        isHeaderContentLength = use_headerContentLength
+
+    where_sql = "WHERE 1=1"
+    headerContentLengthAgg = ""
+    avgMsPerByteAgg = "CAST(SUM(CAST(elapsedTime AS INT)) / SUM(CAST(bytesSent AS INT)) AS INT)  AS avgMsPerByte,"
+    avgBytesPerMsAgg = "CAST(SUM(CAST(bytesSent AS INT)) / SUM(CAST(elapsedTime AS INT)) AS INT)  AS avgBytesPerMs,"
+
+    if isHeaderContentLength:
+        # where_sql = "WHERE (CAST(bytesSent AS INT) + CAST(headerContentLength AS INT) > 0)" # TODO: POST has 0 and 0
+        # NOTE: Don't forget to append a comma in the end of line.
+        headerContentLengthAgg = "AVG(CAST(headerContentLength AS INTEGER)) AS bytesReceived,"
+        avgMsPerByteAgg = "CAST(SUM(CAST(elapsedTime AS INTEGER)) / SUM(CAST(bytesSent AS INT) + CAST(headerContentLength AS INT)) AS INT) AS avgMsPerByte,"
+        avgBytesPerMsAgg = "CAST(SUM(CAST(bytesSent AS INT) + CAST(headerContentLength AS INT)) / SUM(CAST(elapsedTime AS INTEGER)) AS INT) AS avgBytesPerMs,"
+
+    if ju.exists(tablename):
+        display_name = "RequestLog_StatusCode_Hourly_aggs"
+        # Join db_repos.json and request.log
+        #   AND UDF_REGEX('.+ /nexus/content/repositories/([^/]+)', {tablename}.requestURL, 1) IN (SELECT repository_name FROM t_db_repo where t_db_repo.`attributes.storage.blobStoreName` = 'nexus3')
+        query = f"""SELECT substr(`date`, 1, 14) AS date_hour, substr(statusCode, 1, 1) || 'xx' as status_code,
+    CAST(MAX(CAST(elapsedTime AS INT)) AS INT) AS max_elaps, 
+    CAST(AVG(CAST(elapsedTime AS INT)) AS INT) AS avg_elaps, 
+    CAST(AVG(CAST(bytesSent AS INT)) AS INT) AS avg_bytes, 
+    {avgBytesPerMsAgg} 
+    count(*) AS requests
+FROM {tablename}
+{where_sql}
+GROUP BY 1, 2"""
+        ju.display(ju.q(query), name=display_name, desc=query)
+
+        display_name = "RequestLog_Status_ByteSent_Elapsed"
+        query = f"""SELECT TIME(substr(date, 13, 8)) as hhmmss,
+    {avgBytesPerMsAgg} {avgMsPerByteAgg}
+    SUM(CAST(bytesSent AS INTEGER)) AS bytesSent, {headerContentLengthAgg} 
+    SUM(CAST(elapsedTime AS INTEGER)) AS elapsedTime,
+    count(*) AS requests
+FROM {tablename}
+{where_sql}
+GROUP BY hhmmss"""
+        ju.draw(ju.q(query).tail(tail_num), name=display_name, desc=query, is_x_col_datetime=False)
+
+
 def analyse_logs(path="", log_suffix=".log", tail_num=10000, max_file_size=(1024 * 1024 * 100), skip_etl=False,
                  add_startTime=True, use_headerContentLength=False):
     """
@@ -426,45 +480,9 @@ def analyse_logs(path="", log_suffix=".log", tail_num=10000, max_file_size=(1024
     if bool(skip_etl) is False:
         etl(path=path, log_suffix=log_suffix, max_file_size=max_file_size, add_startTime=add_startTime)
 
+    analyse_request_logs(tablename="t_request", tail_num=tail_num, use_headerContentLength=use_headerContentLength)
+
     where_sql = "WHERE 1=1"
-
-    headerContentLengthAgg = ""
-    avgMsPerByteAgg = "CAST(SUM(CAST(elapsedTime AS INT)) / SUM(CAST(bytesSent AS INT)) AS INT)  AS avgMsPerByte,"
-    avgBytesPerMsAgg = "CAST(SUM(CAST(bytesSent AS INT)) / SUM(CAST(elapsedTime AS INT)) AS INT)  AS avgBytesPerMs,"
-    where_sql2 = "WHERE 1=1"
-    if isHeaderContentLength:
-        # where_sql2 = "WHERE (CAST(bytesSent AS INT) + CAST(headerContentLength AS INT) > 0)" # TODO: POST has 0 and 0
-        # NOTE: Don't forget to append a comma in the end of line.
-        headerContentLengthAgg = "AVG(CAST(headerContentLength AS INTEGER)) AS bytesReceived,"
-        avgMsPerByteAgg = "CAST(SUM(CAST(elapsedTime AS INTEGER)) / SUM(CAST(bytesSent AS INT) + CAST(headerContentLength AS INT)) AS INT) AS avgMsPerByte,"
-        avgBytesPerMsAgg = "CAST(SUM(CAST(bytesSent AS INT) + CAST(headerContentLength AS INT)) / SUM(CAST(elapsedTime AS INTEGER)) AS INT) AS avgBytesPerMs,"
-
-    if ju.exists("t_request"):
-        display_name = "RequestLog_StatusCode_Hourly_aggs"
-        # Join db_repos.json and request.log
-        #   AND UDF_REGEX('.+ /nexus/content/repositories/([^/]+)', t_request.requestURL, 1) IN (SELECT repository_name FROM t_db_repo where t_db_repo.`attributes.storage.blobStoreName` = 'nexus3')
-        query = """SELECT substr(`date`, 1, 14) AS date_hour, substr(statusCode, 1, 1) || 'xx' as status_code,
-    CAST(MAX(CAST(elapsedTime AS INT)) AS INT) AS max_elaps, 
-    CAST(AVG(CAST(elapsedTime AS INT)) AS INT) AS avg_elaps, 
-    CAST(AVG(CAST(bytesSent AS INT)) AS INT) AS avg_bytes, 
-    %s 
-    count(*) AS requests
-FROM t_request
-%s
-GROUP BY 1, 2""" % (avgBytesPerMsAgg, where_sql2)
-        ju.display(ju.q(query), name=display_name, desc=query)
-
-        display_name = "RequestLog_Status_ByteSent_Elapsed"
-        query = """SELECT TIME(substr(date, 13, 8)) as hhmmss,
-    %s %s
-    SUM(CAST(bytesSent AS INTEGER)) AS bytesSent, %s 
-    SUM(CAST(elapsedTime AS INTEGER)) AS elapsedTime,
-    count(*) AS requests
-FROM t_request
-%s
-GROUP BY hhmmss""" % (avgBytesPerMsAgg, avgMsPerByteAgg, headerContentLengthAgg, where_sql2)
-        ju.draw(ju.q(query).tail(tail_num), name=display_name, desc=query, is_x_col_datetime=False)
-
     if ju.exists("t_log_hazelcast_monitor"):
         display_name = "NexusLog_Health_Monitor"
         query = """SELECT date_time

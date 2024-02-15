@@ -168,7 +168,7 @@ def _globr(ptn='*', src='./', loop=0, depth=5, min_size=0, max_size=0, useRegex=
         if ignoreHidden and '/.' in root:
             continue
         current_depth = root.count(os.sep) - start_depth + 1
-        if root != src and depth > 0 and current_depth >= depth:
+        if root != src and 0 < depth <= current_depth:
             # TODO: os.walk still checks children directories
             continue
         if useRegex:
