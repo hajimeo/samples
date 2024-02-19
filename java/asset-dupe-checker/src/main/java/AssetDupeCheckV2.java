@@ -27,12 +27,7 @@ import java.nio.file.Paths;
 import java.nio.file.StandardOpenOption;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
-import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.Comparator;
-import java.util.HashSet;
-import java.util.List;
-import java.util.Set;
+import java.util.*;
 
 import com.orientechnologies.orient.core.Orient;
 import com.orientechnologies.orient.core.command.OCommandOutputListener;
@@ -311,15 +306,7 @@ public class AssetDupeCheckV2 {
     }
 
     private static void exportImportDb(ODatabaseDocumentTx db) {
-        try {
-            OClassImpl tbl = (OClassImpl) db.getMetadata().getSchema().getClass("browse_node");
-            if (tbl != null) {
-                log("[WARN] Truncating browse_node for export/import");
-                tbl.truncate();
-            }
-        } catch (IOException | OPageIsBrokenException ioe) {
-            log("[WARN] Ignoring TRUNCATE browse_node exception: " + ioe.getMessage());
-        }
+        Collection<? extends OIndex<?>> indexes = null;
         String url = db.getURL().split("\\s+")[0].replaceFirst("/$", "");
         String exportName = url.substring(url.lastIndexOf('/') + 1, url.length()) + "-export";
         String exportTo = "." + File.separatorChar + exportName;
@@ -330,6 +317,18 @@ public class AssetDupeCheckV2 {
             if ((new File(exportTo + ".gz")).exists() && IS_REUSING_EXPORTED) {
                 log("[WARN] " + exportTo + ".gz exists. Re-using...");
             } else {
+                indexes = db.getMetadata().getIndexManager().getIndexes();
+                log("[INFO] Current Indexes = " + indexes.size());
+                try {
+                    OClassImpl tbl = (OClassImpl) db.getMetadata().getSchema().getClass("browse_node");
+                    if (tbl != null) {
+                        log("[INFO] Truncating browse_node for export/import");
+                        tbl.truncate();
+                    }
+                } catch (IOException | OPageIsBrokenException ioe) {
+                    log("[WARN] Ignoring TRUNCATE browse_node exception: " + ioe.getMessage());
+                }
+
                 log("[INFO] Exporting DB to " + exportTo);
                 // OrientDB automatically delete the exportTo if exists.
                 exportDb(db, exportTo);
@@ -337,13 +336,30 @@ public class AssetDupeCheckV2 {
             if (IS_EXPORTING) {
                 log("[INFO] Export Only is set so not importing.");
             } else {
-                log("[INFO] Dropping before importing ...");
+                log("[INFO] Dropping (then creating) DB before importing ...");
                 db.drop();
+                db.create();
                 log("[INFO] Importing DB from " + exportTo);
                 importDb(db, exportTo);
             }
         } catch (IOException ioe) {
             log("[ERROR] " + ioe.getMessage());
+        }
+
+        if (indexes != null) {
+            for (OIndex index : indexes) {
+                String indexName = index.getName();
+                try {
+                    OIndex<?> _index = db.getMetadata().getIndexManager().getIndex(indexName);
+                    if (_index == null) {
+                        log("[WARN] " +indexName+ " does not exist in the imported DB");
+                        log(index.getDefinition().toString());
+                    }
+                } catch (Exception e) {
+                    log("[WARN] " +indexName+ " does not exist in the imported DB: " + e.getMessage());
+                    log(index.getDefinition().toString());
+                }
+            }
         }
     }
 
@@ -369,12 +385,9 @@ public class AssetDupeCheckV2 {
         return true;
     }
 
-    private static String getIndexFields(ODatabaseDocumentTx db, String indexName) {
+    private static String getIndexFields(String indexName) {
         if (indexName.isEmpty() || indexName.equals("*")) {
             return "";
-        }
-        if (TABLE_NAME.isEmpty()) {
-            setTableName(db, indexName);
         }
         String fieldsStr = indexName.replaceFirst("^" + TABLE_NAME + "_", "");
         fieldsStr = fieldsStr.replaceFirst("_idx$", "");
@@ -382,13 +395,16 @@ public class AssetDupeCheckV2 {
     }
 
     private static OIndex<?> createIndex(ODatabaseDocumentTx db, String indexName, boolean isDummy) {
-        String indexFields = getIndexFields(db, indexName);
+        String indexFields = getIndexFields(indexName);
         OIndex<?> index = null;
         if (indexFields.isEmpty() || indexFields.equals("*")) {
             log("[WARN] Index: " + indexName + " does not have any specific index fields, so can't create.");
             return null;
         }
         try {
+            if (TABLE_NAME.isEmpty()) {
+                setTableName(db, indexName);
+            }
             String[] fields = indexFields.split(",");
             String type = INDEX_TYPE.UNIQUE.name();
             OClassImpl tbl = (OClassImpl) db.getMetadata().getSchema().getClass(TABLE_NAME);
@@ -644,7 +660,7 @@ public class AssetDupeCheckV2 {
         if (!indexDef.contains("\"" + INDEX_TYPE.UNIQUE.name() + "\"")) {
             return false;
         }
-        String indexFields = getIndexFields(db, indexName);
+        String indexFields = getIndexFields(indexName);
         String[] fields = indexFields.split(",");
         StringBuilder testQuery = new StringBuilder("EXPLAIN SELECT " + indexFields + " from " + TABLE_NAME + " WHERE 1 = 1");
         OClassImpl tbl = (OClassImpl) db.getMetadata().getSchema().getClass(TABLE_NAME);
@@ -737,11 +753,10 @@ public class AssetDupeCheckV2 {
             }
         }
 
-        // Somehow without an ending /, OStorageException happens
-        if (!DB_DIR_PATH.endsWith("/")) {
-            DB_DIR_PATH = DB_DIR_PATH + "/";
+        if (DB_DIR_PATH.endsWith("/")) {
+            DB_DIR_PATH = DB_DIR_PATH.substring(0, DB_DIR_PATH.length() - 1);
         }
-        connStr = "plocal:" + DB_DIR_PATH + " admin admin";
+        connStr = "plocal:" + DB_DIR_PATH;
 
         Orient.instance().getRecordConflictStrategy()
                 .registerImplementation("ConflictHook", new OVersionRecordConflictStrategy());
@@ -766,7 +781,10 @@ public class AssetDupeCheckV2 {
                     db.open("admin", "admin");
                     log("Connected to " + connStr);
                 }
-                getIndexFields(db, INDEX_NAME);
+                getIndexFields(INDEX_NAME);
+                if (TABLE_NAME.isEmpty()) {
+                    setTableName(db, INDEX_NAME);
+                }
 
                 // Doing drop tables first
                 if (DROP_TABLES != null && DROP_TABLES.length > 0) {
