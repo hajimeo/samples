@@ -43,6 +43,7 @@ import com.orientechnologies.orient.core.db.document.ODatabaseDocumentTx;
 import com.orientechnologies.orient.core.db.tool.ODatabaseExport;
 import com.orientechnologies.orient.core.db.tool.ODatabaseImport;
 import com.orientechnologies.orient.core.db.tool.ODatabaseRepair;
+import com.orientechnologies.orient.core.exception.OPageIsBrokenException;
 import com.orientechnologies.orient.core.id.ORID;
 import com.orientechnologies.orient.core.index.ODefaultIndexFactory;
 import com.orientechnologies.orient.core.index.OIndex;
@@ -316,7 +317,7 @@ public class AssetDupeCheckV2 {
                 log("[WARN] Truncating browse_node for export/import");
                 tbl.truncate();
             }
-        } catch (IOException ioe) {
+        } catch (IOException | OPageIsBrokenException ioe) {
             log("[WARN] Ignoring TRUNCATE browse_node exception: " + ioe.getMessage());
         }
         String url = db.getURL().split("\\s+")[0].replaceFirst("/$", "");
@@ -336,8 +337,9 @@ public class AssetDupeCheckV2 {
             if (IS_EXPORTING) {
                 log("[INFO] Export Only is set so not importing.");
             } else {
+                log("[INFO] Dropping before importing ...");
+                db.drop();
                 log("[INFO] Importing DB from " + exportTo);
-                // TODO: it seems to work without dropping, but should I drop?
                 importDb(db, exportTo);
             }
         } catch (IOException ioe) {
@@ -464,9 +466,14 @@ public class AssetDupeCheckV2 {
             index = createIndex(db, indexName, false);
             IS_REBUILDING = false;  // no need to re-rebuild
         } else if (index != null && IS_REPAIRING) {
-            // If index exists and repairing, just clear, then it will be rebuilt later
-            index.clear();
-            log("Index: " + indexName + " is cleared (= do not terminate this script in the middle)");
+            try {
+                // If index exists and repairing, just clear, then it will be rebuilt later
+                index.clear();
+                log("Index: " + indexName + " is cleared (= do not terminate this script in the middle)");
+            } catch (Exception e) {
+                log("[WARN] Not checking index as index.clear() failed with: '" + e.getMessage() + "'");
+                return false;
+            }
         } else {
             // If no index or not repairing, create a dummy index
             log("Creating a temp index from " + indexName + " (notunique, then unique)...");
@@ -607,7 +614,7 @@ public class AssetDupeCheckV2 {
                 }
             }
         }
-        out("TRUNCATE RECORD " + deletingId + ";    -- ");
+        out("TRUNCATE RECORD " + deletingId + ";");
 
         if (IS_REPAIRING) {
             try {
