@@ -487,8 +487,7 @@ public class AssetDupeCheckV2 {
                 index.clear();
                 log("Index: " + indexName + " is cleared (= do not terminate this script in the middle)");
             } catch (Exception e) {
-                log("[WARN] Not checking index as index.clear() failed with: '" + e.getMessage() + "'");
-                return false;
+                log("[WARN] index.clear() failed with: '" + e.getMessage() + "'");
             }
         } else {
             // If no index or not repairing, create a dummy index
