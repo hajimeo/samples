@@ -210,7 +210,7 @@ function f_topSlowLogs() {
 
     if [ -z "$_regex" ]; then
         # case insensitive
-        _regex="\b(slow|delay|delaying|latency|too many|not sufficient|lock held|took [1-9][0-9]+ ?ms|timeout[^=]|timed out)\b.+"
+        _regex="\b(slow|delay|delaying|latency|too many|not sufficient|lock held|took [1-9][0-9]+ ?ms|timeout[^=]|timed out|waiting for)\b.+"
     fi
     if [ -n "${_date_regex}" ]; then
         _regex="^${_date_regex}.+${_regex}"

@@ -60,6 +60,7 @@ fi
 : ${_FILTERED_DATA_DIR:="./_filtered"}
 : ${_LOG_GLOB:="*.log"}
 : ${_SKIP_EXTRACT:=""}
+: ${_BG_JOB_NUM:="6"}
 
 _WORKING_DIR="${_WORKING_DIR_OVERWRITE:-"<null>"}"  # value for either workingDirectory or sonatypeWork
 _APP_VER="${_APP_VER_OVERWRITE:-"<null>"}"          # 3.36.0-01
@@ -104,7 +105,7 @@ _log_duration() {
 
 _runner() {
     local _pfx="$1"
-    local _n="${2:-"3"}"
+    local _n="${2:-"${_BG_JOB_NUM:-"3"}"}"
     local _sec="${3:-"3"}"
     local _tmp="$(mktemp -d)"
     _LOG "INFO" "Executing ${FUNCNAME[1]}->${FUNCNAME[0]} $(typeset -F | grep "^declare -f ${_pfx}" | wc -l  | tr -d "[:space:]") functions."

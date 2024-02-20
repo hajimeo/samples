@@ -79,7 +79,7 @@ Using previously saved response file and NO interviews:
 # TODO: SCM setup
 
 
-# To upgrade (from ${_dirname}/): mv -v ./config.yml{,.orig} && tar -xvf $HOME/.nexus_executable_cache/nexus-iq-server-1.172.0-01-bundle.tar.gz && cp -p -v ./config.yml{.orig,}
+# To upgrade (from ${_dirname}/): mv -f -v ./config.yml{,.tmp} && tar -xvf $HOME/.nexus_executable_cache/nexus-iq-server-1.173.0-01-bundle.tar.gz && cp -p -v ./config.yml{.tmp,}
 function f_install_iq() {
     local __doc__="Install specific IQ version"
     local _ver="${1}"     # 'latest'
