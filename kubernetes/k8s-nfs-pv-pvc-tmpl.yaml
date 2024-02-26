@@ -1,3 +1,4 @@
+# Using RELEASE_NAME, NFS_SERVER, SHARE_DIR
 
 apiVersion: v1
 kind: PersistentVolume

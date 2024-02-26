@@ -1,7 +1,7 @@
 # To check the deploy-ing yaml file (should use lint?)
 #$ helm template nxiqha sonatype/nexus-iq-server-ha -f ./helm-nxiqha-values.yml -n sonatype-ha >./helm-nxiqha-deploying.yaml
 
-# To install from scratch (not perfectly scratch as persistent volumes remain)
+# To re-install (not from scratch as persistent volumes 'iq-server-pv' remain)
 #$ helm uninstall nxiqha -n sonatype-ha
 #$ helm install nxiqha sonatype/nexus-iq-server-ha -f ./helm-nxiqha-values.yml --set-file iq_server.license=/var/tmp/share/sonatype/sonatype-license.lic -n sonatype-ha
 
@@ -26,7 +26,7 @@ iq_server:
   # -XX:+PrintGCDetails -XX:+PrintGCDateStamps -XX:+PrintGCCause -XX:+PrintClassHistogramAfterFullGC -XX:+UseGCLogFileRotation -XX:NumberOfGCLogFiles=10 -XX:GCLogFileSize=100M -Xloggc:/sonatype-work/clm-cluster/log/gc.%t.log
   #It seems -Djava.util.prefs.userRoot=/sonatype-work/javaprefs is no longer required?
   database:
-    hostname: "192.168.1.31"
+    hostname: "192.168.4.31"
     port: 5432
     name: "iqha"
     username: "iqha"
@@ -40,7 +40,7 @@ iq_server:
     accessModes:
       - ReadWriteMany
     nfs:
-      server: "192.168.1.31"
+      server: "192.168.4.31"
       path: "/var/tmp/share/sonatype/nxiqha"
   replicas: 1
   # Assuming the ID stays same (1000). TODO: not sure if clm-server dir is visible.

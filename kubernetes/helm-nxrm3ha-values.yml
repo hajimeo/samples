@@ -4,7 +4,7 @@
 # LIMITATION:
 #   Can't (or need to be careful) use special characters such as double-quotes and dollar mark.
 
-#$ export HELM_NAME="sonatype-helm" NAME_SPACE="nexusrepo" RELEASE_NAME="nxrm3ha" ADMIN_PWD="admin123" LICENSE_B64="$(base64 -i /var/tmp/share/sonatype/sonatype-license.lic)" NFS_SERVER="192.168.1.31" SHARE_DIR="/var/tmp/share/sonatype/${RELEASE_NAME}-nfs"
+#$ export HELM_NAME="sonatype-helm" NAME_SPACE="nexusrepo" RELEASE_NAME="nxrm3ha" ADMIN_PWD="admin123" LICENSE_B64="$(base64 -i /var/tmp/share/sonatype/sonatype-license.lic)" DB_SERVER="192.168.4.31" NFS_SERVER="192.168.4.31"
 
 # Most likely only once
 #$ helm repo add ${HELM_NAME} https://sonatype.github.io/helm3-charts/
@@ -12,17 +12,17 @@
 #$ helm search repo ${HELM_NAME}/nxrm-ha --versions | head
 #$ #kubectl create namespace ${NAME_SPACE}
 
-# Setting up NFS PV and PVC
+# Setting up NFS PV and PVC (used in `additionalVolumes`)
 #$ eval "echo \"$(cat ./k8s-nfs-pv-pvc-tmpl.yaml | grep -v '^\s*#')\"" > ./${RELEASE_NAME}-nfs-pv-pvc.yaml
 #$ kubectl apply -f ./${RELEASE_NAME}-nfs-pv-pvc.yaml -n ${NAME_SPACE}
 
 #$ eval "echo \"$(cat ./helm-nxrm3ha-values.yml | grep -v '^\s*#')\"" > ./${RELEASE_NAME}_values.yaml
 #$ #helm uninstall ${RELEASE_NAME} -n ${NAME_SPACE}
-#$ helm install ${RELEASE_NAME} ${HELM_NAME}/nxrm-ha -f ./${RELEASE_NAME}_values.yaml -n ${NAME_SPACE} --version 63.0.0 --debug #--dry-run
+#$ helm install ${RELEASE_NAME} ${HELM_NAME}/nxrm-ha -f ./${RELEASE_NAME}_values.yaml -n ${NAME_SPACE} --version 65.0.0 --debug #--dry-run
 
 # TODO: To update the values (specify --version with Chart version)
 #$ eval "echo \"$(cat ./helm-nxrm3ha-values.yml | grep -v '^\s*#')\"" > ./${RELEASE_NAME}_values.yaml
-#$ helm upgrade ${RELEASE_NAME} ${HELM_NAME}/nxrm-ha -f ./${RELEASE_NAME}_values.yaml -n ${NAME_SPACE} --version 63.0.0 --debug
+#$ helm upgrade ${RELEASE_NAME} ${HELM_NAME}/nxrm-ha -f ./${RELEASE_NAME}_values.yaml -n ${NAME_SPACE} --version 65.0.0 --debug
 
 # For troubleshooting
 #$ git -C ~/IdeaProjects/nxrm3-ha-repository pull && git -C ~/IdeaProjects/nxrm3-ha-repository fetch
@@ -32,10 +32,10 @@
 #$ kubectl -n sonatype-helm apply -f ./helm-nxrm3ha-deploying.yaml
 
 # Seems broken?
-#namespaces:
-#  nexusNs:
-#    enabled: false
-#    name: ${NAME_SPACE}
+namespaces:
+  nexusNs:
+    enabled: false
+    name: ${NAME_SPACE}
 
 statefulset:
   name: nxrm-statefulset
@@ -109,7 +109,7 @@ secret:
     userAlias: nxrm-db-user-alias
     password: 'nxrm3ha'
     passwordAlias: nxrm-db-password-alias
-    host: '192.168.1.31'
+    host: '${DB_SERVER}'
     hostAlias: nxrm-db-host-alias
   nexusAdmin:
     name: 'nexusAdminPassword'
