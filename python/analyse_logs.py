@@ -203,6 +203,14 @@ def request2table(filepath, tablename="t_request", max_file_size=(1024 * 1024 * 
 
 
 def req2table_post(tablename="t_request", add_startTime=True, datetime_col="date", elapsed_col="elapsedTime"):
+    """
+    Post actions after converting request log to table
+    :param tablename: request table
+    :param add_startTime: If True, add a new column for start time
+    :param datetime_col: Name of the column which stores datetime information
+    :param elapsed_col: Name of the column which stores elapsed time information
+    :return: void
+    """
     if ju.exists("t_request", "headerContentLength"):
         try:
             ju._info("Changing '-' in headerContentLength to 0 ...")
@@ -460,8 +468,9 @@ GROUP BY hhmmss"""
         ju.draw(ju.q(query).tail(tail_num), name=display_name, desc=query, is_x_col_datetime=False)
 
 
+# TODO: time_from_regex and time_until_regex are probably not working
 def analyse_logs(path="", log_suffix=".log", tail_num=10000, max_file_size=(1024 * 1024 * 100), skip_etl=False,
-                 add_startTime=True, use_headerContentLength=False):
+                 add_startTime=True, use_headerContentLength=False, time_from_regex=None, time_until_regex=None):
     """
     A prototype / demonstration function for extracting then analyse log files
     :param path: File (including zip) path
@@ -471,6 +480,8 @@ def analyse_logs(path="", log_suffix=".log", tail_num=10000, max_file_size=(1024
     :param skip_etl: Skip etl() function
     :param add_startTime: In the table, add 'startedTime' from 'date' and 'elapsedTime' (for request.log, not request.csv)
     :param use_headerContentLength: In the report, Add a few aggregate collumns which use headerContentLength column
+    :param time_from_regex: Regex to extract the start time from the log file
+    :param time_until_regex: Regex to extract the end time from the log file
     :return: void
     >>> pass    # test should be done in each function
     """
@@ -478,7 +489,7 @@ def analyse_logs(path="", log_suffix=".log", tail_num=10000, max_file_size=(1024
     if use_headerContentLength:
         isHeaderContentLength = use_headerContentLength
     if bool(skip_etl) is False:
-        etl(path=path, log_suffix=log_suffix, max_file_size=max_file_size, add_startTime=add_startTime)
+        etl(path=path, log_suffix=log_suffix, max_file_size=max_file_size, add_startTime=add_startTime, time_from_regex=time_from_regex, time_until_regex=time_until_regex)
 
     analyse_request_logs(tablename="t_request", tail_num=tail_num, use_headerContentLength=use_headerContentLength)
 
