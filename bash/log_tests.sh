@@ -375,10 +375,10 @@ function _split_log() {
         _start_log_line=".* Initializing Nexus IQ Server .*"   # IQ
     fi
     if [ -n "${_start_log_line}" ]; then
-        if _size_check "${_log_path}" "$((${_LOG_THRESHOLD_BYTES} * 10))"; then
+        if _size_check "${_log_path}" "$((${_LOG_THRESHOLD_BYTES} * 20))"; then
             f_splitByRegex "${_log_path}" "${_start_log_line}" "_split_logs"
         else
-            _LOG "INFO" "Not doing f_splitByRegex for '${_log_path}' as the size is larger than _LOG_THRESHOLD_BYTES:${_LOG_THRESHOLD_BYTES} * 10"
+            _LOG "INFO" "Not doing f_splitByRegex for '${_log_path}' as the size is larger than _LOG_THRESHOLD_BYTES:${_LOG_THRESHOLD_BYTES} * 20"
         fi
     fi
 }

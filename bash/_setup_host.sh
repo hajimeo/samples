@@ -1196,7 +1196,7 @@ function f_microk8s() {
     microk8s helm install nfs nfs-ganesha-server-and-external-provisioner/nfs-server-provisioner -n kube-system
 ### To understand how storageClass works (to use storageClassName 'nfs-csi')
     @see https://microk8s.io/docs/how-to-nfs
-### TODO: What's below for? To use "nfs-server"???
+### TODO: What's below for? To use "nfs-server" as client???
     helm repo add nfs-subdir-external-provisioner https://kubernetes-sigs.github.io/nfs-subdir-external-provisioner
     helm install nfs-subdir-external-provisioner nfs-subdir-external-provisioner/nfs-subdir-external-provisioner --create-namespace --namespace nfs-provisione --set nfs.server=node004.b9tcluster.local --set nfs.path=/data
 
@@ -2202,7 +2202,11 @@ function f_tabby() {
     # https://tabby.tabbyml.com/docs/extensions/installation/intellij
     local _port="${1:-"8080"}"
     #docker run -it --gpus all -p 8080:8080 -v $HOME/.tabby:/data tabbyml/tabby serve --model TabbyML/StarCoder-1B --device cuda
-    docker run -t -d -p ${_port:-8080}:8080 -v $HOME/.tabby:/data tabbyml/tabby serve --model TabbyML/StarCoder-1B
+    docker run -t -d -p ${_port:-8080}:8080 -v $HOME/.tabby:/data tabbyml/tabby serve --model TabbyML/StarCoder-1B || return $?
+    echo "NOTE:
+    .tabby-client/agent/config.toml for anonymousUsageTracking (but may not be used)
+    Also TABBY_DISABLE_USAGE_COLLECTION=1 for server
+    "
 }
 
 function p_basic_setup() {

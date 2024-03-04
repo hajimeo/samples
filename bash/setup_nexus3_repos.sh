@@ -1801,6 +1801,13 @@ function f_put_realms() {
     f_api "/service/rest/v1/security/realms/active" "[${_realms}]" "PUT" || return $?
 }
 
+function f_enable_quarantines() {
+    local _proxy_name_rx="${1:-"[^\"]+"}"
+    f_api "/service/rest/v1/repositories" | grep -B2 -E '^\s*"type"\s*:\s*"proxy"' | sed -n -E 's/^ *"name": *"('${_proxy_name_rx}')".*/\1/p' | while read -r _repo; do
+        f_iq_quarantine "${_repo}"
+    done
+}
+
 function f_nexus_csel() {
     local _csel_name="${1:-"csel-test"}"
     local _expression="${2:-"format == 'raw' and path =^ '/test/'"}" # TODO: currently can't use double quotes
@@ -2699,7 +2706,10 @@ function _is_repo_available() {
     if [ -n "${_repo_name}" ]; then
         # case insensitive
         grep -iq "\"${_repo_name}\"" ${_TMP%/}/_does_repo_exist$$.out
+        return $?
     fi
+    cat ${_TMP%/}/_does_repo_exist$$.out | sed -n -E 's/^ *"name": *"([^"]+)".*/\1/p'
+    return 1
 }
 function _is_blob_available() {
     local _bs_name="$1"
