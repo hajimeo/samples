@@ -1,4 +1,4 @@
-# To check the deploy-ing yaml file (should use lint?)
+# To check the deploy-ing yaml file (basically same as --dry-run)
 #$ helm template nxiqha sonatype/nexus-iq-server-ha -f ./helm-nxiqha-values.yml -n sonatype-ha >./helm-nxiqha-deploying.yaml
 
 # To re-install (not from scratch as persistent volumes 'iq-server-pv' remain)
@@ -12,7 +12,7 @@
 
 # Installing from github (eg: older versions due to CLM-28041)
 #$ git -C ~/IdeaProjects/nexus-iq-server-ha pull && git -C ~/IdeaProjects/nexus-iq-server-ha fetch
-#$ helm upgrade nxiqha ~/IdeaProjects/nexus-iq-server-ha/chart -f ~/IdeaProjects/samples/kubernetes/helm-nxiqha-values.yml -n sonatype-ha #--version 1.162.0 --dry-run
+#$ helm upgrade --install nxiqha ~/IdeaProjects/nexus-iq-server-ha/chart -f ~/IdeaProjects/samples/kubernetes/helm-nxiqha-values.yml -n sonatype-ha #--version 1.162.0 --dry-run
 # NOTE --version uses CHART VERSION not APP VERSION
 
 iq_server:

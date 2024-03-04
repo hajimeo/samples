@@ -146,6 +146,7 @@ type zsh &>/dev/null && alias pbrew="ALL_PROXY=http://proxyuser:proxypwd@dh1:280
 ## Common software/command but need to install #######################################################################
 type q &>/dev/null && alias qcsv='q -O -d"," -T --disable-double-double-quoting'
 type pgbadger &>/dev/null && alias pgbg='pgbadger --timezone 0'
+export TABBY_DISABLE_USAGE_COLLECTION=1 # just in case
 alias tabby_start='TABBY_DISABLE_USAGE_COLLECTION=1 tabby serve --device metal --model TabbyML/StarCoder-1B &>/tmp/tabby.out &'
 
 ### Docker/K8s/VM related
@@ -184,6 +185,7 @@ fi
 if [ -d $HOME/IdeaProjects/samples/bash ]; then
     alias logT="pyvN; source $HOME/IdeaProjects/samples/bash/log_tests.sh"
     alias logTest="pyvN;$HOME/IdeaProjects/samples/bash/log_tests.sh"
+    alias setupRm3="source $HOME/IdeaProjects/samples/bash/setup_nexus3_repos.sh"
     alias setupNexus3="source $HOME/IdeaProjects/samples/bash/setup_nexus3_repos.sh"
     alias setupIq="source $HOME/IdeaProjects/samples/bash/setup_nexus_iq.sh"
     alias ss="bash $HOME/IdeaProjects/samples/bash/setup_standalone.sh"
@@ -227,7 +229,7 @@ alias matJ11='/Applications/mat.app/Contents/MacOS/MemoryAnalyzer -vm ${JAVA_HOM
 ## Chrome aliases for Mac (URL needs to be IP as hostname wouldn't be resolvable on remote)
 #alias shib-local='open -na "Google Chrome" --args --user-data-dir=$HOME/.chromep/local --proxy-server=socks5://localhost:28081'
 #alias shib-dh1='open -na "Google Chrome" --args --user-data-dir=$HOME/.chromep/dh1 --proxy-server=socks5://dh1:28081 http://192.168.1.31:4200/webuser/'
-alias shib-dh1='open -na "Google Chrome" --args --user-data-dir=$HOME/.chromep/dh1 --proxy-server=http://dh1:28080 http://192.168.1.31:4200/webuser/'
+alias chrome-dh1='open -na "Google Chrome" --args --user-data-dir=$HOME/.chromep/dh1 --proxy-server=http://dh1:28080'
 alias k8s-dh1='open -na "Google Chrome" --args --user-data-dir=$HOME/.chromep/k8s-dh1 --proxy-server=socks5://dh1:38081'
 alias hblog='open -na "Google Chrome" --args --user-data-dir=$HOME/.chromep/hajigle https://www.blogger.com/blogger.g?blogID=9018688091574554712&pli=1#allposts'
 # pretending windows chrome on Linux
@@ -292,7 +294,7 @@ function fvim() {
 function lns() {
     if [ -L "$2" ]; then rm -i "$2" || return $?; fi
     if [ -d "$2" ]; then rmdir "$2" || return $?; fi
-    ln -v -s "$(realpath "$1")" "$(realpath "$2")"
+    ln -v -s "$(realpath "$1")" "$2"
 }
 
 function unzips() {
@@ -626,6 +628,15 @@ function r2dh() {
     local _network_addrs="${2:-"172.17.0.0 172.18.0.0 172.17.100.0 10.1.25.0 10.152.183.0"}" # last one is for K8s pods
     [ -z "${_dh}" ] && _dh="$(ifconfig ppp0 | grep -oE 'inet .+' | awk '{print $4}')" 2>/dev/null
     [ -z "${_dh}" ] && _dh="dh1.standalone.localdomain"
+
+    # My home network custom setting
+    #if ping -Q -t1 -c1 192.168.42.129 &>/dev/null; then
+    #    sudo route delete -net 192.168.1.0/24 &>/dev/null
+    #    sudo route add -net 192.168.1.0/24 192.168.42.129
+    #fi
+
+    # If geteway is unreachable, shouldn't update the route
+    ping -Q -t1 -c1 ${_dh} || return $?
 
     for _addr in ${_network_addrs}; do
         if [ "Darwin" = "$(uname)" ]; then

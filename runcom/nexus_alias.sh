@@ -40,7 +40,7 @@ function _get_rm_url() {
     local _rm_url="${1:-${_NEXUS_URL}}"
     if [ -z "${_rm_url}" ]; then
         for _url in "http://localhost:8081/" "https://nxrm3pg-k8s.standalone.localdomain/" "http://dh1:8081/"; do
-            if curl -f -s -I "${_url%/}/" &>/dev/null; then
+            if curl -m1 -f -s -I "${_url%/}/" &>/dev/null; then
                 echo "${_url%/}/"
                 _NEXUS_URL="${_url%/}/"
                 return
@@ -68,13 +68,13 @@ function _get_iq_url() {
                 _iq_url="http://${_iq_url%/}/"
             fi
         fi
-        if curl -f -s -I "${_url%/}/" &>/dev/null; then
+        if curl -m1 -f -s -I "${_url%/}/" &>/dev/null; then
             echo "${_url%/}/"
             return
         fi
     fi
     for _url in "http://localhost:8070/" "https://nxiqha-k8s.standalone.localdomain/" "http://dh1:8070/"; do
-        if curl -f -s -I "${_url%/}/" &>/dev/null; then
+        if curl -m1 -f -s -I "${_url%/}/" &>/dev/null; then
             echo "${_url%/}/"
             return
         fi
@@ -97,7 +97,7 @@ function iqCli() {
 
     _iq_url="$(_get_iq_url "${_iq_url}")" || return $?
         if [ -z "${_iq_cli_ver}" ]; then
-        _iq_cli_ver="$(curl -sf "${_iq_url%/}/rest/product/version" | python -c "import sys,json;a=json.loads(sys.stdin.read());print(a['version'])")"
+        _iq_cli_ver="$(curl -m3 -sf "${_iq_url%/}/rest/product/version" | python -c "import sys,json;a=json.loads(sys.stdin.read());print(a['version'])")"
     fi
     local _iq_cli_jar="${_IQ_CLI_JAR:-"${_WORK_DIR%/}/sonatype/iq-cli/nexus-iq-cli-${_iq_cli_ver}.jar"}"
 
@@ -171,11 +171,12 @@ function nxrmStart() {
     # -Xrunhprof:cpu=times,interval=30,thread=y,monitor=y,cutoff=0.001,doe=n,file=/tmp/cpu_samples_$$.hprof
     # -Xrunhprof:heap=sites,format=b,file=${_base_dir%/}/heap_sites_$$.hprof
     # only 'root.level' is changeable
-    local _java_opts=${2-"-Droot.level=DEBUG -Xrunjdwp:transport=dt_socket,server=y,address=5005,suspend=${_SUSPEND:-"n"}"}
+    local _java_opts=${2-"-Droot.level=${_LOG_LEVEL:-"INFO"} -Xrunjdwp:transport=dt_socket,server=y,address=5005,suspend=${_SUSPEND:-"n"}"}
     local _mode=${3} # if NXRM2, not 'run' but 'console'
     #local _java_opts=${@:2}
     _base_dir="$(realpath "${_base_dir}")"
 
+    _java_opts="${_java_opts} -XX:+PrintGCDetails -XX:+PrintGCDateStamps -XX:+PrintGCCause -XX:+PrintClassHistogramAfterFullGC -XX:+UseGCLogFileRotation -XX:NumberOfGCLogFiles=10 -XX:GCLogFileSize=100M -Xloggc:/tmp/rm-gc_%p_%t.log"
     if [ -n "${_CUSTOM_DNS}" ]; then
         _java_opts="${_java_opts} -Dsun.net.spi.nameservice.nameservers=${_CUSTOM_DNS} -Dsun.net.spi.nameservice.provider.1=dns,sun"
     fi
@@ -305,6 +306,7 @@ function _updateNexusProps() {
     grep -qE '^#?nexus.scripts.allowCreation' "${_cfg_file}" || echo "nexus.scripts.allowCreation=true" >> "${_cfg_file}"
     grep -qE '^#?nexus.browse.component.tree.automaticRebuild' "${_cfg_file}" || echo "nexus.browse.component.tree.automaticRebuild=false" >> "${_cfg_file}"
     # NOTE: this would not work if elasticsearch directory is empty
+    #       or if upgraded from older than 3.39 due to https://sonatype.atlassian.net/browse/NEXUS-31285
     grep -qE '^#?nexus.elasticsearch.autoRebuild' "${_cfg_file}" || echo "nexus.elasticsearch.autoRebuild=false" >> "${_cfg_file}"
     # ${nexus.h2.httpListenerPort:-8082} jdbc:h2:file:./nexus (no username)
     grep -qE '^#?nexus.h2.httpListenerEnabled' "${_cfg_file}" || echo "nexus.h2.httpListenerEnabled=true" >> "${_cfg_file}"
@@ -440,6 +442,7 @@ function iqStart() {
     local _license="$(ls -1t /var/tmp/share/sonatype/*.lic 2>/dev/null | head -n1)"
     [ -z "${_license}" ] && [ -s "${HOME%/}/.nexus_executable_cache/nexus.lic" ] && _license="${HOME%/}/.nexus_executable_cache/nexus.lic"
     [ -s "${_license}" ] && _java_opts="${_java_opts} -Ddw.licenseFile=${_license}"
+    _java_opts="${_java_opts} -XX:+PrintGCDetails -XX:+PrintGCDateStamps -XX:+PrintGCCause -XX:+PrintClassHistogramAfterFullGC -XX:+UseGCLogFileRotation -XX:NumberOfGCLogFiles=10 -XX:GCLogFileSize=100M -Xloggc:/tmp/iq-gc_%p_%t.log"
 
     # TODO: From v138, most of configs need to use API: https://help.sonatype.com/iqserver/automating/rest-apis/configuration-rest-api---v2
     # 'com.sonatype.insight.brain.migration.SimpleConfigurationMigrator - hdsUrl, enableDefaultPasswordWarning is now configured using the REST API. The configuration in the config.yml or via system properties is obsolete.'
@@ -475,29 +478,47 @@ $(sed -n "/^  loggers:/,\$p" ${_cfg_file} | grep -v '^  loggers:')" > "${_cfg_fi
         # NOTE: below does not work for SCM due to the change added in INT-5729
         _java_opts="${_java_opts} -Dhttp.proxyHost=non-existing-hostname -Dhttp.proxyPort=8800 -Dhttp.nonProxyHosts=\"*.sonatype.com\""
 
-        if [ -s "${_work_dir:-"."}/data/ods.h2.db" ]; then
-            # TODO: for PostgreSQL
-            if ! type h2-console &>/dev/null; then
-                echo "no 'h2-console'"
-                return 11
+        local _console=""
+        if type h2-console &>/dev/null && [ -s "${_work_dir:-"."}/data/ods.h2.db" ]; then
+            _console="h2-console ${_work_dir:-"."}/data/ods.h2.db"
+        elif type psql &>/dev/null; then
+            eval "$(grep "^database:" -A7 "${_cfg_file}" | sed -n -E 's/^ +([^:]+): *(.+)$/\1=\2/p')"
+            if [ "${type}" == "postgresql" ]; then
+                _console="PGPASSWORD=${password} psql -h ${hostname} -p ${port} -U ${username} -d ${name}"
             fi
-
-            if [ ! -s "${_work_dir:-"."}/data/ods.h2.db.gz" ]; then
-                echo "gzip-ing ods.h2.db file ..."
-                gzip -k "${_work_dir:-"."}/data/ods.h2.db" || return $?
-            fi
-            java -jar ${_jar_file} reset-admin ${_cfg_file} >/dev/null || return $?
-            echo "DELETE FROM insight_brain_ods.ldap_usermapping;DELETE FROM insight_brain_ods.ldap_connection;DELETE FROM insight_brain_ods.ldap_server" | h2-console "${_work_dir:-"."}/data/ods.h2.db" || return $?
-            echo "DELETE FROM insight_brain_ods.mail_configuration;DELETE FROM insight_brain_ods.ldap_connection" | h2-console "${_work_dir:-"."}/data/ods.h2.db" || return $?
-            echo "UPDATE insight_brain_ods.source_control SET remediation_pull_requests_enabled = false, status_checks_enabled = false, pull_request_commenting_enabled = false, source_control_evaluations_enabled = false" | h2-console "${_work_dir:-"."}/data/ods.h2.db" || return $?
-            echo "DELETE FROM insight_brain_ods.proxy_server_configuration;INSERT INTO insight_brain_ods.proxy_server_configuration (proxy_server_configuration_id, hostname, port, exclude_hosts) VALUES ('proxy-server-configuration', 'non-existing-hostname', 8080, '*.sonatype.com');" | h2-console "${_work_dir:-"."}/data/ods.h2.db" || return $?
-            echo "*** Updated DB directly ***"; sleep 3;
         fi
+        if [ -z "${_console}" ]; then
+            echo "no '${_console}'"
+            return 11
+        fi
+
+        if [ -s "${_work_dir:-"."}/data/ods.h2.db" ] && [ ! -s "${_work_dir:-"."}/data/ods.h2.db.gz" ]; then
+            echo "gzip-ing ods.h2.db file ..."
+            gzip -k "${_work_dir:-"."}/data/ods.h2.db" || return $?
+        fi
+
+        echo "*** reset-admin *** "; sleep 3;
+        java -jar ${_jar_file} reset-admin ${_cfg_file} || return $?
+
+        echo "*** Updating DB with '${_console}' ***"; sleep 3;
+        _iqStartSQLs | eval "${_console}" || return $?
     fi
-    local _cmd="java -Xms2g -Xmx4g ${_java_opts} -jar \"${_jar_file}\" server \"${_cfg_file}\" 2>/tmp/iq-server.err"
+    local _cmd="java ${_java_opts} -jar \"${_jar_file}\" server \"${_cfg_file}\" 2>/tmp/iq-server.err"
     echo "${_cmd}"; sleep 2
     eval "${_cmd}"
     cd -
+}
+function _iqStartSQLs() {
+    cat << EOF
+DELETE FROM insight_brain_ods.ldap_usermapping;
+DELETE FROM insight_brain_ods.ldap_connection;
+DELETE FROM insight_brain_ods.ldap_server;
+DELETE FROM insight_brain_ods.mail_configuration;
+DELETE FROM insight_brain_ods.ldap_connection;
+UPDATE insight_brain_ods.source_control SET remediation_pull_requests_enabled = false, status_checks_enabled = false, pull_request_commenting_enabled = false, source_control_evaluations_enabled = false;
+DELETE FROM insight_brain_ods.proxy_server_configuration;
+INSERT INTO insight_brain_ods.proxy_server_configuration (proxy_server_configuration_id, hostname, port, exclude_hosts) VALUES ('proxy-server-configuration', 'non-existing-hostname', 8080, '*.sonatype.com');
+EOF
 }
 
 function _iqConfigAPI() {
@@ -520,7 +541,7 @@ function iqConfigUpdate() {
     local _iq_url="$1"
     _iq_url="$(_get_iq_url "${_iq_url}")" || return $?
     _iqConfigAPI '{"hdsUrl":"https://clm-staging.sonatype.com/"}' "${_iq_url}"
-    _iqConfigAPI '{"baseUrl":"'${_iq_url}'/","forceBaseUrl":false}' "${_iq_url}"
+    _iqConfigAPI '{"baseUrl":"'${_iq_url%/}'/","forceBaseUrl":false}' "${_iq_url}"
     _iqConfigAPI '{"enableDefaultPasswordWarning":false}' "${_iq_url}"
     echo "May want to run 'f_api_nxiq_scm_setup _token' as well"
 }
@@ -853,6 +874,7 @@ function npmDeploy() {
     local _repo_url="${1:-"$(_get_rm_url)repository/npm-hosted/"}"
     local _name="${2:-"lodash-vulnerable"}"
     local _ver="${3:-"1.0.0"}"
+    #npm login --registry=$(_get_rm_url)repository/npm-hosted/
     if [ -s ./package.json ] && [ ! -s ./package.json.orig ]; then
         cp -v -p ./package.json ./package.json.orig
     elif [ ! -s ./package.json ]; then
