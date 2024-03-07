@@ -276,7 +276,7 @@ function f_scm_setup() {
         f_api_create_app "${_app_pub_id}" "${_org_name}" &>/dev/null
         local _app_int_id="$(f_api_appIntId "${_app_pub_id}" "${_org_name}")" || return $?
         [ -n "${_app_int_id}" ] || return 12
-        _curl "${_IQ_URL%/}/api/v2/sourceControl/application/${_app_int_id}" -H "Content-Type: application/json" -d '{"remediationPullRequestsEnabled":true,"pullRequestCommentingEnabled":true,"sourceControlEvaluationsEnabled":true,"baseBranch":"'${_branch}'","repositoryUrl":"'${_git_url}'"}' #|| return $?
+        _curl "${_IQ_URL%/}/api/v2/sourceControl/application/${_app_int_id}" -H "Content-Type: application/json" -d '{"remediationPullRequestsEnabled":true,"pullRequestCommentingEnabled":true,"sourceControlEvaluationsEnabled":true,"baseBranch":"'${_branch}'","repositoryUrl":"'${_git_url}'"}' | python -m json.tool #|| return $?
         # 400 SourceControl already exists for application with id: ...
     fi
 }
