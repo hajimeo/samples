@@ -11,6 +11,7 @@
 #   _AUTO=true main
 #
 # TODO: some of functions uses python, which does not exist in the image
+# TODO: Direct / Transitive example for Java and NPM
 #
 _DL_URL="${_DL_URL:-"https://raw.githubusercontent.com/hajimeo/samples/master"}"
 type _import &>/dev/null || _import() { [ ! -s /tmp/${1} ] && curl -sf --compressed "${_DL_URL%/}/bash/$1" -o /tmp/${1}; . /tmp/${1}; }
@@ -73,10 +74,10 @@ Using previously saved response file and NO interviews:
 : ${_ADMIN_USER:="admin"}
 : ${_ADMIN_PWD:="admin123"}
 : ${_IQ_URL:="http://localhost:8070/"}
+_TMP="/tmp"  # for downloading/uploading assets
+_DEBUG=false
+alias _curl="curl -sSf -u '${_ADMIN_USER}:${_ADMIN_PWD}'"
 
-
-# TODO: Direct / Transitive example for Java and NPM
-# TODO: SCM setup
 
 
 # To upgrade (from ${_dirname}/): mv -f -v ./config.yml{,.tmp} && tar -xvf $HOME/.nexus_executable_cache/nexus-iq-server-1.173.0-01-bundle.tar.gz && cp -p -v ./config.yml{.tmp,}
@@ -162,46 +163,123 @@ EOF
 }
 
 function f_create_testuser() {
+    local __doc__="Create a test IQ user with a role"
     echo "Not implemented yet"
 }
 
-
 ### API related
 function f_api_config() {
+    local __doc__="/api/v2/config"
     local _d="$1"
-    local _iq_url="${2:-"${_IQ_URL%/}"}"
-    local _cmd="curl -sSf -u \"admin:admin123\" \"${_iq_url%/}/api/v2/config"
+    local _cmd="_curl \"${_IQ_URL%/}/api/v2/config"
     if [[ "${_d}" =~ ^property= ]]; then
         _cmd="${_cmd}?${_d}\""
     elif [ -n "${_d}" ]; then
         _cmd="${_cmd}\" -H \"Content-Type: application/json\" -X PUT -d '${_d}'"
     else
-        return 11
+        _cmd="${_cmd}\""
     fi
-    echo "${_cmd}"
+    #echo "${_cmd}"
     eval "${_cmd}" || return $?
 }
 
-function _api_appIntId() {
+function f_api_orgId() {
+    local __doc__="Get organization Internal ID from /api/v2/organizations (or create)"
+    local _org_name="${1:-"Sandbox Organization"}"
+    local _create="${2}"
+    local _org_result="$(_curl "${_IQ_URL%/}/api/v2/organizations" --get --data-urlencode "organizationName=${_org_name}")"
+    [ -z "${_org_result}" ] && return 12
+    local _org_int_id="$(echo "${_org_result}" | python -c "import sys,json
+a=json.loads(sys.stdin.read())
+if len(a['organizations']) > 0:
+    print(a['organizations'][0]['id'])")"
+    if [ -z "${_org_int_id}" ] && [[ "${_create}" =~ ^[yY] ]]; then
+        _org_int_id="$(_curl "${_IQ_URL%/}/api/v2/organizations" -H "Content-Type: application/json" -d "{\"name\":\"${_org_name}\"}" | python -c "import sys,json
+a=json.loads(sys.stdin.read())
+if 'id' in a:
+    print(a['id'])")"
+    fi
+    echo "${_org_int_id}"
+}
+
+function f_api_appIntId() {
+    local __doc__="Get application Internal ID from /api/v2/applications?publicId=\${_app_pub_id}"
     local _app_pub_id="${1}"
-    curl -sSf -u "${_ADMIN_USER}:${_ADMIN_PWD}" "${_IQ_URL%/}/api/v2/applications?publicId=${_app_pub_id}" | python -c "import sys,json
+    _curl "${_IQ_URL%/}/api/v2/applications" --get --data-urlencode "publicId=${_app_pub_id}" | python -c "import sys,json
 a=json.loads(sys.stdin.read())
 if len(a['applications']) > 0:
     print(a['applications'][0]['id'])"
 }
 
-function f_eval_gav() {
+function f_api_create_app() {
+    local __doc__="Create an application with /api/v2/applications"
+    local _app_pub_id="${1}"
+    local _create_under_org="${2:-"Sandbox Organization"}"
+    [ -z "${_app_pub_id}" ] && return 11
+    local _org_int_id="$(f_api_orgId "${_create_under_org}" "Y")"
+    _curl "${_IQ_URL%/}/api/v2/applications" -H "Content-Type: application/json" -d '{"publicId":"'${_app_pub_id}'","name": "'${_app_pub_id}'","organizationId": "'${_org_int_id}'"}'
+}
+
+function f_api_eval_gav() {
+    local __doc__="/api/v2/evaluation/applications/\${_app_int_id} with Maven GAV"
     local _gav="${1}"
     local _app_pub_id="${2:-"sandbox-application"}"
     [[ "${_gav}" =~ ^" "*([^: ]+)" "*:" "*([^: ]+)" "*:" "*([^: ]+)" "*$ ]] || return 11
     local _g="${BASH_REMATCH[1]}"
     local _a="${BASH_REMATCH[2]}"
     local _v="${BASH_REMATCH[3]}"
-    local _app_int_id="$(_api_appIntId "${_app_pub_id}")" || return $?
+    local _app_int_id="$(f_api_appIntId "${_app_pub_id}")" || return $?
 
-    curl -sSf -u "${_ADMIN_USER}:${_ADMIN_PWD}" "${_IQ_URL%/}/api/v2/evaluation/applications/${_app_int_id}" -X POST -H "Content-Type: application/json" -d '{"components": [{"hash": null,"componentIdentifier": {"format": "maven","coordinates": {"artifactId": "'${_a}'","groupId": "'${_g}'","version": "'${_v}'","extension":"jar"}}}]}'
+    _curl "${_IQ_URL%/}/api/v2/evaluation/applications/${_app_int_id}" -H "Content-Type: application/json" -d '{"components": [{"hash": null,"componentIdentifier": {"format": "maven","coordinates": {"artifactId": "'${_a}'","groupId": "'${_g}'","version": "'${_v}'","extension":"jar"}}}]}'
 }
 
+
+function f_config_update() {
+    local _baseUrl="${1:-"${_IQ_URL}"}"
+    f_api_config '{"hdsUrl":"https://clm-staging.sonatype.com/"}'
+    f_api_config '{"baseUrl":"'${_baseUrl%/}'/","forceBaseUrl":false}'
+    f_api_config '{"enableDefaultPasswordWarning":false}'
+}
+
+# Setup Org only: f_scm_setup "_token"
+# Setup Org&app : f_scm_setup "_token" "github" "https://github.com/hajimeo/private-repo"
+#  vs. CLI scan : iqCli . "private-repo" "source"
+function f_scm_setup() {
+    local __doc__="Setup IQ SCM"
+    local _git_url="${1}"   # https://github.com/hajimeo/private-repo
+    local _org_name="${2}"
+    local _token="${3:-"${GITHUB_TOKEN}"}"
+    local _provider="${4:-"github"}"
+    local _branch="${5:-"master"}"
+    [ -z "${_org_name}" ] && _org_name="${_provider}_org"
+
+    # Automatic Source Control Configuration
+    _apiS "/rest/config/automaticScmConfiguration" '{"enabled":true}' "PUT" &>/dev/null
+    local _org_int_id
+    if [ -n "${_org_name}" ]; then
+        _org_int_id="$(f_api_orgId "${_org_name}" "Y")"
+        [ -n "${_org_int_id}" ] || return 11
+        # If would like to enable automatic application
+        #_apiS "/rest/config/automaticApplications" '{"enabled":true,"parentOrganizationId":"'${_org_int_id}'"}' "PUT" || return $?
+    else
+        _org_name="Root Organization"
+        _org_int_id="ROOT_ORGANIZATION_ID"
+    fi
+    if [ -n "${_token}" ]; then
+        # https://help.sonatype.com/iqserver/automating/rest-apis/source-control-rest-api---v2
+        # NOTE: It seems the remediationPullRequestsEnabled is false
+        _curl "${_IQ_URL%/}/api/v2/sourceControl/organization/${_org_int_id}" -H "Content-Type: application/json" -d "{\"token\":\"${_token}\",\"provider\":\"${_provider}\",\"baseBranch\":\"${_branch}\"}" &> /tmp/${FUNCNAME[0]}_$$.tmp #|| return $?
+        # 400 SourceControl already exists for organization with id: ...
+    fi
+    if [ "${_git_url}" ]; then
+        local _app_pub_id="$(basename "${_git_url}")"
+        f_api_create_app "${_app_pub_id}" "${_org_name}" &>/dev/null
+        local _app_int_id="$(f_api_appIntId "${_app_pub_id}" "${_org_name}")" || return $?
+        [ -n "${_app_int_id}" ] || return 12
+        _curl "${_IQ_URL%/}/api/v2/sourceControl/application/${_app_int_id}" -H "Content-Type: application/json" -d '{"remediationPullRequestsEnabled":true,"pullRequestCommentingEnabled":true,"sourceControlEvaluationsEnabled":true,"baseBranch":"'${_branch}'","repositoryUrl":"'${_git_url}'"}' #|| return $?
+        # 400 SourceControl already exists for application with id: ...
+    fi
+}
 
 # Integration setup related
 function f_setup_iq_scm_for_bitbucket() {
@@ -321,7 +399,28 @@ EOF
     echo "Please scan ./package-lock.json and ./package.json"
 }
 
-
+function _apiS() {
+    local _path="${1}"
+    local _data="${2}"
+    local _method="${3}"
+    local _iq_url="${4:-"${_IQ_URL%/}"}"
+    local _c="${_TMP%/}/.nxiq_c_$$"
+    find ${_TMP%/}/ -type f -name .nxiq_c_$$ -mmin +10 -delete 2>/dev/null
+    if [ ! -s "${_c}" ]; then
+        _curl -b ${_c} -c ${_c} -o /dev/null "${_iq_url%/}/rest/user/session" || return $?
+    fi
+    [ -n "${_data}" ] && [ -z "${_method}" ] && _method="POST"
+    [ -z "${_method}" ] && _method="GET"
+    local _cmd="curl -sSf -u '${_ADMIN_USER}:${_ADMIN_PWD}' -b ${_c} -c ${_c} -H 'X-CSRF-TOKEN: $(_sed -nr 's/.+\sCLM-CSRF-TOKEN\s+([0-9a-f]+)/\1/p' ${_c})' '${_iq_url%/}${_path}' -X ${_method}"
+    if [ "${_data:0:5}" == "file=" ]; then
+        _cmd="${_cmd} -F ${_data}"
+    elif [ -n "${_data}" ] && [ "${_data:0:1}" != "{" ]; then
+        _cmd="${_cmd} -H 'Content-Type: text/plain' -d ${_data}"    # TODO: should use quotes?
+    elif [ -n "${_data}" ]; then
+        _cmd="${_cmd} -H 'Content-Type: application/json' -d '${_data}'"
+    fi
+    eval ${_cmd}
+}
 
 ### Main #######################################################################################################
 main() {
