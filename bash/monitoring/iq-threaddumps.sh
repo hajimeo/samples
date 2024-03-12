@@ -185,6 +185,9 @@ function takeDumps() {
         [ ${_i} -lt ${_count} ] && sleep ${_interval}
         [ -n "${_wpid_in_for}" ] && wait ${_wpid_in_for}
     done
+    if [ -n "${_admin_url}" ]; then
+        curl -m${_curl_m:-"3"} -sSf -k "${_admin_url%/}/metrics" >> "${_outPfx}100.log"
+    fi
     if [ -s /tmp/.tailStdout.run ]; then
         local _wpid="$(cat /tmp/.tailStdout.run)"
         ps -p ${_wpid} &>/dev/null && wait ${_wpid}
