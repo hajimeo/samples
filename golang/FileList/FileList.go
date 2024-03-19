@@ -64,6 +64,7 @@ var _DRY_RUN *bool
 var _BASEDIR *string
 var _DIR_DEPTH *int
 var _PREFIX *string
+var _CONTENT_PATH = "content"
 var _FILTER *string
 var _FILTER_P *string
 var _FILTER_PX *string
@@ -130,9 +131,8 @@ func _setGlobals() {
 	_START_TIME_ts = time.Now().Unix()
 
 	_BASEDIR = flag.String("b", ".", "Base directory (default: '.') or S3 Bucket name")
-	//_BASEDIR = flag.String("b", "", "S3 Bucket name")
+	_PREFIX = flag.String("p", "", "Prefix to 'vol-*'. This is not recursive")
 	_DIR_DEPTH = flag.Int("dd", 2, "(experimental) Directory Depth to find sub directories (eg: 'vol-NN', 'chap-NN')")
-	_PREFIX = flag.String("p", "", "Prefix of sub directories (eg: 'vol-') This is not recursive")
 	_WITH_PROPS = flag.Bool("P", false, "If true, the .properties file content is included in the output")
 	_FILTER = flag.String("f", "", "Filter for the file path (eg: '.properties' to include only this extension)")
 	_WITH_BLOB_SIZE = flag.Bool("BSize", false, "If true, includes .bytes size (When -f is '.properties')")
@@ -172,6 +172,27 @@ func _setGlobals() {
 	if _DEBUG2 != nil && *_DEBUG2 {
 		*_DEBUG = true
 	}
+
+	basedir := ""
+	if len(*_BASEDIR) > 0 {
+		basedir = strings.TrimSuffix(*_BASEDIR, string(filepath.Separator)) + string(filepath.Separator)
+	}
+	prefix := ""
+	if len(*_PREFIX) > 0 {
+		parts := strings.SplitN(*_PREFIX, "/content", 2)
+		if len(parts) > 1 {
+			prefix = parts[0] + string(filepath.Separator)
+		} else {
+			prefix = strings.TrimSuffix(*_PREFIX, string(filepath.Separator)) + string(filepath.Separator)
+		}
+	}
+	if _IS_S3 != nil && *_IS_S3 {
+		// No basedir requiref for S3
+		_CONTENT_PATH = prefix + "content"
+	} else {
+		_CONTENT_PATH = basedir + prefix + "content"
+	}
+	_log("DEBUG", "_CONTENT_PATH = "+_CONTENT_PATH)
 
 	// If _FILTER_P is given, automatically populate other related variables
 	if len(*_FILTER_P) > 0 || len(*_FILTER_PX) > 0 {
@@ -495,7 +516,10 @@ func printLineS3(item types.Object, client *s3.Client, db *sql.DB) {
 	path := *item.Key
 	modTime := item.LastModified
 	propSize := item.Size
-	owner := *item.Owner.DisplayName
+	owner := ""
+	if item.Owner != nil && item.Owner.DisplayName != nil {
+		owner = *item.Owner.DisplayName
+	}
 	var blobSize int64 = 0
 	// If .properties file is checked and _WITH_BLOB_SIZE, then get the size of .bytes file
 	if *_WITH_BLOB_SIZE && *_FILTER == _PROP_EXT && strings.HasSuffix(path, _PROP_EXT) {
@@ -1270,13 +1294,13 @@ func printOrphanedBlobsFromIdFile(blobIdsFile string, dbConStr string, conc int)
 			if len(blobId) == 0 {
 				_log("DEBUG", "line:"+line+" doesn't contain blibId.")
 			} else {
-				// NOTE: Suspecting `openDb` from the outside of Goroutine may not open concurrent connections, so doing in here
-				db := openDb(dbConStr)
-				if db == nil {
-					panic("Cannot open the database.") // Can't output _DB_CON_STR as it may include password
-				}
-				defer db.Close()
 				if *_TRUTH == "BS" {
+					// NOTE: Suspecting `openDb` from the outside of Goroutine may not open concurrent connections, so doing in here
+					db := openDb(dbConStr)
+					if db == nil {
+						panic("Cannot open the database.") // Can't output _DB_CON_STR as it may include password
+					}
+					defer db.Close()
 					if isBlobMissingInDB("", blobId, db) {
 						_log("WARN", "blobId:"+blobId+" does not exist in database.")
 						if blobId != line {
@@ -1409,18 +1433,18 @@ func listObjects(dir string, client *s3.Client) {
 
 func printObjectByBlobId(blobId string, db *sql.DB, client *s3.Client) {
 	startMs := time.Now().UnixMilli()
-	path := *_BASEDIR + string(filepath.Separator) + genBlobPath(blobId)
+	path := _CONTENT_PATH + string(filepath.Separator) + genBlobPath(blobId) + _PROP_EXT
 	if _IS_S3 != nil && *_IS_S3 {
 		headObj, err := getHeadObjS3(path, client)
-		var item types.Object
-		*item.Key = path
-		item.LastModified = headObj.LastModified
-		item.Size = headObj.ContentLength
-		*item.Owner.DisplayName = "" // TODO: not sure how to get owner from header
 		if err != nil {
 			_log("ERROR", fmt.Sprintf("Failed to access %s", path))
 			return
 		}
+		var item types.Object
+		item.Key = &path
+		item.LastModified = headObj.LastModified
+		item.Size = headObj.ContentLength
+		//item.Owner.DisplayName = nil // TODO: not sure how to get owner from header
 		printLineS3(item, client, db)
 	} else {
 		fileInfo, err := os.Stat(path)
@@ -1487,8 +1511,7 @@ func main() {
 	// If a file which contains blob IDs, check those IDs are in the DB
 	if len(*_TRUTH) > 0 && *_TRUTH == "BS" && len(*_BLOB_IDS_FILE) > 0 {
 		if len(*_DB_CON_STR) == 0 {
-			_log("ERROR", "DB connection string (-db) is required")
-			return
+			_log("WARN", "DB connection string (-db) is missing")
 		}
 		_log("INFO", "Reading "+*_BLOB_IDS_FILE)
 		printOrphanedBlobsFromIdFile(*_BLOB_IDS_FILE, *_DB_CON_STR, *_CONC_1)
@@ -1553,8 +1576,11 @@ func main() {
 			wg.Add(1)
 			go func(blobIds []string, client *s3.Client) {
 				defer wg.Done()
-				db := openDb(*_DB_CON_STR)
-				defer db.Close()
+				var db *sql.DB
+				if len(*_DB_CON_STR) > 0 {
+					db = openDb(*_DB_CON_STR)
+					defer db.Close()
+				}
 				for _, blobId := range blobIds {
 					printObjectByBlobId(blobId, db, client)
 				}
