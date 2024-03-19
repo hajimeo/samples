@@ -114,15 +114,14 @@ function iqCli() {
     # NOTE: -X/--debug outputs to STDOUT
     #       Mac uses "TMPDIR" (and can't change), which is like java.io.tmpdir = /var/folders/ct/cc2rqp055svfq_cfsbvqpd1w0000gn/T/ + nexus-iq
     #       Newer IQ CLI removes scan-6947340794864341803.xml.gz, so no point of changing the tmpdir...
-    local _ts="$(date +'%Y%m%d%H%M%S')"
     # -D includeSha256=true is for BFS
-    local _cmd="java -jar ${_iq_cli_jar} ${_iq_cli_opt} -s ${_iq_url} -a 'admin:admin123' -i ${_iq_app_id} -t ${_iq_stage} -D includeSha256=true -r ./iq_result_${_ts}.json -X ${_path}"
-    echo "[$(date +'%Y-%m-%d %H:%M:%S')] Executing: ${_cmd} | tee ./iq_cli_${_ts}.out" >&2
-    eval "${_cmd} | tee ./iq_cli_${_ts}.out"
+    local _cmd="java -jar ${_iq_cli_jar} ${_iq_cli_opt} -s ${_iq_url} -a 'admin:admin123' -i ${_iq_app_id} -t ${_iq_stage} -D includeSha256=true -r ./iq_result_$$.json -X ${_path}"
+    echo "[$(date +'%Y-%m-%d %H:%M:%S')] Executing: ${_cmd} | tee ./iq_cli_$$.out" >&2
+    eval "${_cmd} | tee ./iq_cli_$$.out"
     echo "[$(date +'%Y-%m-%d %H:%M:%S')] Completed ($?)." >&2
-    local _scanId="$(rg -m1 '"reportDataUrl"\s*:\s*"([^"]+])"' -o -r '$1' ./iq_result_${_ts}.json)"
+    local _scanId="$(rg -m1 '"reportDataUrl"\s*:\s*".+/([0-9a-f]{32})/.*"' -o -r '$1' ./iq_result_$$.json)"
     if [ -n "${_scanId}" ]; then
-        _cmd="curl -sf -u admin:admin123 ${_iq_url%/}/api/v2/applications/${_iq_app_id}/reports/${_scanId}/raw | python -m json.tool > ./iq_raw_${_ts}.json"
+        _cmd="curl -sf -u admin:admin123 ${_iq_url%/}/api/v2/applications/${_iq_app_id}/reports/${_scanId}/raw | python -m json.tool > ./iq_raw_$$.json"
         echo "[$(date +'%Y-%m-%d %H:%M:%S')] Executing: ${_cmd}" >&2
         eval "${_cmd}"
     fi
@@ -428,6 +427,7 @@ function nxrmDocker() {
 
 # To start local (on Mac) IQ server, do not forget to delete LDAP and populate HTTP proxy (and DNS), also reset admin.
 #   _CUSTOM_DNS="127.0.0.1" iqStart
+# export JAVA_TOOL_OPTIONS="-javaagent:$HOME/IdeaProjects/samples/misc/delver.jar=$HOME/IdeaProjects/samples/misc/delver-conf.xml"
 function iqStart() {
     local _base_dir="${1:-"."}"
     local _java_opts="${2-"-agentlib:jdwp=transport=dt_socket,server=y,address=5006,suspend=${_SUSPEND:-"n"}"}"
@@ -535,15 +535,6 @@ function _iqConfigAPI() {
     fi
     echo "${_cmd}"
     eval "${_cmd}" || return $?
-}
-
-function iqConfigUpdate() {
-    local _iq_url="$1"
-    _iq_url="$(_get_iq_url "${_iq_url}")" || return $?
-    _iqConfigAPI '{"hdsUrl":"https://clm-staging.sonatype.com/"}' "${_iq_url}"
-    _iqConfigAPI '{"baseUrl":"'${_iq_url%/}'/","forceBaseUrl":false}' "${_iq_url}"
-    _iqConfigAPI '{"enableDefaultPasswordWarning":false}' "${_iq_url}"
-    echo "May want to run 'f_api_nxiq_scm_setup _token' as well"
 }
 
 # NOTE: Below will overwrite config.yml, so saving and restoring
@@ -802,6 +793,7 @@ function mvn-get-then-deploy() {
     fi
 }
 
+alias mvnResolve='mvn -s $HOME/IdeaProjects/m2_settings.xml dependency:resolve'
 function mvn-resolve() {
     local __doc__="Wrapper of mvn dependency:resolve (to resolve the dependencies)"
     # mvn devendency:resolve wrapper to use remote repo

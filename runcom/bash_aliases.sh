@@ -144,16 +144,15 @@ type zsh &>/dev/null && alias ibrew="arch -x86_64 /usr/local/bin/brew"
 type zsh &>/dev/null && alias pbrew="ALL_PROXY=http://proxyuser:proxypwd@dh1:28081 arch -x86_64 /usr/local/bin/brew"
 
 ## Common software/command but need to install #######################################################################
-type q &>/dev/null && alias qcsv='q -O -d"," -T --disable-double-double-quoting'
-type pgbadger &>/dev/null && alias pgbg='pgbadger --timezone 0'
+alias qcsv='q -O -d"," -T --disable-double-double-quoting'
+alias pgbg='pgbadger --timezone 0'
 export TABBY_DISABLE_USAGE_COLLECTION=1 # just in case
 alias tabby_start='TABBY_DISABLE_USAGE_COLLECTION=1 tabby serve --device metal --model TabbyML/StarCoder-1B &>/tmp/tabby.out &'
 
 ### Docker/K8s/VM related
-type docker &>/dev/null && alias docker_stop="docker stop -t 120"  # 10 seconds is too short
 #alias rdocker="DOCKER_HOST='tcp://dh1:2375' docker"
 alias rdocker="ssh dh1 docker"
-type podman &>/dev/null && alias podmand="podman --log-level debug" && alias podman_login="podman --log-level debug login --tls-verify=false" && alias podman_pull="podman --log-level debug pull --tls-verify=false" && alias podman_push="podman --log-level debug push --tls-verify=false"
+alias podmand="podman --log-level debug" && alias podman_login="podman --log-level debug login --tls-verify=false" && alias podman_pull="podman --log-level debug pull --tls-verify=false" && alias podman_push="podman --log-level debug push --tls-verify=false"
 alias podman_delete_all='podman system prune --all'    # --force && podman rmi --all
 #type microk8s &>/dev/null && alias kubectl="microk8s kubectl"
 alias kPods='kubectl get pods --show-labels -A'
@@ -174,7 +173,7 @@ function kConfMerge() {
     KUBECONFIG=${_orig}:${_append} kubectl config view --flatten > ${_merged} || return $?
     echo "Created ${_merged}"
 }
-if type aws-vault &>/dev/null && [ -s "$HOME/.kube/support_test_config" ]; then
+if [ -s "$HOME/.kube/support_test_config" ]; then
     alias awsSpt='aws-vault exec support -- aws'
     alias kcSpt='aws-vault exec support -- kubectl'
 fi
@@ -210,7 +209,7 @@ alias vnc='java -Xmx2g -jar $HOME/Apps/tightvnc-jviewer.jar &>/tmp/vnc-java-view
 #alias vnc='java -jar $HOME/Applications/VncViewer-1.9.0.jar &>/tmp/vnc-java-viewer.out &'
 alias samurai='java -Xmx4g -jar $HOME/Apps/samurali/samurai.jar &>/tmp/samurai.out &'
 alias tda='java -Xmx4g -jar $HOME/Apps/tda-bin-2.4/tda.jar &>/tmp/tda.out &'    #https://github.com/irockel/tda/releases/latest
-alias gcviewer='java -Xmx4g -jar $HOME/Apps/gcviewer/gcviewer-1.36.jar' # &>/tmp/gcviewer.out & # Mac can't stop this so not put in background
+alias gcviewer='java -Xmx4g -jar $HOME/Apps/gcviewer-1.37-SNAPSHOT.jar' # &>/tmp/gcviewer.out & # Mac can't stop this so not put in background
 alias gitbucket='java -jar gitbucket.war &> /tmp/gitbucket.out &'   #https://github.com/gitbucket/gitbucket/releases/download/4.34.0/gitbucket.war
 alias groovyi='groovysh -e ":set interpreterMode true"'
 # JAVA_HOME_11 is set in bash_profile.sh
@@ -776,7 +775,7 @@ function backupC() {
         # Blow is bad because extracted files may have old dates
         #${_find} "$HOME/Documents/tests" -type f -mtime +120 -delete 2>/dev/null
         #${_find} $HOME/Documents/tests/* -type d -mtime +2 -empty -print -delete
-        ${_find} "$HOME/Documents/tests" -maxdepth 1 -type d -mtime +120 | rg '(nxrm|nxiq)_[0-9.-]+_([a-zA-Z].+)' -o -r '$2' | rg -v -i -w 'h2' | xargs -I{} -t psql -c "DROP DATABASE {}"
+        ${_find} "$HOME/Documents/tests" -maxdepth 1 -type d -mtime +120 | rg '(nxrm|nxiq)_[0-9.-]+_([^_]+)' -o -r '$2' | rg -v -i -w 'h2' | xargs -I{} -t psql -c "DROP DATABASE {}"
         ${_find} "$HOME/Documents/tests" -maxdepth 1 -type d -mtime +120 -name 'nx??_[0-9]*' -print0 | xargs -0 -I{} -t rm -rf {}
      fi
 
@@ -817,13 +816,13 @@ function backupC() {
 
     if [ "Darwin" = "$(uname)" ]; then
         echo "#mdfind 'kMDItemFSSize > 209715200 && kMDItemContentModificationDate < \$time.now(-2419200)' | LC_ALL=C sort"   # -onlyin "${_src}"
-        mdfind 'kMDItemFSSize > 209715200 && kMDItemContentModificationDate < $time.now(-2419200)' | LC_ALL=C sort | while read -r _l;do ls -lh "${_l}"; done | sort -k5 -h | tail -n20
+        mdfind 'kMDItemFSSize > 209715200 && kMDItemContentModificationDate < $time.now(-2419200)' | LC_ALL=C sort | rg -v -w 'cases_local' | while read -r _l;do ls -lh "${_l}"; done | sort -k5 -h | tail -n20
     fi
     # Currently updatedb may not index external drive (maybe because exFat?)
     if type updatedb &>/dev/null; then
         #alias of 'updatedb' = sudo FILESYSTEMS="hfs ufs apfs exfat" /usr/libexec/locate.updatedb
         echo "# executing updatedb (may ask sudo password)" # this means can't run in background...
-        updatedb
+        updatedb && ls -lh /var/db/locate.database
     fi
 }
 
@@ -924,4 +923,12 @@ function update_cacerts() {
     [ -z "${_alias}" ] && _alias="$(basename "${_pem%%.*}")"
     echo 'sudo keytool -import -alias "'${_alias}'" -keystore "'${JAVA_HOME%/}'/jre/lib/security/cacerts" -file "'${_pem}'" -noprompt -storepass changeit' >&2
     sudo keytool -import -alias "${_alias}" -keystore "${JAVA_HOME%/}/jre/lib/security/cacerts" -file "${_pem}" -noprompt -storepass changeit
+}
+
+
+
+function startCommonUtils() {
+    pgStatus start
+    tabby_start
+    slackS
 }
