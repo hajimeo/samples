@@ -4,7 +4,8 @@
 # LIMITATION:
 #   Can't (or need to be careful) use special characters such as double-quotes and dollar mark.
 
-#$ export HELM_NAME="sonatype-helm" NAME_SPACE="nexusrepo" RELEASE_NAME="nxrm3ha" ADMIN_PWD="admin123" LICENSE_B64="$(base64 -i /var/tmp/share/sonatype/sonatype-license.lic)" DB_SERVER="192.168.4.31" NFS_SERVER="192.168.4.31"
+#$ export HELM_NAME="sonatype-helm" NAME_SPACE="nexusrepo" RELEASE_NAME="nxrm3ha" ADMIN_PWD="admin123" LICENSE_B64="$(base64 -i /var/tmp/share/sonatype/sonatype-license.lic)" DB_SERVER="192.168.4.31"
+#$ export NFS_SERVER="192.168.4.31" SHARE_DIR="/var/tmp/share/sonatype/${RELEASE_NAME}-nfs"
 
 # Most likely only once
 #$ helm repo add ${HELM_NAME} https://sonatype.github.io/helm3-charts/
@@ -16,9 +17,9 @@
 #$ eval "echo \"$(cat ./k8s-nfs-pv-pvc-tmpl.yaml | grep -v '^\s*#')\"" > ./${RELEASE_NAME}-nfs-pv-pvc.yaml
 #$ kubectl apply -f ./${RELEASE_NAME}-nfs-pv-pvc.yaml -n ${NAME_SPACE}
 
-#$ eval "echo \"$(cat ./helm-nxrm3ha-values.yml | grep -v '^\s*#')\"" > ./${RELEASE_NAME}_values.yaml
 #$ #helm uninstall ${RELEASE_NAME} -n ${NAME_SPACE}
-#$ helm install ${RELEASE_NAME} ${HELM_NAME}/nxrm-ha -f ./${RELEASE_NAME}_values.yaml -n ${NAME_SPACE} --version 65.0.0 --debug #--dry-run
+#$ eval "echo \"$(cat ./helm-nxrm3ha-values.yml | grep -v '^\s*#')\"" > ./${RELEASE_NAME}_values.yaml
+#$ helm install ${RELEASE_NAME} ${HELM_NAME}/nxrm-ha -f ./${RELEASE_NAME}_values.yaml -n ${NAME_SPACE} --debug # --version 65.0.0 --dry-run
 
 # TODO: To update the values (specify --version with Chart version)
 #$ eval "echo \"$(cat ./helm-nxrm3ha-values.yml | grep -v '^\s*#')\"" > ./${RELEASE_NAME}_values.yaml
@@ -40,7 +41,7 @@ namespaces:
 statefulset:
   name: nxrm-statefulset
   serviceName: nxrm-statefulset-service
-  replicaCount: 1
+  replicaCount: 2
   clustered: true
   additionalVolumeMounts:
     - name: nexus-blobs-volume
@@ -57,10 +58,10 @@ statefulset:
       # See help documentation, these are minimum system requirements
       requests:
         cpu: 1
-        memory: '6Gi'
+        memory: '3Gi'
       limits:
         cpu: 2
-        memory: '8Gi'
+        memory: '4Gi'
     containerPort: 8081
     pullPolicy: IfNotPresent
     terminationGracePeriod: 120

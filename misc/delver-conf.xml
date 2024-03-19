@@ -1,0 +1,16 @@
+<!-- setConfig Delver example XML config. -->
+<delver verbose="false">
+    <http>
+        <enabled>true</enabled>
+        <port>18080</port>
+    </http>
+    <include>
+        <!-- Below pattern doesn't work with RM3 -->
+        <pattern>com.sonatype.*</pattern>
+        <pattern>org.postgresql.*</pattern>
+        <pattern>org.apache.http.*</pattern>
+    </include>
+    <exclude>
+        <pattern>com.orientechnologies.*</pattern>
+    </exclude>
+</delver>

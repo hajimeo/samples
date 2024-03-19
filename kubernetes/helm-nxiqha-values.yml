@@ -3,7 +3,7 @@
 
 # To re-install (not from scratch as persistent volumes 'iq-server-pv' remain)
 #$ helm uninstall nxiqha -n sonatype-ha
-#$ helm install nxiqha sonatype/nexus-iq-server-ha -f ./helm-nxiqha-values.yml --set-file iq_server.license=/var/tmp/share/sonatype/sonatype-license.lic -n sonatype-ha
+#$ helm install nxiqha sonatype/nexus-iq-server-ha -f ./helm-nxiqha-values.yml --set-file iq_server.license=$HOME/share/sonatype/sonatype-license.lic -n sonatype-ha
 
 # To upgrade:
 #$ helm repo update sonatype

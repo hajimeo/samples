@@ -1,7 +1,7 @@
-# NAMESPACE="nexusrepo"
+# export NAMESPACE="nexusrepo"
 # kubectl create secret tls nexus-tls -n ${NAMESPACE} --key ~/IdeaProjects/samples/misc/standalone.localdomain.key --cert ~/IdeaProjects/samples/misc/standalone.localdomain.crt
 #
-# kubectl delete -n ${NAMESPACE} -f ./k8s-nexus-helmha-ingress.yaml
+# #kubectl delete -n ${NAMESPACE} -f ./k8s-nexus-helmha-ingress.yaml
 # kubectl apply -n ${NAMESPACE} -f ./k8s-nexus-helmha-ingress.yaml
 # To check: kubectl cp -n ingress nginx-ingress-microk8s-controller-22p79:/etc/nginx/nginx.conf ./ingress-nginx.conf
 

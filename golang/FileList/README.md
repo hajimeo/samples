@@ -144,7 +144,7 @@ file-list -b ./content -p "vol-" -c 10 -mF "$(date -d "1 day ago" +%Y-%m-%d)" -s
 file-list -b ./content -p vol- -c 10 -dF "$(date -d "1 day ago" +%Y-%m-%d)" -P -f ".properties" -s ./$(date '+%Y-%m-%d').tsv
 ```
 
-### **DANGEROUS** Remove 'deleted=true' (-RDel and -dF "YYYY-MM-DD") for 'raw-hosted' repository
+### (**DANGEROUS**) Remove 'deleted=true' (-RDel and -dF "YYYY-MM-DD") for 'raw-hosted' repository
 NOTE: If using -RDel to remove "deleted=true", recommend to save the STDERR into a file (like above) in case of reverting.
 ```
 file-list -b ./content -p "vol-" -c 10 -P -fP "@Bucket.repo-name=raw-hosted.+deleted=true" -dF "$(date -d "1 day ago" +%Y-%m-%d)" -RDel -s ./$(date '+%Y-%m-%d').tsv 2>./file-list_$(date +"%Y%m%d%H%M%S").log

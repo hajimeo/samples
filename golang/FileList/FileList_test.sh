@@ -13,7 +13,7 @@
 #   #_FORCE=Y cleanIfForce && prepareRM3 && createAssets
 #   test_Xxxxxxxx
 #
-#   TODO: with S3
+#   TODO: test with UndeleteFileV3.groovy
 #
 
 # Download automate scripts
@@ -318,8 +318,10 @@ function test_SoftDeletedThenUndeleteThenOrphaned() {
         [[ "${_EXIT_AT_FIRST_TEST_ERROR}" =~ ^[yY] ]] && return 1
     fi
 
-    _log "INFO" "Finding un-soft-delete blobs which were *deleted* (not modified) today ..."
-    _file_list_ln="$(_exec "${_cmd} -P -fP \"@Bucket\.repo-name=${_repo_name}.+deleted=true\" -R -dF $(date +%Y-%m-%d) -RDel" "${_tsv}_deleted_today_undelete.tsv")"
+    #_log "INFO" "Finding un-soft-delete blobs which were *deleted* (not modified) today ..."
+    #_file_list_ln="$(_exec "${_cmd} -P -fP \"@Bucket\.repo-name=${_repo_name}.+deleted=true\" -R -dF $(date +%Y-%m-%d) -RDel" "${_tsv}_deleted_today_undelete.tsv")"
+    _log "INFO" "Un-soft-deleting blobs by using ${_tsv}_deleted_modified_today.tsv ..."
+    #_file_list_ln="$(_exec "${_cmd} -P -fP \"@Bucket\.repo-name=${_repo_name}.+deleted=true\" -R -dF $(date +%Y-%m-%d) -RDel" "${_tsv}_deleted_today_undelete.tsv")"
     if [ ${_file_list_ln:-0} -le 1 ] || [ ${_ASSET_CREATE_NUM} -ne ${_file_list_ln} ]; then
         _log "ERROR" "Test failed. file-list didn't find expected un-soft-deleted ${_ASSET_CREATE_NUM} blobs ${_file_list_ln}"
         [[ "${_EXIT_AT_FIRST_TEST_ERROR}" =~ ^[yY] ]] && return 1
