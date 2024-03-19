@@ -21,12 +21,14 @@
 # Use 'export' to overwrite
 : ${_USER:=""}      # admin
 : ${_PWD:=""}       # admin123
+#http://dh1:8081/repository/docker-proxy/v2/ratelimitpreview/test/manifests/latest
 : ${_IMAGE:="ratelimitpreview/test"}
 : ${_TAG="latest"}
-: ${_PATH="/v2/ratelimitpreview/test/blobs/sha256:edabd795951a0baa224f156b81ab1afa71c64c3cf10b1ded9225c2a6810f4a3d"}    # This path can be diff from Nexus's path
+#: ${_PATH="/v2/ratelimitpreview/test/blobs/sha256:edabd795951a0baa224f156b81ab1afa71c64c3cf10b1ded9225c2a6810f4a3d"}    # This path can be diff from Nexus's path
 #: ${_DOCKER_REGISTRY_URL:="http://localhost:8081/repository/docker-proxy/"}
 #: ${_TOKEN_SERVER_URL:="${_DOCKER_REGISTRY_URL%/}/v2/token"}
 : ${_DOCKER_REGISTRY_URL:="https://registry-1.docker.io"}
+#www-authenticate: Bearer realm="https://auth.docker.io/token",service="registry.docker.io"
 : ${_TOKEN_SERVER_URL:="https://auth.docker.io/token?service=registry.docker.io"}
 : ${_CURL_OPTS:="-D /dev/stderr"}   # or -v -p -x http://proxyhost:port --proxy-basic -U proxyuser:proxypwd
 
@@ -100,7 +102,7 @@ EOF
 }
 
 main() {
-    # NOTE: Token server URL is decided by "www-authenticate: Bearer realm="https://dh1:5000/v2/token",service="https://dh1:5000/v2/token"
+    # NOTE: Token server URL is decided by https://dh1:5000/v2/ then the header "HTTP/1.1 401 Unauthorized" and "www-authenticate: Bearer realm="https://dh1:5000/v2/token",service="https://dh1:5000/v2/token"
     echo "### Requesting '${_TOKEN_SERVER_URL}&scope=repository:${_IMAGE}:pull'" >&2
     _TOKEN="$(get_token)"
 

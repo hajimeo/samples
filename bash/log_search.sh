@@ -1289,7 +1289,7 @@ function _threads_extra_check() {
     if [ ! -f "${_file}" ]; then
         _file="--no-filename -g \"${_file}\""
     fi
-    rg '(DefaultTimelineIndexer|content_digest|findAssetByContentDigest|touchItemLastRequested|preClose0|sun\.security\.util\.MemoryCache|java\.lang\.Class\.forName|CachingDateFormatter|metrics\.health\.HealthCheck\.execute|WeakHashMap|userId\.toLowerCase|MessageDigest|UploadManagerImpl\.startUpload|UploadManagerImpl\.blobsByName|maybeTrimRepositories|getQuarantinedVersions|nonCatalogedVersions|getProxyDownloadNumbers|RepositoryManagerImpl.retrieveConfigurationByName|\.StorageFacetManagerImpl\.|OTransactionRealAbstract\.isIndexKeyMayDependOnRid|AptFacetImpl.put|componentMetadata|ensureGetUpload|OrientCommonQueryDataService)' ${_file} | sort | uniq -c > /tmp/$FUNCNAME_$$.out || return $?
+    rg '(DefaultTimelineIndexer|content_digest|findAssetByContentDigest|touchItemLastRequested|preClose0|sun\.security\.util\.MemoryCache|java\.lang\.Class\.forName|CachingDateFormatter|metrics\.health\.HealthCheck\.execute|WeakHashMap|userId\.toLowerCase|MessageDigest|UploadManagerImpl\.startUpload|UploadManagerImpl\.blobsByName|maybeTrimRepositories|getQuarantinedVersions|nonCatalogedVersions|getProxyDownloadNumbers|RepositoryManagerImpl.retrieveConfigurationByName|\.StorageFacetManagerImpl\.|OTransactionRealAbstract\.isIndexKeyMayDependOnRid|AptFacetImpl.put|componentMetadata|ensureGetUpload|OrientCommonQueryDataService|getWaivedFixed|AbstractOperationalSqlDAO\.getAll)' ${_file} | sort | uniq -c > /tmp/$FUNCNAME_$$.out || return $?
     if [ -s /tmp/$FUNCNAME_$$.out ]; then
         echo "## Counting:"
         echo "##    'DefaultTimelineIndexer' for NXRM2 System Feeds: timeline-plugin,"
@@ -1316,6 +1316,8 @@ function _threads_extra_check() {
         echo "##    'componentMetadata' CLM-26850"
         echo "##    'ensureGetUpload' NEXUS-40177"
         echo "##    'OrientCommonQueryDataService' NEXUS-41312"
+        echo "##    'getWaivedFixed' CLM-29328"
+        echo "##    'AbstractOperationalSqlDAO.getAll' CLM-29339"
         cat /tmp/$FUNCNAME_$$.out
         echo " "
     fi
@@ -1671,7 +1673,7 @@ function _getAfterFirstMatch() {
     fi
 }
 
-# To split hourly: f_splitByRegex nexus.log
+# To split hourly: f_splitByRegex nexus.log, and f_splitByRegex request.log '(\d\d/[a-zA-Z]{3}/\d\d\d\d).(\d\d)'
 function f_splitByRegex() {
     # TODO: this doesn't work with Ubuntu?
     local _file="$1"        # can't be a glob as used in sed later

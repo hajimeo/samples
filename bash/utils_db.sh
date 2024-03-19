@@ -94,7 +94,7 @@ function _postgresql_configure() {
     _upsert ${_postgresql_conf} "shared_buffers" "1024MB" "#shared_buffers" # Default 8MB. RAM * 25%. Make sure enough kernel.shmmax (ipcs -l) and /dev/shm if very old Linux or BSD
     _upsert ${_postgresql_conf} "work_mem" "8MB" "#work_mem"    # Default 4MB. RAM * 25% / max_connections (200) + extra a few MB. NOTE: I'm not expecting my PG uses 200 though
     #_upsert ${_postgresql_conf} "maintenance_work_mem" "64MB" "#maintenance_work_mem"    # Default 64MB. Can be higher than work_mem
-    #_upsert ${_postgresql_conf} "effective_cache_size" "3072MB" "#effective_cache_size" # Default 4GB. RAM * 50% ~ 75%
+    _upsert ${_postgresql_conf} "effective_cache_size" "3072MB" "#effective_cache_size" # Default 4GB. RAM * 50% ~ 75%
     #_upsert ${_postgresql_conf} "wal_buffers" "16MB" "#wal_buffers" # Default -1 (1/32 of shared_buffers) Usually higher provides better write performance
     #_upsert ${_postgresql_conf} "random_page_cost" "1.1" "#random_page_cost"   # Default 4.0. If very fast disk is used, recommended to use same as seq_page_cost (1.0)
     #_upsert ${_postgresql_conf} "effective_io_concurrency" "200" "#effective_io_concurrency"   # Default 1. Was for RAID so number of disks. If SSD, somehow 200 is recommended
@@ -159,7 +159,7 @@ function _postgresql_configure() {
     # "CREATE EXTENSION" creates in the current database. "" to check
     local _shared_preload_libraries="auto_explain"
     # https://www.postgresql.org/docs/current/pgstatstatements.html
-    if ${_psql_as_admin} -d template1 -c "CREATE EXTENSION IF NOT EXISTS pg_stat_statements;"; then
+    if ${_psql_as_admin} -d template1 -c "CREATE EXTENSION IF NOT EXISTS pg_stat_statements schema public;"; then
         _shared_preload_libraries="${_shared_preload_libraries},pg_stat_statements"
         # @see https://www.postgresql.org/docs/current/pgstatstatements.html
         # SELECT pg_stat_statements_reset();

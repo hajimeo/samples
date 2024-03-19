@@ -1191,7 +1191,7 @@ function f_microk8s() {
 ### Enable 'nfs' storageClassName
     microk8s enable community
     microk8s enable nfs
-### 'microk8s enable nfs' alternative:
+### alternative (same as above):
     microk8s helm repo add nfs-ganesha-server-and-external-provisioner https://kubernetes-sigs.github.io/nfs-ganesha-server-and-external-provisioner/
     microk8s helm install nfs nfs-ganesha-server-and-external-provisioner/nfs-server-provisioner -n kube-system
 ### To understand how storageClass works (to use storageClassName 'nfs-csi')

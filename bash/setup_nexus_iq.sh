@@ -158,14 +158,10 @@ EOF
         cd "${_dirpath%/}" || return $?
         echo "To start: java -jar ${_jar_file} server ${_cfg_file} 2>./log/iq-server.err"
         type iqStart &>/dev/null && echo "      Or: iqStart"
-        type iqConfigUpdate &>/dev/null && echo "      also: iqConfigUpdate"
+        type f_config_update &>/dev/null && echo "      also: f_config_update"
     fi
 }
 
-function f_create_testuser() {
-    local __doc__="Create a test IQ user with a role"
-    echo "Not implemented yet"
-}
 
 ### API related
 function f_api_config() {
@@ -233,12 +229,56 @@ function f_api_eval_gav() {
     _curl "${_IQ_URL%/}/api/v2/evaluation/applications/${_app_int_id}" -H "Content-Type: application/json" -d '{"components": [{"hash": null,"componentIdentifier": {"format": "maven","coordinates": {"artifactId": "'${_a}'","groupId": "'${_g}'","version": "'${_v}'","extension":"jar"}}}]}'
 }
 
+function f_api_role_mapping() {
+    local __doc__="map an external user/group to IQ organisation/application and role"
+    local _role_name="$1"
+    local _external_id="$2" # login username, LDAP/AD groupname etc.
+    local _apporg_name="${3:-"Root Organization"}"
+    local _user_or_group="${4:-"group"}"
+    local _app_or_org="organization"    # TODO: application is not supported yet
+    local _role_int_id="$(_curl "${_IQ_URL%/}/api/v2/roles" | python -c "import sys,json
+a=json.loads(sys.stdin.read())
+for r in a['roles']:
+    if '${_role_name}'.lower() == r['name'].lower():
+        print(r['id'])
+        break")"
+    if [ -z "${_role_int_id}" ] || [ -z "${_external_id}" ]; then
+        _curl "${_IQ_URL%/}/api/v2/roles" | python -m json.tool | grep '"name"'
+        return $?
+    fi
+    _log "INFO" "Using Role Internal Id = ${_role_int_id} ..."
+    local _int_id="$(_curl "${_IQ_URL%/}/api/v2/${_app_or_org}s"  --get --data-urlencode "${_app_or_org}Name=${_apporg_name}" | python -c "import sys,json
+a=json.loads(sys.stdin.read())
+print(a['${_app_or_org}s'][0]['id'])")" || return $?
+    if [ -z "${_int_id}" ]; then
+        _curl "${_IQ_URL%/}/api/v2/${_app_or_org}s" | python -m json.tool | grep '"name"'
+        return $?
+    fi
+    _log "INFO" "Using ${_app_or_org} Internal Id = ${_int_id} ..."
+    _curl "${_IQ_URL%/}/api/v2/roleMemberships/${_app_or_org}/${_int_id}/role/${_role_int_id}/${_user_or_group}/${_external_id}" -X PUT
+    _curl "${_IQ_URL%/}/api/v2/roleMemberships/${_app_or_org}/${_int_id}" | python -c "import sys,json
+a=json.loads(sys.stdin.read())
+for r in a['memberMappings']:
+    if '${_role_int_id}' == r['roleId']:
+        print(json.dumps(r['members'], indent=2))
+        break"
+}
 
+
+
+### Misc. setup functions
 function f_config_update() {
     local _baseUrl="${1:-"${_IQ_URL}"}"
     f_api_config '{"hdsUrl":"https://clm-staging.sonatype.com/"}'
     f_api_config '{"baseUrl":"'${_baseUrl%/}'/","forceBaseUrl":false}'
     f_api_config '{"enableDefaultPasswordWarning":false}'
+}
+
+function f_add_testuser() {
+    local __doc__="Add/Create a test IQ user with test-role"
+    _apiS "/rest/user" '{"id":null,"username":"testuser","password":"testuser","firstName":"test","lastName":"user","email":"testuser@example.com"}'
+    _apiS "/rest/security/roles" '{"id":null,"name":"test-role","description":"test_role_desc","builtIn":false,"permissionCategories":[{"displayName":"Administrator","permissions":[{"id":"VIEW_ROLES","displayName":"View","description":"All Roles","allowed":false}]},{"displayName":"IQ","permissions":[{"id":"MANAGE_PROPRIETARY","displayName":"Edit","description":"Proprietary Components","allowed":false},{"id":"CLAIM_COMPONENT","displayName":"Claim","description":"Components","allowed":false},{"id":"WRITE","displayName":"Edit","description":"IQ Elements","allowed":false},{"id":"READ","displayName":"View","description":"IQ Elements","allowed":true},{"id":"EDIT_ACCESS_CONTROL","displayName":"Edit","description":"Access Control","allowed":false},{"id":"EVALUATE_APPLICATION","displayName":"Evaluate","description":"Applications","allowed":true},{"id":"EVALUATE_COMPONENT","displayName":"Evaluate","description":"Individual Components","allowed":true},{"id":"ADD_APPLICATION","displayName":"Add","description":"Applications","allowed":false},{"id":"MANAGE_AUTOMATIC_APPLICATION_CREATION","displayName":"Manage","description":"Automatic Application Creation","allowed":false},{"id":"MANAGE_AUTOMATIC_SCM_CONFIGURATION","displayName":"Manage","description":"Automatic Source Control Configuration","allowed":false}]},{"displayName":"Remediation","permissions":[{"id":"WAIVE_POLICY_VIOLATIONS","displayName":"Waive","description":"Policy Violations","allowed":true},{"id":"CHANGE_LICENSES","displayName":"Change","description":"Licenses","allowed":false},{"id":"CHANGE_SECURITY_VULNERABILITIES","displayName":"Change","description":"Security Vulnerabilities","allowed":false},{"id":"LEGAL_REVIEWER","displayName":"Review","description":"Legal obligations for components licenses","allowed":false}]}]}' || return $?
+    f_api_role_mapping "test-role" "testuser" "Root Organization" "user"
 }
 
 # Setup Org only: f_scm_setup "_token"
@@ -267,17 +307,20 @@ function f_scm_setup() {
     fi
     if [ -n "${_token}" ]; then
         # https://help.sonatype.com/iqserver/automating/rest-apis/source-control-rest-api---v2
-        # NOTE: It seems the remediationPullRequestsEnabled is false
-        _curl "${_IQ_URL%/}/api/v2/sourceControl/organization/${_org_int_id}" -H "Content-Type: application/json" -d "{\"token\":\"${_token}\",\"provider\":\"${_provider}\",\"baseBranch\":\"${_branch}\"}" &> /tmp/${FUNCNAME[0]}_$$.tmp #|| return $?
+        # NOTE: It seems the remediationPullRequestsEnabled is false for default
+        echo '"remediationPullRequestsEnabled":true,"statusChecksEnabled":true,"pullRequestCommentingEnabled":true,"sourceControlEvaluationsEnabled":true ...'
+        _curl "${_IQ_URL%/}/api/v2/sourceControl/organization/${_org_int_id}" -H "Content-Type: application/json" -d '{"token":"'${_token}'","provider":"'${_provider}'","baseBranch":"'${_branch}'","remediationPullRequestsEnabled":true,"statusChecksEnabled":true,"pullRequestCommentingEnabled":true,"sourceControlEvaluationsEnabled":true}' &> /tmp/${FUNCNAME[0]}_$$.tmp #|| return $?
         # 400 SourceControl already exists for organization with id: ...
-    fi
-    if [ "${_git_url}" ]; then
-        local _app_pub_id="$(basename "${_git_url}")"
-        f_api_create_app "${_app_pub_id}" "${_org_name}" &>/dev/null
-        local _app_int_id="$(f_api_appIntId "${_app_pub_id}" "${_org_name}")" || return $?
-        [ -n "${_app_int_id}" ] || return 12
-        _curl "${_IQ_URL%/}/api/v2/sourceControl/application/${_app_int_id}" -H "Content-Type: application/json" -d '{"remediationPullRequestsEnabled":true,"pullRequestCommentingEnabled":true,"sourceControlEvaluationsEnabled":true,"baseBranch":"'${_branch}'","repositoryUrl":"'${_git_url}'"}' | python -m json.tool #|| return $?
-        # 400 SourceControl already exists for application with id: ...
+
+        if [ "${_git_url}" ]; then
+            local _app_pub_id="$(basename "${_git_url}")"
+            f_api_create_app "${_app_pub_id}" "${_org_name}" &>/dev/null
+            local _app_int_id="$(f_api_appIntId "${_app_pub_id}" "${_org_name}")" || return $?
+            [ -n "${_app_int_id}" ] || return 12
+            _curl "${_IQ_URL%/}/api/v2/sourceControl/application/${_app_int_id}" -H "Content-Type: application/json" -d '{"remediationPullRequestsEnabled":true,"statusChecksEnabled":true,"pullRequestCommentingEnabled":true,"sourceControlEvaluationsEnabled":true,"baseBranch":"'${_branch}'","repositoryUrl":"'${_git_url}'"}' | python -m json.tool #|| return $?
+            # 400 SourceControl already exists for application with id: ...
+            echo "TODO: If application is manually created like this, may need to scan this repository with 'source' stage"
+        fi
     fi
 }
 

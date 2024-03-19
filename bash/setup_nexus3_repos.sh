@@ -131,6 +131,9 @@ function f_install_nexus3() {
         [ -z "${_port}" ] && return 1
         _log "INFO" "Using port: ${_port}" >&2
     fi
+    if [ -z "${_dbname}" ] && _isYes "${_NEXUS_ENABLE_HA:-"${r_NEXUS_ENABLE_HA}"}"; then
+        _dbname="testnxr3ha"
+    fi
     if [ -n "${_dbname}" ]; then
         if [[ "${_dbname}" =~ _ ]]; then
             _log "WARN" "PostgreSQL allows '_' but not this function, so removing"
@@ -220,6 +223,7 @@ function f_setup_maven() {
         _apiS '{"action":"coreui_Repository","method":"create","data":[{"attributes":{"maven":{"versionPolicy":"MIXED","layoutPolicy":"PERMISSIVE"},"proxy":{"remoteUrl":"https://repo1.maven.org/maven2/","contentMaxAge":-1,"metadataMaxAge":1440},"httpclient":{"blocked":false,"autoBlock":true,"connection":{"useTrustStore":false}},"storage":{"blobStoreName":"'${_bs_name}'","strictContentTypeValidation":true'${_extra_sto_opt}'},"negativeCache":{"enabled":true,"timeToLive":1440},"cleanup":{"policyName":[]}},"name":"'${_prefix}'-proxy","format":"","type":"","url":"","online":true,"routingRuleId":"","authEnabled":false,"httpRequestSettings":false,"recipe":"maven2-proxy"}],"type":"rpc"}' || return $?
         echo "NOTE: if 'IQ: Audit and Quarantine' is needed for ${_prefix}-proxy (set _IQ_URL)"
         echo "      f_iq_quarantine \"${_prefix}-proxy\""
+        echo "      ${_NEXUS_URL%/}/repository/${_prefix}-proxy/org/sonatype/maven-policy-demo/1.3.0/maven-policy-demo-1.3.0.jar"
         # NOTE: com.fasterxml.jackson.core:jackson-databind:2.9.3 should be quarantined if IQ is configured. May need to delete the component first
         #f_get_asset "maven-proxy" "com/fasterxml/jackson/core/jackson-databind/2.9.3/jackson-databind-2.9.3.jar" "test.jar"
         #_get_asset_NXRM2 central "com/fasterxml/jackson/core/jackson-databind/2.9.3/jackson-databind-2.9.3.jar" "test.jar"
@@ -817,9 +821,9 @@ function f_setup_conda() {
     [ -n "${_ds_name}" ] && _extra_sto_opt=',"dataStoreName":"'${_ds_name}'"'
     # If no xxxx-proxy, create it (NOTE: No HA)
     if ! _is_repo_available "${_prefix}-proxy"; then
-        # Or https://repo.anaconda.com/pkgs/ or https://repo.continuum.io/pkgs/
+        # Or https://repo.anaconda.com/pkgs/ or https://repo.continuum.io/pkgs/ or https://conda.anaconda.org/
         # At this moment, https://conda.anaconda.org/conda-forge/ is not working with `/main` in the client config
-        _apiS '{"action":"coreui_Repository","method":"create","data":[{"attributes":{"proxy":{"remoteUrl":"https://repo.continuum.io/pkgs/","contentMaxAge":1440,"metadataMaxAge":1440},"httpclient":{"blocked":false,"autoBlock":true,"connection":{"useTrustStore":false}},"storage":{"blobStoreName":"'${_bs_name}'","strictContentTypeValidation":true'${_extra_sto_opt}'},"negativeCache":{"enabled":true,"timeToLive":1440},"cleanup":{"policyName":[]}},"name":"'${_prefix}'-proxy","format":"","type":"","url":"","online":true,"routingRuleId":"","authEnabled":false,"httpRequestSettings":false,"recipe":"conda-proxy"}],"type":"rpc"}' || return $?
+        _apiS '{"action":"coreui_Repository","method":"create","data":[{"attributes":{"proxy":{"remoteUrl":"https://conda.anaconda.org/","contentMaxAge":1440,"metadataMaxAge":1440},"httpclient":{"blocked":false,"autoBlock":true,"connection":{"useTrustStore":false}},"storage":{"blobStoreName":"'${_bs_name}'","strictContentTypeValidation":true'${_extra_sto_opt}'},"negativeCache":{"enabled":true,"timeToLive":1440},"cleanup":{"policyName":[]}},"name":"'${_prefix}'-proxy","format":"","type":"","url":"","online":true,"routingRuleId":"","authEnabled":false,"httpRequestSettings":false,"recipe":"conda-proxy"}],"type":"rpc"}' || return $?
     fi
     # add some data for xxxx-proxy
     _ASYNC_CURL="Y" f_get_asset "${_prefix}-proxy" "main/linux-64/pytest-3.10.1-py37_0.tar.bz2"
@@ -1664,13 +1668,13 @@ EOF
     if type python3 &>/dev/null; then
         _log "WARN" "python3 is already in the $PATH so not installing"
     else
-        _log "INFO" "Installing python 3.7 ..."
         local _pwd="$(pwd)"
         [ ! -d "/usr/src" ] && mkdir -v -p /usr/src
         cd "/usr/src"
-        [ ! -s "./Python-3.7.11.tgz" ] && curl -fL -O "https://www.python.org/ftp/python/3.7.11/Python-3.7.11.tgz"
-        tar -xzf ./Python-3.7.11.tgz && \
-        cd Python-3.7.11 && \
+        local _py_ver="3.7.11"
+        _log "INFO" "Installing python ${_py_ver} ..."
+        [ ! -s "./Python-${_py_ver}.tgz" ] && curl -fL -O "https://www.python.org/ftp/python/${_py_ver}/Python-${_py_ver}.tgz"
+        tar -xzf ./Python-${_py_ver}.tgz && cd Python-${_py_ver} && \
         ./configure --enable-optimizations && make altinstall
         if [ $? -eq 0 ] && [ -x /usr/local/bin/python3.7 ]; then
             if [ -f /bin/python3 ]; then
@@ -1764,11 +1768,19 @@ export GO111MODULE=on
 EOF
     #_log "INFO" "Install HOME/go/bin/dlv ..."
     #sudo -u testuser -i go get github.com/go-delve/delve/cmd/dlv    # '-i' is also required to reload profile
-    _log "INFO" "Install conda ..."
-    curl -fL -o /var/tmp/Miniconda3-latest-Linux-x86_64.sh https://repo.anaconda.com/miniconda/Miniconda3-latest-Linux-x86_64.sh --compressed && \
-        bash /var/tmp/Miniconda3-latest-Linux-x86_64.sh -b -p /usr/local/miniconda3
-    [ -L "/usr/local/bin/conda" ] && rm -v -f /usr/local/bin/conda
-    [ ! -s "/usr/local/bin/conda" ] && ln -s /usr/local/miniconda3/bin/conda /usr/local/bin/conda
+    _log "INFO" "Install (or updating) conda ..."
+    if curl -fL -o /var/tmp/Miniconda3-latest-Linux-x86_64.sh https://repo.anaconda.com/miniconda/Miniconda3-latest-Linux-x86_64.sh --compressed; then
+        if [ -d /usr/local/miniconda3 ]; then
+            bash /var/tmp/Miniconda3-latest-Linux-x86_64.sh -b -u -p /usr/local/miniconda3
+        else
+            bash /var/tmp/Miniconda3-latest-Linux-x86_64.sh -b -p /usr/local/miniconda3
+        fi && chmod -R a+w /usr/local/miniconda3 && ln -v -w -sf /usr/local/miniconda3/bin/conda /usr/local/bin/conda
+        if [ -s /usr/local/miniconda3/bin/python ]; then
+            /usr/local/miniconda3/bin/python -m pip install chardet
+        else
+            pip3 install chardet
+        fi
+    fi
     _log "INFO" "Install helm3 ..."
     curl -fL -o /var/tmp/get_helm.sh https://raw.githubusercontent.com/helm/helm/master/scripts/get-helm-3 --compressed
     bash /var/tmp/get_helm.sh
@@ -2082,6 +2094,18 @@ function f_upload_dummies_raw() {
     local _usr="${6:-"${_ADMIN_USER}"}"
     local _pwd="${7:-"${_ADMIN_PWD}"}"
     f_upload_dummies "${_NEXUS_URL%/}/repository/${_repo_name}/dummies" "${_how_many}" "${_parallel}" "${_file_prefix}" "${_file_suffix}" "${_usr}" "${_pwd}"
+}
+
+function f_upload_dummies_raw_with_api() {
+    local __doc__="Upload text files into raw hosted repository with Upload API"
+    local _repo_name="${1:-"raw-hosted"}"
+    local _how_many="${2:-"10"}"
+    local _file_prefix="${3:-"test_"}"
+    local _file_suffix="${4:-".txt"}"
+    for i in `seq ${_SEQ_START:-1} $((${_SEQ_START:-1} + ${_how_many} - 1))`; do
+        echo "test by f_upload_dummies at $(date +'%Y-%m-%d %H:%M:%S')" > ${_TMP%/}/${FUNCNAME[0]}_$$.txt || return $?
+        f_upload_asset "${_repo_name}" -F raw.directory=/dummies -F raw.asset1=@${_TMP%/}/${FUNCNAME[0]}_$$.txt -F raw.asset1.filename=${_file_prefix}${i}${_file_suffix} || return $?
+    done
 }
 
 function f_upload_dummies_mvn() {
@@ -2425,6 +2449,7 @@ function f_delete_all_assets() {
 # 2. curl -D- -u "admin:admin123" -T<(echo "test for f_staging_move") -L -k "${_NEXUS_URL%/}/repository/raw-hosted/test/nxrm3Staging.txt"
 # 3. f_staging_move "raw-test-hosted" "raw-test-tag" "repository=raw-hosted&name=*test/nxrm3Staging.txt"
 # ^ Tag is optional. Using "*" in name= as name|path in NewDB starts with "/"
+# 4. f_staging_move "raw-hosted" "raw-test-tag" "repository=raw-test-hosted&name=*test/nxrm3Staging.txt"
 # With maven2:
 #   export _NEXUS_URL="https://nxrm3ha-k8s.standalone.localdomain/"
 #   mvn-upload "" "com.example:my-app-staging:1.0" "maven-hosted"
