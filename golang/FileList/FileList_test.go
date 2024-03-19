@@ -119,7 +119,7 @@ func TestInitRpoFmtMap(t *testing.T) {
 func TestGenOutput(t *testing.T) {
 	//_setGlobals()
 	fInfo, _ := os.Lstat(DUMMY_FILE_PATH)
-	output := genOutput(DUMMY_FILE_PATH, fInfo.ModTime(), fInfo.Size(), 0, nil)
+	output := genOutput(DUMMY_FILE_PATH, fInfo.ModTime(), fInfo.Size(), 0, nil, nil)
 	if !strings.Contains(output, DUMMY_FILE_PATH) {
 		t.Errorf("%s didn't contain '%s'", output, DUMMY_FILE_PATH)
 	}
@@ -449,4 +449,10 @@ func TestReadPropertiesFile(t *testing.T) {
 	//t.Log(props)
 }
 
-// TODO: TestGenOutputFromProp (and some others)
+func TestGetHeadObjS3(t *testing.T) {
+	t.Log("TODO: TestGetHeadObjS3 is not implemented yet")
+}
+
+func TestPrintObjectByBlobId(t *testing.T) {
+	t.Log("TODO: TestPrintObjectByBlobId is not implemented yet")
+}

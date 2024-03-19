@@ -238,6 +238,17 @@ func _setGlobals() {
 	}
 	_log("DEBUG", "_setGlobals completed for "+strings.Join(os.Args[1:], " "))
 }
+func _chunkSlice(slice []string, chunkSize int) [][]string {
+	var chunks [][]string
+	for i := 0; i < len(slice); i += chunkSize {
+		end := i + chunkSize
+		if end > len(slice) {
+			end = len(slice)
+		}
+		chunks = append(chunks, slice[i:end])
+	}
+	return chunks
+}
 
 func _log(level string, message string) {
 	if level != "DEBUG" && level != "DEBUG2" {
@@ -445,7 +456,7 @@ func getBlobSizeFile(blobPath string) int64 {
 	return info.Size()
 }
 
-func getBlobSizeS3(blobPath string, client *s3.Client) int64 {
+func getHeadObjS3(blobPath string, client *s3.Client) (*s3.HeadObjectOutput, error) {
 	if _DEBUG != nil && *_DEBUG {
 		defer _elapsed(time.Now().UnixMilli(), "DEBUG HeadObject to "+blobPath, 0)
 	} else {
@@ -455,7 +466,11 @@ func getBlobSizeS3(blobPath string, client *s3.Client) int64 {
 		Bucket: _BASEDIR,
 		Key:    &blobPath,
 	}
-	result, err := client.HeadObject(context.TODO(), &headObj)
+	return client.HeadObject(context.TODO(), &headObj)
+}
+
+func getBlobSizeS3(blobPath string, client *s3.Client) int64 {
+	result, err := getHeadObjS3(blobPath, client)
 	if err != nil {
 		_log("WARN", "Failed to request "+blobPath)
 		return -1
@@ -476,19 +491,21 @@ func tags2str(tagset []types.Tag) string {
 	return str
 }
 
-func printLineS3(client *s3.Client, item types.Object, db *sql.DB) {
+func printLineS3(item types.Object, client *s3.Client, db *sql.DB) {
 	path := *item.Key
 	modTime := item.LastModified
+	propSize := item.Size
+	owner := *item.Owner.DisplayName
 	var blobSize int64 = 0
 	// If .properties file is checked and _WITH_BLOB_SIZE, then get the size of .bytes file
 	if *_WITH_BLOB_SIZE && *_FILTER == _PROP_EXT && strings.HasSuffix(path, _PROP_EXT) {
 		blobPath := getPathWithoutExt(path) + ".bytes"
 		blobSize = getBlobSizeS3(blobPath, client)
 	}
-	output := genOutput(path, *modTime, item.Size, blobSize, db, client)
+	output := genOutput(path, *modTime, propSize, blobSize, db, client)
 
 	if *_WITH_OWNER {
-		output = fmt.Sprintf("%s%s%s", output, _SEP, *item.Owner.DisplayName)
+		output = fmt.Sprintf("%s%s%s", output, _SEP, owner)
 	}
 	// Get tags if -with-tags is presented.
 	if *_WITH_TAGS {
@@ -596,7 +613,7 @@ func _printLineExtra(output string, path string, modTimeTs int64, db *sql.DB, cl
 		}
 	}
 
-	// Currently, for the safety, _REMOVE_DEL requires delDateFromTs
+	// removeDel requires 'contents', so executing in here. For the safety, _REMOVE_DEL requires delDateFromTs
 	if *_REMOVE_DEL && _DEL_DATE_FROM_ts > 0 {
 		_ = removeDel(contents, path, client)
 	}
@@ -1131,9 +1148,6 @@ func openInOrFIle(path string) *os.File {
 func printDeadBlobsFromIdFile(blobIdsFile string, conc int, s3Client *s3.Client) {
 	f := openInOrFIle(blobIdsFile)
 	defer f.Close()
-
-	_println(fmt.Sprintf("ASSET_ID%sBLOB_REF", _SEP))
-
 	var wg sync.WaitGroup
 	guard := make(chan struct{}, conc)
 	scanner := bufio.NewScanner(f)
@@ -1197,8 +1211,6 @@ func printDeadBlobsFromDb(dbConStr string, conc int, s3Client *s3.Client) {
 	if cols == nil || len(cols) == 0 {
 		panic("No columns against query:" + query)
 	}
-
-	_println(fmt.Sprintf("ASSET_ID%sBLOB_REF", _SEP))
 
 	var wg sync.WaitGroup
 	guard := make(chan struct{}, conc)
@@ -1276,7 +1288,7 @@ func printOrphanedBlobsFromIdFile(blobIdsFile string, dbConStr string, conc int)
 						_log("INFO", "blobId:"+blobId+" exists in database.")
 					}
 				} else {
-					_log("ERROR", "_TRUSE == "+*_TRUTH+" is not implemented yet.")
+					panic("_TRUSE == " + *_TRUTH + " is not implemented yet.")
 				}
 				_log("DEBUG", "Completed blobId '"+blobId+"' .")
 			}
@@ -1320,7 +1332,7 @@ func listObjectsS3(dir string, db *sql.DB, client *s3.Client) int64 {
 				guardTags <- struct{}{}                                     // **
 				wgTags.Add(1)                                               // *
 				go func(client *s3.Client, item types.Object, db *sql.DB) { // **
-					printLineS3(client, item, db)
+					printLineS3(item, client, db)
 					<-guardTags   // **
 					wgTags.Done() // *
 				}(client, item, db)
@@ -1395,6 +1407,32 @@ func listObjects(dir string, client *s3.Client) {
 	_elapsed(startMs, fmt.Sprintf("INFO  Completed %s for %d files (current total: %d)", dir, subTtl, _CHECKED_N), 0)
 }
 
+func printObjectByBlobId(blobId string, db *sql.DB, client *s3.Client) {
+	startMs := time.Now().UnixMilli()
+	path := *_BASEDIR + string(filepath.Separator) + genBlobPath(blobId)
+	if _IS_S3 != nil && *_IS_S3 {
+		headObj, err := getHeadObjS3(path, client)
+		var item types.Object
+		*item.Key = path
+		item.LastModified = headObj.LastModified
+		item.Size = headObj.ContentLength
+		*item.Owner.DisplayName = "" // TODO: not sure how to get owner from header
+		if err != nil {
+			_log("ERROR", fmt.Sprintf("Failed to access %s", path))
+			return
+		}
+		printLineS3(item, client, db)
+	} else {
+		fileInfo, err := os.Stat(path)
+		if err != nil {
+			_log("ERROR", fmt.Sprintf("Failed to access %s", path))
+			return
+		}
+		printLineFile(path, fileInfo, db)
+	}
+	_elapsed(startMs, fmt.Sprintf("WARN  %s", blobId), 200)
+}
+
 // Define, set, and validate command arguments
 func main() {
 	log.SetFlags(log.Lmicroseconds)
@@ -1428,6 +1466,9 @@ func main() {
 	}
 
 	if len(*_TRUTH) > 0 && *_TRUTH == "DB" {
+		if !*_NO_HEADER {
+			_println(fmt.Sprintf("ASSET_ID%sBLOB_REF", _SEP))
+		}
 		if len(*_BLOB_IDS_FILE) > 0 {
 			_log("INFO", "The source is 'DB' and Blobs ID file: "+*_BLOB_IDS_FILE+"")
 			printDeadBlobsFromIdFile(*_BLOB_IDS_FILE, *_CONC_1, client)
@@ -1495,19 +1536,46 @@ func main() {
 
 	wg := sync.WaitGroup{}
 	guard := make(chan struct{}, *_CONC_1)
-	for _, s := range subDirs {
-		if len(s) == 0 {
-			//_log("DEBUG", "Ignoring empty sub directory.")
-			continue
+	if len(*_BLOB_IDS_FILE) > 0 {
+		f := openInOrFIle(*_BLOB_IDS_FILE)
+		defer f.Close()
+
+		scanner := bufio.NewScanner(f)
+		var blobIds []string
+		for scanner.Scan() {
+			blobId := extractBlobIdFromString(scanner.Text())
+			blobIds = append(blobIds, blobId)
 		}
-		_log("DEBUG", s+" starting ...")
-		guard <- struct{}{}
-		wg.Add(1)
-		go func(client *s3.Client, subdir string) {
-			defer wg.Done()
-			listObjects(subdir, client)
-			<-guard
-		}(client, s)
+
+		chunks := _chunkSlice(blobIds, *_CONC_1)
+		for _, chunk := range chunks {
+			guard <- struct{}{}
+			wg.Add(1)
+			go func(blobIds []string, client *s3.Client) {
+				defer wg.Done()
+				db := openDb(*_DB_CON_STR)
+				defer db.Close()
+				for _, blobId := range blobIds {
+					printObjectByBlobId(blobId, db, client)
+				}
+				<-guard
+			}(chunk, client)
+		}
+	} else {
+		for _, s := range subDirs {
+			if len(s) == 0 {
+				//_log("DEBUG", "Ignoring empty sub directory.")
+				continue
+			}
+			_log("DEBUG", s+" starting ...")
+			guard <- struct{}{}
+			wg.Add(1)
+			go func(subdir string, client *s3.Client) {
+				defer wg.Done()
+				listObjects(subdir, client)
+				<-guard
+			}(s, client)
+		}
 	}
 	wg.Wait()
 	if len(*_DB_CON_STR) > 0 && (_IS_S3 == nil || !*_IS_S3) {
