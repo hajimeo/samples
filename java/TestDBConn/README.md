@@ -1,4 +1,4 @@
-# SQL client for PostgreSQL used by Nexus and (TODO) IQ
+# TODO: SQL client for PostgreSQL used by Nexus and (TODO) IQ
 NOTE:  
 No UPDATE/INSERT/DELETE support, read (SELECT) only.
 

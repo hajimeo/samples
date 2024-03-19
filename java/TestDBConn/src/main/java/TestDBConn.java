@@ -20,19 +20,20 @@ public class TestDBConn
     if (args.length < 4) {
       System.err.println("Usage:");
       System.err.println(
-          "    java -cp .:path_to_jdbc.jar TestDBConn driver_class_name jdbc_str username password [sql]");
+          "    java -jar .:path_to_this.jar jdbc_str username password [sql]");
       System.err.println(
-          "    java -jar ./TestDBConn-1.0-SNAPSHOT.jar org.postgresql.Driver jdbc:postgresql://localhost:5432/mydatabase dbuser dbuserpwd \"SELECT * FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_SCHEMA = 'insight_brain_ods' AND TABLE_NAME = 'schema_version'\"");
+          "    java -jar ./TestDBConn.jar jdbc:postgresql://localhost:5432/mydatabase dbuser dbuserpwd \"SELECT * FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_SCHEMA = 'insight_brain_ods' AND TABLE_NAME = 'schema_version'\"");
       System.exit(1);
     }
 
     String class_name = args[0];
-    String jdbc_conn_str = args[1];
-    String db_user = args[2];
-    String db_pass = args[3];
+    //String jdbc_conn_str = args[1];
+    String jdbc_conn_str = "org.postgresql.Driver";
+    String db_user = args[1];
+    String db_pass = args[2];
     String sql = "";
-    if (args.length > 4) {
-      sql = args[4];
+    if (args.length > 3) {
+      sql = args[3];
     }
 
     try {
