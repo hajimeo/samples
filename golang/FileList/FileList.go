@@ -131,7 +131,7 @@ func _setGlobals() {
 
 	_BASEDIR = flag.String("b", ".", "Base directory (default: '.') or S3 Bucket name")
 	//_BASEDIR = flag.String("b", "", "S3 Bucket name")
-	_DIR_DEPTH = flag.Int("dd", 2, "NOT IN USE: Directory Depth to find sub directories (eg: 'vol-NN', 'chap-NN')")
+	_DIR_DEPTH = flag.Int("dd", 2, "(experimental) Directory Depth to find sub directories (eg: 'vol-NN', 'chap-NN')")
 	_PREFIX = flag.String("p", "", "Prefix of sub directories (eg: 'vol-') This is not recursive")
 	_WITH_PROPS = flag.Bool("P", false, "If true, the .properties file content is included in the output")
 	_FILTER = flag.String("f", "", "Filter for the file path (eg: '.properties' to include only this extension)")
