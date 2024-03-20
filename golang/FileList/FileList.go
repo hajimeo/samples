@@ -1035,7 +1035,8 @@ func genOutputFromProp(contents string) (string, error) {
 	// To use simpler regex, sorting line and converting to single line first
 	lines := strings.Split(contents, "\n")
 	sort.Strings(lines)
-	sortedContents := strings.Join(lines, ",")
+	// if "deleted=true" is removed, the properties file may have empty line
+	sortedContents := strings.Trim(strings.Join(lines, ","), ",")
 
 	// Exclude check first
 	if _RX != nil && len(_RX.String()) > 0 && _RX.MatchString(sortedContents) {
