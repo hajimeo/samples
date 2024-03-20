@@ -449,8 +449,8 @@ func TestReadPropertiesFile(t *testing.T) {
 	//t.Log(props)
 }
 
-func TestGetHeadObjS3(t *testing.T) {
-	t.Log("TODO: TestGetHeadObjS3 is not implemented yet")
+func TestGetObjectS3(t *testing.T) {
+	t.Log("TODO: TestGetObjectS3 is not implemented yet")
 }
 
 func TestPrintObjectByBlobId(t *testing.T) {

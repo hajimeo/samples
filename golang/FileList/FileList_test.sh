@@ -1,17 +1,20 @@
 #!/usr/bin/env bash
 # FileList system testing
+#   goBuild FileList.go
 #   ./FileList_test.sh
 #
 #   # Delete RM3 & DB and start from scratch
 #   _FORCE=Y ./FileList_test.sh
 #   # Delete RM3 & DB and start from scratch, and won't stop RM3 after testing
 #   _FORCE=Y _NO_RM3_STOP_AFTER_TEST=Y _EXIT_AT_FIRST_TEST_ERROR=Y ./FileList_test.sh
-#   _FORCE=Y _NO_RM3_STOP_AFTER_TEST=Y _WITH_S3=Y ./FileList_test.sh
+#   # Delete RM3 & DB and use S3, and won't stop RM3 after testing
+#   _FORCE=Y _NO_RM3_STOP_AFTER_TEST=Y _EXIT_AT_FIRST_TEST_ERROR=Y _WITH_S3=Y ./FileList_test.sh
 #
 #   # Execute test function only (not preparing RM3 and DB)
 #   source ./FileList_test.sh
 #   #_FORCE=Y cleanIfForce && prepareRM3 && createAssets
-#   test_Xxxxxxxx
+#   [ -d "${_WORKING_DIR}" ] || export _WORKING_DIR="./nxrm-3-61.0-02/sonatype-work/nexus3"
+#   _WITH_S3="Y" test_Xxxxxxxx
 #
 #   TODO: test with UndeleteFileV3.groovy
 #
@@ -232,7 +235,7 @@ function _exec() {
     fi
     _cmd="${_cmd} -s ${_tsv}"
     _log "INFO" "Executing '${_cmd}' ..."
-    time eval "${_cmd} 2>./${FUNCNAME[1]}.log" || return $?
+    time eval "${_cmd} 2>/tmp/${FUNCNAME[1]}.err" || return $?
     awk 'END { print NR }' "${_tsv}"
 }
 
@@ -243,22 +246,30 @@ function test_FileList() {
     local _bsName="$(genBsName)"
     local _repo_name="$(genRepoName)"
 
-    local _tsv="./${FUNCNAME[0]}_${_bsName}"
-    rm -v -f ${_tsv}*.tsv || return $?
+    local _tsv="${FUNCNAME[0]}_${_bsName}"
+    rm -v -f /tmp/${_tsv}*.tsv || return $?
 
     _log "INFO" "Getting .properties and .bytes files modified today ..."
     local _cmd="$(genCmdBase "${_working_dir%/}/blobs/${_bsName}/content")"
-    local _file_list_ln="$(_exec "${_cmd}" "${_tsv}_all-files_for_today.tsv")"
+    local _file_list_ln="$(_exec "${_cmd}" "/tmp/${_tsv}_all-files_for_today.tsv")"
     if [ ${_file_list_ln:-0} -le 1 ] || [ ${_ASSET_CREATE_NUM} -gt $(( ${_file_list_ln} / 2 )) ]; then
         _log "ERROR" "Test failed. file-list didn't find newly created ${_ASSET_CREATE_NUM} blobs ${_file_list_ln} / 2"
         [[ "${_EXIT_AT_FIRST_TEST_ERROR}" =~ ^[yY] ]] && return 1
     fi
 
     _log "INFO" "Getting .properties files modified today ..."
-    local _file_list_ln="$(_exec "${_cmd} -P -f .properties" "${_tsv}_all-props_for_today.tsv")"
+    local _file_list_ln="$(_exec "${_cmd} -P -f .properties" "/tmp/${_tsv}_all-props_for_today.tsv")"
     if [ ${_file_list_ln:-0} -le 1 ] || [ ${_ASSET_CREATE_NUM} -gt ${_file_list_ln} ]; then
         _log "ERROR" "Test failed. file-list didn't find newly created ${_ASSET_CREATE_NUM} blobs ${_file_list_ln}"
         [[ "${_EXIT_AT_FIRST_TEST_ERROR}" =~ ^[yY] ]] && return 1
+    fi
+
+    if [ -s "/tmp/${_tsv}_all-props_for_today.tsv" ] && [ ${_file_list_ln:-0} -gt 2 ]; then
+        local _file_list_ln2="$(_exec "${_cmd} -P -f .properties -src \"\" -bF /tmp/${_tsv}_all-props_for_today.tsv" "/tmp/${_tsv}_all-props_for_today2.tsv")"
+        if [ ${_file_list_ln} -ne ${_file_list_ln2:-0} ]; then
+            _log "ERROR" "Test failed. '-bF' option should generate same number (${_file_list_ln} vs. ${_file_list_ln2})"
+            [[ "${_EXIT_AT_FIRST_TEST_ERROR}" =~ ^[yY] ]] && return 1
+        fi
     fi
 }
 
@@ -274,7 +285,7 @@ function test_DeadBlobsFind() {
     if [[ ! "${_WITH_S3}" =~ ^[yY] ]]; then
         # Randomly moving blobs ... TODO: `-mtime -1` may not be perfect.
         _log "INFO" "Picking random ${_how_many} blobs for dead blobs test ..."
-        time find ${_working_dir%/}/blobs/${_bsName}/content -maxdepth 1 -type d -name 'vol-*' -print0 | xargs -0 -I @@ -P3 find @@ -name '*.properties' -mtime -1 -exec grep -l '^@Bucket.repo-name='${_repo_name}'$' {} \; | head -n${_ASSET_CREATE_NUM:-50} | sort -R | head -n${_how_many} >./dead_blobs_${_how_many}_samples.txt
+        time find ${_working_dir%/}/blobs/${_bsName}/content -maxdepth 1 -type d -name 'vol-*' -print0 | xargs -0 -I @@ -P3 find @@ -name '*.properties' -mtime -1 -exec grep -l '^@Bucket.repo-name='${_repo_name}'$' {} \; | head -n${_ASSET_CREATE_NUM:-50} | sort -R | head -n${_how_many} >/tmp/dead_blobs_${_how_many}_samples.txt
 
         if [ ! -s ./dead_blobs_${_how_many}_samples.txt ]; then
             _log "ERROR" "'${_working_dir%/}/blobs/${_bsName}/content/vol-*' does not contain enough properties file to test"
@@ -282,13 +293,13 @@ function test_DeadBlobsFind() {
         else
             cat ./dead_blobs_${_how_many}_samples.txt | xargs -I{} mv {} {}.test || return $?
             _log "INFO" "Finding dead blobs for ${_repo_name} (should be at least ${_how_many}) ..."
-            local _file_list_ln="$(_exec "${_cmd} -db ${_working_dir%/}/etc/fabric/nexus-store.properties -src DB -repos ${_repo_name} -P -f .properties" "${_tsv}_dead.tsv")"
+            local _file_list_ln="$(_exec "${_cmd} -db ${_working_dir%/}/etc/fabric/nexus-store.properties -src DB -repos ${_repo_name} -P -f .properties" "/tmp/${_tsv}_dead.tsv")"
             if [ ${_file_list_ln:-0} -le 1 ] || [ ${_how_many:-10} -gt ${_file_list_ln:-0} ]; then
                 _log "ERROR" "Test failed. file-list didn't find expected dead ${_how_many} blobs ${_file_list_ln}"
                 [[ "${_EXIT_AT_FIRST_TEST_ERROR}" =~ ^[yY] ]] && return 1
             fi
             # moving back
-            cat ./dead_blobs_10_samples.txt | xargs -I{} mv {}.test {} || return $?
+            cat /tmp/dead_blobs_${_how_many}_samples.txt | xargs -I{} mv {}.test {} || return $?
         fi
     fi
     # TODO: add S3 test
@@ -302,13 +313,16 @@ function test_SoftDeletedThenUndeleteThenOrphaned() {
     local _tsv="./${FUNCNAME[0]}_${_bsName}"
 
     local _is_undeleted=false
-    deleteAssets || return $?   # deleting all and restore only raw-hosted (not maven-hosted)
+    # deleting all and restore only raw-hosted (not maven-hosted)
+    if ! deleteAssets; then
+        [[ "${_EXIT_AT_FIRST_TEST_ERROR}" =~ ^[yY] ]] && return 1
+    fi
 
     _log "INFO" "Finding soft deleted blobs for ${_repo_name} which modified today ..."
-    _file_list_ln="$(_exec "${_cmd} -P -fP \"@Bucket.repo-name=${_repo_name}.+deleted=true\" -R" "${_tsv}_deleted_modified_today.tsv")"
+    _file_list_ln="$(_exec "${_cmd} -P -fP \"@Bucket.repo-name=${_repo_name}.+deleted=true\" -R" "/tmp/${_tsv}_deleted_modified_today.tsv")"
     if [ ${_file_list_ln:-0} -eq 1 ]; then
-        _log "WARN" "${_tsv}_deleted_modified_today.tsv contains only one line. Retrying after 10 seconds with -XX ..."; sleep 10
-        _file_list_ln="$(_exec "${_cmd} -P -fP \"@Bucket.repo-name=${_repo_name}.+deleted=true\" -R -XX" "${_tsv}_deleted_modified_today.tsv")"
+        _log "WARN" "/tmp/${_tsv}_deleted_modified_today.tsv contains only one line. Retrying after 10 seconds with -XX ..."; sleep 10
+        _file_list_ln="$(_exec "${_cmd} -P -fP \"@Bucket.repo-name=${_repo_name}.+deleted=true\" -R -XX" "/tmp/${_tsv}_deleted_modified_today.tsv")"
     fi
     if [ ${_file_list_ln:-0} -le 1 ] || [ ${_ASSET_CREATE_NUM} -ne ${_file_list_ln} ]; then
         _log "ERROR" "Test failed. file-list didn't find expected soft-deleted ${_ASSET_CREATE_NUM} blobs ${_file_list_ln}"
@@ -318,10 +332,10 @@ function test_SoftDeletedThenUndeleteThenOrphaned() {
         [[ "${_EXIT_AT_FIRST_TEST_ERROR}" =~ ^[yY] ]] && return 1
     fi
 
-    #_log "INFO" "Finding un-soft-delete blobs which were *deleted* (not modified) today ..."
-    #_file_list_ln="$(_exec "${_cmd} -P -fP \"@Bucket\.repo-name=${_repo_name}.+deleted=true\" -R -dF $(date +%Y-%m-%d) -RDel" "${_tsv}_deleted_today_undelete.tsv")"
+    _log "INFO" "Finding un-soft-delete blobs which were *deleted* (not modified) today ..."
+    _file_list_ln="$(_exec "${_cmd} -P -fP \"@Bucket\.repo-name=${_repo_name}.+deleted=true\" -R -dF $(date +%Y-%m-%d)" "/tmp/${_tsv}_deleted_today.tsv")"
     _log "INFO" "Un-soft-deleting blobs by using ${_tsv}_deleted_modified_today.tsv ..."
-    #_file_list_ln="$(_exec "${_cmd} -P -fP \"@Bucket\.repo-name=${_repo_name}.+deleted=true\" -R -dF $(date +%Y-%m-%d) -RDel" "${_tsv}_deleted_today_undelete.tsv")"
+    _file_list_ln="$(_exec "${_cmd} -P -fP \"@Bucket\.repo-name=${_repo_name}.+deleted=true\" -R -dF $(date +%Y-%m-%d) -RDel" "/tmp/${_tsv}_deleted_today_undelete.tsv")"
     if [ ${_file_list_ln:-0} -le 1 ] || [ ${_ASSET_CREATE_NUM} -ne ${_file_list_ln} ]; then
         _log "ERROR" "Test failed. file-list didn't find expected un-soft-deleted ${_ASSET_CREATE_NUM} blobs ${_file_list_ln}"
         [[ "${_EXIT_AT_FIRST_TEST_ERROR}" =~ ^[yY] ]] && return 1
@@ -338,7 +352,7 @@ function test_SoftDeletedThenUndeleteThenOrphaned() {
     if ${_is_undeleted}; then
         if [ -s "${_working_dir%/}/etc/fabric/nexus-store.properties" ] ; then
             # Default -src (truth) is 'BS', so adding -db should be enough
-            local _file_list_ln="$(_exec "${_cmd} -db ${_working_dir%/}/etc/fabric/nexus-store.properties -P -f .properties" "${_tsv}_orphaned.tsv")"
+            local _file_list_ln="$(_exec "${_cmd} -db ${_working_dir%/}/etc/fabric/nexus-store.properties -P -f .properties" "/tmp/${_tsv}_orphaned.tsv")"
             if [ ${_file_list_ln:-0} -le 1 ] || [ ${_ASSET_CREATE_NUM} -gt ${_file_list_ln} ]; then
                 _log "ERROR" "Test failed. file-list didn't find expected un-soft-deleted ${_ASSET_CREATE_NUM} blobs ${_file_list_ln}"
                 [[ "${_EXIT_AT_FIRST_TEST_ERROR}" =~ ^[yY] ]] && return 1
@@ -353,7 +367,7 @@ function test_SoftDeletedThenUndeleteThenOrphaned() {
                 fi
             fi
             if [[ "${_WITH_S3}" =~ ^[yY] ]] || [ -s "${_working_dir%/}/blobs/${_bsName}/reconciliation/$(date '+%Y-%m-%d')" ]; then
-                _log "INFO" "Access ${_NEXUS_URL%/}/ and make sure no asset in ${_repo_name} and maven-hosted. Run the Reconcile task for '$(genBsName)' blob store and with 'Since 0 day' (If S3, 1 day) and 'Restore blob metadata', then confirm ${_repo_name} has ${_ASSET_CREATE_NUM} assets."
+                _log "NEXT" "Access ${_NEXUS_URL%/}/ and make sure no asset in ${_repo_name} and maven-hosted. Run the Reconcile task for '$(genBsName)' blob store and with 'Since 0 day' (If S3, 1 day) and 'Restore blob metadata', then confirm ${_repo_name} has ${_ASSET_CREATE_NUM} assets."
             fi
         fi
     fi

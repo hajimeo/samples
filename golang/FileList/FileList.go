@@ -124,6 +124,10 @@ var _TTL_SIZE int64  // Atomic (maybe slower?)
 var _SLOW_MS int64 = 100
 var _SEP = "	"
 var _PROP_EXT = ".properties"
+var (
+	_S3_OBJECT_OUTPUTS = make(map[string]*s3.GetObjectOutput)
+	mu                 sync.RWMutex
+)
 
 type StoreProps map[string]string
 
@@ -259,6 +263,30 @@ func _setGlobals() {
 	}
 	_log("DEBUG", "_setGlobals completed for "+strings.Join(os.Args[1:], " "))
 }
+
+func _cacheAddS3Obj(key string, value *s3.GetObjectOutput, maxSize int) {
+	mu.Lock()
+	for k := range _S3_OBJECT_OUTPUTS {
+		if len(_S3_OBJECT_OUTPUTS) > maxSize {
+			delete(_S3_OBJECT_OUTPUTS, k)
+		} else {
+			break
+		}
+	}
+	_S3_OBJECT_OUTPUTS[key] = value
+	mu.Unlock()
+}
+
+func _cacheReadS3Obj(key string) *s3.GetObjectOutput {
+	mu.RLock()
+	defer mu.RUnlock()
+	value, exists := _S3_OBJECT_OUTPUTS[key]
+	if exists {
+		return value
+	}
+	return nil
+}
+
 func _chunkSlice(slice []string, chunkSize int) [][]string {
 	var chunks [][]string
 	for i := 0; i < len(slice); i += chunkSize {
@@ -477,21 +505,8 @@ func getBlobSizeFile(blobPath string) int64 {
 	return info.Size()
 }
 
-func getHeadObjS3(blobPath string, client *s3.Client) (*s3.HeadObjectOutput, error) {
-	if _DEBUG != nil && *_DEBUG {
-		defer _elapsed(time.Now().UnixMilli(), "DEBUG HeadObject to "+blobPath, 0)
-	} else {
-		defer _elapsed(time.Now().UnixMilli(), "WARN  slow file access for path:"+blobPath, 300)
-	}
-	headObj := s3.HeadObjectInput{
-		Bucket: _BASEDIR,
-		Key:    &blobPath,
-	}
-	return client.HeadObject(context.TODO(), &headObj)
-}
-
 func getBlobSizeS3(blobPath string, client *s3.Client) int64 {
-	result, err := getHeadObjS3(blobPath, client)
+	result, err := getObjectS3(blobPath, client)
 	if err != nil {
 		_log("WARN", "Failed to request "+blobPath)
 		return -1
@@ -689,7 +704,11 @@ func getContentsFile(path string) (string, error) {
 	return contents, nil
 }
 
-func getContentsS3(path string, client *s3.Client) (string, error) {
+func getObjectS3(path string, client *s3.Client) (*s3.GetObjectOutput, error) {
+	value := _cacheReadS3Obj(path)
+	if value != nil {
+		return value, nil
+	}
 	if _DEBUG != nil && *_DEBUG {
 		defer _elapsed(time.Now().UnixMilli(), "DEBUG Read "+path, 0)
 	} else {
@@ -699,7 +718,15 @@ func getContentsS3(path string, client *s3.Client) (string, error) {
 		Bucket: _BASEDIR,
 		Key:    &path,
 	}
-	obj, err := client.GetObject(context.TODO(), input)
+	value, err := client.GetObject(context.TODO(), input)
+	if err == nil {
+		_cacheAddS3Obj(path, value, (1 + *_CONC_1*2))
+	}
+	return value, err
+}
+
+func getContentsS3(path string, client *s3.Client) (string, error) {
+	obj, err := getObjectS3(path, client)
 	if err != nil {
 		_log("DEBUG", fmt.Sprintf("Retrieving %s failed with %s. Ignoring...", path, err.Error()))
 		return "", err
@@ -1435,15 +1462,15 @@ func printObjectByBlobId(blobId string, db *sql.DB, client *s3.Client) {
 	startMs := time.Now().UnixMilli()
 	path := _CONTENT_PATH + string(filepath.Separator) + genBlobPath(blobId) + _PROP_EXT
 	if _IS_S3 != nil && *_IS_S3 {
-		headObj, err := getHeadObjS3(path, client)
+		obj, err := getObjectS3(path, client)
 		if err != nil {
 			_log("ERROR", fmt.Sprintf("Failed to access %s", path))
 			return
 		}
 		var item types.Object
 		item.Key = &path
-		item.LastModified = headObj.LastModified
-		item.Size = headObj.ContentLength
+		item.LastModified = obj.LastModified
+		item.Size = obj.ContentLength
 		//item.Owner.DisplayName = nil // TODO: not sure how to get owner from header
 		printLineS3(item, client, db)
 	} else {
