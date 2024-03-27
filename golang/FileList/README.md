@@ -147,7 +147,7 @@ file-list -b ./content -p vol- -c 10 -dF "$(date -d "1 day ago" +%Y-%m-%d)" -P -
 ### (**DANGEROUS**) Remove 'deleted=true' (-RDel and -dF "YYYY-MM-DD") for 'raw-hosted' repository
 NOTE: If using -RDel to remove "deleted=true", recommend to save the STDERR into a file (like above) in case of reverting.
 ```
-file-list -b ./content -p "vol-" -c 10 -P -fP "@Bucket.repo-name=raw-hosted.+deleted=true" -dF "$(date -d "1 day ago" +%Y-%m-%d)" -RDel -s ./$(date '+%Y-%m-%d').tsv 2>./file-list_$(date +"%Y%m%d%H%M%S").log
+file-list -b ./content -p "vol-" -c 10 -P -fP "@Bucket.repo-name=raw-hosted,.+deleted=true" -dF "$(date -d "1 day ago" +%Y-%m-%d)" -RDel -s ./$(date '+%Y-%m-%d').tsv 2>./file-list_$(date +"%Y%m%d%H%M%S").log
 ```
 Create a text file for the Reconcile Task with **Since 0 day** (if S3, Since 1 day)
 ```
@@ -192,5 +192,5 @@ echo "select blob_ref from asset" | orient-console ./db/component/ | file-list -
 ```
 ###  List specific .properties/.bytes files then delete with xargs + rm:
 ```
-file-list -b ./sonatype-work/nexus3/blobs/default/content -p "vol-" -c 4 -fP "@BlobStore\.blob-name=/@sonatype/policy-demo,.+@Bucket\.repo-name=npm-hosted" -R -H | cut -d '.' -f1 | xargs -I{} -t rm -v -f {}.{properties,bytes}
+file-list -b ./sonatype-work/nexus3/blobs/default/content -p "vol-" -c 4 -fP "@BlobStore\.blob-name=/@sonatype/policy-demo,.+@Bucket\.repo-name=npm-hosted," -R -H | cut -d '.' -f1 | xargs -I{} -t rm -v -f {}.{properties,bytes}
 ```

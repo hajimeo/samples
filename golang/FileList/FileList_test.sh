@@ -373,6 +373,18 @@ function test_SoftDeletedThenUndeleteThenOrphaned() {
     fi
 }
 
+function test_UndeleteRepository() {
+    local _working_dir="${1:-"${_WORKING_DIR}"}"
+    local _bsName="$(genBsName)"
+    local _repo_name="$(genRepoName)-undelete"
+    local _cmd="$(genCmdBase "${_working_dir%/}/blobs/${_bsName}/content")"
+    local _tsv="./${FUNCNAME[0]}_${_bsName}"
+
+    if ! _apiS '{"action":"coreui_Repository","method":"create","data":[{"attributes":{"storage":{"blobStoreName":"'${_bsName}'","writePolicy":"ALLOW","strictContentTypeValidation":true'${_extra_sto_opt}'},"cleanup":{"policyName":[]}},"name":"raw-s3-hosted","format":"","type":"","url":"","online":true,"recipe":"raw-hosted"}],"type":"rpc"}'; then
+        [[ "${_EXIT_AT_FIRST_TEST_ERROR}" =~ ^[yY] ]] && return 1
+    fi
+}
+
 
 function main() {
     if [ -z "${_FILE_LIST}" ]; then

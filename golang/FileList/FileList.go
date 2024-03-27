@@ -135,7 +135,7 @@ func _setGlobals() {
 	_START_TIME_ts = time.Now().Unix()
 
 	_BASEDIR = flag.String("b", ".", "Base directory (default: '.') or S3 Bucket name")
-	_PREFIX = flag.String("p", "", "Prefix to 'vol-*'. This is not recursive")
+	_PREFIX = flag.String("p", "", "Prefix to 'vol-*' or S3 prefix. This is not recursive")
 	_DIR_DEPTH = flag.Int("dd", 2, "(experimental) Directory Depth to find sub directories (eg: 'vol-NN', 'chap-NN')")
 	_WITH_PROPS = flag.Bool("P", false, "If true, the .properties file content is included in the output")
 	_FILTER = flag.String("f", "", "Filter for the file path (eg: '.properties' to include only this extension)")
@@ -153,7 +153,7 @@ func _setGlobals() {
 	_DRY_RUN = flag.Bool("Dry", false, "If true, RDel does not do anything")
 
 	// Reconcile / orphaned blob finding related
-	_TRUTH = flag.String("src", "BS", "Using database or blobstore as source [BS|DB]")
+	_TRUTH = flag.String("src", "", "Using database or blobstore as source [BS|DB]. If not specified and -db is given, 'BS' is set.")
 	_DB_CON_STR = flag.String("db", "", "DB connection string or path to DB connection properties file")
 	_BLOB_IDS_FILE = flag.String("bF", "", "file path whic contains the list of blob IDs")
 	_BS_NAME = flag.String("bsName", "", "eg. 'default'. If provided, the SQL query will be faster. 3.47 and higher only")
@@ -213,6 +213,10 @@ func _setGlobals() {
 	}
 
 	if len(*_DB_CON_STR) > 0 {
+		// If DB connection is provided but the source is not specified, using BlobStore as the source of the trueth (will work like DeadBlobsFInder)
+		if len(*_TRUTH) == 0 {
+			*_TRUTH = "BS"
+		}
 		if _, err := os.Stat(*_DB_CON_STR); err == nil {
 			*_DB_CON_STR = genDbConnStrFromFile(*_DB_CON_STR)
 		}
@@ -246,11 +250,8 @@ func _setGlobals() {
 			*_FILTER_P = "deleted=true"
 		}
 
-		if len(*_DEL_DATE_FROM) == 0 {
-			_log("WARN", "Disabling -RDel as no -dF.")
-			*_REMOVE_DEL = false
-		} else if _IS_S3 != nil && *_IS_S3 {
-			_log("INFO", "-RDel is experimental for S3.")
+		if len(*_BLOB_IDS_FILE) == 0 && (len(*_DEL_DATE_FROM) == 0 || len(*_MOD_DATE_FROM) == 0) {
+			panic("Currently -RDel requires -dF or -mF.")
 		}
 	}
 
@@ -616,8 +617,8 @@ func _printLineExtra(output string, path string, modTimeTs int64, db *sql.DB, cl
 		_log("INFO", "path:"+path+" is recently modified, so skipping ("+strconv.FormatInt(modTimeTs, 10)+" > "+strconv.FormatInt(_START_TIME_ts, 10)+")")
 		return ""
 	}
-	// no need to open the properties file no _WITH_PROPS and if no DB connection (or not BS) and no _DEL_DATE_FROM/TO
-	if (!*_WITH_PROPS) && (len(*_DB_CON_STR) == 0 || *_TRUTH != "BS") && _DEL_DATE_FROM_ts == 0 && _DEL_DATE_TO_ts == 0 {
+	// no need to open the properties file if no _REMOVE_DEL, no _WITH_PROPS, no DB connection (or not BS) and no _DEL_DATE_FROM/TO
+	if (!*_REMOVE_DEL) && (!*_WITH_PROPS) && (len(*_DB_CON_STR) == 0 || *_TRUTH != "BS") && _DEL_DATE_FROM_ts == 0 && _DEL_DATE_TO_ts == 0 {
 		return output
 	}
 
@@ -652,8 +653,8 @@ func _printLineExtra(output string, path string, modTimeTs int64, db *sql.DB, cl
 		}
 	}
 
-	// removeDel requires 'contents', so executing in here. For the safety, _REMOVE_DEL requires delDateFromTs
-	if *_REMOVE_DEL && _DEL_DATE_FROM_ts > 0 {
+	// removeDel requires 'contents', so executing in here.
+	if *_REMOVE_DEL {
 		_ = removeDel(contents, path, client)
 	}
 
@@ -712,7 +713,7 @@ func getObjectS3(path string, client *s3.Client) (*s3.GetObjectOutput, error) {
 	if _DEBUG != nil && *_DEBUG {
 		defer _elapsed(time.Now().UnixMilli(), "DEBUG Read "+path, 0)
 	} else {
-		defer _elapsed(time.Now().UnixMilli(), "WARN  slow file read for path:"+path, 2000)
+		defer _elapsed(time.Now().UnixMilli(), "WARN  slow file read for path:"+path, 1000)
 	}
 	input := &s3.GetObjectInput{
 		Bucket: _BASEDIR,
@@ -1460,7 +1461,10 @@ func listObjects(dir string, client *s3.Client) {
 }
 
 func printObjectByBlobId(blobId string, db *sql.DB, client *s3.Client) {
-	startMs := time.Now().UnixMilli()
+	if len(blobId) == 0 {
+		_log("DEBUG2", fmt.Sprintf("Empty blobId"))
+		return
+	}
 	path := _CONTENT_PATH + string(filepath.Separator) + genBlobPath(blobId) + _PROP_EXT
 	if _IS_S3 != nil && *_IS_S3 {
 		obj, err := getObjectS3(path, client)
@@ -1475,6 +1479,7 @@ func printObjectByBlobId(blobId string, db *sql.DB, client *s3.Client) {
 		//item.Owner.DisplayName = nil // TODO: not sure how to get owner from header
 		printLineS3(item, client, db)
 	} else {
+		defer _elapsed(time.Now().UnixMilli(), "WARN  slow file read for path:"+path, 100)
 		fileInfo, err := os.Stat(path)
 		if err != nil {
 			_log("ERROR", fmt.Sprintf("Failed to access %s", path))
@@ -1482,7 +1487,6 @@ func printObjectByBlobId(blobId string, db *sql.DB, client *s3.Client) {
 		}
 		printLineFile(path, fileInfo, db)
 	}
-	_elapsed(startMs, fmt.Sprintf("WARN  %s", blobId), 200)
 }
 
 // Define, set, and validate command arguments
