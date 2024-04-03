@@ -4,7 +4,7 @@
 # COMMAND EXAMPLE:
 #   cd ~/IdeaProjects/samples/kubernetes
 #   # Below _DNS is only for my k8s env (don't forget to update /etc/banner_add_hosts). _DB_USER can't contain '-' character.
-#   export _NAMESPACE="sonatype" _ID="nxrm3pg" _DNS="192.168.4.31" _DB_HOST_PORT="192.168.4.31:5432" _TAG="3.65.0" _METALLB_IP="192.168.4.230"
+#   export _NAMESPACE="sonatype" _ID="nxrm3pg" _DNS="192.168.4.31" _DB_HOST_PORT="192.168.4.31:5432" #_TAG="3.65.0" _METALLB_IP="192.168.4.230"
 #   export _BLOBS_PATH="/var/tmp/share/sonatype/${_ID}/blobs" _JDBC_URL="jdbc:postgresql://${_DB_HOST_PORT}/${_ID}?gssEncMode=disable" _DB_USER="${_ID}" _DB_PWD="${_ID}"
 #
 # ONE TIME ONLY preparation (*after* above "export")
@@ -103,6 +103,8 @@ spec:
             #- containerPort: 8443
             - containerPort: 4999
             #- containerPort: 5000
+            #- containerPort: 5005 # debugger
+            #- containerPort: 9000 # jmx
           startupProbe:
             tcpSocket:
               port: 8081
@@ -166,8 +168,10 @@ spec:
               #       To enable HTTPS/SSL, prepare keystore.jks and: append
               #  -Dssl.etc=/nexus-data/etc/ssl \
               #  -Dnexus-args=/opt/sonatype/nexus/etc/jetty/jetty.xml,/opt/sonatype/nexus/etc/jetty/jetty-http.xml,/nexus-data/etc/ssl/jetty-https.xml,/opt/sonatype/nexus/etc/jetty/jetty-requestlog.xml \
+              # kubectl port-forward -n sonatype deployment/nxrm3pg-deployment 9000:9000
               value: '-XX:ActiveProcessorCount=1 -Xms2g -Xmx3g \
                 -Dfile.encoding=UTF-8 -Dsun.jnu.encoding=UTF-8 \
+                -Dcom.sun.management.jmxremote=true -Dcom.sun.management.jmxremote.port=9000 -Dcom.sun.management.jmxremote.rmi.port=9000 -Dcom.sun.management.jmxremote.authenticate=false -Dcom.sun.management.jmxremote.ssl=false -Dcom.sun.management.jmxremote.local.only=true -Djava.rmi.server.hostname=127.0.0.1 \
                 -Djava.util.prefs.userRoot=/nexus-data/javaprefs \
                 -Dnexus.licenseFile=/etc/sonatype/sonatype-license.lic \
                 -Dnexus.scripts.allowCreation=true \
