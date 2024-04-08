@@ -49,7 +49,7 @@ def main() {
 
   if (result && f.exists() && f.length() > 0 && h2File.size() > 0) {
     def h2f = new File(h2File).getAbsolutePath().replaceFirst(~/\.h2\.db$/, '')
-    def url = "jdbc:h2:${h2f};DATABASE_TO_UPPER=FALSE;IFEXISTS=true;MV_STORE=FALSE;SCHEMA=${dbSchema};MODE=PostgreSQL"
+    def url = "jdbc:h2:${h2f};DATABASE_TO_UPPER=FALSE;IFEXISTS=true;MV_STORE=FALSE;MVCC=TRUE;SCHEMA=${dbSchema};MODE=PostgreSQL"
     log.info("URL = ${url}")
     def sql = Sql.newInstance("${url}", dbUser, dbPwd, "org.h2.Driver")
     result = executeScript(outputPath, sql)
