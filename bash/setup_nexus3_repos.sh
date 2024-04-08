@@ -98,6 +98,7 @@ Just get the repositories setting:
 : ${_BLOBTORE_NAME:=""}     # eg: default. Empty means auto
 : ${_IS_NEWDB:=""}
 : ${_DATASTORE_NAME:=""}    # If Postgres (or H2), needs to add attributes.storage.dataStoreName = "nexus"
+: ${_EXTRA_STO_OPT:=""}
 : ${_TID:=80}
 ## Misc. variables
 _LOG_FILE_PATH="/tmp/setup_nexus3_repos.log"
@@ -110,7 +111,7 @@ _RESP_FILE=""
 
 ### Nexus installation functions ##############################################################################
 # To install 1st/2nd instance: _NEXUS_ENABLE_HA=Y f_install_nexus3 "" "nxrmha"
-# To upgrade (from ${_dirpath}/): tar -xvf $HOME/.nexus_executable_cache/nexus-3.63.0-01-mac.tgz
+# To upgrade (from ${_dirpath}/): tar -xvf $HOME/.nexus_executable_cache/nexus-3.65.0-02-mac.tgz
 function f_install_nexus3() {
     local __doc__="Install specific NXRM3 version"
     local _ver="${1:-"${r_NEXUS_VERSION}"}"     # 'latest'
@@ -213,10 +214,9 @@ function f_setup_maven() {
     local _bs_name="${2:-"${r_BLOBSTORE_NAME:-"${_BLOBTORE_NAME}"}"}"
     local _ds_name="${3:-"${r_DATASTORE_NAME:-"${_DATASTORE_NAME}"}"}"
     local _source_nexus_url="${4:-"${r_SOURCE_NEXUS_URL:-"${_SOURCE_NEXUS_URL}"}"}"
-    local _extra_sto_opt=""
-    [ -z "${_bs_name}" ] && _bs_name="$(_get_blobstore_name)"
     [ -z "${_ds_name}" ] && _ds_name="$(_get_datastore_name)"
-    [ -n "${_ds_name}" ] && _extra_sto_opt=',"dataStoreName":"'${_ds_name}'"'
+    local _extra_sto_opt="$(_get_extra_sto_opt "${_ds_name}")"
+    [ -z "${_bs_name}" ] && _bs_name="$(_get_blobstore_name)"
     # If no xxxx-proxy, create it
     if ! _is_repo_available "${_prefix}-proxy"; then
         # NOTE: I prefer "maven":{...,"contentDisposition":"ATTACHMENT"...}, but using default for various testings.
@@ -249,6 +249,7 @@ function f_setup_maven() {
         if curl -sf -o ${_TMP%/}/junit-4.12-sources.jar "https://repo1.maven.org/maven2/junit/junit/4.12/junit-4.12-sources.jar"; then
             _ASYNC_CURL="Y" f_upload_asset "${_prefix}-hosted" -F maven2.groupId=com.example -F maven2.artifactId=my-test-junit -F maven2.version=4.21 -F maven2.asset1=@${_TMP%/}/junit-4.12-sources.jar -F maven2.asset1.extension=jar -F maven2.asset1.classifier=sources
         fi
+        _ASYNC_CURL="Y" f_upload_asset "${_prefix}-hosted" -F maven2.groupId=com.example -F maven2.artifactId=my-test-junit -F maven2.version=9.99 -F maven2.asset1=@${_TMP%/}/junit-4.12.jar -F maven2.asset1.extension=jar
     fi
 
     # If no xxxx-group, create it
@@ -257,8 +258,8 @@ function f_setup_maven() {
         _apiS '{"action":"coreui_Repository","method":"create","data":[{"attributes":{"storage":{"blobStoreName":"'${_bs_name}'","strictContentTypeValidation":true'${_extra_sto_opt}'},"group":{"memberNames":["'${_prefix}'-hosted","'${_prefix}'-proxy"]}},"name":"'${_prefix}'-group","format":"","type":"","url":"","online":true,"recipe":"maven2-group"}],"type":"rpc"}' || return $?
     fi
     # add some data for xxxx-group ("." in groupdId should be changed to "/")
-    if [ -s "${_TMP%/}/junit-4.12.jar" ]; then  # no _ASYNC_CURL="Y"
-        f_upload_asset "${_prefix}-hosted" -F maven2.groupId=junit -F maven2.artifactId=junit -F maven2.version=99.99 -F maven2.asset1=@${_TMP%/}/junit-4.12.jar -F maven2.asset1.extension=jar >/dev/null
+    if [ -s "${_TMP%/}/junit-4.12.jar" ]; then
+        _ASYNC_CURL="Y" f_upload_asset "${_prefix}-hosted" -F maven2.groupId=junit -F maven2.artifactId=junit -F maven2.version=99.99 -F maven2.asset1=@${_TMP%/}/junit-4.12.jar -F maven2.asset1.extension=jar >/dev/null
         _ASYNC_CURL="Y" f_get_asset "${_prefix}-group" "junit/junit/maven-metadata.xml"
     fi
 }
@@ -268,13 +269,12 @@ function f_setup_pypi() {
     local _prefix="${1:-"pypi"}"
     local _bs_name="${2:-"${r_BLOBSTORE_NAME:-"${_BLOBTORE_NAME}"}"}"
     local _ds_name="${3:-"${r_DATASTORE_NAME:-"${_DATASTORE_NAME}"}"}"
-    local _extra_sto_opt=""
-    [ -z "${_bs_name}" ] && _bs_name="$(_get_blobstore_name)"
     [ -z "${_ds_name}" ] && _ds_name="$(_get_datastore_name)"
-    [ -n "${_ds_name}" ] && _extra_sto_opt=',"dataStoreName":"'${_ds_name}'"'
-    # If no xxxx-proxy, create it
+    local _extra_sto_opt="$(_get_extra_sto_opt "${_ds_name}")"
+    [ -z "${_bs_name}" ] && _bs_name="$(_get_blobstore_name)"
+\\   # If no xxxx-proxy, create it
     if ! _is_repo_available "${_prefix}-proxy"; then
-        _apiS '{"action":"coreui_Repository","method":"create","data":[{"attributes":{"proxy":{"remoteUrl":"https://pypi.org","contentMaxAge":1440,"metadataMaxAge":1440},"httpclient":{"blocked":false,"autoBlock":true,"connection":{"useTrustStore":false}},"storage":{"blobStoreName":"'${_bs_name}'","strictContentTypeValidation":true'${_extra_sto_opt}'},"negativeCache":{"enabled":true,"timeToLive":1440},"cleanup":{"policyName":[]}},"name":"'${_prefix}'-proxy","format":"","type":"","url":"","online":true,"routingRuleId":"","authEnabled":false,"httpRequestSettings":false,"recipe":"pypi-proxy"}],"type":"rpc"}' || return $?
+        _apiS '{"action":"coreui_Repository","method":"create","data":[{"attributes":{"proxy":{"remoteUrl":"https://pypi.org/","contentMaxAge":1440,"metadataMaxAge":1440},"httpclient":{"blocked":false,"autoBlock":true,"connection":{"useTrustStore":false}},"storage":{"blobStoreName":"'${_bs_name}'","strictContentTypeValidation":true'${_extra_sto_opt}'},"negativeCache":{"enabled":true,"timeToLive":1440},"cleanup":{"policyName":[]}},"name":"'${_prefix}'-proxy","format":"","type":"","url":"","online":true,"routingRuleId":"","authEnabled":false,"httpRequestSettings":false,"recipe":"pypi-proxy"}],"type":"rpc"}' || return $?
     fi
     # add some data for xxxx-proxy
     _ASYNC_CURL="Y" f_get_asset "${_prefix}-proxy" "packages/unit/0.2.2/Unit-0.2.2.tar.gz"
@@ -313,10 +313,9 @@ function f_setup_p2() {
     local _prefix="${1:-"p2"}"
     local _bs_name="${2:-"${r_BLOBSTORE_NAME:-"${_BLOBTORE_NAME}"}"}"
     local _ds_name="${3:-"${r_DATASTORE_NAME:-"${_DATASTORE_NAME}"}"}"
-    local _extra_sto_opt=""
     [ -z "${_bs_name}" ] && _bs_name="$(_get_blobstore_name)"
     [ -z "${_ds_name}" ] && _ds_name="$(_get_datastore_name)"
-    [ -n "${_ds_name}" ] && _extra_sto_opt=',"dataStoreName":"'${_ds_name}'"'
+    local _extra_sto_opt="$(_get_extra_sto_opt "${_ds_name}")"
     # If no xxxx-proxy, create it
     if ! _is_repo_available "${_prefix}-proxy"; then
         _apiS '{"action":"coreui_Repository","method":"create","data":[{"attributes":{"proxy":{"remoteUrl":"https://download.eclipse.org/releases/2019-09/","contentMaxAge":1440,"metadataMaxAge":1440},"httpclient":{"blocked":false,"autoBlock":false,"connection":{"useTrustStore":false}},"storage":{"dataStoreName":"nexus","blobStoreName":"'${_bs_name}'","strictContentTypeValidation":true'${_extra_sto_opt}'},"negativeCache":{"enabled":true,"timeToLive":1440},"cleanup":{"policyName":[]}},"name":"'${_prefix}'-proxy","format":"","type":"","url":"","online":true,"routingRuleId":"","authEnabled":false,"httpRequestSettings":false,"recipe":"'${_prefix}'-proxy"}],"type":"rpc"}' || return $?
@@ -332,10 +331,9 @@ function f_setup_npm() {
     local _bs_name="${2:-"${r_BLOBSTORE_NAME:-"${_BLOBTORE_NAME}"}"}"
     local _ds_name="${3:-"${r_DATASTORE_NAME:-"${_DATASTORE_NAME}"}"}"
     local _source_nexus_url="${4:-"${r_SOURCE_NEXUS_URL:-"${_SOURCE_NEXUS_URL}"}"}"
-    local _extra_sto_opt=""
     [ -z "${_bs_name}" ] && _bs_name="$(_get_blobstore_name)"
     [ -z "${_ds_name}" ] && _ds_name="$(_get_datastore_name)"
-    [ -n "${_ds_name}" ] && _extra_sto_opt=',"dataStoreName":"'${_ds_name}'"'
+    local _extra_sto_opt="$(_get_extra_sto_opt "${_ds_name}")"
     # If no xxxx-proxy, create it
     if ! _is_repo_available "${_prefix}-proxy"; then
         _apiS '{"action":"coreui_Repository","method":"create","data":[{"attributes":{"proxy":{"remoteUrl":"https://registry.npmjs.org","contentMaxAge":1440,"metadataMaxAge":1440},"httpclient":{"blocked":false,"autoBlock":true,"connection":{"useTrustStore":false}},"storage":{"blobStoreName":"'${_bs_name}'","strictContentTypeValidation":true'${_extra_sto_opt}'},"negativeCache":{"enabled":true,"timeToLive":1440},"cleanup":{"policyName":[]}},"name":"'${_prefix}'-proxy","format":"","type":"","url":"","online":true,"routingRuleId":"","authEnabled":false,"httpRequestSettings":false,"recipe":"npm-proxy"}],"type":"rpc"}' || return $?
@@ -383,10 +381,9 @@ function f_setup_nuget() {
     local _prefix="${1:-"nuget"}"
     local _bs_name="${2:-"${r_BLOBSTORE_NAME:-"${_BLOBTORE_NAME}"}"}"
     local _ds_name="${3:-"${r_DATASTORE_NAME:-"${_DATASTORE_NAME}"}"}"
-    local _extra_sto_opt=""
     [ -z "${_bs_name}" ] && _bs_name="$(_get_blobstore_name)"
     [ -z "${_ds_name}" ] && _ds_name="$(_get_datastore_name)"
-    [ -n "${_ds_name}" ] && _extra_sto_opt=',"dataStoreName":"'${_ds_name}'"'
+    local _extra_sto_opt="$(_get_extra_sto_opt "${_ds_name}")"
     _log "NOTE" "v3.29 and higher added \"nugetVersion\":\"V3\", so please check if nuget proxy repos have correct version from Web UI."
     if ! _is_repo_available "${_prefix}-v2-proxy"; then
         _apiS '{"action":"coreui_Repository","method":"create","data":[{"attributes":{"nugetProxy":{"nugetVersion":"V2","queryCacheItemMaxAge":3600},"proxy":{"remoteUrl":"https://www.nuget.org/api/v2/","contentMaxAge":1440,"metadataMaxAge":1440},"httpclient":{"blocked":false,"autoBlock":true,"connection":{"useTrustStore":false}},"storage":{"blobStoreName":"'${_bs_name}'","strictContentTypeValidation":true'${_extra_sto_opt}'},"negativeCache":{"enabled":true,"timeToLive":1440},"cleanup":{"policyName":[]}},"name":"'${_prefix}'-v2-proxy","format":"","type":"","url":"","online":true,"routingRuleId":"","authEnabled":false,"httpRequestSettings":false,"recipe":"nuget-proxy"}],"type":"rpc"}'
@@ -434,10 +431,9 @@ function f_setup_docker() {
     local _bs_name="${2:-"${r_BLOBSTORE_NAME:-"${_BLOBTORE_NAME}"}"}"
     local _ds_name="${3:-"${r_DATASTORE_NAME:-"${_DATASTORE_NAME}"}"}"
     local _source_nexus_url="${4:-"${r_SOURCE_NEXUS_URL:-"${_SOURCE_NEXUS_URL}"}"}"
-    local _extra_sto_opt=""
     [ -z "${_bs_name}" ] && _bs_name="$(_get_blobstore_name)"
     [ -z "${_ds_name}" ] && _ds_name="$(_get_datastore_name)"
-    [ -n "${_ds_name}" ] && _extra_sto_opt=',"dataStoreName":"'${_ds_name}'"'
+    local _extra_sto_opt="$(_get_extra_sto_opt "${_ds_name}")"
     #local _opts="--tls-verify=false"    # TODO: only for podman. need an *easy* way to use http for 'docker'
 
     # If no xxxx-proxy, create it
@@ -558,10 +554,9 @@ function f_setup_yum() {
     local _prefix="${1:-"yum"}"
     local _bs_name="${2:-"${r_BLOBSTORE_NAME:-"${_BLOBTORE_NAME}"}"}"
     local _ds_name="${3:-"${r_DATASTORE_NAME:-"${_DATASTORE_NAME}"}"}"
-    local _extra_sto_opt=""
     [ -z "${_bs_name}" ] && _bs_name="$(_get_blobstore_name)"
     [ -z "${_ds_name}" ] && _ds_name="$(_get_datastore_name)"
-    [ -n "${_ds_name}" ] && _extra_sto_opt=',"dataStoreName":"'${_ds_name}'"'
+    local _extra_sto_opt="$(_get_extra_sto_opt "${_ds_name}")"
     # NOTE: due to the known limitation, some version of Nexus requires anonymous for yum repo
     # https://support.sonatype.com/hc/en-us/articles/213464848-Authenticated-Access-to-Nexus-from-Yum-Doesn-t-Work
     # If no xxxx-proxy, create it
@@ -628,10 +623,9 @@ function f_setup_rubygem() {
     local _prefix="${1:-"rubygem"}"
     local _bs_name="${2:-"${r_BLOBSTORE_NAME:-"${_BLOBTORE_NAME}"}"}"
     local _ds_name="${3:-"${r_DATASTORE_NAME:-"${_DATASTORE_NAME}"}"}"
-    local _extra_sto_opt=""
     [ -z "${_bs_name}" ] && _bs_name="$(_get_blobstore_name)"
     [ -z "${_ds_name}" ] && _ds_name="$(_get_datastore_name)"
-    [ -n "${_ds_name}" ] && _extra_sto_opt=',"dataStoreName":"'${_ds_name}'"'
+    local _extra_sto_opt="$(_get_extra_sto_opt "${_ds_name}")"
     # If no xxxx-proxy, create it
     if ! _is_repo_available "${_prefix}-proxy"; then
         _apiS '{"action":"coreui_Repository","method":"create","data":[{"attributes":{"proxy":{"remoteUrl":"https://rubygems.org","contentMaxAge":1440,"metadataMaxAge":1440},"httpclient":{"blocked":false,"autoBlock":true,"connection":{"useTrustStore":false}},"storage":{"blobStoreName":"'${_bs_name}'","strictContentTypeValidation":true'${_extra_sto_opt}'},"negativeCache":{"enabled":true,"timeToLive":1440},"cleanup":{"policyName":[]}},"name":"'${_prefix}'-proxy","format":"","type":"","url":"","online":true,"routingRuleId":"","authEnabled":false,"httpRequestSettings":false,"recipe":"rubygems-proxy"}],"type":"rpc"}' || return $?
@@ -711,6 +705,8 @@ function f_setup_helm() {
     fi
     if ! _is_repo_available "${_prefix}-sonatype-proxy"; then
         _apiS '{"action":"coreui_Repository","method":"create","data":[{"attributes":{"proxy":{"remoteUrl":"https://sonatype.github.io/helm3-charts","contentMaxAge":1440,"metadataMaxAge":1440},"httpclient":{"blocked":false,"autoBlock":true,"connection":{"useTrustStore":false}},"storage":{"blobStoreName":"'${_bs_name}'","strictContentTypeValidation":true'${_extra_sto_opt}'},"negativeCache":{"enabled":true,"timeToLive":1440},"cleanup":{"policyName":[]}},"name":"'${_prefix}'-sonatype-proxy","format":"","type":"","url":"","online":true,"routingRuleId":"","authEnabled":false,"httpRequestSettings":false,"recipe":"helm-proxy"}],"type":"rpc"}' || return $?
+        #curl -O "https://sonatype.github.io/helm3-charts/nexus-iq-server-174.0.0.tgz"
+        #curl -D- -u admin:admin123 "http://localhost:8081/repository/helm-hosted/" -T nexus-iq-server-174.0.0.tgz
     fi
     # add some data for xxxx-proxy
     f_get_asset "${_prefix}-proxy" "/mysql-9.4.1.tgz" "${_TMP%/}/mysql-9.4.1.tgz"
@@ -978,10 +974,9 @@ function f_setup_raw() {
     local _prefix="${1:-"raw"}"
     local _bs_name="${2:-"${r_BLOBSTORE_NAME:-"${_BLOBTORE_NAME}"}"}"
     local _ds_name="${3:-"${r_DATASTORE_NAME:-"${_DATASTORE_NAME}"}"}"
-    local _extra_sto_opt=""
     [ -z "${_bs_name}" ] && _bs_name="$(_get_blobstore_name)"
     [ -z "${_ds_name}" ] && _ds_name="$(_get_datastore_name)"
-    [ -n "${_ds_name}" ] && _extra_sto_opt=',"dataStoreName":"'${_ds_name}'"'
+    local _extra_sto_opt="$(_get_extra_sto_opt "${_ds_name}")"
     # NOTE: using "strictContentTypeValidation":false for raw repositories
     # If no xxxx-proxy, create it (but no standard remote URL for Raw format)
     if ! _is_repo_available "${_prefix}-jenkins-proxy"; then
@@ -1078,6 +1073,17 @@ function _get_datastore_name() {
     return 1
 }
 
+function _get_extra_sto_opt() {
+    local _ds_name="$1"
+    if [ -n "${_EXTRA_STO_OPT}" ]; then
+        echo "${_EXTRA_STO_OPT}"
+        return
+    fi
+    [ -z "${_ds_name}" ] && _ds_name="$(_get_datastore_name)"
+    [ -n "${_ds_name}" ] && _EXTRA_STO_OPT=',"dataStoreName":"'${_ds_name}'"'
+    echo "${_EXTRA_STO_OPT}"
+}
+
 function f_create_file_blobstore() {
     local __doc__="Create a File type blobstore"
     local _bs_name="${1:-"default"}"
@@ -1098,9 +1104,13 @@ function f_create_s3_blobstore() {
     local _region="${4:-"${AWS_REGION:-"ap-southeast-2"}"}"
     local _ak="${5:-"${AWS_ACCESS_KEY_ID}"}"
     local _sk="${6:-"${AWS_SECRET_ACCESS_KEY}"}"
+    if [ -n "${_prefix}" ]; then    # AWS S3 prefix shoudln't start with / (and may need to end with /)
+        _prefix="${_prefix#/}"
+        _prefix="${_prefix%/}/"
+    fi
     # NOTE 3.27 has ',"state":""'
     # TODO: replace with /v1/blobstores/s3 POST
-    if ! _apiS '{"action":"coreui_Blobstore","method":"create","data":[{"type":"S3","name":"'${_bs_name}'","isQuotaEnabled":false,"property_region":"'${_region}'","property_bucket":"'${_bucket}'","property_prefix":"'${_prefix}'","property_expiration":1,"authEnabled":true,"property_accessKeyId":"'${_ak}'","property_secretAccessKey":"'${_sk}'","property_assumeRole":"","property_sessionToken":"","encryptionSettingsEnabled":false,"advancedConnectionSettingsEnabled":false,"attributes":{"s3":{"region":"'${_region}'","bucket":"'${_bucket}'","prefix":"'${_prefix}'","expiration":"2","accessKeyId":"'${_ak}'","secretAccessKey":"'${_sk}'","assumeRole":"","sessionToken":""}}}],"type":"rpc"}' > ${_TMP%/}/f_apiS_last.out; then
+    if ! _apiS '{"action":"coreui_Blobstore","method":"create","data":[{"type":"S3","name":"'${_bs_name}'","isQuotaEnabled":false,"property_region":"'${_region}'","property_bucket":"'${_bucket}'","property_prefix":"'${_prefix%/}'","property_expiration":1,"authEnabled":true,"property_accessKeyId":"'${_ak}'","property_secretAccessKey":"'${_sk}'","property_assumeRole":"","property_sessionToken":"","encryptionSettingsEnabled":false,"advancedConnectionSettingsEnabled":false,"attributes":{"s3":{"region":"'${_region}'","bucket":"'${_bucket}'","prefix":"'${_prefix%/}'","expiration":"2","accessKeyId":"'${_ak}'","secretAccessKey":"'${_sk}'","assumeRole":"","sessionToken":""}}}],"type":"rpc"}' > ${_TMP%/}/f_apiS_last.out; then
         _log "ERROR" "Failed to create blobstore: ${_bs_name} ."
         _log "ERROR" "$(cat ${_TMP%/}/f_apiS_last.out)"
         return 1
@@ -1108,13 +1118,15 @@ function f_create_s3_blobstore() {
     _log "DEBUG" "$(cat ${_TMP%/}/f_apiS_last.out)"
     if ! _is_repo_available "raw-s3-hosted"; then
         _log "INFO" "Creating raw-s3-hosted ..."
-        _apiS '{"action":"coreui_Repository","method":"create","data":[{"attributes":{"storage":{"blobStoreName":"'${_bs_name}'","writePolicy":"ALLOW","strictContentTypeValidation":true'${_extra_sto_opt}'},"cleanup":{"policyName":[]}},"name":"raw-s3-hosted","format":"","type":"","url":"","online":true,"recipe":"raw-hosted"}],"type":"rpc"}' || return $?
+        _apiS '{"action":"coreui_Repository","method":"create","data":[{"attributes":{"storage":{"blobStoreName":"'${_bs_name}'","writePolicy":"ALLOW","strictContentTypeValidation":true'$(_get_extra_sto_opt)'},"cleanup":{"policyName":[]}},"name":"raw-s3-hosted","format":"","type":"","url":"","online":true,"recipe":"raw-hosted"}],"type":"rpc"}' || return $?
     fi
-    _log "INFO" "Command examples:
-aws s3 ls s3://${_bucket}/${_prefix}/content/ # --recursive but 1000 limits (same for list-objects)
+    _log "INFO" "AWS CLI command examples (not AWS_REGION may matter):
+aws s3api head-object --bucket ${_bucket} --key ${_prefix}metadata.properties  # same as 'metadata.exists()'
+aws s3api get-bucket-ownership-controls --bucket ${_bucket}     # same as 'checkBucketOwner'
+aws s3 ls s3://${_bucket}/${_prefix}content/   # --recursive but 1000 limits (same for list-objects)
 aws s3api list-objects --bucket ${_bucket} --query \"Contents[?contains(Key, 'f062f002-88f0-4b53-aeca-7324e9609329.properties')]\"
-aws s3api get-object-tagging --bucket ${_bucket} --key \"${_prefix}/content/vol-42/chap-31/f062f002-88f0-4b53-aeca-7324e9609329.properties\"
-aws s3 cp s3://${_bucket}/${_prefix}/content/vol-42/chap-31/f062f002-88f0-4b53-aeca-7324e9609329.properties -
+aws s3api get-object-tagging --bucket ${_bucket} --key \"${_prefix}content/vol-42/chap-31/f062f002-88f0-4b53-aeca-7324e9609329.properties\"
+aws s3 cp s3://${_bucket}/${_prefix}content/vol-42/chap-31/f062f002-88f0-4b53-aeca-7324e9609329.properties -
 "
 }
 
@@ -1134,14 +1146,22 @@ function f_create_azure_blobstore() {
     _log "DEBUG" "$(cat ${_TMP%/}/f_api_last.out)"
     if ! _is_repo_available "raw-az-hosted"; then
         _log "INFO" "Creating raw-az-hosted ..."
-        _apiS '{"action":"coreui_Repository","method":"create","data":[{"attributes":{"storage":{"blobStoreName":"'${_bs_name}'","writePolicy":"ALLOW","strictContentTypeValidation":true'${_extra_sto_opt}'},"cleanup":{"policyName":[]}},"name":"raw-az-hosted","format":"","type":"","url":"","online":true,"recipe":"raw-hosted"}],"type":"rpc"}' || return $?
+        _apiS '{"action":"coreui_Repository","method":"create","data":[{"attributes":{"storage":{"blobStoreName":"'${_bs_name}'","writePolicy":"ALLOW","strictContentTypeValidation":true'$(_get_extra_sto_opt)'},"cleanup":{"policyName":[]}},"name":"raw-az-hosted","format":"","type":"","url":"","online":true,"recipe":"raw-hosted"}],"type":"rpc"}' || return $?
     fi
 }
 
 function f_create_group_blobstore() {
-    local __doc__="TODO: Create a new blob store, then promote to group"
-    echo "TODO: Not implemented yet"
-    return
+    local __doc__="Create a new group blob store. Not promoting to group"
+    local _bs_name="${1:-"bs-group"}"
+    local _member_pfx="${2:-"member"}"
+    local _repo_name="${2:-"raw-grpbs-hosted"}"
+    f_create_file_blobstore "${_member_pfx}1"
+    f_create_file_blobstore "${_member_pfx}2"
+    f_api '/service/rest/v1/blobstores/group' '{"name":"'${_bs_name}'","members":["'${_member_pfx}'1","'${_member_pfx}'2"],"fillPolicy":"writeToFirst"}' || return $?
+    if ! _is_repo_available "${_repo_name}"; then
+        _log "INFO" "Creating ${_repo_name} ..."
+        _apiS '{"action":"coreui_Repository","method":"create","data":[{"attributes":{"storage":{"blobStoreName":"'${_bs_name}'","writePolicy":"ALLOW","strictContentTypeValidation":true'$(_get_extra_sto_opt)'},"cleanup":{"policyName":[]}},"name":"'${_repo_name}'","format":"","type":"","url":"","online":true,"recipe":"raw-hosted"}],"type":"rpc"}' || return $?
+    fi
 }
 
 function f_iq_quarantine() {
@@ -1804,6 +1824,7 @@ function f_nexus_change_pwd() {
 }
 
 function f_put_realms() {
+    local __doc__="PUT some realms"
     local _realms="\"NexusAuthenticatingRealm\",\"User-Token-Realm\",\"rutauth-realm\",\"DockerToken\",\"ConanToken\",\"NpmToken\",\"NuGetApiKey\",\"LdapRealm\""
     # NOTE: ,\"NexusAuthorizingRealm\" was removed from 3.61
     f_api "/service/rest/v1/security/realms/available" | grep -q '"NexusAuthorizingRealm"' && _realms="\"NexusAuthenticatingRealm\",\"NexusAuthorizingRealm\",\"User-Token-Realm\",\"rutauth-realm\",\"DockerToken\",\"ConanToken\",\"NpmToken\",\"NuGetApiKey\",\"LdapRealm\""
@@ -1813,13 +1834,29 @@ function f_put_realms() {
 }
 
 function f_enable_quarantines() {
+    local __doc__="Enable Firewall Audit & Quarantine capability"
     local _proxy_name_rx="${1:-"[^\"]+"}"
     f_api "/service/rest/v1/repositories" | grep -B2 -E '^\s*"type"\s*:\s*"proxy"' | sed -n -E 's/^ *"name": *"('${_proxy_name_rx}')".*/\1/p' | while read -r _repo; do
         f_iq_quarantine "${_repo}"
     done
 }
 
-function f_nexus_csel() {
+function f_create_cleanup_policy() {
+    local __doc__="Create a cleanup policy. NOTE: a backslash needs to be escaped with 3 more backslashes"
+    local _policy_name="${1}"
+    local _asset_matcher="${2}" # .+
+    local _format="${3}"        # maven2
+    local _age_days="${4}"
+    local _usage_days="${5}"
+    [ -z "${_policy_name}" ] && _policy_name="clean_${format:-"all"}"
+    [ -n "${_asset_matcher}" ] && _asset_matcher="\"${_asset_matcher}\""
+    [ -n "${_age_days}" ] && _age_days="\"${_age_days}\""
+    [ -n "${_usage_days}" ] && _usage_days="\"${_usage_days}\""
+    #{"name":"all","notes":"","format":"*","criteriaLastBlobUpdated":"1","criteriaLastDownloaded":"1","criteriaReleaseType":null,"criteriaAssetRegex":null,"retain":null,"sortBy":null}
+    f_api "/service/rest/internal/cleanup-policies" "{\"name\":\"${_policy_name}\",\"notes\":\"\",\"format\":\"${_format:-"*"}\",\"criteriaLastBlobUpdated\":${_age_days:-"null"},\"criteriaLastDownloaded\":${_usage_days:-"null"},\"criteriaReleaseType\":null,\"criteriaAssetRegex\":${_asset_matcher:-"null"},\"retain\":null,\"sortBy\":null}" || return $?
+}
+
+function f_create_csel() {
     local _csel_name="${1:-"csel-test"}"
     local _expression="${2:-"format == 'raw' and path =^ '/test/'"}" # TODO: currently can't use double quotes
     local _repos="${3:-"*"}"
@@ -1970,11 +2007,12 @@ function f_start_saml_server() {
 
 function f_start_ldap_server() {
     local _fname="$(uname | tr '[:upper:]' '[:lower:]')$(uname -m).zip"
-    if [ ! -s "${_SHARE_DIR%/}/${_fname}" ]; then
-        curl -o "${_SHARE_DIR%/}/${_fname}" -L "https://github.com/glauth/glauth/releases/download/v2.1.0/${_fname}" --compressed || return $?
+    local _download_dir="/tmp"
+    if [ ! -s "${_download_dir%/}/${_fname}" ]; then
+        curl -o "${_download_dir%/}/${_fname}" -L "https://github.com/glauth/glauth/releases/download/v2.1.0/${_fname}" --compressed || return $?
     fi
     if [ ! -s ./glauth/glauth ]; then
-        unzip -d ./glauth "${_SHARE_DIR%/}/${_fname}"
+        unzip -d ./glauth "${_download_dir%/}/${_fname}"
         chmod u+x ./glauth/glauth || return $?
     fi
     if [ ! -s ./glauth/glauth-simple.cfg ]; then
@@ -1983,14 +2021,26 @@ function f_start_ldap_server() {
     # listening 0.0.0.0:389
     ./glauth/glauth -c ./glauth/glauth-simple.cfg
 }
-function f_nexus_ldap_config() {
+function f_setup_ldap_glauth() {
     local __doc__="Setup LDAP for GLAuth server."
     local _name="${1:-"glauth"}"
     local _host="${2:-"localhost"}"
     local _port="${3:-"389"}"   # 636
+    [ -z "${_LDAP_PWD}" ] && echo "Missing _LDAP_PWD" && return 1
     #nc -z ${_host} ${_port} || return $?
     # Using 'mail' instead of 'uid' so that not confused with same 'admin' user between local and ldap
-    _apiS '{"action":"ldap_LdapServer","method":"create","data":[{"id":"","name":"'${_name}'","protocol":"ldap","host":"'${_host}'","port":"'${_port}'","searchBase":"dc=standalone,dc=localdomain","authScheme":"simple","authUsername":"admin@standalone.localdomain","authPassword":"secret12","connectionTimeout":"30","connectionRetryDelay":"300","maxIncidentsCount":"3","template":"Posix%20with%20Dynamic%20Groups","userBaseDn":"ou=users","userSubtree":true,"userObjectClass":"posixAccount","userLdapFilter":"","userIdAttribute":"mail","userRealNameAttribute":"cn","userEmailAddressAttribute":"mail","userPasswordAttribute":"","ldapGroupsAsRoles":true,"groupType":"dynamic","userMemberOfAttribute":"memberOf"}],"type":"rpc"}'
+    _apiS '{"action":"ldap_LdapServer","method":"create","data":[{"id":"","name":"'${_name}'","protocol":"ldap","host":"'${_host}'","port":"'${_port}'","searchBase":"dc=standalone,dc=localdomain","authScheme":"simple","authUsername":"admin@standalone.localdomain","authPassword":"'${_LDAP_PWD}'","connectionTimeout":"30","connectionRetryDelay":"300","maxIncidentsCount":"3","template":"Posix%20with%20Dynamic%20Groups","userBaseDn":"ou=users","userSubtree":true,"userObjectClass":"posixAccount","userLdapFilter":"","userIdAttribute":"mail","userRealNameAttribute":"cn","userEmailAddressAttribute":"mail","userPasswordAttribute":"","ldapGroupsAsRoles":true,"groupType":"dynamic","userMemberOfAttribute":"memberOf"}],"type":"rpc"}'
+    _apiS '{"action":"coreui_Role","method":"create","data":[{"version":"","source":"LDAP","id":"ipausers","name":"ipausers-role","description":"ipausers-role-desc","privileges":["nx-repository-view-*-*-*","nx-search-read","nx-component-upload"],"roles":[]}],"type":"rpc"}'
+}
+
+function f_setup_ldap_freeipa() {
+    local __doc__="setup LDAP. TODO: currently using my freeIPA server."
+    local _name="${1:-"freeipa"}"
+    local _host="${2:-"dh1.standalone.localdomain"}"
+    local _port="${3:-"389"}"   # 636
+    [ -z "${_LDAP_PWD}" ] && echo "Missing _LDAP_PWD" && return 1
+    #nc -z ${_host} ${_port} || return $?
+    _apiS '{"action":"ldap_LdapServer","method":"create","data":[{"id":"","name":"'${_name}'","protocol":"ldap","host":"'${_host}'","port":"'${_port}'","searchBase":"cn=accounts,dc=standalone,dc=localdomain","authScheme":"simple","authUsername":"uid=admin,cn=users,cn=accounts,dc=standalone,dc=localdomain","authPassword":"'${_LDAP_PWD}'","connectionTimeout":"30","connectionRetryDelay":"300","maxIncidentsCount":"3","template":"Posix%20with%20Dynamic%20Groups","userBaseDn":"cn=users","userSubtree":false,"userObjectClass":"person","userLdapFilter":"","userIdAttribute":"uid","userRealNameAttribute":"cn","userEmailAddressAttribute":"mail","userPasswordAttribute":"","ldapGroupsAsRoles":true,"groupType":"dynamic","userMemberOfAttribute":"memberOf"}],"type":"rpc"}'
     _apiS '{"action":"coreui_Role","method":"create","data":[{"version":"","source":"LDAP","id":"ipausers","name":"ipausers-role","description":"ipausers-role-desc","privileges":["nx-repository-view-*-*-*","nx-search-read","nx-component-upload"],"roles":[]}],"type":"rpc"}'
 }
 
@@ -2003,9 +2053,8 @@ function f_repository_replication() {
     local _tgt_blob="${5:-"test"}"
     local _ds_name="${6:-"${r_DATASTORE_NAME:-"${_DATASTORE_NAME}"}"}"
     local _workingDirectory="${7:-"${_WORKING_DIR:-"/opt/sonatype/sonatype-work/nexus3"}"}"
-    local _extra_sto_opt=""
     [ -z "${_ds_name}" ] && _ds_name="$(_get_datastore_name)"
-    [ -n "${_ds_name}" ] && _extra_sto_opt=',"dataStoreName":"'${_ds_name}'"'
+    local _extra_sto_opt="$(_get_extra_sto_opt "${_ds_name}")"
     curl -sS -f -k -I "${_target_url}" >/dev/null || return $?
 
     # It's OK if can't create blobs/repos as this could be due to permission.
@@ -2871,7 +2920,7 @@ main() {
     done
 
     _log "INFO" "Adding a sample Content Selector (CSEL) ..."
-    f_nexus_csel &>/dev/null  # it's OK if this fails
+    f_create_csel &>/dev/null  # it's OK if this fails
     _log "INFO" "Creating 'testuser' if it hasn't been created."
     f_create_testuser &>/dev/null
     #f_create_testuser "testuser" "\"csel-test-priv\"" "test-role"

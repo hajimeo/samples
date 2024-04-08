@@ -821,12 +821,15 @@ function f_gc_before_after_check() {
     local _log_dir="${1:-"."}"
     local _keyword="${2-"sonatype"}"
     local _A_max="${3-"100"}"
+    echo "# Total"
+    rg -z -N --sort=path --no-filename "${_DT_FMT}.*\s+(Class Histogram|Total\s+\d+\s+\d+)" ${_log_dir} | rg -w 'Total' -B1
+    echo ""
     #rg -z -N --no-filename "^(${_DT_FMT}).+\bFull GC" -o -r '$1' ${_log_dir} | sort | uniq > /tmp/${FUNCNAME[0]}_datetimes_$$.tmp || return $?
     # NOTE: expecting filenames works with --sort=path
-    rg -z -N --sort=path --no-filename '\bFull GC\b' -A ${_A_max} ${_log_dir} > /tmp/${FUNCNAME[0]}_$$.tmp || return $?
-    cat /tmp/${FUNCNAME[0]}_$$.tmp | rg "${_keyword:-".*"}" | awk '{print $4}' | sort | uniq | while read -r _cls; do
+    rg -z -N --sort=path --no-filename '\b(Full GC|Class Histogram)\b' -A ${_A_max} ${_log_dir}  > /tmp/${FUNCNAME[0]}_$$.tmp || return $?
+    cat /tmp/${FUNCNAME[0]}_$$.tmp | rg "\S*${_keyword:-"\S+"}\S*" -o | sort | uniq | while read -r _cls; do
         echo "# 'date_time' '#instances' '#bytes' for ${_cls}"
-        rg "(^${_DT_FMT}|\s+\d+\s+\d+\s+${_cls//$/\\$}$)" -o /tmp/${FUNCNAME[0]}_$$.tmp | rg "${_cls//$/\\$}" -B1 | rg -v -- '--' | paste - -
+        rg "(${_DT_FMT}|\s+\d+\s+\d+\s+${_cls//$/\\$}$)" -o /tmp/${FUNCNAME[0]}_$$.tmp | rg "${_cls//$/\\$}" -B1 | rg -v -- '--' | paste - -
         echo ""
     done
     echo "# diff between first and last for class includes '${_keyword}':"
@@ -1085,6 +1088,7 @@ function f_threads() {
 
     if [ ! -d "${_file}" ] && [[ ! "${_not_split_by_date}" =~ ^(y|Y) ]]; then
         local _how_many_threads=$(rg '^20\d\d-\d\d-\d\d \d\d:\d\d:\d\d' -c ${_file})
+        echo "## Found ${_how_many_threads} threads from ${_file}"
         if [ 1 -lt ${_how_many_threads:-0} ]; then
             echo "## Check if 'Heap' information exists"
             rg '^Heap' -A8 ${_file} | rg '(total|\d\d+% used)'    # % didn't work with G1GC
@@ -1103,48 +1107,16 @@ function f_threads() {
             local _filename=$(basename ${_f})
             _count=$(( ${_count} + 1 ))
             if [ -s "./f_thread_${_filename%.*}.out" ]; then
-                _LOG "WARN" "./f_thread_${_filename%.*}.out exists, skipping..."
+                _LOG "WARN" "./f_thread_${_filename%.*}.out exists, so not executing f_threads ..."
                 continue
             fi
             _LOG "INFO" "Saving outputs into f_thread_${_filename%.*}.out ..."
             f_threads "${_f}" "${_split_search}" "${_running_thread_search_re}" "${_save_dir%/}/${_filename%.*}" "Y" > ./f_thread_${_filename%.*}.out
         done
+
         echo " "
         # Doing below only when checking multiple thread dumps
-        echo "## Thread status counts from ./f_thread_*.out"
-        rg -A10 '^### Counting thread states' ./f_thread_*.out
-        echo " "
-        local __count=${_count}
-        [ 3 -lt ${_count} ] && __count=$(( ${_count} - 1 ))
-        echo "## Long *RUN*ning (or BLOCKED) and no-change (same hash) threads which contain '${_running_thread_search_re}' (threads:${_count})"
-        _long_running "${_save_dir%/}" "${_running_thread_search_re}"
-        _long_blocked "${_save_dir%/}" "${_running_thread_search_re}"
-        echo 'NOTE: rg -A7 -m1 "RUNNABLE" -g <filename>'
-        # TODO: also check similar file sizes (wc -c?)
-        echo " "
-
-        echo "## Long running (more than ${_times} times) threads which contain '${_running_thread_search_re}' (threads:${_count})"
-        local _times=3
-        [ -n "${_count}" ] && [ ${_count} -gt 1 ] && [ 3 -gt ${_count} ] && _times=${_count}
-        rg -l "${_running_thread_search_re}" ${_save_dir%/}/ | xargs -I {} basename {} | sort | uniq -c | rg "^\s+([${_times}-9]|\d\d+)\s+.+ ([^ ]+$)" -o -r '$1' | sort
-        #| rg -v "(ParallelGC|G1 Concurrent Refinement|Parallel Marking Threads|GC Thread|VM Thread)"
-        echo " "
-
-        echo "## Counting methods (but more than once) from running threads which also contains '${_running_thread_search_re}' (threads:${_count})"
-        rg "${_running_thread_search_re}" -l -g '*runnable*' ${_save_dir%/} | while read -r _f; do
-            echo "$(basename "${_f}") $(rg '^\sat\s' -m1 "${_f}")"
-        done | sort | uniq -c | sort -nr | rg -v '^\s*1\s' | head -n40
-        echo " "
-
-        echo "## Counting locked thread from 'Locked ownable synchronizers:' and runnable and more than 3"
-        rg "Locked ownable synchronizers:" -l -g '*runnable*' ${_save_dir%/} | while read -r _f; do
-            rg -H -c '^\s+- <0x' ${_f} | rg -v ":[1-2]$"
-        done | sort -t":" -k1,1 -k2,2r
-        echo " "
-
-        echo "### May also want to use f_splitTopNetstat() and f_hexTids_from_topH() and f_check_netstat()"
-        echo " "
-        return $?
+        f_analyse_multipe_dumps "${_save_dir}" "${_running_thread_search_re}" || return $?
     fi
 
     f_splitByRegex "${_file}" "${_split_search}" "${_save_dir%/}" ""
@@ -1255,6 +1227,42 @@ function f_threads() {
     echo "### _threads_extra_check"
     _threads_extra_check "${_file}"
 }
+function f_analyse_multiple_dumps() {
+    local _indivisual_thread_dir="${1:-"."}"
+    local _running_thread_search_re="${2-"\.sonatype\."}"
+    local _times="${3:-"3"}"
+
+    echo "## Thread status counts from ./f_thread_*.out"
+    rg -A10 '^### Counting thread states' ./f_thread_*.out
+    echo " "
+
+    echo "## Long *RUN*ning (or BLOCKED) and no-change (same hash) threads which contain '${_running_thread_search_re}'"
+    _long_running "${_indivisual_thread_dir%/}" "${_running_thread_search_re}"
+    _long_blocked "${_indivisual_thread_dir%/}" "${_running_thread_search_re}"
+    echo 'NOTE: rg -A7 -m1 "RUNNABLE" -g <filename>'
+    # TODO: also check similar file sizes (wc -c?)
+    echo " "
+
+    echo "## Long running (more than ${_times} times) threads which contain '${_running_thread_search_re}'"
+    rg -l "${_running_thread_search_re}" ${_indivisual_thread_dir%/}/ | xargs -I {} basename {} | sort | uniq -c | rg "^\s+([${_times}-9]|\d\d+)\s+.+ ([^ ]+$)" -o -r '$1' | sort
+    #| rg -v "(ParallelGC|G1 Concurrent Refinement|Parallel Marking Threads|GC Thread|VM Thread)"
+    echo " "
+
+    echo "## Counting methods (but more than once) from running threads which also contains '${_running_thread_search_re}'"
+    rg "${_running_thread_search_re}" -l -g '*runnable*' ${_indivisual_thread_dir%/} | while read -r _f; do
+        echo "$(basename "${_f}") $(rg '^\sat\s' -m1 "${_f}")"
+    done | sort | uniq -c | sort -nr | rg -v '^\s*1\s' | head -n40
+    echo " "
+
+    echo "## Counting locked thread from 'Locked ownable synchronizers:' and runnable and more than 3"
+    rg "Locked ownable synchronizers:" -l -g '*runnable*' ${_indivisual_thread_dir%/} | while read -r _f; do
+        rg -H -c '^\s+- <0x' ${_f} | rg -v ":[1-2]$"
+    done | sort -t":" -k1,1 -k2,2r
+    echo " "
+
+    echo "### May also want to use f_splitTopNetstat() and f_hexTids_from_topH() and f_check_netstat()"
+    echo " "
+}
 function _thread_state_sum() {
     local _file="$1"
     if rg -q 'java.lang.Thread.State:' ${_file}; then
@@ -1289,7 +1297,7 @@ function _threads_extra_check() {
     if [ ! -f "${_file}" ]; then
         _file="--no-filename -g \"${_file}\""
     fi
-    rg '(DefaultTimelineIndexer|content_digest|findAssetByContentDigest|touchItemLastRequested|preClose0|sun\.security\.util\.MemoryCache|java\.lang\.Class\.forName|CachingDateFormatter|metrics\.health\.HealthCheck\.execute|WeakHashMap|userId\.toLowerCase|MessageDigest|UploadManagerImpl\.startUpload|UploadManagerImpl\.blobsByName|maybeTrimRepositories|getQuarantinedVersions|nonCatalogedVersions|getProxyDownloadNumbers|RepositoryManagerImpl.retrieveConfigurationByName|\.StorageFacetManagerImpl\.|OTransactionRealAbstract\.isIndexKeyMayDependOnRid|AptFacetImpl.put|componentMetadata|ensureGetUpload|OrientCommonQueryDataService|getWaivedFixed|AbstractOperationalSqlDAO\.getAll)' ${_file} | sort | uniq -c > /tmp/$FUNCNAME_$$.out || return $?
+    rg '(DefaultTimelineIndexer|content_digest|findAssetByContentDigest|touchItemLastRequested|preClose0|sun\.security\.util\.MemoryCache|java\.lang\.Class\.forName|CachingDateFormatter|metrics\.health\.HealthCheck\.execute|WeakHashMap|userId\.toLowerCase|MessageDigest|UploadManagerImpl\.startUpload|UploadManagerImpl\.blobsByName|maybeTrimRepositories|getQuarantinedVersions|nonCatalogedVersions|getProxyDownloadNumbers|RepositoryManagerImpl.retrieveConfigurationByName|\.StorageFacetManagerImpl\.|OTransactionRealAbstract\.isIndexKeyMayDependOnRid|AptFacetImpl.put|componentMetadata|ensureGetUpload|OrientCommonQueryDataService|getWaivedFixed|AbstractOperationalSqlDAO\.getAll|NewestRiskService)' ${_file} | sort | uniq -c > /tmp/$FUNCNAME_$$.out || return $?
     if [ -s /tmp/$FUNCNAME_$$.out ]; then
         echo "## Counting:"
         echo "##    'DefaultTimelineIndexer' for NXRM2 System Feeds: timeline-plugin,"
@@ -1318,6 +1326,7 @@ function _threads_extra_check() {
         echo "##    'OrientCommonQueryDataService' NEXUS-41312"
         echo "##    'getWaivedFixed' CLM-29328"
         echo "##    'AbstractOperationalSqlDAO.getAll' CLM-29339"
+        echo "##    'NewestRiskService' dashboard/policy/newestRisks"
         cat /tmp/$FUNCNAME_$$.out
         echo " "
     fi
