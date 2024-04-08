@@ -1213,7 +1213,7 @@ function f_microk8s() {
     kubectl expose deployment <deployment-name> --type=LoadBalancer --port=8081
     kubectl get pods --show-labels -A       # get pods from all namespaces with labels
     kubectl exec $(kubectl get pods -n sonatype -l app.kubernetes.io/name=nexus-repository-manager -o jsonpath={.items[0].metadata.name}) -n sonatype -t -i -- bash
-    kubectl port-forward pod/<pod-name> -n default --address 0.0.0.0 18081:8081 & # this command runs in foreground
+    kubectl port-forward deployment/<deploy-name> -n default --address 0.0.0.0 18081:8081 & # this command runs in foreground
     kubectl port-forward $(kubectl get pods -n sonatype -l 'app.kubernetes.io/name=nexus-repository-manager' -o jsonpath='{.items[0].metadata.name}') 8081:8081 -n sonatype &>/tmp/k8s_pf_8081.out &
     kubectl logs <pod-name>                 # To see if app had error, also --previous is useful
     kubectl delete pod --grace-period=0 --force <pod-name>      # force terminating/deleting. check 'get pvc' and 'get pv'
