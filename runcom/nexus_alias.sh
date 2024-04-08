@@ -99,8 +99,8 @@ function iqCli() {
         if [ -z "${_iq_cli_ver}" ]; then
         _iq_cli_ver="$(curl -m3 -sf "${_iq_url%/}/rest/product/version" | python -c "import sys,json;a=json.loads(sys.stdin.read());print(a['version'])")"
     fi
-    local _iq_cli_jar="${_IQ_CLI_JAR:-"${_WORK_DIR%/}/sonatype/iq-cli/nexus-iq-cli-${_iq_cli_ver}.jar"}"
 
+    local _iq_cli_jar="${_IQ_CLI_JAR:-"$HOME/.nexus_executable_cache/nexus-iq-cli-${_iq_cli_ver}.jar"}"
     if [ ! -s "${_iq_cli_jar}" ]; then
         #local _tmp_iq_cli_jar="$(find ${_WORK_DIR%/}/sonatype -name 'nexus-iq-cli*.jar' 2>/dev/null | sort -r | head -n1)"
         local _cli_dir="$(dirname "${_iq_cli_jar}")"
@@ -600,6 +600,8 @@ EOF
 }
 
 
+### maven/mvn related
+alias mvn-sbom='mvn org.cyclonedx:cyclonedx-maven-plugin:makeAggregateBom'
 
 function mvn-purge-local() {
     local __doc__="https://maven.apache.org/plugins/maven-dependency-plugin/examples/purging-local-repository.html"
@@ -655,9 +657,9 @@ mvn-arch-gen
 for v in {1..3}; do
   for a in {1..3}; do
     for g in {1..3}; do
-      sed -i.tmp -E "s@^  <groupId>.+</groupId>@  <groupId>com.example${g}</groupId>@" pom.xml
-      sed -i.tmp -E "s@^  <artifactId>.+</artifactId>@  <artifactId>my-app${a}</artifactId>@" pom.xml
-      sed -i.tmp -E "s@^  <version>.+</version>@  <version>1.${v}${_SNAPSHOT}</version>@" pom.xml
+      sed -i.tmp -E "s@^  <groupId>.+</groupId>@  <groupId>com.example${g:-"0"}</groupId>@" pom.xml
+      sed -i.tmp -E "s@^  <artifactId>.+</artifactId>@  <artifactId>my-app${a:-"0"}</artifactId>@" pom.xml
+      sed -i.tmp -E "s@^  <version>.+</version>@  <version>1.${v:-"0"}${_SNAPSHOT}</version>@" pom.xml
       mvn-deploy "${_REPO_URL}" "" "" "nexus" "" || break
     done || break
   done || break

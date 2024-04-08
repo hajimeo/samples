@@ -217,11 +217,11 @@ alias jenkins='${JAVA_HOME_11%/}/bin/java -jar $HOME/Apps/jenkins.war'  #curl -o
 # http (but https fails) + reverse proxy server https://www.mock-server.com/mock_server/getting_started.html
 alias mockserver='java -jar $HOME/Apps/mockserver-netty.jar'  #curl -o $HOME/Apps/mockserver-netty.jar -L https://search.maven.org/remotecontent?filepath=org/mock-server/mockserver-netty/5.11.1/mockserver-netty-5.11.1-jar-with-dependencies.jar
 alias jkCli='java -jar $HOME/Apps/jenkins-cli.jar -s http://localhost:8080/ -auth admin:admin123' #curl -o $HOME/Apps/jenkins-cli.jar -L http://localhost:8080/jnlpJars/jenkins-cli.jar
-[ -f /var/tmp/share/java/orient-console.jar ] && alias orient-console="java -jar /var/tmp/share/java/orient-console.jar"
-[ -f /var/tmp/share/java/h2-console.jar ] && alias h2-console="java -jar /var/tmp/share/java/h2-console.jar"
-[ -f /var/tmp/share/java/h2-console_v200.jar ] && alias h2-console_v200="java -jar /var/tmp/share/java/h2-console_v200.jar"
-[ -f /var/tmp/share/java/pg-console.jar ] && alias pg-console="java -jar /var/tmp/share/java/pg-console.jar"
-[ -f /var/tmp/share/java/blobpath.jar ] && alias blobpathJ="java -jar /var/tmp/share/java/blobpath.jar"
+[ -f $HOME/share/java/orient-console.jar ] && alias orient-console="java -jar $HOME/share/java/orient-console.jar"
+[ -f $HOME/share/java/h2-console.jar ] && alias h2-console="java -jar $HOME/share/java/h2-console.jar"
+[ -f $HOME/share/java/h2-console_v200.jar ] && alias h2-console_v200="java -jar $HOME/share/java/h2-console_v200.jar"
+[ -f $HOME/share/java/pg-console.jar ] && alias pg-console="java -jar $HOME/share/java/pg-console.jar"
+[ -f $HOME/share/java/blobpath.jar ] && alias blobpathJ="java -jar $HOME/share/java/blobpath.jar"
 # JAVA_HOME_11 is set in bash_profile.sh
 alias matJ11='/Applications/mat.app/Contents/MacOS/MemoryAnalyzer -vm ${JAVA_HOME_11%/}/bin'
 
@@ -245,10 +245,9 @@ alias smtpdemo='python -m smtpd -n -c DebuggingServer localhost:2500'
 # mac doesn't have namei (util-linux)
 function namei_l() {
     local _path="$1"
-    local _full_path=""
+    local _full_path="$(readlink -f "${_path}")"
     #while true; do ls -ld $1; _p="$(dirname "$1")" || break ; [ "$1" = "/" ] && break; done
     while true; do
-        _full_path="$(readlink -f "${_path}")"
         if [ -f "${_full_path}" ]; then
             echo "$(ls -l ${_full_path})"
         elif [ -d "${_full_path}" ]; then
@@ -777,6 +776,7 @@ function backupC() {
         #${_find} $HOME/Documents/tests/* -type d -mtime +2 -empty -print -delete
         ${_find} "$HOME/Documents/tests" -maxdepth 1 -type d -mtime +120 | rg '(nxrm|nxiq)_[0-9.-]+_([^_]+)' -o -r '$2' | rg -v -i -w 'h2' | xargs -I{} -t psql -c "DROP DATABASE {}"
         ${_find} "$HOME/Documents/tests" -maxdepth 1 -type d -mtime +120 -name 'nx??_[0-9]*' -print0 | xargs -0 -I{} -t rm -rf {}
+        # SELECT datname, sessions, stats_reset, session_time, active_time, pg_database_size(datname) as db_bytes FROM pg_stat_database WHERE datname NOT IN ('', 'template0', 'template1', 'postgres') ORDER BY stats_reset LIMIT 10;
      fi
 
     [ ! -d "${_src}" ] && return 11
@@ -892,6 +892,10 @@ function pubS() {
     [ $HOME/IdeaProjects/samples/misc/orient-console.jar -nt /tmp/pubS.last ] && scp $HOME/IdeaProjects/samples/misc/orient-console.jar dh1:/var/tmp/share/java/
     [ $HOME/IdeaProjects/samples/misc/h2-console.jar -nt /tmp/pubS.last ] && scp $HOME/IdeaProjects/samples/misc/h2-console.jar dh1:/var/tmp/share/java/
     [ $HOME/IdeaProjects/samples/misc/filelist_Linux_x86_64 -nt /tmp/pubS.last ] && scp $HOME/IdeaProjects/samples/misc/filelist_Linux_x86_64 dh1:/var/tmp/share/bin/
+    if [ -d "$HOME/IdeaProjects/nexus-monitoring/resources" ] && [ $HOME/IdeaProjects/samples/misc/h2-console.jar -nt /tmp/pubS.last ]; then
+        cp -v -f $HOME/IdeaProjects/samples/misc/*-console.jar $HOME/IdeaProjects/nexus-monitoring/resources/
+        cp -v -f $HOME/IdeaProjects/samples/misc/filelist_* $HOME/IdeaProjects/nexus-monitoring/resources/
+    fi
     sync_nexus_binaries &>/dev/null &
     date | tee /tmp/pubS.last
 }
