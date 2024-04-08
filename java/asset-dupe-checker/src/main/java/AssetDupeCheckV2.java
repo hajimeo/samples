@@ -595,6 +595,7 @@ public class AssetDupeCheckV2 {
             ORID docId,
             OIndex<?> index,
             Object indexKey) {
+        // NOTE: `is duplicate of` is mentioned in README, so if changing message, please update README as well.
         log("[WARN] " + maybeDupe + " is duplicate of " + docId + "." + " IndexKey: " + indexKey.toString());
         ORID deletingId = maybeDupe;
         ORID keepingId = docId; // This means default is keeping the older one for UPDATE.
