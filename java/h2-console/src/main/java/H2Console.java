@@ -561,7 +561,7 @@ public class H2Console {
         if (h2Opts.isEmpty()) {
             h2Opts = H2_DEFAULT_OPTS;
             if (path.endsWith(".h2.db")) {
-                h2Opts = h2Opts + ";MV_STORE=FALSE";
+                h2Opts = h2Opts + ";MV_STORE=FALSE;MVCC=TRUE;";
                 if (path.endsWith("ods.h2.db")) {
                     h2Opts = h2Opts + ";SCHEMA=insight_brain_ods";
                 }
