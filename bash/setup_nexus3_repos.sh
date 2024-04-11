@@ -2237,6 +2237,17 @@ function f_upload_dummies_mvn() {
     # NOTE: xargs only stops if exit code is 255
 }
 
+: <<'EOF'
+# Example of uploading 100 snapshots each with 27 concurrency (total 2700)
+for g in {1..3}; do
+  for a in {1..3}; do
+    for v in {1..3}; do
+      f_upload_dummies_mvn_snapshot "maven-snapshots" 100 "com.example${g}" "my-app${a}" "${v}.0-SNAPSHOT" &
+    done
+  done
+done
+wait
+EOF
 function f_upload_dummies_mvn_snapshot() {
     local __doc__="Upload dummy jar files into maven snapshot hosted repository. Requires 'mvn' command"
     local _repo_name="${1:-"maven-snapshots"}"
