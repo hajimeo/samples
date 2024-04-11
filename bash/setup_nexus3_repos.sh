@@ -107,6 +107,8 @@ _TMP="/tmp"  # for downloading/uploading assets
 _AUTO=false
 _DEBUG=false
 _RESP_FILE=""
+: "${_NEXUS_ENABLE_HA:=""}"
+: "${_NEXUS_NO_AUTO_TASKS:=""}"
 
 
 ### Nexus installation functions ##############################################################################
@@ -171,6 +173,10 @@ function f_install_nexus3() {
     _upsert "${_prop}" "nexus.security.randompassword" "false" || return $?
     _upsert "${_prop}" "nexus.onboarding.enabled" "false" || return $?
     _upsert "${_prop}" "nexus.scripts.allowCreation" "true" || return $?
+    if ! _isYes "${_NEXUS_NO_AUTO_TASKS:-"${r_NEXUS_NO_AUTO_TASKS}"}"; then
+        _upsert "${_prop}" "nexus.elasticsearch.autoRebuild" "false" || return $?
+        _upsert "${_prop}" "nexus.browse.component.tree.automaticRebuild" "true" || return $?
+    fi
 
     if [ -n "${_dbname}" ]; then
         grep -q "^nexus.datastore.enabled" "${_prop}" 2>/dev/null || echo "nexus.datastore.enabled=true" >> "${_prop}" || return $?
@@ -1157,7 +1163,8 @@ function f_create_group_blobstore() {
     local _repo_name="${2:-"raw-grpbs-hosted"}"
     f_create_file_blobstore "${_member_pfx}1"
     f_create_file_blobstore "${_member_pfx}2"
-    f_api '/service/rest/v1/blobstores/group' '{"name":"'${_bs_name}'","members":["'${_member_pfx}'1","'${_member_pfx}'2"],"fillPolicy":"writeToFirst"}' || return $?
+    # writeToFirst or roundRobin
+    f_api '/service/rest/v1/blobstores/group' '{"name":"'${_bs_name}'","members":["'${_member_pfx}'1","'${_member_pfx}'2"],"fillPolicy":"roundRobin"}' || return $?
     if ! _is_repo_available "${_repo_name}"; then
         _log "INFO" "Creating ${_repo_name} ..."
         _apiS '{"action":"coreui_Repository","method":"create","data":[{"attributes":{"storage":{"blobStoreName":"'${_bs_name}'","writePolicy":"ALLOW","strictContentTypeValidation":true'$(_get_extra_sto_opt)'},"cleanup":{"policyName":[]}},"name":"'${_repo_name}'","format":"","type":"","url":"","online":true,"recipe":"raw-hosted"}],"type":"rpc"}' || return $?
@@ -2157,22 +2164,8 @@ function f_upload_dummies_raw_with_api() {
     done
 }
 
-function f_upload_dummies_mvn() {
-    local __doc__="Upload text files into maven hosted repository"
-    local _repo_name="${1:-"maven-hosted"}"
-    local _how_many="${2:-"10"}"
-    local _parallel="${3:-"3"}"
-    local _file_prefix="${4:-"test_"}"
-    local _file_suffix="${5:-".txt"}"
-    local _ver_sfx="${6:-"${_MVN_VER_SFX}"}"   # Can't use '-SNAPSHOT' as "Upload to snapshot repositories not supported"
-    local _usr="${7:-"${_ADMIN_USER}"}"
-    local _pwd="${8:-"${_ADMIN_PWD}"}"
-    # _SEQ_START is for continuing
-    local _seq_start="${_SEQ_START:-1}"
-    local _seq_end="$((${_seq_start} + ${_how_many} - 1))"
-    local _seq="seq ${_seq_start} ${_seq_end}"
-    [[ "${_how_many}" =~ ^[0-9]+[[:space:]]+[0-9]+$ ]] && _seq="seq ${_how_many}"
-    local _filepath="${_TMP%/}/dummy.jar"
+function _gen_dummy_jar() {
+    local _filepath="${1:-"${_TMP%/}/dummy.jar"}"
     if [ ! -s "${_filepath}" ]; then
         if type jar &>/dev/null; then
             echo "test by f_upload_dummies at $(date +'%Y-%m-%d %H:%M:%S')" > dummy.txt
@@ -2181,6 +2174,59 @@ function f_upload_dummies_mvn() {
             curl -o "${_filepath}" "https://repo1.maven.org/maven2/org/sonatype/goodies/goodies-i18n/2.3.4/goodies-i18n-2.3.4.jar" || return $?
         fi
     fi
+}
+
+function _gen_mvn_settings() {
+    local _setting_path="${1:-"./m2_settings.xml"}"
+    if [ -s "${_setting_path}" ]; then
+        echo "WARN ${_setting_path} already exists"
+        return 1
+    fi
+    cat << 'EOF' > "${_setting_path}"
+<settings>
+    <servers>
+        <server>
+            <id>${repo.id}</id>
+            <username>${repo.login}</username>
+            <password>${repo.pwd}</password>
+        </server>
+    </servers>
+</settings>
+EOF
+}
+
+function _mvn_deploy_file() {
+    local _deploy_repo="${1}"
+    local _file="${2}"
+    local _options="${3}"   # -DcreateChecksum=true
+    local _usr="${4:-"${_ADMIN_USER}"}"
+    local _pwd="${5:-"${_ADMIN_PWD}"}"
+    [ -z "${_deploy_repo}" ] && return 11
+    # https://issues.apache.org/jira/browse/MRESOLVER-56     -Daether.checksums.algorithms="SHA256,SHA512"
+    if [ ! -s "${_TMP%/}/m2_settings.xml" ]; then
+        _gen_mvn_settings "${_TMP%/}/m2_settings.xml" || return $?
+    fi
+    #-DaltDeploymentRepository="nexusDummy::default::${_deploy_repo}"
+    mvn -s "${_TMP%/}/m2_settings.xml" deploy:deploy-file -Durl=${_deploy_repo} -Dfile="${_file}" -DrepositoryId="nexusDummy" -Drepo.id="nexusDummy" -Drepo.login="${_usr}" -Drepo.pwd="${_pwd}" ${_options}
+}
+
+function f_upload_dummies_mvn() {
+    local __doc__="Upload dummy jar files into maven hosted repository"
+    local _repo_name="${1:-"maven-hosted"}"
+    local _how_many="${2:-"10"}"
+    local _parallel="${3:-"3"}"
+    local _ver_sfx="${4:-"${_MVN_VER_SFX}"}"   # Can't use '-SNAPSHOT' as "Upload to snapshot repositories not supported"
+    local _usr="${5:-"${_ADMIN_USER}"}"
+    local _pwd="${6:-"${_ADMIN_PWD}"}"
+
+    # _SEQ_START is for continuing
+    local _seq_start="${_SEQ_START:-1}"
+    local _seq_end="$((${_seq_start} + ${_how_many} - 1))"
+    local _seq="seq ${_seq_start} ${_seq_end}"
+    [[ "${_how_many}" =~ ^[0-9]+[[:space:]]+[0-9]+$ ]] && _seq="seq ${_how_many}"
+
+    _gen_dummy_jar || return $?
+
     local _g="setup.nexus3.repos"
     local _a="dummy"
     # Does not work with Mac's bash...
@@ -2189,6 +2235,30 @@ function f_upload_dummies_mvn() {
       echo "$i${_ver_sfx}"
     done | xargs -I{} -P${_parallel} curl -sSf -u "${_usr}:${_pwd}" -w "%{http_code} ${_g}:${_a}:{} (%{time_total}s)\n" -H "accept: application/json" -H "Content-Type: multipart/form-data" -X POST -k "${_NEXUS_URL%/}/service/rest/v1/components?repository=${_repo_name}" -F maven2.groupId=${_g} -F maven2.artifactId=${_a} -F maven2.version={} -F maven2.asset1=@${_filepath} -F maven2.asset1.extension=jar
     # NOTE: xargs only stops if exit code is 255
+}
+
+function f_upload_dummies_mvn_snapshot() {
+    local __doc__="Upload dummy jar files into maven snapshot hosted repository. Requires 'mvn' command"
+    local _repo_name="${1:-"maven-snapshots"}"
+    local _how_many="${2:-"10"}"
+    local _group="${3:-"com.example"}"
+    local _name="${4:-"my-app"}"
+    local _ver="${5:-"1.0-SNAPSHOT"}"
+    local _usr="${6:-"${_ADMIN_USER}"}"
+    local _pwd="${7:-"${_ADMIN_PWD}"}"
+
+    # _SEQ_START is for continuing
+    local _seq_start="${_SEQ_START:-1}"
+    local _seq_end="$((${_seq_start} + ${_how_many} - 1))"
+    local _seq="seq ${_seq_start} ${_seq_end}"
+    [[ "${_how_many}" =~ ^[0-9]+[[:space:]]+[0-9]+$ ]] && _seq="seq ${_how_many}"
+    local _repo_url="${_NEXUS_URL%/}/repository/${_repo_name%/}/"
+
+    _gen_dummy_jar "${_TMP%/}/dummy.jar" || return $?
+
+    for _ in $(eval "${_seq}"); do
+        _mvn_deploy_file "${_repo_url}" "${_TMP%/}/dummy.jar" "-DgroupId=${_group} -DartifactId=${_name} -Dversion=${_ver} -Dpackaging=jar" || break
+    done
 }
 
 function f_upload_dummies_npm() {
