@@ -76,7 +76,11 @@ function runDbQuery() {
     local _timeout="${3:-"30"}"
     local _dbConnFile="${4:-"${_DB_CONN_TEST_FILE}"}"
     local _installDir="${5:-"${_INSTALL_DIR}"}"
-    local _groovyAllVer="2.4.17"
+    local _groovyAllVer=""
+    local _groovy_jar="${_installDir%/}/system/org/codehaus/groovy/groovy-all/2.4.17/groovy-all-2.4.17.jar"
+    if [ ! -s "${_installDir%/}/system/org/codehaus/groovy/groovy-all/${_groovyAllVer}/groovy-all-${_groovyAllVer}.jar" ]; then
+        _groovy_jar="${_installDir%/}/system/org/codehaus/groovy/groovy/3.0.19/groovy-3.0.19.jar"
+    fi
     if [ ! -s "${_storeProp}" ] && [ -z "${jdbcUrl}" ]; then
         echo "No nexus-store.properties file and no jdbcUrl set." >&2
         return 1
@@ -86,7 +90,7 @@ function runDbQuery() {
     fi
     local _java="java"
     [ -d "${JAVA_HOME%/}" ] && _java="${JAVA_HOME%/}/bin/java"
-    timeout ${_timeout}s ${_java} -Dgroovy.classpath="$(find "${_installDir%/}/system/org/postgresql/postgresql" -type f -name 'postgresql-42.*.jar' | tail -n1)" -jar "${_installDir%/}/system/org/codehaus/groovy/groovy-all/${_groovyAllVer}/groovy-all-${_groovyAllVer}.jar" \
+    timeout ${_timeout}s ${_java} -Dgroovy.classpath="$(find "${_installDir%/}/system/org/postgresql/postgresql" -type f -name 'postgresql-42.*.jar' | tail -n1)" -jar "${_groovy_jar}" \
         "${_dbConnFile}" "${_query}" "${_storeProp}"
 }
 
