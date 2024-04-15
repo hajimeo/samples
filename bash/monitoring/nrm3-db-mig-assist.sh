@@ -80,7 +80,7 @@ function runDbQuery() {
     local _installDir="${5:-"${_INSTALL_DIR}"}"
     local _groovyAllVer=""
     local _groovy_jar="${_installDir%/}/system/org/codehaus/groovy/groovy-all/2.4.17/groovy-all-2.4.17.jar"
-    if [ ! -s "${_installDir%/}/system/org/codehaus/groovy/groovy-all/${_groovyAllVer}/groovy-all-${_groovyAllVer}.jar" ]; then
+    if [ ! -s "${_groovy_jar}" ]; then
         _groovy_jar="$(find "${_installDir%/}/system/org/codehaus/groovy/groovy" -type f -name 'groovy-3.*.jar' 2>/dev/null | head -n1)"
     fi
     if [ ! -s "${_storeProp}" ] && [ -z "${jdbcUrl}" ]; then

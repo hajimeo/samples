@@ -97,7 +97,7 @@ function runDbQuery() {
     local _installDir="${5:-"${_INSTALL_DIR}"}"
     local _groovyAllVer=""
     local _groovy_jar="${_installDir%/}/system/org/codehaus/groovy/groovy-all/2.4.17/groovy-all-2.4.17.jar"
-    if [ ! -s "${_installDir%/}/system/org/codehaus/groovy/groovy-all/${_groovyAllVer}/groovy-all-${_groovyAllVer}.jar" ]; then
+    if [ ! -s "${_groovy_jar}" ]; then
         _groovy_jar="$(find "${_installDir%/}/system/org/codehaus/groovy/groovy" -type f -name 'groovy-3.*.jar' 2>/dev/null | head -n1)"
     fi
     if [ ! -s "${_storeProp}" ] && [ -z "${jdbcUrl}" ]; then
@@ -146,6 +146,10 @@ function setGlobals() { # Best effort. may not return accurate dir path
             elif grep -q 'JDBC_URL=' "/proc/${_pid}/environ"; then
                 eval "$(cat "/proc/${_pid}/environ" | tr '\0' '\n' | grep -E '^(JDBC_URL|DB_USER|DB_PWD)=')"
                 export username="${DB_USER}" password="${DB_PWD}" jdbcUrl="${JDBC_URL}"
+            else
+                eval "$(cat "/proc/${_pid}/environ" | tr '\0' '\n' | grep -E '^DB_')"
+                # Currently HA helm doesn't allow to change the DB port
+                export username="${DB_USER}" password="${DB_PASSWORD}" jdbcUrl="jdbc:postgresql://${DB_HOST}:5432/${DB_NAME}"
             fi
         elif [ -s "${_WORK_DIR%/}/etc/fabric/nexus-store.properties" ] && grep -q -w jdbcUrl "${_WORK_DIR%/}/etc/fabric/nexus-store.properties"; then
             _STORE_FILE="${_WORK_DIR%/}/etc/fabric/nexus-store.properties"
