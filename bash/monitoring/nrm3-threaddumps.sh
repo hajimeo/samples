@@ -101,7 +101,7 @@ function runDbQuery() {
         _groovy_jar="$(find "${_installDir%/}/system/org/codehaus/groovy/groovy" -type f -name 'groovy-3.*.jar' 2>/dev/null | head -n1)"
     fi
     if [ ! -s "${_storeProp}" ] && [ -z "${jdbcUrl}" ]; then
-        echo "No nexus-store.properties file and no jdbcUrl set." >&2
+        echo "ERROR:No nexus-store.properties file and no jdbcUrl set." >&2
         return 1
     fi
     if [ ! -s "${_dbConnFile}" ]; then

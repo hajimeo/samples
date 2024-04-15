@@ -26,7 +26,6 @@ _GROOVY_CLASSPATH=""
 function genDbConnTest() {
     local __doc__="Generate a DB connection script file"
     local _dbConnFile="${1:-"${_DB_CONN_TEST_FILE}"}"
-    # TODO:  import groovy.sql.Sql fails with v3
     cat <<'EOF' >"${_dbConnFile}"
 import org.postgresql.*
 import groovy.sql.Sql
@@ -84,7 +83,7 @@ function runDbQuery() {
         _groovy_jar="$(find "${_installDir%/}/system/org/codehaus/groovy/groovy" -type f -name 'groovy-3.*.jar' 2>/dev/null | head -n1)"
     fi
     if [ ! -s "${_storeProp}" ] && [ -z "${jdbcUrl}" ]; then
-        echo "No nexus-store.properties file and no jdbcUrl set." >&2
+        echo "ERROR:No nexus-store.properties file and no jdbcUrl set." >&2
         return 1
     fi
     if [ ! -s "${_dbConnFile}" ]; then
@@ -108,13 +107,13 @@ function setGlobals() { # Best effort. may not return accurate dir path
     if [ -z "${_pid}" ]; then
         _pid="$(ps auxwww | grep -F 'org.sonatype.nexus.karaf.NexusMain' | grep -vw grep | awk '{print $2}' | tail -n1)"
         _PID="${_pid}"
-        [ -z "${_pid}" ] && echo "[INFO] no PID found" >&2
+        [ -z "${_pid}" ] && echo "INFO: no PID found" >&2
     fi
     if [ ! -d "${_INSTALL_DIR}" ]; then
         if [ -n "${_pid}" ]; then
             _INSTALL_DIR="$(ps wwwp ${_pid} | sed -n -E '/org.sonatype.nexus.karaf.NexusMain/ s/.+-Dexe4j.moduleName=([^ ]+)\/bin\/nexus .+/\1/p' | head -1)"
         fi
-        [ -d "${_INSTALL_DIR}" ] || echo "[WARN] no _INSTALL_DIR found" >&2
+        [ -d "${_INSTALL_DIR}" ] || echo "WARN: no _INSTALL_DIR found" >&2
     fi
     if [ ! -s "${_STORE_FILE}" ] && [ -z "${jdbcUrl}" ] && [ -n "${_pid}" ]; then
         if [ -e "/proc/${_pid}/environ" ]; then
