@@ -123,6 +123,10 @@ function setGlobals() { # Best effort. may not return accurate dir path
             elif grep -q 'JDBC_URL=' "/proc/${_pid}/environ"; then
                 eval "$(cat "/proc/${_pid}/environ" | tr '\0' '\n' | grep -E '^(JDBC_URL|DB_USER|DB_PWD)=')"
                 export username="${DB_USER}" password="${DB_PWD}" jdbcUrl="${JDBC_URL}"
+            else
+                eval "$(cat "/proc/${_pid}/environ" | tr '\0' '\n' | grep -E '^DB_')"
+                # Currently HA helm doesn't allow to change the DB port
+                export username="${DB_USER}" password="${DB_PASSWORD}" jdbcUrl="jdbc:postgresql://${DB_HOST}:5432/${DB_NAME}"
             fi
         else
             local _work_dir="$(ps wwwp ${_pid} | sed -n -E '/org.sonatype.nexus.karaf.NexusMain/ s/.+-Dkaraf.data=([^ ]+) .+/\1/p' | head -n1)"
