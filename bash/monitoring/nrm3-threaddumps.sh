@@ -37,6 +37,7 @@ _LOG_FILE=""
 _REGEX=""
 _DB_CONN_TEST_FILE="/tmp/DbConnTest.groovy"
 _PID=""
+_GROOVY_CLASSPATH=""
 _OUT_DIR=""
 # Also username, password, jdbcUrl
 
@@ -52,7 +53,7 @@ import java.time.Instant
 def elapse(Instant start, String word) {
     Instant end = Instant.now()
     Duration d = Duration.between(start, end)
-    println("# Elapsed ${d}: ${word}")
+    System.err.println("# Elapsed ${d}${word.take(200)}")
 }
 
 def p = new Properties()
@@ -62,21 +63,23 @@ if (args.length > 1 && !args[1].empty) {
 } else {
     p = System.getenv()  //username, password, jdbcUrl
 }
-def query = (args.length > 0 && !args[0].empty) ? args[0] : "SELECT version()"
+def query = (args.length > 0 && !args[0].empty) ? args[0] : "SELECT 'ok' as test"
 def driver = Class.forName('org.postgresql.Driver').newInstance() as Driver
 def dbP = new Properties()
 dbP.setProperty("user", p.username)
 dbP.setProperty("password", p.password)
 def start = Instant.now()
 def conn = driver.connect(p.jdbcUrl, dbP)
-elapse(start, "connect")
+elapse(start, " - connect")
 def sql = new Sql(conn)
 try {
     def queries = query.split(";")
     queries.each { q ->
+        q = q.trim()
+        System.err.println("# Querying: ${q.take(100)} ...")
         start = Instant.now()
         sql.eachRow(q) { println(it) }
-        elapse(start, q)
+        elapse(start, "")
     }
 } finally {
     sql.close()
@@ -92,7 +95,11 @@ function runDbQuery() {
     local _timeout="${3:-"30"}"
     local _dbConnFile="${4:-"${_DB_CONN_TEST_FILE}"}"
     local _installDir="${5:-"${_INSTALL_DIR}"}"
-    local _groovyAllVer="2.4.17"
+    local _groovyAllVer=""
+    local _groovy_jar="${_installDir%/}/system/org/codehaus/groovy/groovy-all/2.4.17/groovy-all-2.4.17.jar"
+    if [ ! -s "${_installDir%/}/system/org/codehaus/groovy/groovy-all/${_groovyAllVer}/groovy-all-${_groovyAllVer}.jar" ]; then
+        _groovy_jar="$(find "${_installDir%/}/system/org/codehaus/groovy/groovy" -type f -name 'groovy-3.*.jar' 2>/dev/null | head -n1)"
+    fi
     if [ ! -s "${_storeProp}" ] && [ -z "${jdbcUrl}" ]; then
         echo "No nexus-store.properties file and no jdbcUrl set." >&2
         return 1
@@ -102,7 +109,13 @@ function runDbQuery() {
     fi
     local _java="java"
     [ -d "${JAVA_HOME%/}" ] && _java="${JAVA_HOME%/}/bin/java"
-    timeout ${_timeout}s ${_java} -Dgroovy.classpath="$(find "${_installDir%/}/system/org/postgresql/postgresql" -type f -name 'postgresql-42.*.jar' | tail -n1)" -jar "${_installDir%/}/system/org/codehaus/groovy/groovy-all/${_groovyAllVer}/groovy-all-${_groovyAllVer}.jar" \
+    if [ -z "${_GROOVY_CLASSPATH}" ]; then
+        local _pgJar="$(find "${_installDir%/}/system/org/postgresql/postgresql" -type f -name 'postgresql-*.jar' 2>/dev/null | tail -n1)"
+        local _groovySqlJar="$(find "${_installDir%/}/system/org/codehaus/groovy/groovy-sql" -type f -name 'groovy-sql-*.jar' 2>/dev/null | tail -n1)"
+        _GROOVY_CLASSPATH="${_pgJar}"
+        [ -n "${_groovySqlJar}" ] && _GROOVY_CLASSPATH="${_GROOVY_CLASSPATH}:${_groovySqlJar}"
+    fi
+    timeout ${_timeout}s ${_java} -Dgroovy.classpath="${_GROOVY_CLASSPATH}" -jar "${_groovy_jar}" \
         "${_dbConnFile}" "${_query}" "${_storeProp}"
 }
 
@@ -115,7 +128,9 @@ function setGlobals() { # Best effort. may not return accurate dir path
         [ -z "${_pid}" ] && return 1
     fi
     if [ ! -d "${_INSTALL_DIR}" ]; then
-        _INSTALL_DIR="$(ps wwwp ${_pid} | sed -n -E '/org.sonatype.nexus.karaf.NexusMain/ s/.+-Dexe4j.moduleName=([^ ]+)\/bin\/nexus .+/\1/p' | head -1)"
+        if [ -n "${_pid}" ]; then
+            _INSTALL_DIR="$(ps wwwp ${_pid} | sed -n -E '/org.sonatype.nexus.karaf.NexusMain/ s/.+-Dexe4j.moduleName=([^ ]+)\/bin\/nexus .+/\1/p' | head -1)"
+        fi
         [ -d "${_INSTALL_DIR}" ] || return 1
     fi
     if [ ! -d "${_WORK_DIR}" ] && [ -d "${_INSTALL_DIR%/}" ]; then
