@@ -402,18 +402,19 @@ function e_app_logs() {
 function e_requests() {
     local _req_log_path="$(find . -maxdepth 3 -name "${_REQUEST_LOG:-"request.log"}" | sort -r | head -n1 2>/dev/null)"
     if _size_check "${_req_log_path}" "$((${_LOG_THRESHOLD_BYTES} * 10))"; then
+        # Running in background as this can take long time
         f_request2csv "${_req_log_path}" ${_FILTERED_DATA_DIR%/}/request.csv 2>/dev/null &
-        _rg "${_DATE_FMT_REQ}:(\d\d).+(/rest/|/api/)([^/ =?]+/?[^/ =?]+/?[^/ =?]+/?[^/ =?]+/?[^/ =?]+/?)" --no-filename -g ${_REQUEST_LOG} -o -r '"$1:" "$2$3"' | _replace_number | sort -k1,2 | uniq -c > ${_FILTERED_DATA_DIR%/}/agg_requests_count_hour_api.ssv &
+        _rg "${_DATE_FMT_REQ}:(\d\d).+(/rest/|/api/)([^/ =?]+/?[^/ =?]+/?[^/ =?]+/?[^/ =?]+/?[^/ =?]+/?)" --no-filename -g ${_REQUEST_LOG} -o -r '"$1:" "$2$3"' | _replace_number | sort -k1,2 | uniq -c > ${_FILTERED_DATA_DIR%/}/agg_requests_count_hour_api.ssv
     else
         _LOG "WARN" "Not converting '${_req_log_path:-"empty"}' to CSV (and agg_requests_count_hour_api) because no ${_REQUEST_LOG:-"request.log"} or larger than _LOG_THRESHOLD_BYTES:${_LOG_THRESHOLD_BYTES} * 10"
     fi
 }
 function e_threads() {
-    _NOT_SPLIT_BY_DATE=Y f_threads &>${_FILTERED_DATA_DIR%/}/f_threads.out &
+    _NOT_SPLIT_BY_DATE=Y f_threads &>${_FILTERED_DATA_DIR%/}/f_threads.out
 }
 function e_configs() {
-    _extract_configs >${_FILTERED_DATA_DIR%/}/extracted_configs.md &
-    _extract_log_last_start >${_FILTERED_DATA_DIR%/}/extracted_log_last_start.md &
+    _extract_configs >${_FILTERED_DATA_DIR%/}/extracted_configs.md
+    _extract_log_last_start >${_FILTERED_DATA_DIR%/}/extracted_log_last_start.md
     _search_json "sysinfo.json" "system-filestores" > ${_FILTERED_DATA_DIR%/}/system-filestores.json
 }
 
@@ -507,6 +508,14 @@ function t_system() {
     if _rg -g sysinfo.json -q 'REDHAT'; then
         _head "WARN" "Might be RHEL8 (TODO: most likely inaccurate)"
     fi
+}
+function t_pg_config() {
+    local _pg_cfg_glob="${1:-"dbFileInfo.txt"}"
+    local _excl_regex="${2-"\\\s*[:=]\\\s*"}"   #\",\"[^\"]+\",
+    [ ! -s "${_pg_cfg_glob}" ] && _pg_cfg_glob="-g ${_pg_cfg_glob}"
+    #_test_template "$(rg --no-filename -i '^["]?max_connections'${_excl_regex}'(\d{1,2}|100)\b' ${_pg_cfg_glob})" "WARN" "max_connections might be too small"
+    #TODO: _test_template "$(rg --no-filename -i '^["]?shared_buffers'${_excl_regex}'([1-4]\d{1,5}|\d{1,5}|[1-3]\d{1,3}kb|\d{1,6}kb|[1-3]\d{1,3}mb|\d{1,3}mb|[1-3]gb)\b' ${_pg_cfg_glob})" "WARN" "shared_buffers might be too small"
+    _test_template "$(rg --no-filename -i '^["]?(max_connections|shared_buffers|work_mem|effective_cache_size)\b' ${_pg_cfg_glob})" "WARN" "Please review DB configs"
 }
 function t_mounts() {
     _basic_check "" "${_FILTERED_DATA_DIR%/}/system-filestores.json" || return

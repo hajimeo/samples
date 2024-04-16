@@ -899,9 +899,7 @@ function f_count_lines() {
     fi
 }
 
-#f_hexTids_from_topH top_2021-03-31_16-31-43.out | sort | uniq -c
-#f_hexTids_from_topH top_2021-03-31_16-31-43.out | tr '\n' '|'
-#ls -1 top_2021-03-31_*.out | while read -r _f;do (echo "# ${_f}"; f_hexTids_from_topH ${_f} | xargs -I {} grep 'nid={} run' ${_f}); done &> result.out
+#f_hexTids_from_topH "top_0*"
 function f_hexTids_from_topH() {
     # grep top output and return PID (currently over 90% CUP one) for the user, then use printf to convert to hex
     local _file="${1}"  # file path or glob for rg
@@ -1116,7 +1114,8 @@ function f_threads() {
 
         echo " "
         # Doing below only when checking multiple thread dumps
-        f_analyse_multipe_dumps "${_save_dir}" "${_running_thread_search_re}" || return $?
+        f_analyse_multiple_dumps "${_save_dir}" "${_running_thread_search_re}"
+        return $?
     fi
 
     f_splitByRegex "${_file}" "${_split_search}" "${_save_dir%/}" ""
@@ -1228,7 +1227,7 @@ function f_threads() {
     _threads_extra_check "${_file}"
 }
 function f_analyse_multiple_dumps() {
-    local _indivisual_thread_dir="${1:-"."}"
+    local _individual_thread_dir="${1:-"."}"
     local _running_thread_search_re="${2-"\.sonatype\."}"
     local _times="${3:-"3"}"
 
@@ -1237,25 +1236,25 @@ function f_analyse_multiple_dumps() {
     echo " "
 
     echo "## Long *RUN*ning (or BLOCKED) and no-change (same hash) threads which contain '${_running_thread_search_re}'"
-    _long_running "${_indivisual_thread_dir%/}" "${_running_thread_search_re}"
-    _long_blocked "${_indivisual_thread_dir%/}" "${_running_thread_search_re}"
+    _long_running "${_individual_thread_dir%/}" "${_running_thread_search_re}"
+    _long_blocked "${_individual_thread_dir%/}" "${_running_thread_search_re}"
     echo 'NOTE: rg -A7 -m1 "RUNNABLE" -g <filename>'
     # TODO: also check similar file sizes (wc -c?)
     echo " "
 
     echo "## Long running (more than ${_times} times) threads which contain '${_running_thread_search_re}'"
-    rg -l "${_running_thread_search_re}" ${_indivisual_thread_dir%/}/ | xargs -I {} basename {} | sort | uniq -c | rg "^\s+([${_times}-9]|\d\d+)\s+.+ ([^ ]+$)" -o -r '$1' | sort
+    rg -l "${_running_thread_search_re}" ${_individual_thread_dir%/}/ | xargs -I {} basename {} | sort | uniq -c | rg "^\s+([${_times}-9]|\d\d+)\s+.+ ([^ ]+$)" -o -r '$1' | sort
     #| rg -v "(ParallelGC|G1 Concurrent Refinement|Parallel Marking Threads|GC Thread|VM Thread)"
     echo " "
 
     echo "## Counting methods (but more than once) from running threads which also contains '${_running_thread_search_re}'"
-    rg "${_running_thread_search_re}" -l -g '*runnable*' ${_indivisual_thread_dir%/} | while read -r _f; do
+    rg "${_running_thread_search_re}" -l -g '*runnable*' ${_individual_thread_dir%/} | while read -r _f; do
         echo "$(basename "${_f}") $(rg '^\sat\s' -m1 "${_f}")"
     done | sort | uniq -c | sort -nr | rg -v '^\s*1\s' | head -n40
     echo " "
 
     echo "## Counting locked thread from 'Locked ownable synchronizers:' and runnable and more than 3"
-    rg "Locked ownable synchronizers:" -l -g '*runnable*' ${_indivisual_thread_dir%/} | while read -r _f; do
+    rg "Locked ownable synchronizers:" -l -g '*runnable*' ${_individual_thread_dir%/} | while read -r _f; do
         rg -H -c '^\s+- <0x' ${_f} | rg -v ":[1-2]$"
     done | sort -t":" -k1,1 -k2,2r
     echo " "
