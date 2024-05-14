@@ -25,7 +25,10 @@ or
 source /dev/stdin <<< $(cat /proc/$(ps auxwww | grep -w 'NexusMain' | awk '{print $2}' | head -n1)/environ | tr '\0' '\n' | grep -E '^(JDBC_URL|DB_USER|DB_PWD)=')
 java -jar ./pg-console.jar "$JDBC_URL" "$DB_USER" "$DB_PWD"
 ```
-
+or, if IQ:
+```
+java -jar ./pg-console.jar "jdbc:postgresql://localhost:5432/iq163?currentSchema=insight_brain_ods&ApplicationName=pg-console" "$DB_USER" "$DB_PWD"
+```
 ### Execute SQL statement(s)
 Connection testing:
 ```
