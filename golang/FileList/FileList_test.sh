@@ -41,9 +41,10 @@ _NEXUS_DEFAULT_PORT="18081"
 _ASSET_CREATE_NUM=100
 _PID=""
 _WORKING_DIR=""
-_AWS_S3_BUCKET="apac-support-bucket"
-_AWS_S3_PREFIX="filelist_test"
-_S3_BLOBTORE_NAME="s3-test"
+
+_S3_BUCKET="apac-support-bucket"
+_S3_PREFIX="filelist_test"
+_S3_BLOBSTORE="s3-test"
 # NOTE: Can't change repo names, always $(genRepoName) and raw-s3-hosted
 
 _GREP="grep --include=\"*.properties\" -E"
@@ -98,8 +99,8 @@ function createAssets() {
     # Below line creates various repositories with a few dummy assets, but not using because this test is not for testing the Reconcile task.
     #_AUTO=true main
     if [[ "${_WITH_S3}" =~ ^[yY] ]]; then
-        _log "INFO" "Creating S3 '${_S3_BLOBTORE_NAME}' (this also creates 'raw-s3-hosted' repo)..."
-        if ! _NO_DATA=Y f_create_s3_blobstore "${_S3_BLOBTORE_NAME}" "${_AWS_S3_PREFIX}" "${_AWS_S3_BUCKET}"; then
+        _log "INFO" "Creating S3 '${_S3_BLOBSTORE}' (this also creates 'raw-s3-hosted' repo)..."
+        if ! _NO_DATA=Y f_create_s3_blobstore "${_S3_BLOBSTORE}" "${_S3_PREFIX}" "${_S3_BUCKET}"; then
             # other params use AWS_XXXX env variables
             _log "ERROR" "Failed. Please make sure the AWS_ env variables are set."
             return 1
@@ -203,7 +204,7 @@ EOF
 
 function genBsName() {
     if [[ "${_WITH_S3}" =~ ^[yY] ]]; then
-        echo "${_S3_BLOBTORE_NAME}"
+        echo "${_S3_BLOBSTORE}"
     else
         echo "${_BLOBTORE_NAME:-"default"}"
     fi
@@ -220,11 +221,12 @@ function genRepoName() {
 function genCmdBase() {
     local _b="${1}"
     if [[ "${_WITH_S3}" =~ ^[yY] ]]; then
-        local _cmd="${_FILE_LIST:-"file-list"} -S3 -b \"${_AWS_S3_BUCKET}\" -p \"${_AWS_S3_PREFIX}/content/vol-\""
+        local _cmd="${_FILE_LIST:-"file-list"} -S3 -b \"${_S3_BUCKET}\" -p \"${_S3_PREFIX}/content/vol-\""
     else
         local _cmd="${_FILE_LIST:-"file-list"} -b \"${_b}\" -p \"vol-\""
     fi
-    echo "${_cmd} -mF \"$(date +%Y-%m-%d)\" -bsName $(genBsName) -c 10 -H"
+    # S3 uses UTC time probably?
+    echo "${_cmd} -bsName $(genBsName) -c 10 -H"
 }
 
 function _exec() {
@@ -250,7 +252,7 @@ function test_FileList() {
     rm -v -f /tmp/${_tsv}*.tsv || return $?
 
     _log "INFO" "Getting .properties and .bytes files modified today ..."
-    local _cmd="$(genCmdBase "${_working_dir%/}/blobs/${_bsName}/content")"
+    local _cmd="$(genCmdBase "${_working_dir%/}/blobs/${_bsName}/content") -mF \"$(date -u +%Y-%m-%d)\""
     local _file_list_ln="$(_exec "${_cmd}" "/tmp/${_tsv}_all-files_for_today.tsv")"
     if [ ${_file_list_ln:-0} -le 1 ] || [ ${_ASSET_CREATE_NUM} -gt $(( ${_file_list_ln} / 2 )) ]; then
         _log "ERROR" "Test failed. file-list didn't find newly created ${_ASSET_CREATE_NUM} blobs ${_file_list_ln} / 2"
@@ -277,7 +279,7 @@ function test_DeadBlobsFind() {
     local _working_dir="${1:-"${_WORKING_DIR}"}"
     local _bsName="$(genBsName)"
     local _repo_name="$(genRepoName)"
-    local _cmd="$(genCmdBase "${_working_dir%/}/blobs/${_bsName}/content")"
+    local _cmd="$(genCmdBase "${_working_dir%/}/blobs/${_bsName}/content") -mF \"$(date -u +%Y-%m-%d)\""
     local _tsv="./${FUNCNAME[0]}_${_bsName}"
     local _how_many=10
 
@@ -309,35 +311,39 @@ function test_SoftDeletedThenUndeleteThenOrphaned() {
     local _working_dir="${1:-"${_WORKING_DIR}"}"
     local _bsName="$(genBsName)"
     local _repo_name="$(genRepoName)"
-    local _cmd="$(genCmdBase "${_working_dir%/}/blobs/${_bsName}/content")"
+    local _cmd_base="$(genCmdBase "${_working_dir%/}/blobs/${_bsName}/content")"
     local _tsv="./${FUNCNAME[0]}_${_bsName}"
 
     local _is_undeleted=false
+    local _cmd="${_cmd_base} -P -fP \"@Bucket\.repo-name=${_repo_name}.+deleted=true\" -R"
+    # Count how many soft-delete already
+    local _soft_deleted="$(_exec "${_cmd}" "/tmp/${_tsv}_deleted_before_test.tsv")"
+    _soft_deleted=$((_ASSET_CREATE_NUM + _soft_deleted))
     # deleting all and restore only raw-hosted (not maven-hosted)
     if ! deleteAssets; then
         [[ "${_EXIT_AT_FIRST_TEST_ERROR}" =~ ^[yY] ]] && return 1
     fi
 
     _log "INFO" "Finding soft deleted blobs for ${_repo_name} which modified today ..."
-    _file_list_ln="$(_exec "${_cmd} -P -fP \"@Bucket.repo-name=${_repo_name}.+deleted=true\" -R" "/tmp/${_tsv}_deleted_modified_today.tsv")"
-    if [ ${_file_list_ln:-0} -eq 1 ]; then
-        _log "WARN" "/tmp/${_tsv}_deleted_modified_today.tsv contains only one line. Retrying after 10 seconds with -XX ..."; sleep 10
-        _file_list_ln="$(_exec "${_cmd} -P -fP \"@Bucket.repo-name=${_repo_name}.+deleted=true\" -R -XX" "/tmp/${_tsv}_deleted_modified_today.tsv")"
+    local _file_list_ln="$(_exec "${_cmd} -mF \"$(date -u +%Y-%m-%d)\"" "/tmp/${_tsv}_deleted_modified_today.tsv")"
+    if [ ${_file_list_ln:-0} -lt ${_soft_deleted} ]; then
+        _log "WARN" "/tmp/${_tsv}_deleted_modified_today.tsv contains only ${_file_list_ln:-0} lines. Retrying after 10 seconds with -XX ..."; sleep 10
+        _file_list_ln="$(_exec "${_cmd} -mF \"$(date -u +%Y-%m-%d)\" -XX" "/tmp/${_tsv}_deleted_modified_today.tsv")"
     fi
-    if [ ${_file_list_ln:-0} -le 1 ] || [ ${_ASSET_CREATE_NUM} -ne ${_file_list_ln} ]; then
-        _log "ERROR" "Test failed. file-list didn't find expected soft-deleted ${_ASSET_CREATE_NUM} blobs ${_file_list_ln}"
+    if [ ${_file_list_ln:-0} -le 1 ] || [ ${_file_list_ln:-0} -lt ${_soft_deleted} ]; then
+        _log "ERROR" "Test might be failed. file-list didn't find expected soft-deleted (${_ASSET_CREATE_NUM} + ${_soft_deleted}) blobs but ${_file_list_ln} blobs"
         if [[ ! "${_WITH_S3}" =~ ^[yY] ]]; then
             ${_GREP} -l '^deleted=true' ${_working_dir%/}/blobs/${_bsName}/content/vol-* | wc -l
         fi
         [[ "${_EXIT_AT_FIRST_TEST_ERROR}" =~ ^[yY] ]] && return 1
     fi
 
-    _log "INFO" "Finding un-soft-delete blobs which were *deleted* (not modified) today ..."
-    _file_list_ln="$(_exec "${_cmd} -P -fP \"@Bucket\.repo-name=${_repo_name}.+deleted=true\" -R -dF $(date +%Y-%m-%d)" "/tmp/${_tsv}_deleted_today.tsv")"
-    _log "INFO" "Un-soft-deleting blobs by using ${_tsv}_deleted_modified_today.tsv ..."
-    _file_list_ln="$(_exec "${_cmd} -P -fP \"@Bucket\.repo-name=${_repo_name}.+deleted=true\" -R -dF $(date +%Y-%m-%d) -RDel" "/tmp/${_tsv}_deleted_today_undelete.tsv")"
-    if [ ${_file_list_ln:-0} -le 1 ] || [ ${_ASSET_CREATE_NUM} -ne ${_file_list_ln} ]; then
-        _log "ERROR" "Test failed. file-list didn't find expected un-soft-deleted ${_ASSET_CREATE_NUM} blobs ${_file_list_ln}"
+    _log "INFO" "Finding blobs which were *deleted* (not modified) today ..."
+    local _deleted_today="$(_exec "${_cmd} -dF $(date -u +%Y-%m-%d)" "/tmp/${_tsv}_deleted_today.tsv")"
+    _log "INFO" "Un-soft-deleting blobs by using /tmp/${_tsv}_deleted_today.tsv (bF) ..."
+    _file_list_ln="$(_exec "${_cmd} -dF $(date -u +%Y-%m-%d) -RDel -bF /tmp/${_tsv}_deleted_today.tsv" "/tmp/${_tsv}_deleted_today_undelete.tsv")"
+    if [ ${_file_list_ln:-0} -le 1 ] || [ ${_file_list_ln} -ne ${_deleted_today} ]; then
+        _log "ERROR" "Test failed. file-list didn't find expected un-soft-deleted ${_deleted_today} blobs but ${_file_list_ln}"
         [[ "${_EXIT_AT_FIRST_TEST_ERROR}" =~ ^[yY] ]] && return 1
     fi
     _is_undeleted=true
@@ -351,10 +357,11 @@ function test_SoftDeletedThenUndeleteThenOrphaned() {
 
     if ${_is_undeleted}; then
         if [ -s "${_working_dir%/}/etc/fabric/nexus-store.properties" ] ; then
+            sleep 5
             # Default -src (truth) is 'BS', so adding -db should be enough
-            local _file_list_ln="$(_exec "${_cmd} -db ${_working_dir%/}/etc/fabric/nexus-store.properties -P -f .properties" "/tmp/${_tsv}_orphaned.tsv")"
-            if [ ${_file_list_ln:-0} -le 1 ] || [ ${_ASSET_CREATE_NUM} -gt ${_file_list_ln} ]; then
-                _log "ERROR" "Test failed. file-list didn't find expected un-soft-deleted ${_ASSET_CREATE_NUM} blobs ${_file_list_ln}"
+            _file_list_ln="$(_exec "${_cmd_base} -mF \"$(date -u +%Y-%m-%d)\" -P -fP \"@Bucket\.repo-name=${_repo_name},\" -R -src BS -db ${_working_dir%/}/etc/fabric/nexus-store.properties -P -f .properties" "/tmp/${_tsv}_orphaned.tsv")"
+            if [ ${_file_list_ln:-0} -le 1 ] || [ ${_file_list_ln} -lt ${_ASSET_CREATE_NUM} ]; then
+                _log "ERROR" "Test failed. file-list didn't find expected minimum un-soft-deleted ${_ASSET_CREATE_NUM} blobs but ${_file_list_ln} blobs"
                 [[ "${_EXIT_AT_FIRST_TEST_ERROR}" =~ ^[yY] ]] && return 1
             fi
 
@@ -377,7 +384,7 @@ function test_UndeleteRepository() {
     local _working_dir="${1:-"${_WORKING_DIR}"}"
     local _bsName="$(genBsName)"
     local _repo_name="$(genRepoName)-undelete"
-    local _cmd="$(genCmdBase "${_working_dir%/}/blobs/${_bsName}/content")"
+    local _cmd="$(genCmdBase "${_working_dir%/}/blobs/${_bsName}/content") -mF \"$(date -u +%Y-%m-%d)\""
     local _tsv="./${FUNCNAME[0]}_${_bsName}"
 
     if ! _apiS '{"action":"coreui_Repository","method":"create","data":[{"attributes":{"storage":{"blobStoreName":"'${_bsName}'","writePolicy":"ALLOW","strictContentTypeValidation":true'${_extra_sto_opt}'},"cleanup":{"policyName":[]}},"name":"raw-s3-hosted","format":"","type":"","url":"","online":true,"recipe":"raw-hosted"}],"type":"rpc"}'; then

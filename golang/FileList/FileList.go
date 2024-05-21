@@ -114,7 +114,8 @@ var _RX *regexp.Regexp
 var _R_DELETED_DT, _ = regexp.Compile("[^#]?deletedDateTime=([0-9]+)")
 var _R_DELETED, _ = regexp.Compile("deleted=true") // should not use ^ as replacing one-line text
 var _R_REPO_NAME, _ = regexp.Compile("[^#]?@Bucket.repo-name=(.+)")
-var _R_BLOB_NAME, _ = regexp.Compile("[^#]?@BlobStore.blob-name=(.+)")
+
+// var _R_BLOB_NAME, _ = regexp.Compile("[^#]?@BlobStore.blob-name=(.+)")
 var _R_BLOB_ID, _ = regexp.Compile("[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}")
 
 // Global variables
@@ -250,7 +251,7 @@ func _setGlobals() {
 			*_FILTER_P = "deleted=true"
 		}
 
-		if len(*_BLOB_IDS_FILE) == 0 && (len(*_DEL_DATE_FROM) == 0 || len(*_MOD_DATE_FROM) == 0) {
+		if len(*_BLOB_IDS_FILE) == 0 && (len(*_DEL_DATE_FROM) == 0 && len(*_MOD_DATE_FROM) == 0) {
 			panic("Currently -RDel requires -dF or -mF.")
 		}
 	}
@@ -401,6 +402,7 @@ func datetimeStrToTs(datetimeStr string) int64 {
 	if len(datetimeStr) <= 10 {
 		datetimeStr = datetimeStr + " 00:00:00"
 	}
+	//tmpTimeFrom, err := time.Parse("2006-01-02 15:04:03 -0700 MST", datetimeStr+" +0000 UTC")
 	tmpTimeFrom, err := time.Parse("2006-01-02 15:04:03", datetimeStr)
 	if err != nil {
 		panic(err)
@@ -583,12 +585,8 @@ func genOutput(path string, modTime time.Time, size int64, blobSize int64, db *s
 	atomic.AddInt64(&_CHECKED_N, 1)
 
 	modTimeTs := modTime.Unix()
-	if _MOD_DATE_FROM_ts > 0 && modTimeTs <= _MOD_DATE_FROM_ts {
-		_log("DEBUG2", fmt.Sprintf("path:%s modTime %d <= %d", path, modTimeTs, _MOD_DATE_FROM_ts))
-		return ""
-	}
-	if _MOD_DATE_TO_ts > 0 && modTimeTs >= _MOD_DATE_TO_ts {
-		_log("DEBUG2", fmt.Sprintf("path:%s modTime %d >= %d", path, modTimeTs, _MOD_DATE_TO_ts))
+	if !isTsMSecBetweenTs(modTimeTs*1000, _MOD_DATE_FROM_ts, _MOD_DATE_TO_ts) {
+		_log("DEBUG", fmt.Sprintf("path:%s modTime %d is outside of the range %d to %d", path, modTimeTs, _MOD_DATE_FROM_ts, _MOD_DATE_TO_ts))
 		return ""
 	}
 
@@ -976,7 +974,31 @@ func isSoftDeleted(path string, s3Client *s3.Client) bool {
 	return _R_DELETED.MatchString(contents)
 }
 
+func shouldBeUnDeleted(contents string, path string) bool {
+	// NOTE: currently undeleting if incorrect deletedDateTime in the properties file
+	matches := _R_DELETED_DT.FindStringSubmatch(contents)
+	if matches == nil || len(matches) == 0 {
+		_log("WARN", fmt.Sprintf("path:%s has incorrect deletedDateTime (but un-deleting)", path))
+		return true
+	}
+	delTimeTs, err := strconv.ParseInt(matches[1], 10, 64)
+	if err != nil {
+		_log("WARN", fmt.Sprintf("path:%s has incorrect deletedDateTime %v (but un-deleting)", path, matches))
+		return true
+	}
+	if isTsMSecBetweenTs(delTimeTs, _DEL_DATE_FROM_ts, _DEL_DATE_TO_ts) {
+		_log("DEBUG", fmt.Sprintf("path:%s delTimeTs %d (msec) is in the range %d (sec) to %d (sec)", path, delTimeTs, _DEL_DATE_FROM_ts, _DEL_DATE_TO_ts))
+		return true
+	}
+	_log("DEBUG", fmt.Sprintf("path:%s delTimeTs %d (msec) is NOT in the range %d (sec) to %d (sec)", path, delTimeTs, _DEL_DATE_FROM_ts, _DEL_DATE_TO_ts))
+	return false
+}
+
 func removeDel(contents string, path string, client *s3.Client) bool {
+	if !shouldBeUnDeleted(contents, path) {
+		return false
+	}
+
 	if *_DRY_RUN {
 		_log("INFO", fmt.Sprintf("Removed 'deleted=true' for path:%s (DRY-RUN)", path))
 		return true
@@ -1018,15 +1040,11 @@ func removeLines(contents string, rex *regexp.Regexp) string {
 	return rex.ReplaceAllString(contents, "")
 }
 
-func isTimestampBetween(tMsec int64, fromTsMsec int64, toTsMsec int64) bool {
-	if fromTsMsec > 0 && fromTsMsec > tMsec {
+func isTsMSecBetweenTs(tMsec int64, fromTs int64, toTs int64) bool {
+	if fromTs > 0 && (fromTs*1000) > tMsec {
 		return false
 	}
-	if toTsMsec > 0 && (toTsMsec*1000) < tMsec {
-		return false
-	}
-	if toTsMsec == 0 && (_START_TIME_ts*1000) < tMsec {
-		_log("DEBUG", fmt.Sprintf("deletedDateTime=%d is greater than the this script's start time:%d", tMsec, _START_TIME_ts))
+	if toTs > 0 && (toTs*1000) < tMsec {
 		return false
 	}
 	return true
@@ -1406,7 +1424,6 @@ func listObjectsS3(dir string, db *sql.DB, client *s3.Client) int64 {
 			_log("DEBUG", fmt.Sprintf("Set ContinuationToken to %s", *resp.NextContinuationToken))
 			input.ContinuationToken = resp.NextContinuationToken
 		} else {
-			_log("DEBUG", "NOT Truncated (completed).")
 			break
 		}
 	}

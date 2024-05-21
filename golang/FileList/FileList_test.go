@@ -315,6 +315,46 @@ func TestIsSoftDeleted(t *testing.T) {
 	}
 }
 
+func TestShouldBeUnDeleted(t *testing.T) {
+	//*_DEBUG = true
+	result := shouldBeUnDeleted("aaaaa", "test/path")
+	if !result {
+		t.Errorf("Should be un-deleted")
+	}
+	result = shouldBeUnDeleted("deletedDateTime=notANumber", "test/path")
+	if !result {
+		t.Errorf("Should be un-deleted")
+	}
+	result = shouldBeUnDeleted("aaa,deletedDateTime=123456,bbb", "test/path")
+	if !result {
+		t.Errorf("Should be un-deleted")
+	}
+	_DEL_DATE_FROM_ts = datetimeStrToTs("2021-06-02")
+	result = shouldBeUnDeleted("aaa,deletedDateTime=1622674572509,bbb", "test/path")
+	if !result {
+		t.Errorf("Should be un-deleted")
+	}
+	result = shouldBeUnDeleted(DUMMY_PROP_TXT, "test/path")
+	if !result {
+		t.Errorf("Should be un-deleted")
+	}
+	_DEL_DATE_FROM_ts = datetimeStrToTs("2024-05-20")
+	result = shouldBeUnDeleted(DUMMY_PROP_TXT, "test/path")
+	if result {
+		t.Errorf("Should NOT be un-deleted %d", _DEL_DATE_FROM_ts)
+	}
+	_DEL_DATE_FROM_ts = datetimeStrToTs("2021-06-02")
+	result = shouldBeUnDeleted(DUMMY_PROP_TXT, "test/path")
+	if !result {
+		t.Errorf("Should NOT be un-deleted %d", _DEL_DATE_FROM_ts)
+	}
+	_DEL_DATE_TO_ts = datetimeStrToTs("2021-06-02")
+	result = shouldBeUnDeleted(DUMMY_PROP_TXT, "test/path")
+	if result {
+		t.Errorf("Should NOT be un-deleted %d %d", _DEL_DATE_FROM_ts, _DEL_DATE_TO_ts)
+	}
+}
+
 func TestGetAssetTables(t *testing.T) {
 	*_DEBUG = true
 	rtn := getAssetTables("")
@@ -349,9 +389,25 @@ func TestRemoveLines(t *testing.T) {
 }
 
 func TestIsTimestampBetween(t *testing.T) {
-	result := isTimestampBetween(1622674572617, 1622592000000, 1622592000)
+	result := isTsMSecBetweenTs(1622674572617, 1622592000, 1622592000)
 	if result {
-		t.Errorf("should not be return for %d < %d < %d", 1622592000000, 1622674572617, 1622592000)
+		t.Errorf("should not be True for %d < %d < %d", 1622592000000, 1622674572, 1622592000)
+	}
+	result = isTsMSecBetweenTs(10000, 1, 11)
+	if !result {
+		t.Errorf("should not be False for %d < %d < %d", 10, 1, 11)
+	}
+	result = isTsMSecBetweenTs(10000, 1, 0)
+	if !result {
+		t.Errorf("should not be False for %d < %d < %d", 10, 1, 0)
+	}
+	result = isTsMSecBetweenTs(10000, 0, 110)
+	if !result {
+		t.Errorf("should not be False for %d < %d < %d", 10, 0, 110)
+	}
+	result = isTsMSecBetweenTs(10000, 0, 0)
+	if !result {
+		t.Errorf("should not be False for %d < %d < %d", 10, 0, 0)
 	}
 }
 
