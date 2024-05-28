@@ -254,6 +254,9 @@ main() {
         echo "No blobStore (-s)" >&2
         return
     fi
+    if [ -s "${_blobIDs}" ]; then
+        _blobIDs="$(cat "${_blobIDs}")"
+    fi
     curl -sSf -u "${_ADMIN_USER}:${_ADMIN_PWD}" -H 'Content-Type: application/json' "${_NEXUS_URL%/}/service/rest/v1/script/${_SCRIPT_NAME}/run" -d'{"blobIDs":"'${_blobIDs}'","blobStore":"'${_blobStore}'","isOrient":'${_IS_ORIENT:-"false"}',"dryRun":'${_DRY_RUN:-"false"}',"debug":'${_DEBUG:-"false"}'}'
 }
 
