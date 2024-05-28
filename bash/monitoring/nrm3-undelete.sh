@@ -126,6 +126,7 @@ class RBSs {
 
 def main(params) {
     // 'params' should contain 'blobIDs', 'blobStore', 'isOrient', 'dryRun'
+    log.debug("params = ${params}")
     def blobIdPtn = '([a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12})'
     def lineCounter = 0
     def restoredNum = 0
@@ -217,18 +218,20 @@ def main(params) {
 }
 
 
+log.info("Undeleting Blobs script started.")
 def logMgr = container.lookup(LogManager.class.name) as LogManager
 def currentLevel = logMgr.getLoggerLevel("org.sonatype.nexus.internal.script.ScriptTask")
 try {
     def params = (args) ? new JsonSlurper().parseText(args as String) : null
-    if (params.debug && params.debug == "true") {
-        log.debug("params = ${params}")
+    if (params.debug && (params.debug == "true" || params.debug == true)) {
         logMgr.setLoggerLevel("org.sonatype.nexus.internal.script.ScriptTask", LoggerLevel.DEBUG)
+        logMgr.setLoggerLevel("org.sonatype.nexus.script.plugin.internal.rest.ScriptResource", LoggerLevel.DEBUG)
     }
     return JsonOutput.toJson(main(params))
 } finally {
     logMgr.setLoggerLevel("org.sonatype.nexus.internal.script.ScriptTask", currentLevel)
-    log.info("Completed")
+    logMgr.setLoggerLevel("org.sonatype.nexus.script.plugin.internal.rest.ScriptResource", currentLevel)
+    log.info("Undeleting Blobs script completed.")
 }
 EOF
 }
@@ -251,7 +254,7 @@ main() {
         echo "No blobStore (-s)" >&2
         return
     fi
-    curl -sSf -u "${_ADMIN_USER}:${_ADMIN_PWD}" -H 'Content-Type: application/json' "${_NEXUS_URL%/}/service/rest/v1/script/${_SCRIPT_NAME}/run" -d'{"blobIDs":"'${_blobIDs}'","blobStore":"'${_blobStore}'","dryRun":'${_DRY_RUN:-"false"}',"isOrient":'${_IS_ORIENT:-"false"}',"debug":'${_DEBUG:-"false"}'}'
+    curl -sSf -u "${_ADMIN_USER}:${_ADMIN_PWD}" -H 'Content-Type: application/json' "${_NEXUS_URL%/}/service/rest/v1/script/${_SCRIPT_NAME}/run" -d'{"blobIDs":"'${_blobIDs}'","blobStore":"'${_blobStore}'","isOrient":'${_IS_ORIENT:-"false"}',"dryRun":'${_DRY_RUN:-"false"}',"debug":'${_DEBUG:-"false"}'}'
 }
 
 
@@ -279,5 +282,6 @@ if [ "$0" = "${BASH_SOURCE[0]}" ]; then
     done
 
     main
+    echo "" >&2
     echo "Completed." >&2
 fi
