@@ -13,12 +13,12 @@ REQUIREMENTS:
 EXAMPLES:
     cd /some/workDir
     curl --compressed -O -L https://raw.githubusercontent.com/sonatype-nexus-community/nexus-monitoring/main/scripts/nrm3-undelete.sh
-    export _ADMIN_USER="admin" _ADMIN_PWD="admin123" _NEXUS_URL="http://localhost:8081/"
-    bash ./nrm3-undelete.sh -I                      # To install the necessary script into first time
+    export _ADMIN_USER="admin" _ADMIN_PWD="******" _NEXUS_URL="http://localhost:8081/" #_DRY_RUN="true" _IS_ORIENT="true"
+    bash ./nrm3-undelete.sh -I      # only once
     bash ./nrm3-undelete.sh -s default -b <blobIDs>
 
 OPTIONS:
-    -I  Installing the groovy script for undeleting
+    -I  Installing the groovy script for undeleting (only once per Nexus)
     -b  blob IDs (comma separated), or a file contains lines of blobIDs
     -s  blob store name
 EOF
@@ -107,7 +107,14 @@ class RBSs {
                                             "org.sonatype.nexus.blobstore.restore.raw.internal.orient.OrientRawRestoreBlobStrategy",]
 
     static String lookupRestoreBlobStrategy(formatName, isOrient) {
-        def className = fmt(formatName) + "RestoreBlobStrategy"
+        def className = ""
+        if (formatName.equalsIgnoreCase("maven2")) {
+            className = "MavenRestoreBlobStrategy"
+        } else if (formatName.equalsIgnoreCase("pypi")) {
+            className = "PyPiRestoreBlobStrategy"
+        } else {
+            className = fmt(formatName) + "RestoreBlobStrategy"
+        }
         if (isOrient) {
             className = "Orient${className}"
         }
@@ -192,9 +199,10 @@ def main(params) {
             }
             log.info("Restoring blobId:{} (DryRun:{})", blobId, params.dryRun)
             def className = RBSs.lookupRestoreBlobStrategy(formatName, params.isOrient)
-            if (className == null) {
-                log.error("Didn't find restore blob strategy className for format:{}, isOrient:{}", formatName, params.isOrient)
-                continue
+            if (!className) {
+                // TODO: may not work with some minor formats such as bower, cocoapods, conda
+                log.warn("Using 'Base' as didn't find restore blob strategy className for format:{}, isOrient:{}", formatName, params.isOrient)
+                className = RBSs.lookupRestoreBlobStrategy("base", params.isOrient)
             }
             log.debug("className:{} for blobId:{}, format:{}, isOrient:{}", className, blobId, formatName, params.isOrient)
             def restoreBlobStrategy = container.lookup(className) as RestoreBlobStrategy
