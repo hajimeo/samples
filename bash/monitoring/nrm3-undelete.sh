@@ -8,18 +8,19 @@ PURPOSE:
 
 REQUIREMENTS:
     curl
-    python to handle JSON string.
+    python to handle (escape) JSON string.
 
 EXAMPLES:
     cd /some/workDir
     curl --compressed -O -L https://raw.githubusercontent.com/sonatype-nexus-community/nexus-monitoring/main/scripts/nrm3-undelete.sh
     export _ADMIN_USER="admin" _ADMIN_PWD="admin123" _NEXUS_URL="http://localhost:8081/"
     bash ./nrm3-undelete.sh -I                      # To install the necessary script into first time
-    bash ./nrm3-undelete.sh -b <blobId/blobRef>     # TODO: should add repository to make it faster?
+    bash ./nrm3-undelete.sh -s default -b <blobIDs>
 
 OPTIONS:
     -I  Installing the groovy script for undeleting
-    -b  blobId or blobRef
+    -b  blob IDs (comma separated)
+    -s  blob store name
 EOF
 }
 
@@ -28,124 +29,229 @@ EOF
 : "${_ADMIN_USER:="admin"}"
 : "${_ADMIN_PWD:="admin123"}"
 : "${_NEXUS_URL:="http://localhost:8081/"}"
-: "${_BLOB_ID:=""}"
 : "${_INSTALL:=""}"
 : "${_TMP:="/tmp"}"
-_SCRIPT_NAME="undelete"
+_SCRIPT_NAME="undeleteBlobIDs"
+# Below is used in the POST json string
+: "${_BLOB_STORE:=""}"
+: "${_BLOB_IDS:=""}"    # comma separated blobIds
+: "${_IS_ORIENT:="false"}"
+: "${_DRY_RUN:="false"}"
+: "${_DEBUG:="false"}"
 
 
 ### Functions ########################
-function f_api() {
-    local __doc__="NXRM3 API wrapper"
-    local _path="${1}"
-    local _data="${2}"
-    local _method="${3}"
-    local _usr="${4:-"${_ADMIN_USER}"}"
-    local _pwd="${5-"${_ADMIN_PWD}"}"   # If explicitly empty string, curl command will ask password (= may hang)
-    local _nexus_url="${6:-"${_NEXUS_URL}"}"
-
-    local _user_pwd="${_usr}"
-    [ -n "${_pwd}" ] && _user_pwd="${_usr}:${_pwd}"
-    [ -n "${_data}" ] && [ -z "${_method}" ] && _method="POST"
-    [ -z "${_method}" ] && _method="GET"
-    local _content_type="Content-Type: application/json"
-    [ "${_data:0:1}" != "{" ] && [ "${_data:0:1}" != "[" ] && _content_type="Content-Type: text/plain"
-    local _curl="curl -sSf"
-    ${_DEBUG} && _curl="curl -vf"
-    if [ -z "${_data}" ]; then
-        # GET and DELETE *can not* use Content-Type json
-        ${_curl} -D ${_TMP%/}/_api_header_$$.out -u "${_user_pwd}" -k "${_nexus_url%/}/${_path#/}" -X ${_method}
-    else
-        ${_curl} -D ${_TMP%/}/_api_header_$$.out -u "${_user_pwd}" -k "${_nexus_url%/}/${_path#/}" -X ${_method} -H "${_content_type}" -d "${_data}"
-    fi > ${_TMP%/}/f_api_nxrm_$$.out
-    local _rc=$?
-    if [ ${_rc} -ne 0 ]; then
-        cat ${_TMP%/}/_api_header_$$.out >&2
-        return ${_rc}
-    fi
-    if ! cat ${_TMP%/}/f_api_nxrm_$$.out | python -m json.tool 2>/dev/null; then
-        echo -n "$(cat ${_TMP%/}/f_api_nxrm_$$.out)"
-        echo ""
-    fi
-}
-
 function f_register_script() {
     local _script_file="$1"
     local _script_name="$2"
     [ -s "${_script_file%/}" ] || return 1
     [ -z "${_script_name}" ] && _script_name="$(basename ${_script_file} .groovy)"
-    python -c "import sys,json;print(json.dumps(open('${_script_file}').read()))" > ${_TMP%/}/${_script_name}_$$.out || return $?
-    echo "{\"name\":\"${_script_name}\",\"content\":$(cat ${_TMP%/}/${_script_name}_$$.out),\"type\":\"groovy\"}" > ${_TMP%/}/${_script_name}_$$.json
+    echo "{\"name\":\"${_script_name}\",\"content\":$(python -c "import sys,json;print(json.dumps(open('${_script_file}').read()))"),\"type\":\"groovy\"}" > ${_TMP%/}/${_script_name}_$$.json
     # Delete if exists
-    f_api "/service/rest/v1/script/${_script_name}" "" "DELETE"
-    f_api "/service/rest/v1/script" "$(cat ${_TMP%/}/${_script_name}_$$.json)" || return $?
-    #curl -u admin -X POST -H 'Content-Type: text/plain' '${_NEXUS_URL%/}/service/rest/v1/script/${_script_name}/run' -d'{arg:value}'
+    curl -s -u "${_ADMIN_USER}:${_ADMIN_PWD}" -H 'Content-Type: application/json' "${_NEXUS_URL%/}/service/rest/v1/script/${_script_name}" -X DELETE
+    curl -sSf -u "${_ADMIN_USER}:${_ADMIN_PWD}" -H 'Content-Type: application/json' "${_NEXUS_URL%/}/service/rest/v1/script" -d@${_TMP%/}/${_script_name}_$$.json
 }
 
 function genScript() {
-    local __doc__="Generate the script file"
     local _saveTo="${1:-"${_TMP%/}/${_SCRIPT_NAME}.groovy"}"
     # TODO: replace below
     cat <<'EOF' >"${_saveTo}"
-import org.postgresql.*
-import groovy.sql.Sql
-import java.time.Duration
+import groovy.json.JsonSlurper
+import org.sonatype.nexus.blobstore.restore.RestoreBlobStrategy
+import org.sonatype.nexus.common.log.LogManager
+import org.sonatype.nexus.common.log.LoggerLevel
 import java.time.Instant
+import groovy.json.JsonOutput
+import org.sonatype.nexus.blobstore.api.Blob
+import org.sonatype.nexus.blobstore.api.BlobAttributes
+import org.sonatype.nexus.blobstore.api.BlobId
+import org.sonatype.nexus.blobstore.api.BlobStore
+import org.sonatype.nexus.blobstore.api.BlobStoreManager
+import static org.sonatype.nexus.blobstore.api.BlobAttributesConstants.HEADER_PREFIX
+import static org.sonatype.nexus.blobstore.api.BlobAttributesConstants.DELETED_DATETIME_ATTRIBUTE
+import static org.sonatype.nexus.blobstore.api.BlobStore.REPO_NAME_HEADER
 
-def elapse(Instant start, String word) {
-    Instant end = Instant.now()
-    Duration d = Duration.between(start, end)
-    System.err.println("# Elapsed ${d}${word.take(200)}")
-}
+class RBSs {
+    /**
+     * RBSs.restoreBlobStrategyClassNames need to be checked/changed if older Nexus version is used.
+     *  # After checking out customer's Nexus version:
+     *  find . -type f -name '*RestoreBlobStrategy.java' | sed -E 's@^.+/src/main/java/(.+)\.java@"\1",@p' | sort | uniq | tr '/' '.'
+     */
+    static restoreBlobStrategyClassNames = ["com.sonatype.nexus.blobstore.restore.conan.ConanRestoreBlobStrategy",
+                                            "com.sonatype.nexus.blobstore.restore.datastore.RubygemsRestoreBlobStrategy",
+                                            "com.sonatype.nexus.blobstore.restore.helm.internal.HelmRestoreBlobStrategy",
+                                            "com.sonatype.nexus.blobstore.restore.helm.internal.orient.OrientHelmRestoreBlobStrategy",
+                                            "com.sonatype.nexus.blobstore.restore.internal.datastore.DockerRestoreBlobStrategy",
+                                            "com.sonatype.nexus.blobstore.restore.internal.datastore.NpmRestoreBlobStrategy",
+                                            "com.sonatype.nexus.blobstore.restore.internal.datastore.YumRestoreBlobStrategy",
+                                            "com.sonatype.nexus.blobstore.restore.internal.orient.OrientDockerRestoreBlobStrategy",
+                                            "com.sonatype.nexus.blobstore.restore.internal.orient.OrientNpmRestoreBlobStrategy",
+                                            "com.sonatype.nexus.blobstore.restore.internal.orient.OrientYumRestoreBlobStrategy",
+                                            "com.sonatype.nexus.blobstore.restore.nuget.internal.NugetRestoreBlobStrategy",
+                                            "com.sonatype.nexus.blobstore.restore.nuget.internal.orient.OrientNugetRestoreBlobStrategy",
+                                            "com.sonatype.nexus.blobstore.restore.orient.OrientRubygemsRestoreBlobStrategy",
+                                            "com.sonatype.nexus.blobstore.restore.p2.internal.datastore.P2RestoreBlobStrategy",
+                                            "com.sonatype.nexus.blobstore.restore.p2.internal.orient.OrientP2RestoreBlobStrategy",
+                                            "com.sonatype.nexus.blobstore.restore.pypi.internal.PyPiRestoreBlobStrategy",
+                                            "com.sonatype.nexus.blobstore.restore.pypi.internal.orient.OrientPyPiRestoreBlobStrategy",
+                                            "com.sonatype.nexus.blobstore.restore.r.internal.datastore.RRestoreBlobStrategy",
+                                            "com.sonatype.nexus.blobstore.restore.r.internal.orient.OrientRRestoreBlobStrategy",
+                                            "org.sonatype.nexus.blobstore.restore.RestoreBlobStrategy",
+                                            "org.sonatype.nexus.blobstore.restore.apt.internal.AptRestoreBlobStrategy",
+                                            "org.sonatype.nexus.blobstore.restore.apt.internal.orient.OrientAptRestoreBlobStrategy",
+                                            "org.sonatype.nexus.blobstore.restore.datastore.BaseRestoreBlobStrategy",
+                                            "org.sonatype.nexus.blobstore.restore.maven.internal.MavenRestoreBlobStrategy",
+                                            "org.sonatype.nexus.blobstore.restore.maven.internal.orient.OrientMavenRestoreBlobStrategy",
+                                            "org.sonatype.nexus.blobstore.restore.orient.OrientBaseRestoreBlobStrategy",
+                                            "org.sonatype.nexus.blobstore.restore.raw.internal.RawRestoreBlobStrategy",
+                                            "org.sonatype.nexus.blobstore.restore.raw.internal.orient.OrientRawRestoreBlobStrategy",]
 
-def p = new Properties()
-if (args.length > 1 && !args[1].empty) {
-    def pf = new File(args[1])
-    pf.withInputStream { p.load(it) }
-} else {
-    p = System.getenv()  //username, password, jdbcUrl
-}
-def query = (args.length > 0 && !args[0].empty) ? args[0] : "SELECT 'ok' as test"
-def driver = Class.forName('org.postgresql.Driver').newInstance() as Driver
-def dbP = new Properties()
-dbP.setProperty("user", p.username)
-dbP.setProperty("password", p.password)
-def start = Instant.now()
-def conn = driver.connect(p.jdbcUrl, dbP)
-elapse(start, " - connect")
-def sql = new Sql(conn)
-try {
-    def queries = query.split(";")
-    queries.each { q ->
-        q = q.trim()
-        System.err.println("# Querying: ${q.take(100)} ...")
-        start = Instant.now()
-        sql.eachRow(q) { println(it) }
-        elapse(start, "")
+    static String lookupRestoreBlobStrategy(formatName, isOrient) {
+        def className = fmt(formatName) + "RestoreBlobStrategy"
+        if (isOrient) {
+            className = "Orient${className}"
+        }
+        // .every { it.contains("name") }
+        return restoreBlobStrategyClassNames.find { it.endsWith(".${className}") }
     }
+
+    static String fmt(word = "", camelling = true) {
+        if (word.isEmpty())
+            return word
+        if (camelling)
+            return String.valueOf(Character.toUpperCase(word.charAt(0))) + word.substring(1).toLowerCase()
+        return word.toLowerCase()
+    }
+}
+
+def main(params) {
+    // 'params' should contain 'blobIDs', 'blobStore', 'isOrient', 'dryRun'
+    def blobIdPtn = '([a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12})'
+    def lineCounter = 0
+    def restoredNum = 0
+    // Blobs deleted after this time will be ignored
+    def startedMsec = Instant.now().getEpochSecond() * 1000
+
+    BlobStore store = container.lookup(BlobStoreManager.class.name).get(params.blobStore)
+    if (!store) {
+        def logMsg = "blobStore from params: ${params} is invalid"
+        log.error(logMsg)
+        return ['error': logMsg]
+    }
+
+    def blobIDs = (params.blobIDs as String).split(",")
+    for (line in blobIDs) {
+        lineCounter++
+        try {
+            def match = line =~ blobIdPtn
+            if (!match) {
+                log.warn("#${lineCounter}: '${line}' does not contain blobId")
+                continue
+            }
+            log.debug("match = ${match}")
+            String blobId = match[0][1]
+            BlobId blobIdObj = new BlobId(blobId)
+            Blob blob = store.get(blobIdObj, true)
+            if (!blob) {
+                log.warn("No actual blob file for ${blobId}")
+                continue
+            }
+            log.debug("Checking blobId:{}, headers:{}", blobId, blob.getHeaders())
+            def blobAttributes = store.getBlobAttributes(blobIdObj) as BlobAttributes
+            if (!blobAttributes.load()) {
+                log.warn("Failed to load {}.", blobAttributes.toString())
+                continue
+            }
+            def properties = blobAttributes.getProperties() as Properties
+            def repoName = properties.getProperty(HEADER_PREFIX + REPO_NAME_HEADER)
+            if (!repoName) {
+                log.warn("No repo-name found for ${blobId}")
+                continue
+            }
+            def formatName = repository.repositoryManager[repoName].getFormat().getValue()
+            if (!formatName) {
+                log.warn("No format found for repo-name:${repoName}, ${blobId}")
+                continue
+            }
+            def deletedDateTime = properties.getProperty(DELETED_DATETIME_ATTRIBUTE) as Long
+            if (startedMsec < deletedDateTime) {
+                log.warn("deletedDateTime:{} is greater than startedMsec:{}", deletedDateTime, startedMsec)
+                continue
+            }
+
+            // Remove soft delete flag then restore blob
+            if (!params.dryRun) {
+                log.info("Un-deleting blobId:{}", blobId)
+                // from org.sonatype.nexus.blobstore.BlobStoreSupport.undelete
+                blobAttributes.setDeleted(false)
+                //blobAttributes.setDeletedReason(null);    // Keeping this one so that can find the props edited by this task
+                store.doUndelete(blobIdObj, blobAttributes)
+                blobAttributes.store()
+                log.debug("blobAttributes:{}", blobAttributes)
+            }
+            log.info("Restoring blobId:{} (DryRun:{})", blobId, params.dryRun)
+            def className = RBSs.lookupRestoreBlobStrategy(formatName, params.isOrient)
+            if (className == null) {
+                log.error("Didn't find restore blob strategy className for format:{}, isOrient:{}", formatName, params.isOrient)
+                continue
+            }
+            log.debug("className:{} for blobId:{}, format:{}, isOrient:{}", className, blobId, formatName, params.isOrient)
+            def restoreBlobStrategy = container.lookup(className) as RestoreBlobStrategy
+            if (restoreBlobStrategy == null) {
+                log.error("Didn't find restore blob strategy for format:{}, isOrient:{}", formatName, params.isOrient)
+                continue
+            }
+            restoreBlobStrategy.restore(properties, blob, store, params.dryRun)
+            restoredNum++
+        }
+        catch (Exception e) {
+            log.warn("Exception while un-deleting from line:{}\n{}", line, e.getMessage())
+            if (params.dryRun) {    // If dryRun stops at the exception
+                throw e
+            }
+        }
+        // NOTE: not doing blobStoreIntegrityCheck as wouldn't need for this script
+    }
+    log.info("Undeleted {}/{}", restoredNum, blobIDs.size())
+    return ['checked': lineCounter, 'restored': restoredNum, 'dryRun': params.dryRun]
+}
+
+
+def logMgr = container.lookup(LogManager.class.name) as LogManager
+def currentLevel = logMgr.getLoggerLevel("org.sonatype.nexus.internal.script.ScriptTask")
+try {
+    def params = (args) ? new JsonSlurper().parseText(args as String) : null
+    if (params.debug && params.debug == "true") {
+        log.debug("params = ${params}")
+        logMgr.setLoggerLevel("org.sonatype.nexus.internal.script.ScriptTask", LoggerLevel.DEBUG)
+    }
+    return JsonOutput.toJson(main(params))
 } finally {
-    sql.close()
-    conn.close()
+    logMgr.setLoggerLevel("org.sonatype.nexus.internal.script.ScriptTask", currentLevel)
+    log.info("Completed")
 }
 EOF
 }
 
 
 main() {
-    local _blobId="${1:-"${_BLOB_ID}"}"
-    local _install="${2:-"${_INSTALL}"}"
+    local _blobIDs="${1:-"${_BLOB_IDS}"}"
+    local _blobStore="${2:-"${_BLOB_STORE}"}"
+    local _install="${3:-"${_INSTALL}"}"
 
     if [[ "${_install}" =~ ^[yY] ]]; then
         genScript "${_TMP%/}/${_SCRIPT_NAME}.groovy"
         f_register_script "${_TMP%/}/${_SCRIPT_NAME}.groovy"
     fi
-
-    if [ -z "${_blobId}" ]; then
-        echo "No blobId"
+    if [ -z "${_blobIDs}" ]; then
+        echo "No blobIDs (-b)" >&2
         return
     fi
-
-    f_api "/service/rest/v1/script/${_SCRIPT_NAME}/run" -d'{"blobId":"'${_blobId}'"}'
+    if [ -z "${_blobStore}" ]; then
+        echo "No blobStore (-s)" >&2
+        return
+    fi
+    curl -sSf -u "${_ADMIN_USER}:${_ADMIN_PWD}" -H 'Content-Type: application/json' "${_NEXUS_URL%/}/service/rest/v1/script/${_SCRIPT_NAME}/run" -d'{"blobIDs":"'${_blobIDs}'","blobStore":"'${_blobStore}'","dryRun":'${_DRY_RUN:-"false"}',"isOrient":'${_IS_ORIENT:-"false"}',"debug":'${_DEBUG:-"false"}'}'
 }
 
 
@@ -155,13 +261,16 @@ if [ "$0" = "${BASH_SOURCE[0]}" ]; then
         exit 0
     fi
 
-    while getopts "Ib:" opts; do
+    while getopts "Ib:s:" opts; do
         case $opts in
         I)
             _INSTALL="Y"
             ;;
         b)
-            [ -n "$OPTARG" ] && _BLOB_ID="$OPTARG"
+            [ -n "$OPTARG" ] && _BLOB_IDS="$OPTARG"
+            ;;
+        s)
+            [ -n "$OPTARG" ] && _BLOB_STORE="$OPTARG"
             ;;
         *)
             echo "$opts $OPTARG is not supported. Ignored." >&2
@@ -170,5 +279,5 @@ if [ "$0" = "${BASH_SOURCE[0]}" ]; then
     done
 
     main
-    echo "Completed."
+    echo "Completed." >&2
 fi
