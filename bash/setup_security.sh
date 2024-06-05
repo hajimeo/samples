@@ -20,8 +20,10 @@ g_FREEIPA_DEFAULT_PWD="secret12"
 g_SSL_DIR="/etc/ssl/local"
 
 function f_gen_openssl_conf() {
-    local _openssl_cnf="${4:-"./openssl.cnf"}"
-    local _dir="./conf"
+    local _openssl_cnf="${1:-"./openssl.cnf"}"
+    local _dir="${2:-"./conf"}"
+    local _wild_domain="${3}"
+
     if [ ! -d "${_dir%/}" ]; then
         mkdir -v "${_dir%/}" || return $?
         echo 1000 > ${_dir%/}/serial
@@ -34,25 +36,23 @@ function f_gen_openssl_conf() {
     cat << EOF > "${_openssl_cnf}"
 [ ca ]
 default_ca = CA_default
+
 [ CA_default ]
-certs          = ${_dir%/}/certs               # Where the issued certs are kept
-crl_dir        = ${_dir%/}/crl                 # Where the issued crl are kept
-database       = ${_dir%/}/index.txt           # database index file.
-new_certs_dir  = ${_dir%/}/newcerts            # default place for new certs.
-certificate    = ${_dir%/}/cacert.pem          # The CA certificate
-serial         = ${_dir%/}/serial              # The current serial number
-crl            = ${_dir%/}/crl.pem             # The current CRL
-private_key    = ${_dir%/}/private/ca.key.pem  # The private key
-RANDFILE       = ${_dir%/}/.rnd                # private random number file
+certs          = ${_dir%/}/certs
+new_certs_dir  = ${_dir%/}/newcerts
+database       = ${_dir%/}/index.txt
+serial         = ${_dir%/}/serial
+RANDFILE       = ${_dir%/}/.rnd
 nameopt        = default_ca
 certopt        = default_ca
-policy         = policy_match
-default_days   = 365
+policy         = policy_anything
+default_days   = 3650
 default_md     = sha256
 
-[ policy_match ]
+[ policy_anything ]
 countryName            = optional
 stateOrProvinceName    = optional
+localityName           = optional
 organizationName       = optional
 organizationalUnitName = optional
 commonName             = supplied
@@ -60,13 +60,48 @@ emailAddress           = optional
 
 [req]
 req_extensions = v3_req
-distinguished_name = req_distinguished_name
-
-[req_distinguished_name]
 
 [v3_req]
-basicConstraints = CA:TRUE
+subjectKeyIdentifier = hash
+#authorityKeyIdentifier = keyid:always,issuer:always
+basicConstraints = CA:true
 EOF
+    if [ -n "${_wild_domain}" ]; then
+        echo "subjectAltName = @alt_names
+
+[ alt_names ]
+DNS.1 = ${_domain_suffix#.}
+DNS.2 = *.${_domain_suffix#.}" >> "${_openssl_cnf}"
+    fi
+}
+
+function f_gen_key () {
+    local _key_path="${1}"
+    local _password="${2-${g_OTHER_DEFAULT_PWD}}"
+    if [ -n "${_password}" ]; then
+        openssl genrsa -aes256 -passout "pass:${_password}" -out "${_key_path}" 4096
+        return
+    fi
+    openssl genrsa -aes256 -out "${_key_path}" 4096
+}
+
+function f_gen_cert_from_key() {
+    local _cert_path="${1}" # generating server cert path
+    local _key_path="${2}"  # required: server key
+    local _sign_key="${3}"
+    local _sign_crt="${4}"  # required: signing key's cert
+    local _subj="${5}"      # required "/C=AU/ST=QLD/O=Osakos/CN=RootCA.${_domain_suffix}"
+    local _password="${6:-${g_OTHER_DEFAULT_PWD}}"
+    local _openssl_cnf="${7:-"./openssl.cnf"}"
+
+    local _basename="$(basename "${_key_path%.*}")"
+    [ -z "${_cert_path}" ] && _cert_path="${_basename}.crt"
+    if [ ! -s "${_openssl_cnf}" ]; then
+        f_gen_openssl_conf "${_openssl_cnf}" || return $?
+    fi
+    openssl req -config ${_openssl_cnf} -passin "pass:${_password}" -new -sha256 -key "${_key_path}" -out ${_basename}.csr -subj "${_subj}" -batch || return $?
+    # TODO: how about different -extensions?
+    openssl ca -config ${_openssl_cnf} -keyfile ${_sign_key} -passin "pass:${_password}" -cert "${_sign_crt}" -out ${_cert_path} -extensions v3_req -days 3650 -in ${_basename}.csr -batch || return $?
 }
 
 function f_ssl_setup() {
@@ -89,7 +124,7 @@ DNS.2 = *.${_domain_suffix#.}" >> ${_openssl_cnf}
         _log "INFO" "${_root_key} exists. Reusing..."
     else
         # Step1: create my root CA (key) and cert (pem) TODO: -aes256 otherwise key is not protected
-        openssl genrsa -passout "pass:${_password}" -out ${_root_key} 4096 || return $?
+        f_gen_key "${_root_key}" "${_password}" || return $?
         # How to verify key: openssl rsa -in ${_root_key} -check
 
         # (Optional) For Ambari 2-way SSL
@@ -97,7 +132,7 @@ DNS.2 = *.${_domain_suffix#.}" >> ${_openssl_cnf}
         mkdir -p ./db/certs
         mkdir -p ./db/newcerts
         openssl req -passin pass:${_password} -new -key ${_root_key} -out ./rootCA.csr -batch
-        openssl ca -out rootCA.crt -days 1095 -keyfile ${_root_key} -key ${_password} -selfsign -extensions jdk7_ca -config ./ca.config -subj "/C=AU/ST=QLD/O=Osakos/CN=RootCA.`hostname -s`.localdomain" -batch -infiles ./rootCA.csr
+        openssl ca -out rootCA.crt -days 3650 -keyfile ${_root_key} -key ${_password} -selfsign -extensions jdk7_ca -config ./ca.config -subj "/C=AU/ST=QLD/O=Osakos/CN=RootCA.`hostname -s`.localdomain" -batch -infiles ./rootCA.csr
         openssl pkcs12 -export -in ./rootCA.crt -inkey ${_root_key} -certfile ./rootCA.crt -out ./keystore.p12 -password pass:${_password} -passin pass:${_password}
     fi
 
@@ -115,7 +150,7 @@ DNS.2 = *.${_domain_suffix#.}" >> ${_openssl_cnf}
     fi
 
     # Step2: create server key and certificate
-    openssl genrsa -out ./wild.${_domain_suffix#.}.key 4096 || return $?
+    f_gen_key "./wild.${_domain_suffix#.}.key" "" || return $?
     openssl req -subj "/C=AU/ST=QLD/O=HajimeTest/CN=*.${_domain_suffix#.}" -extensions v3_req -sha256 -new -key ./wild.${_domain_suffix#.}.key -out ./wild.${_domain_suffix#.}.csr -config ${_openssl_cnf} || return $?
     openssl x509 -req -extensions v3_req -days 3650 -sha256 -in ./wild.${_domain_suffix#.}.csr -CA ./rootCA.pem -CAkey ${_root_key} -CAcreateserial -out ./wild.${_domain_suffix#.}.crt -extfile ${_openssl_cnf} -passin "pass:$_password"
 
@@ -131,46 +166,43 @@ function f_intermediate() {
     local _inter_key="${1:-"./intermediateCA.key"}"
     local _root_key="${2:-"./rootCA.key"}"  # required
     local _root_crt="${3:-"./rootCA.crt"}"
-    local _openssl_cnf="${4:-"./openssl.cnf"}"
-    local _password="${5:-${g_OTHER_DEFAULT_PWD}}"
-    local _domain_suffix="${6:-"standalone.localdomain"}"
+    local _password="${4:-${g_OTHER_DEFAULT_PWD}}"
+    local _domain_suffix="${5:-"standalone.localdomain"}"
+    local _openssl_cnf="${6:-"./openssl.cnf"}"
 
     if [ ! -s "${_openssl_cnf}" ]; then
-        f_gen_openssl_conf "${_openssl_cnf}" || return $?
-    fi
-    if ! grep -q "${_domain_suffix}" "${_openssl_cnf}"; then
-        echo "
-[ alt_names ]
-DNS.1 = ${_domain_suffix#.}
-DNS.2 = *.${_domain_suffix#.}" >> "${_openssl_cnf}"
+        f_gen_openssl_conf "${_openssl_cnf}" "conf" "${_domain_suffix}" || return $?
     fi
 
     [ -r "${_root_key}" ] || return 1
     if [ ! -s "${_root_crt}" ]; then
-        local _rootCA="./$(basename "${_root_key}" ".key")"
-        openssl req -passin pass:${_password} -new -key ${_root_key} -out ./${_rootCA}.csr -batch || return $?
-        openssl ca -config ${_openssl_cnf} -keyfile ${_root_key} -key ${_password} -out ${_rootCA}.crt -days 1095 -subj "/C=AU/ST=QLD/O=Osakos/CN=RootCA.${_domain_suffix}" -infiles ./${_rootCA}.csr -batch || return $?
+        local _rootCA="$(basename "${_root_key%.*}")"
+        openssl req -config ${_openssl_cnf} -passin pass:${_password} -new -sha256 -x509 -days 3650 -key ${_root_key} -extensions v3_req -out ${_rootCA}.crt -subj "/CN=${_rootCA}.${_domain_suffix}" -batch || return $?
+        _root_crt="./${_rootCA}.crt"
     fi
 
     local _filepath="./$(basename "${_inter_key}" ".key")"
+    local _inter_crt="${_filepath}.crt"
     if [ ! -s "${_inter_key}" ]; then
-        openssl genrsa -aes256 -passout "pass:${_password}" -out "${_inter_key}" 4096 || return $?
-        openssl req -config ${_openssl_cnf} -passin pass:${_password} -new -sha256 -key ${_inter_key} -out ${_filepath}.csr -subj "/CN=intermediate.${_domain_suffix#.}" -batch || return $?
-        # no need to use v3_intermediate_ca?
-        openssl ca -config ${_openssl_cnf} -keyfile ${_root_key} -passin pass:${_password} -cert ${_root_crt} -extensions v3_req -days 3650 -notext -md sha256 -in ${_filepath}.csr -out ${_filepath}.crt -batch || return $?
-        #openssl x509 -req -days 3653 -in "${_filepath}.csr" -CA "${_root_crt}" -CAkey "${_root_key}" -set_serial 01 -out "${_filepath}.crt" || return $?
-        echo "Verifying ..."
-        openssl verify -CAfile ${_root_crt} ${_filepath}.crt || return $?
+        echo "# Creating intermediate certificate (sign request: .csr) file by using ${_inter_key} filename"
+        f_gen_key "${_inter_key}" "${_password}" || return $?
+        f_gen_cert_from_key "${_inter_crt}" "${_inter_key}" "${_root_key}" "${_root_crt}" "/CN=intermediate.${_domain_suffix#.}" "${_password}" "${_openssl_cnf}" || return $?
+        #openssl x509 -req -days 3653 -in "${_filepath}.csr" -CA "${_root_crt}" -CAkey "${_root_key}" -set_serial 01 -out "${_inter_crt}" || return $?
+        echo "Verifying ${_inter_crt} ..."
+        openssl verify -CAfile ${_root_crt} ${_inter_crt} || return $?
     fi
     local _sample_filename="wild.${_domain_suffix}"
     if [ ! -s "$./${_sample_filename}.key" ]; then
         echo "# Creating sample server certificate (sign request: .csr) file by using ${_sample_filename} filename"
-        openssl genrsa -out ./${_sample_filename}.key 4096 || return $?
-        openssl req -config ./openssl.cnf -subj '/C=AU/ST=QLD/O=HajimeTest/CN=*.standalone.localdomain' -extensions v3_req -sha256 -new -key ./${_sample_filename}.key -out ./${_sample_filename}.csr || return $?
-        openssl x509 -req -extensions v3_req -days 3650 -sha256 -CA ${_filepath}.crt -CAkey ${_inter_key} -CAcreateserial -extfile ${_openssl_cnf} -passin "pass:$_password" -in ./${_sample_filename}.csr -out ./${_sample_filename}.crt || return $?
-        openssl pkcs12 -export -in ./${_sample_filename}.crt -inkey ./${_sample_filename}.key -certfile ./${_sample_filename}.crt -out ./${_sample_filename}.p12 -passin "pass:${_password}" -passout "pass:${_password}"
-        echo "Verifying 2 ..."
-        openssl verify -CAfile ${_root_crt} ${_filepath}.crt ./${_sample_filename}.crt || return $?
+        f_gen_key "./${_sample_filename}.key" "${_password}" || return $?
+        f_gen_cert_from_key "${_sample_filename}.crt" "${_sample_filename}.key" "${_inter_key}" "${_inter_crt}" "/C=AU/ST=QLD/O=HajimeTest/CN=*.${_domain_suffix#.}" "${_password}" "${_openssl_cnf}" || return $?
+        echo "Verifying ./${_sample_filename}.crt ..."
+        #openssl verify -CAfile ${_inter_crt} ./${_sample_filename}.crt || return $?
+        openssl verify -CAfile <(cat ${_root_crt} ${_inter_crt}) ./${_sample_filename}.crt || return $?
+        # another verifying way by creating p12
+        #openssl rsa -noout -modulus -in wild.standalone.localdomain.key
+        #openssl x509 -noout -modulus -in wild.standalone.localdomain.crt
+        openssl pkcs12 -export -chain -CAfile <(cat ${_root_crt} ${_inter_crt}) -in ./${_sample_filename}.crt -inkey ./${_sample_filename}.key -name ${_sample_filename} -out ./${_sample_filename}.p12 -passin "pass:${_password}" -passout "pass:${_password}"
     fi
 }
 
