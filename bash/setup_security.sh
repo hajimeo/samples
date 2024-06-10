@@ -196,12 +196,12 @@ function f_intermediate() {
         echo "# Creating sample server certificate (sign request: .csr) file by using ${_sample_filename} filename"
         f_gen_key "./${_sample_filename}.key" "${_password}" || return $?
         f_gen_cert_from_key "${_sample_filename}.crt" "${_sample_filename}.key" "${_inter_key}" "${_inter_crt}" "/C=AU/ST=QLD/O=HajimeTest/CN=*.${_domain_suffix#.}" "${_password}" "${_openssl_cnf}" || return $?
-        echo "Verifying ./${_sample_filename}.crt ..."
-        #openssl verify -CAfile ${_inter_crt} ./${_sample_filename}.crt || return $?
+        echo "Verifying ./${_sample_filename}.crt ..." # seems the order of CA file does not matter
         openssl verify -CAfile <(cat ${_root_crt} ${_inter_crt}) ./${_sample_filename}.crt || return $?
         # another verifying way by creating p12
         #openssl rsa -noout -modulus -in wild.standalone.localdomain.key
         #openssl x509 -noout -modulus -in wild.standalone.localdomain.crt
+        #keytool -list -v -keystore wild.standalone.localdomain2.p12 -storepass password | grep chain
         openssl pkcs12 -export -chain -CAfile <(cat ${_root_crt} ${_inter_crt}) -in ./${_sample_filename}.crt -inkey ./${_sample_filename}.key -name ${_sample_filename} -out ./${_sample_filename}.p12 -passin "pass:${_password}" -passout "pass:${_password}"
     fi
 }
