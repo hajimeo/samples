@@ -367,6 +367,12 @@ public class H2Console {
             execQuery(query, false);
             return true;
         }
+        if (input.toLowerCase().startsWith("list index")) {
+            // v196 doesn't have LISTAGG
+            String query = "SELECT DISTINCT TABLE_SCHEMA, TABLE_NAME, INDEX_NAME, NON_UNIQUE FROM INFORMATION_SCHEMA.INDEXES ORDER BY TABLE_SCHEMA, TABLE_NAME, INDEX_NAME";
+            execQuery(query, false);
+            return true;
+        }
         if (input.toLowerCase().startsWith("export")) {
             Matcher matcher = exportNamePtn.matcher(input);
             if (matcher.find()) {
@@ -561,7 +567,7 @@ public class H2Console {
         if (h2Opts.isEmpty()) {
             h2Opts = H2_DEFAULT_OPTS;
             if (path.endsWith(".h2.db")) {
-                h2Opts = h2Opts + ";MV_STORE=FALSE;MVCC=TRUE;";
+                h2Opts = h2Opts + ";MV_STORE=FALSE;";
                 if (path.endsWith("ods.h2.db")) {
                     h2Opts = h2Opts + ";SCHEMA=insight_brain_ods";
                 }

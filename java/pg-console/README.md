@@ -18,7 +18,7 @@ java -jar ./pg-console.jar <jdbcURL>
 or
 ```
 source ./sonatype-work/nexus3/etc/fabric/nexus-store.properties
-java -jar ./pg-console.jar "$jdbcUrl" "$username" "$password"
+java -jar ./pg-console.jar "${jdbcUrl}&ApplicationName=pg-console" "$username" "$password"
 ```
 or
 ```

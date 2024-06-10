@@ -355,6 +355,12 @@ public class PgConsole {
             execQuery(query);
             return true;
         }
+        if (input.toLowerCase().startsWith("list index")) {
+            // TODO: specify schema
+            String query = "select indexdef from pg_catalog.pg_indexes order by schemaname, tablename, indexname";
+            execQuery(query);
+            return true;
+        }
         if (input.toLowerCase().startsWith("set schema")) {
             Matcher matcher = setSchemaPtn.matcher(input);
             if (matcher.find()) {
@@ -513,6 +519,11 @@ public class PgConsole {
         String envPgDBPwd = System.getenv("_PGDB_PWD");
         if (envPgDBPwd != null) {
             dbPwd = envPgDBPwd;
+        } else {
+            envPgDBPwd = System.getenv("PGPASSWORD");
+            if (envPgDBPwd != null) {
+                dbPwd = envPgDBPwd;
+            }
         }
     }
 
