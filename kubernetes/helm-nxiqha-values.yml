@@ -8,7 +8,7 @@
 # To upgrade:
 #$ helm repo update sonatype
 #$ helm search repo sonatype/nexus-iq-server-ha --versions | head
-#$ helm upgrade nxiqha sonatype/nexus-iq-server-ha -f ./helm-nxiqha-values.yml -n sonatype-ha #--dry-run
+#$ helm upgrade -i nxiqha sonatype/nexus-iq-server-ha -f ./helm-nxiqha-values.yml -n sonatype-ha #--dry-run
 
 # Installing from github (eg: older versions due to CLM-28041)
 #$ git -C ~/IdeaProjects/nexus-iq-server-ha pull && git -C ~/IdeaProjects/nexus-iq-server-ha fetch
@@ -20,7 +20,7 @@ iq_server:
   imageRegistry: # Container image registry, if not specified the Docker public registry will be used
   image: "sonatype/nexus-iq-server"
   tag: "latest"
-  imagePullPolicy: "Always" # Default "IfNotPresent", and "Always" fails with this helm chart
+  #imagePullPolicy: "Always" # Default "IfNotPresent", and "Always" fails with this helm chart
   resources:
     requests:
       cpu: 1
