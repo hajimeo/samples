@@ -68,7 +68,7 @@ _APP_VER="${_APP_VER_OVERWRITE:-"<null>"}"          # 3.36.0-01
 
 # Aliases (can't use alias in shell script, so functions)
 _rg() {
-    local _max_filesize="${_RG_MAX_FILESIZE-"2G"}"
+    local _max_filesize="${_RG_MAX_FILESIZE-"4G"}"
     if [ -n "${_max_filesize}" ]; then
         rg --max-filesize "${_max_filesize}" -z "$@"
     else
@@ -378,7 +378,7 @@ function _split_log() {
         if _size_check "${_log_path}" "$((${_LOG_THRESHOLD_BYTES} * 20))"; then
             f_splitByRegex "${_log_path}" "${_start_log_line}" "_split_logs"
         else
-            _LOG "INFO" "Not doing f_splitByRegex for '${_log_path}' as the size is larger than _LOG_THRESHOLD_BYTES:${_LOG_THRESHOLD_BYTES} * 20"
+            _LOG "WARN" "Not doing f_splitByRegex for '${_log_path}' as the size is larger than _LOG_THRESHOLD_BYTES:${_LOG_THRESHOLD_BYTES} * 20"
         fi
     fi
 }
@@ -515,7 +515,7 @@ function t_pg_config() {
     [ ! -s "${_pg_cfg_glob}" ] && _pg_cfg_glob="-g ${_pg_cfg_glob}"
     #_test_template "$(rg --no-filename -i '^["]?max_connections'${_excl_regex}'(\d{1,2}|100)\b' ${_pg_cfg_glob})" "WARN" "max_connections might be too small"
     #TODO: _test_template "$(rg --no-filename -i '^["]?shared_buffers'${_excl_regex}'([1-4]\d{1,5}|\d{1,5}|[1-3]\d{1,3}kb|\d{1,6}kb|[1-3]\d{1,3}mb|\d{1,3}mb|[1-3]gb)\b' ${_pg_cfg_glob})" "WARN" "shared_buffers might be too small"
-    _test_template "$(rg --no-filename -i '^["]?(max_connections|shared_buffers|work_mem|effective_cache_size)\b' ${_pg_cfg_glob})" "WARN" "Please review DB configs"
+    _test_template "$(rg --no-filename -i "^\s*['\"]?(max_connections|shared_buffers|work_mem|effective_cache_size)\b" ${_pg_cfg_glob})" "WARN" "Please review DB configs"
 }
 function t_mounts() {
     _basic_check "" "${_FILTERED_DATA_DIR%/}/system-filestores.json" || return
@@ -549,12 +549,11 @@ for key in fsDicts['system-filestores']:
         echo "${_result}"
         # NOTE: 'bs=1 count=0 seek=104857600' is for creating one 100MB file very quickly
         echo "# Command examples to check (disk) performance with 100MB file:"
-        echo "    time sudo -u <nexus> dd if=/dev/zero of=\${_workingDirectory}/tmp/test.img bs=100M count=1 oflag=dsync
-    gzip ${_workingDirectory}/tmp/test.img
-    time curl -D- -u admin:admin123 -T \${_workingDirectory}/tmp/test.img.gz http://localhost:8081/repository/\${_rawHosted}/test/ --progress-bar | tee /dev/null
-    # creating a dummy file very quickly with seek=
-    sudo -u <nexus> dd if=/dev/zero of=\${installDirectory}/public/test.img bs=1 count=0 seek=104857600
-    time curl -D- -o/dev/null http://localhost:8081/test.img"
+        echo "    time sudo -u <nexus> dd if=/dev/zero of=\${_workingDirectory}/tmp/test100m.img bs=100M count=1 oflag=dsync
+    time curl -D- -u admin:admin123 -T \${_workingDirectory}/tmp/test100m.img -k http://localhost:8081/repository/\${_rawHosted}/test/ --progress-bar | tee /dev/null
+    # Download test: creating a dummy file very quickly with seek= (note: /public may not work from 3.68)
+    sudo -u <nexus> dd if=/dev/zero of=\${installDirectory}/public/test100m.img bs=1 count=0 seek=104857600
+    time curl -D- -o/dev/null http://localhost:8081/test100m.img"
         echo '```'
     fi
 }
