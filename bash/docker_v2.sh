@@ -3,6 +3,7 @@
 # Testing Docker V2 API with curl
 
 # Simpler test:
+#   curl -D/dev/stderr -u "${_USER}:${_PWD}" -s "https://auth.docker.io/token?service=registry.docker.io" --get --data-urlencode "scope=repository:library/alpine:pull"
 #   _TOKEN="$(curl -u admin "${_DOCKER_REGISTRY_URL%/}/v2/token" --get --data-urlencode "account=admin&scope=repository:alpine:pull,push&service=${_DOCKER_REGISTRY_URL%/}" | sed -E 's/.+"token":"([^"]+)".+/\1/')"
 #
 #   curl -I -u "${_USER}:${_PWD}" -L -k "${_DOCKER_REGISTRY_URL%/}/v2/"
@@ -51,8 +52,8 @@ function get_token() {
     fi | sed -E 's/.+"token":"([^"]+)".+/\1/'
 }
 
-function decode_jwt() {
     # If 'jq': jq -R 'split(".") | .[1] | @base64d | fromjson' <<< "$1"
+function decode_jwt() {
     local _jwt="$1"
     local _payload="$(echo -n "${_jwt}" | cut -d "." -f 2)"
     local _mod=$((${#_payload} % 4))
