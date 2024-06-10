@@ -380,7 +380,8 @@ function _psql_restore() {
 }
 
 function _psql_copydb() {
-    local __doc__="Copy database with 'pg_dump | psql' as superuser because 'CREATE DATABASE ... WITH TEMPLATE dbname' keeps owners"
+    local __doc__="Deprecated: Copy database with 'pg_dump | psql'"
+    # CREATE DATABASE newDbName WITH TEMPLATE srcDbName OWNER ownerName;
     local _local_src_db="${1}"
     local _dbusr="${2:-"$USER"}"
     local _dbpwd="${3:-"${_dbusr}"}"
