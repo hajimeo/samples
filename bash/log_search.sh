@@ -1602,7 +1602,7 @@ function f_h2_shell() {
     local _db_file="${1}"
     local _query_file="${2}"
     local _Xmx="${3:-"2g"}"
-    local _opts="${4-"${_H2_DB_OPTS:-";DATABASE_TO_UPPER=FALSE;SCHEMA=insight_brain_ods;IFEXISTS=true;MV_STORE=FALSE;MVCC=TRUE;"}"}"
+    local _opts="${4-"${_H2_DB_OPTS:-";DATABASE_TO_UPPER=FALSE;SCHEMA=insight_brain_ods;IFEXISTS=true;MV_STORE=FALSE;"}"}"
     local _h2_ver="1.4.200" # or 1.4.196 for IQ
     _db_file="$(realpath ${_db_file})"
     # DB_CLOSE_ON_EXIT=FALSE may have some bug: https://github.com/h2database/h2database/issues/1259
