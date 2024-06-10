@@ -80,7 +80,7 @@ alias _curl="curl -sSf -u '${_ADMIN_USER}:${_ADMIN_PWD}'"
 
 
 
-# To upgrade (from ${_dirname}/): mv -f -v ./config.yml{,.tmp} && tar -xvf $HOME/.nexus_executable_cache/nexus-iq-server-1.173.0-01-bundle.tar.gz && cp -p -v ./config.yml{.tmp,}
+# To upgrade (from ${_dirname}/): mv -f -v ./config.yml{,.tmp} && tar -xvf $HOME/.nexus_executable_cache/nexus-iq-server-1.176.0-01-bundle.tar.gz && cp -p -v ./config.yml{.tmp,}
 function f_install_iq() {
     local __doc__="Install specific IQ version"
     local _ver="${1}"     # 'latest'
@@ -281,10 +281,74 @@ function f_add_testuser() {
     f_api_role_mapping "test-role" "testuser" "Root Organization" "user"
 }
 
-# Setup Org only: f_scm_setup "_token"
-# Setup Org&app : f_scm_setup "_token" "github" "https://github.com/hajimeo/private-repo"
+function f_setup_https() {
+    local __doc__="Modify config files to enable SSL/TLS/HTTPS"
+    # https://guides.sonatype.com/iqserver/technical-guides/iq-secure-connections/
+    local _p12="${1}"   # If empty, will use *.standalone.localdomain cert.
+    local _port="${2:-8470}"
+    local _pwd="${3:-"password"}"
+    local _alias="${4}"
+    local _base_dir="${5:-"${_BASE_DIR:-"."}"}"
+    local _usr="${6:-${_SERVICE}}"
+    local _fqdn="$(hostname -f)"
+    [[ "${_IQ_URL}" =~ https?://([^:/]+) ]] && _fqdn="${BASH_REMATCH[1]}"
+
+    local _jar_file="$(find "${_base_dir%/}" -maxdepth 2 -type f -name 'nexus-iq-server*.jar' 2>/dev/null | sort | tail -n1)"
+    [ -z "${_jar_file}" ] && return 11
+    local _cfg_file="$(find "${_base_dir%/}" -maxdepth 2 -type f -name 'config.yml' 2>/dev/null | sort | tail -n1)"
+    [ -z "${_cfg_file}" ] && return 12
+
+    # If never started no "sonatype-work/clm-server"
+    [ -d "${_base_dir%/}/sonatype-work/clm-server" ] || mkdir -p -v "${_base_dir%/}/sonatype-work/clm-server/cert"
+    # Using sonatypeWork as upgrading breaks this IQ.
+    if [ -s "${_base_dir%/}/sonatype-work/clm-server/keystore.p12" ]; then
+        _p12="${_base_dir%/}/sonatype-work/clm-server/keystore.p12"
+        _log "INFO" "${_p12} exits. reusing ..."; sleep 1
+    else
+        if [ -n "${_p12}" ]; then
+            cp -v -f "${_p12}" "${_base_dir%/}/sonatype-work/clm-server/keystore.p12" || return $?
+            _p12="${_base_dir%/}/sonatype-work/clm-server/keystore.p12"
+        else
+            _p12="${_base_dir%/}/sonatype-work/clm-server/keystore.p12"
+            curl -sSf -L -o "${_p12}" "${_DL_URL%/}/misc/standalone.localdomain.p12" || return $?
+            _log "INFO" "No P12 file specified. Downloaded standalone.localdomain.p12 ..."
+            _fqdn="local.standalone.localdomain"
+        fi
+        [ -n "${_usr}" ] && chown "${_usr}" "${_p12}" && chmod 600 "${_p12}"
+    fi
+
+    if [ -z "${_alias}" ] && which keytool &>/dev/null; then
+        _alias="$(keytool -list -v -keystore ${_base_dir%/}/sonatype-work/clm-server/keystore.p12 -storetype PKCS12 -storepass "${_pwd}" 2>/dev/null | _sed -nr 's/Alias name: (.+)/\1/p')"
+        _log "INFO" "Using '${_alias}' as alias name..."; sleep 1
+    fi
+
+    _log "INFO" "Updating ${_cfg_file} ..."
+    if [ ! -s ${_cfg_file}.orig ]; then
+        cp -p ${_cfg_file} ${_cfg_file}.orig || return $?
+    fi
+    if grep -qE '^\s*-\s*type:\s*https' ${_cfg_file}; then
+        _log "ERROR" "Looks like https is already configured."
+        return 1
+    fi
+    local _workdir_escaped="`echo "${_base_dir%/}/sonatype-work/clm-server" | _sed 's/[\/]/\\\&/g'`"
+    local _lines="    - type: https\n      port: ${_port}\n      keyStorePath: ${_workdir_escaped%/}\/keystore.p12\n      keyStorePassword: ${_pwd}\n      certAlias: ${_alias}"
+    # TODO: currently replacing only the first match with "0,/" (so not doing for admin port)
+    _sed -i -r "0,/^(\s*applicationConnectors:.*)$/s//\1\n${_lines}/" ${_cfg_file}
+
+    _log "INFO" "Please restart service.
+Also update _IQ_URL. For example: export _IQ_URL=\"https://${_fqdn}:${_port}/\""
+    echo "To check the SSL connection:
+    curl -svf -k \"https://${_fqdn}:${_port}/\" -o/dev/null 2>&1 | grep 'Server certificate:' -A 5"
+    # TODO: generate pem file and trust
+    #_trust_ca "${_ca_pem}" || return $?
+    _log "INFO" "To trust this certificate, _trust_ca \"\${_ca_pem}\""
+}
+
+
+# Setup Org only: f_setup_scm "_token"
+# Setup Org&app : f_setup_scm "_token" "github" "https://github.com/hajimeo/private-repo"
 #  vs. CLI scan : iqCli . "private-repo" "source"
-function f_scm_setup() {
+function f_setup_scm() {
     local __doc__="Setup IQ SCM"
     local _git_url="${1}"   # https://github.com/hajimeo/private-repo
     local _org_name="${2}"
@@ -324,8 +388,20 @@ function f_scm_setup() {
     fi
 }
 
-# Integration setup related
-function f_setup_iq_scm_for_bitbucket() {
+### Integration setup related ###
+function f_setup_ldap_freeipa() {
+    local __doc__="Setup LDAP. Currently using my freeIPA server."
+    local _name="${1:-"freeIPA"}"
+    local _ldap_host="${2:-"dh1.standalone.localdomain"}"
+    local _ldap_port="${3:-"389"}"
+    [ -z "${_LDAP_PWD}" ] && echo "Missing _LDAP_PWD" && return 1
+    local _id="$(_apiS "/rest/config/ldap" '{"id":null,"name":"'${_name}'"}' | python -c "import sys,json;a=json.loads(sys.stdin.read());print(a['id'])")" || return $?
+    [ -z "${_id}" ] && return 111
+    _apiS "/rest/config/ldap/${_id}/connection" '{"id":null,"serverId":"'${_id}'","protocol":"LDAP","hostname":"'${_ldap_host}'","port":'${_ldap_port}',"searchBase":"cn=accounts,dc=standalone,dc=localdomain","authenticationMethod":"SIMPLE","saslRealm":null,"systemUsername":"uid=admin,cn=users,cn=accounts,dc=standalone,dc=localdomain","systemPassword":"'${_LDAP_PWD}'","connectionTimeout":30,"retryDelay":30}' "PUT" | python -m json.tool || return $?
+    _apiS "/rest/config/ldap/${_id}/userMapping" '{"id":null,"serverId":"'${_id}'","userBaseDN":"cn=users","userSubtree":true,"userObjectClass":"person","userFilter":"","userIDAttribute":"uid","userRealNameAttribute":"cn","userEmailAttribute":"mail","userPasswordAttribute":"","groupMappingType":"DYNAMIC","groupBaseDN":"","groupSubtree":false,"groupObjectClass":null,"groupIDAttribute":null,"groupMemberAttribute":null,"groupMemberFormat":null,"userMemberOfGroupAttribute":"memberOf","dynamicGroupSearchEnabled":true}' "PUT" | python -m json.tool
+}
+
+function f_setup_scm_for_bitbucket() {
     echo "docker run -v /var/tmp/share/bitbucket:/var/atlassian/application-data/bitbucket --name=bitbucket -d -p 7990:7990 -p 7999:7999 atlassian/bitbucket"
     cat << 'EOF'
 1. Setup Bitbucket
