@@ -113,7 +113,7 @@ _RESP_FILE=""
 
 ### Nexus installation functions ##############################################################################
 # To install 1st/2nd instance: _NEXUS_ENABLE_HA=Y f_install_nexus3 "" "nxrmha"
-# To upgrade (from ${_dirpath}/): tar -xvf $HOME/.nexus_executable_cache/nexus-3.65.0-02-mac.tgz
+# To upgrade (from ${_dirpath}/): tar -xvf $HOME/.nexus_executable_cache/nexus-3.68.1-02-mac.tgz
 function f_install_nexus3() {
     local __doc__="Install specific NXRM3 version"
     local _ver="${1:-"${r_NEXUS_VERSION}"}"     # 'latest'
@@ -206,8 +206,28 @@ EOF
         cd "${_dirpath%/}" || return $?
         echo "To start: ./nexus-${_ver}/bin/nexus run"
         type nxrmStart &>/dev/null && echo "      Or: nxrmStart"
-        type f_nexus_https_config &>/dev/null && echo "      ssl: f_nexus_https_config <port>"
+        type f_setup_https &>/dev/null && echo "      ssl: f_setup_https <port>"
     fi
+}
+
+function f_uninstall_nexus3() {
+    local __doc__="Uninstall NXRM3 by deleting database and directory"
+    local _dirpath="${1}"
+    if [ ! -d "${_dirpath%/}" ] || [[ ! "${_dirpath}" =~ [/]*nxrm_ ]]; then
+        echo "Incorrect _dirpath"
+        return 1
+    fi
+    local _nexus_store="$(find ${_dirpath%/} -mindepth 5 -maxdepth 5 -name 'nexus-store.properties' 2>/dev/null | head -n1)"
+    if [ -n "${_nexus_store}" ]; then
+        if grep -q ':postgresql' ${_nexus_store}; then
+            source ${_nexus_store}
+            [[ "${jdbcUrl}" =~ jdbc:postgresql://([^:/]+):?([0-9]*)/([^\?]+) ]] && _DBHOST="${BASH_REMATCH[1]}" _DBPORT="${BASH_REMATCH[2]}" _DBNAME="${BASH_REMATCH[3]}" _DBUSER="${username}" _DBSCHEMA="${schema:-"public"}" PGPASSWORD="${password}"
+            local _pcmd="psql -h ${_DBHOST} -p ${_DBPORT:-"5432"} -U ${_DBUSER} -d template1 -c \"DROP DATABASE ${_DBNAME}\""
+            echo "${_pcmd}"; sleep 3
+            evan "PGPASSWORD="${password}" ${_pcmd}" || return $?
+        fi
+    fi
+    rm -rf -v "${_dirpath%/}"
 }
 
 
@@ -278,7 +298,7 @@ function f_setup_pypi() {
     [ -z "${_ds_name}" ] && _ds_name="$(_get_datastore_name)"
     local _extra_sto_opt="$(_get_extra_sto_opt "${_ds_name}")"
     [ -z "${_bs_name}" ] && _bs_name="$(_get_blobstore_name)"
-\\   # If no xxxx-proxy, create it
+    # If no xxxx-proxy, create it
     if ! _is_repo_available "${_prefix}-proxy"; then
         _apiS '{"action":"coreui_Repository","method":"create","data":[{"attributes":{"proxy":{"remoteUrl":"https://pypi.org/","contentMaxAge":1440,"metadataMaxAge":1440},"httpclient":{"blocked":false,"autoBlock":true,"connection":{"useTrustStore":false}},"storage":{"blobStoreName":"'${_bs_name}'","strictContentTypeValidation":true'${_extra_sto_opt}'},"negativeCache":{"enabled":true,"timeToLive":1440},"cleanup":{"policyName":[]}},"name":"'${_prefix}'-proxy","format":"","type":"","url":"","online":true,"routingRuleId":"","authEnabled":false,"httpRequestSettings":false,"recipe":"pypi-proxy"}],"type":"rpc"}' || return $?
     fi
@@ -451,7 +471,7 @@ function f_setup_docker() {
     # add some data for xxxx-proxy
     _log "INFO" "Populating ${_prefix}-proxy repository with some image ..."
     if ! _populate_docker_proxy; then
-        _log "WARN" "_populate_docker_proxy failed. May need f_nexus_https_config (and FQDN) or 'Docker Bearer Token Realm' (not only for anonymous access)."
+        _log "WARN" "_populate_docker_proxy failed. May need f_setup_https (and FQDN) or 'Docker Bearer Token Realm' (not only for anonymous access)."
     fi
 
     if [ -n "${_source_nexus_url}" ] && [ -n "${_extra_sto_opt}" ] && ! _is_repo_available "${_prefix}-repl-proxy"; then
@@ -466,7 +486,7 @@ function f_setup_docker() {
     # add some data for xxxx-hosted
     _log "INFO" "Populating ${_prefix}-hosted repository with some image ..."
     if ! _populate_docker_hosted; then
-        _log "WARN" "_populate_docker_hosted failed. May need f_nexus_https_config (and FQDN) or 'Docker Bearer Token Realm' (not only for anonymous access)."
+        _log "WARN" "_populate_docker_hosted failed. May need f_setup_https (and FQDN) or 'Docker Bearer Token Realm' (not only for anonymous access)."
     fi
 
     # If no xxxx-group, create it
@@ -1883,12 +1903,14 @@ function f_create_testuser() {
     _apiS '{"action":"coreui_User","method":"create","data":[{"userId":"'${_userid}'","version":"","firstName":"test","lastName":"user","email":"'${_userid}'@example.com","status":"active","roles":["'${_role:-"nx-anonymous"}'"],"password":"'${_userid}'"}],"type":"rpc"}'
 }
 
-function f_nexus_https_config() {
-    local _port="${1:-"8443"}"
-    local _pwd="${2:-"password"}"
-    local _work_dir="${3}"
-    local _inst_dir="${4}"
-    local _ca_pem="${5}"
+function f_setup_https() {
+    local _jks="${1}"   # If empty, will use *.standalone.localdomain cert.
+    local _port="${2:-"8443"}"
+    local _pwd="${3:-"password"}"
+    local _alias="${4}"
+    local _work_dir="${5}"
+    local _inst_dir="${6}"
+    local _usr="${7:-${_SERVICE}}"
 
     [ -z "${_inst_dir}" ] && _inst_dir="$(_get_inst_dir)"
     [ -z "${_inst_dir%/}" ] && return 10
@@ -1897,13 +1919,24 @@ function f_nexus_https_config() {
 
     if [ ! -d "${_work_dir%/}/etc/ssl" ]; then
         mkdir -v -p ${_work_dir%/}/etc/ssl || return $?
+        [ -n "${_usr}" ] && chown "${_usr}" ${_work_dir%/}/etc/ssl
     fi
-    if [ ! -s "${_work_dir%/}/etc/ssl/keystore.jks" ]; then
-        curl -sSf -L -o "${_work_dir%/}/etc/ssl/keystore.jks" "${_DL_URL%/}/misc/standalone.localdomain.jks" || return $?
+    if [ -s "${_work_dir%/}/etc/ssl/keystore.jks" ]; then
+        _log "INFO" "${_work_dir%/}/etc/ssl/keystore.jks exits. reusing ..."; sleep 1
+    else
+        if [ -n "${_jks}" ]; then
+            cp -v -f "${_jks}" "${_work_dir%/}/etc/ssl/keystore.jks" || return $?
+        else
+            curl -sSf -L -o "${_work_dir%/}/etc/ssl/keystore.jks" "${_DL_URL%/}/misc/standalone.localdomain.jks" || return $?
+            _log "INFO" "No jks file specified. Downloaded standalone.localdomain.jks ..."
+        fi
+        [ -n "${_usr}" ] && chown "${_usr}" ${_work_dir%/}/etc/ssl/keystore.jks && chmod 600 ${_work_dir%/}/etc/ssl/keystore.jks
     fi
 
-    local _alias="$(keytool -list -v -keystore ${_work_dir%/}/etc/ssl/keystore.jks -storepass "${_pwd}" 2>/dev/null | _sed -nr 's/Alias name: (.+)/\1/p')"
-    [ -n "${_alias}" ] && _log "INFO" "Using '${_alias}' as alias name..." && sleep 1
+    if [ -z "${_alias}" ]; then
+        _alias="$(keytool -list -v -keystore ${_work_dir%/}/etc/ssl/keystore.jks -storepass "${_pwd}" 2>/dev/null | _sed -nr 's/Alias name: (.+)/\1/p')"
+        _log "INFO" "Using '${_alias}' as alias name..." && sleep 1
+    fi
 
     _log "INFO" "Updating ${_work_dir%/}/etc/nexus.properties ..."
     if [ ! -s ${_work_dir%/}/etc/nexus.properties.orig ]; then
@@ -1949,10 +1982,9 @@ Also update _NEXUS_URL. For example: export _NEXUS_URL=\"https://local.standalon
         echo "To check the SSL connection:
     curl -svf -k \"https://${BASH_REMATCH[1]}:${_port}/\" -o/dev/null 2>&1 | grep 'Server certificate:' -A 5"
     fi
-
-    if [ -s "${_ca_pem}" ]; then
-        _trust_ca "${_ca_pem}" || return $?
-    fi
+    # TODO: generate pem file and trust
+    #_trust_ca "${_ca_pem}" || return $?
+    _log "INFO" "To trust this certificate, _trust_ca \"\${_ca_pem}\""
 }
 
 function f_nexus_mount_volume() {
@@ -2011,6 +2043,9 @@ function f_start_saml_server() {
     echo "       so, eduPersonPrincipalName can be used for 'email', eduPersonAffiliation for 'groups'."
     fi
 }
+function f_setup_saml_freeipa() {
+    echo "TODO: use PUT /v1/security/saml"
+}
 
 function f_start_ldap_server() {
     local _fname="$(uname | tr '[:upper:]' '[:lower:]')$(uname -m).zip"
@@ -2051,7 +2086,7 @@ function f_setup_ldap_freeipa() {
     _apiS '{"action":"coreui_Role","method":"create","data":[{"version":"","source":"LDAP","id":"ipausers","name":"ipausers-role","description":"ipausers-role-desc","privileges":["nx-repository-view-*-*-*","nx-search-read","nx-component-upload"],"roles":[]}],"type":"rpc"}'
 }
 
-function f_repository_replication() {
+function f_repository_replication_deprecated() {
     local __doc__="DEPRECATED Setup Repository Replication v1 using 'admin' user"
     local _src_repo="${1:-"raw-hosted"}"
     local _tgt_repo="${2:-"raw-repl-hosted"}"
@@ -2114,7 +2149,7 @@ function f_register_script() {
     f_api "/service/rest/v1/script/${_script_name}" "" "DELETE"
     f_api "/service/rest/v1/script" "$(cat ${_TMP%/}/${_script_name}_$$.json)" || return $?
     echo "To run:
-    curl -u admin -X POST -H 'Content-Type: text/plain' '${_NEXUS_URL%/}/service/rest/v1/script/${_script_name}/run' -d'{arg:value}'"
+    curl -u admin -X POST -H 'Content-Type: application/json' '${_NEXUS_URL%/}/service/rest/v1/script/${_script_name}/run' -d'{arg:value}'"
 }
 
 #f_upload_dummies "http://localhost:8081/repository/raw-hosted/manyfiles" "1432 10000" 8
@@ -2210,7 +2245,7 @@ function _mvn_deploy_file() {
     mvn -s "${_TMP%/}/m2_settings.xml" deploy:deploy-file -Durl=${_deploy_repo} -Dfile="${_file}" -DrepositoryId="nexusDummy" -Drepo.id="nexusDummy" -Drepo.login="${_usr}" -Drepo.pwd="${_pwd}" ${_options}
 }
 
-function f_upload_dummies_mvn() {
+function f_upload_dummies_maven() {
     local __doc__="Upload dummy jar files into maven hosted repository"
     local _repo_name="${1:-"maven-hosted"}"
     local _how_many="${2:-"10"}"
@@ -2225,7 +2260,7 @@ function f_upload_dummies_mvn() {
     local _seq="seq ${_seq_start} ${_seq_end}"
     [[ "${_how_many}" =~ ^[0-9]+[[:space:]]+[0-9]+$ ]] && _seq="seq ${_how_many}"
 
-    _gen_dummy_jar || return $?
+    _gen_dummy_jar "${_TMP%/}/dummy.jar" || return $?
 
     local _g="setup.nexus3.repos"
     local _a="dummy"
@@ -2233,7 +2268,7 @@ function f_upload_dummies_mvn() {
     #export -f f_upload_asset
     for i in $(eval "${_seq}"); do
       echo "$i${_ver_sfx}"
-    done | xargs -I{} -P${_parallel} curl -sSf -u "${_usr}:${_pwd}" -w "%{http_code} ${_g}:${_a}:{} (%{time_total}s)\n" -H "accept: application/json" -H "Content-Type: multipart/form-data" -X POST -k "${_NEXUS_URL%/}/service/rest/v1/components?repository=${_repo_name}" -F maven2.groupId=${_g} -F maven2.artifactId=${_a} -F maven2.version={} -F maven2.asset1=@${_filepath} -F maven2.asset1.extension=jar
+    done | xargs -I{} -P${_parallel} curl -sSf -u "${_usr}:${_pwd}" -w "%{http_code} ${_g}:${_a}:{} (%{time_total}s)\n" -H "accept: application/json" -H "Content-Type: multipart/form-data" -X POST -k "${_NEXUS_URL%/}/service/rest/v1/components?repository=${_repo_name}" -F maven2.groupId=${_g} -F maven2.artifactId=${_a} -F maven2.version={} -F maven2.asset1=@${_TMP%/}/dummy.jar -F maven2.asset1.extension=jar
     # NOTE: xargs only stops if exit code is 255
 }
 
@@ -2242,13 +2277,13 @@ function f_upload_dummies_mvn() {
 for g in {1..3}; do
   for a in {1..3}; do
     for v in {1..3}; do
-      f_upload_dummies_mvn_snapshot "maven-snapshots" 100 "com.example${g}" "my-app${a}" "${v}.0-SNAPSHOT" &
+      f_upload_dummies_maven_snapshot "maven-snapshots" 100 "com.example${g}" "my-app${a}" "${v}.0-SNAPSHOT" &
     done
   done
 done
 wait
 EOF
-function f_upload_dummies_mvn_snapshot() {
+function f_upload_dummies_maven_snapshot() {
     local __doc__="Upload dummy jar files into maven snapshot hosted repository. Requires 'mvn' command"
     local _repo_name="${1:-"maven-snapshots"}"
     local _how_many="${2:-"10"}"
@@ -2614,7 +2649,7 @@ function f_staging_move() {
     echo ""
 }
 
-# Test associate only after f_setup_maven & f_upload_dummies_mvn
+# Test associate only after f_setup_maven & f_upload_dummies_maven
 # search: repository=maven-hosted&maven.groupId=setup.nexus3.repos&maven.artifactId=dummy&maven.baseVersion=3
 function f_associate_tags() {
     local _search="${1}"
@@ -2709,7 +2744,7 @@ function f_export_postgresql_component() {
 }
 
 # How to verify
-#VACUUM(FREEZE, ANALYZE, VERBOSE);  -- or FULL
+#VACUUM(FREEZE, ANALYZE, VERBOSE);  -- or FULL (FREEZE marks the table as vacuumed)
 #SELECT relname, reltuples as row_count_estimate FROM pg_class WHERE relnamespace ='public'::regnamespace::oid AND relkind = 'r' AND relname NOT LIKE '%_browse_%' AND (relname like '%repository%' OR relname like '%component%' OR relname like '%asset%') ORDER BY 2 DESC LIMIT 40;
 function f_restore_postgresql_component() {
     local _workingDirectory="${1}"
