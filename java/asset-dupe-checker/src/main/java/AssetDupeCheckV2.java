@@ -491,7 +491,7 @@ public class AssetDupeCheckV2 {
             }
         } else {
             // If no index or not repairing, create a dummy index
-            log("Creating a temp index from " + indexName + " (notunique, then unique)...");
+            log("Creating a temp Unique index from " + indexName + " ...");
             index = createIndex(db, indexName, true);
             isDummyIdxCreated = true;
         }
