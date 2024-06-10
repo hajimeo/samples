@@ -57,17 +57,17 @@ Read one file and output only necessary lines.
 ## NXRM2 thread dumps:
 	echolines "wrapper.log.2,wrapper.log.1,wrapper.log" "^jvm 1    \| \d\d\d\d-\d\d-\d\d \d\d:\d\d:\d\d$" "(^\s+class space.+)" | sed 's/^jvm 1    | //' > threads.txt
 ## NXRM3 thread dumps:
-	HTML_REMOVE=Y echolines "./jvm.log" "^\d\d\d\d-\d\d-\d\d \d\d:\d\d:\d\d$" "(^\s+class space.+)" "threads"
+	HTML_REMOVE=Y echolines "./jvm.log" "^\d\d\d\d-\d\d-\d\d \d\d:\d\d:\d\d$" "(^\s+class space.+|^\s+Metaspace\s+.+)" "threads"
 	# If would like to split per thread:
 	echolines "threads.txt" "^\".+" "" "./threads_per_thread"
 	find ./threads -type f -name '[0-9]*_*.out' | xargs -P3 -t -I{} bash -c '_d="$(basename "{}" ".out")";echolines "{}" "^\".+" "" "./threads_per_thread/${_d}"'
 
 ## Get duration of each line:
 	export ELAPSED_REGEX="^\d\d\d\d-\d\d-\d\d.(\d\d:\d\d:\d\d.\d\d\d)" ASCII_DISABLED=Y
-	echolines "./log/nexus.log" "^\d\d\d\d-\d\d-\d\d.\d\d:\d\d:\d\d.\d\d\d" "^\d\d\d\d-\d\d-\d\d.\d\d:\d\d:\d\d.\d\d\d"
+	echolines "./log/nexus.log" "^\d\d\d\d-\d\d-\d\d.\d\d:\d\d:\d\d.\d\d\d" "^\d\d\d\d-\d\d-\d\d.\d\d:\d\d:\d\d.\d\d\d" | rg '^# \d\d' | sort -t'|' -k3n
 ## Get duration of NXRM3 queries, and sort by the longuest:
 	export ELAPSED_REGEX="^\d\d\d\d-\d\d-\d\d.(\d\d:\d\d:\d\d.\d\d\d)"
-	echolines "./log/nexus.log" "Preparing:" "(^.+Total:.+)" | rg '^# \d\d' | sort -t'|' -k2nr
+	echolines "./log/nexus.log" "Preparing:" "(^.+Total:.+)" | rg '^# \d\d' | sort -t'|' -k3n
 ## Get duration of the first 30 S3 pool requests (with org.apache.http = DEBUG. This example also checks 'Connection leased'):
 	export ELAPSED_REGEX="^\d\d\d\d-\d\d-\d\d.(\d\d:\d\d:\d\d.\d\d\d)" ELAPSED_KEY_REGEX="\[(s3-parallel-[^\]]+)"
 	rg -m30 '\[s3-parallel-.+ Connection (request|leased|released):' ./log/nexus.log > connections.out
@@ -75,11 +75,20 @@ Read one file and output only necessary lines.
 ## Get duration of Tasks
 	export ELAPSED_REGEX="^\d\d\d\d-\d\d-\d\d.(\d\d:\d\d:\d\d.\d\d\d)" ELAPSED_KEY_REGEX="Task '([^']+)'" ASCII_DISABLED=Y
 	echolines "./log/nexus.log" "QuartzTaskInfo .+ -> RUNNING" "(^.+QuartzTaskInfo .+ RUNNING -> .+)" | rg '^#'
+## Get duration of blob-store-group-removal-\d+ .bytes files, with ASCII
+	export ELAPSED_REGEX="^\d\d\d\d-\d\d-\d\d.(\d\d:\d\d:\d\d.\d\d\d)" ELAPSED_KEY_REGEX="(blob-store-group-removal-\d+)"
+	rg 'blob-store-group-removal-\d+' -m2000 nexus.log | echolines "" "Writing blob" "(^.+Finished upload to key.+)" | rg '^#' > bytes_duration_summary.tsv
+## Get duration of DEBUG cooperation2.datastore.internal.CooperatingFuture
+	export ELAPSED_REGEX="\d\d\d\d-\d\d-\d\d.(\d\d:\d\d:\d\d.\d\d\d)" ELAPSED_KEY_REGEX="\[(qtp[^\]]+)"
+	rg -F '/dotenv?null' -m2000 nexus.log | echolines "" "Requesting" "(^.+Completing.+)" | rg '^#' > bytes_duration_summary.tsv
 
 ## Get duration of IQ Evaluate a File, and sort by threadId and time
 	rg 'POST /rest/scan/.+Scheduling scan task (\S+)' -o -r '$1' log/clm-server.log | xargs -I{} rg -w "{}" ./log/clm-server.log | sort | uniq > scan_tasks.log
 	export ELAPSED_REGEX="^\d\d\d\d-\d\d-\d\d.(\d\d:\d\d:\d\d.\d\d\d)"
 	ELAPSED_KEY_REGEX="\[([^ \]]+)" echolines ./scan_tasks.log "Running scan task" "(^.+Completed scan task.+)" | rg '^# \d\d' | sort -t'|' -k3,3 -k1,1
+
+## Get duration of Eclipse Memory Analyzer Tool (MAT) threads (<file-name>.threads)
+	echolines ./java_pid1404494.threads "^Thread 0x\S+" "" "./threads_per_thread"
 
 ## Get duration of mvn download (need org.slf4j.simpleLogger.showDateTime=true org.slf4j.simpleLogger.dateTimeFormat=yyyy-MM-dd HH:mm:ss.SSS)
 	export ELAPSED_REGEX="^\d\d\d\d-\d\d-\d\d.(\d\d:\d\d:\d\d.\d\d\d)"
