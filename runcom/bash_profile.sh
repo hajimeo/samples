@@ -80,17 +80,21 @@ if [ "$(uname)" = "Darwin" ]; then
         fi
     fi
 
-    # Java related
+    # Java related (for java11 and java17)
     # Truststore location: $(/usr/libexec/java_home)/lib/security/cacerts or $(/usr/libexec/java_home)/jre/lib/security/cacerts
     # To verify: -Djavax.net.debug=ssl,keymanager
     if [ -f /usr/libexec/java_home ]; then
         #[ -z "${JAVA_HOME_11}" ] && export JAVA_HOME_11=`/usr/libexec/java_home -v 11 2>/dev/null`
         [ -z "${JAVA_HOME}" ] && export JAVA_HOME=`/usr/libexec/java_home -v 1.8 2>/dev/null`
     fi
+    if [ -d "/opt/homebrew/opt/openjdk@17/libexec/openjdk.jdk/Contents/Home" ]; then
+        [ -z "${JAVA_HOME_17}" ] && export JAVA_HOME_17="/opt/homebrew/opt/openjdk@17/libexec/openjdk.jdk/Contents/Home"
+    fi
     if [ -d "$HOME/Apps/jdk11" ]; then
-        alias jshell="$HOME/Apps/jdk11/bin/jshell"
         [ -z "${JAVA_HOME_11}" ] && export JAVA_HOME_11="$HOME/Apps/jdk11"
-    elif [ -n "${JAVA_HOME_11%/}" ]; then
+    fi
+    # For now, using java11's jshell
+    if [ -n "${JAVA_HOME_11%/}" ]; then
         alias jshell="${JAVA_HOME_11}/bin/jshell"
     fi
 

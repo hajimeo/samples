@@ -113,9 +113,9 @@ function iqCli() {
     fi
     # NOTE: -X/--debug outputs to STDOUT
     #       Mac uses "TMPDIR" (and can't change), which is like java.io.tmpdir = /var/folders/ct/cc2rqp055svfq_cfsbvqpd1w0000gn/T/ + nexus-iq
-    #       Newer IQ CLI removes scan-6947340794864341803.xml.gz, so no point of changing the tmpdir...
+    #       Newer IQ CLI removes scan-6947340794864341803.xml.gz (if no -k), so no point of changing the tmpdir...
     # -D includeSha256=true is for BFS
-    local _cmd="java -jar ${_iq_cli_jar} ${_iq_cli_opt} -s ${_iq_url} -a 'admin:admin123' -i ${_iq_app_id} -t ${_iq_stage} -D includeSha256=true -r ./iq_result_$$.json -X ${_path}"
+    local _cmd="java -jar ${_iq_cli_jar} ${_iq_cli_opt} -s ${_iq_url} -a 'admin:admin123' -i ${_iq_app_id} -t ${_iq_stage} -D includeSha256=true -r ./iq_result_$$.json -k -X ${_path}"
     echo "[$(date +'%Y-%m-%d %H:%M:%S')] Executing: ${_cmd} | tee ./iq_cli_$$.out" >&2
     eval "${_cmd} | tee ./iq_cli_$$.out"
     echo "[$(date +'%Y-%m-%d %H:%M:%S')] Completed ($?)." >&2
@@ -169,7 +169,8 @@ function nxrmStart() {
     # -Xrunhprof:cpu=samples,interval=30,thread=y,cutoff=0.005,file=/tmp/cpu_samples_$$.hprof
     # -Xrunhprof:cpu=times,interval=30,thread=y,monitor=y,cutoff=0.001,doe=n,file=/tmp/cpu_samples_$$.hprof
     # -Xrunhprof:heap=sites,format=b,file=${_base_dir%/}/heap_sites_$$.hprof
-    # only 'root.level' is changeable
+    # only 'root.level' is changeable with _LOG_LEVEL
+    # Debugger port for NXRM2 is 5004
     local _java_opts=${2-"-Droot.level=${_LOG_LEVEL:-"INFO"} -Xrunjdwp:transport=dt_socket,server=y,address=5005,suspend=${_SUSPEND:-"n"}"}
     local _mode=${3} # if NXRM2, not 'run' but 'console'
     #local _java_opts=${@:2}
@@ -216,7 +217,9 @@ function nxrmStart() {
         echo "NOTE: May need to 'unzip -d ${_base_dir%/}/sonatype-work/nexus/plugin-repository $HOME/Downloads/unzip-repository-plugin-0.14.0-bundle.zip'"
         # jvm 1    | Caused by: java.lang.ClassNotFoundException: org.codehaus.janino.ScriptEvaluator
         #./sonatype-work/nexus/conf/logback-nexus.xml
-        [ -n "${_java_opts}" ] && export JAVA_TOOL_OPTIONS="${_java_opts}" && _java_opts=""
+        if [ -n "${_java_opts}" ]; then
+            export JAVA_TOOL_OPTIONS="${_java_opts/address=5005,/address=5004,}" && _java_opts=""
+        fi
     fi
     # For java options, latter values are used, so appending
     ulimit -n 65536
@@ -426,7 +429,7 @@ function nxrmDocker() {
 }
 
 # To start local (on Mac) IQ server, do not forget to delete LDAP and populate HTTP proxy (and DNS), also reset admin.
-#   _CUSTOM_DNS="127.0.0.1" iqStart
+#   _CUSTOM_DNS="$(hostname -f)" iqStart
 # export JAVA_TOOL_OPTIONS="-javaagent:$HOME/IdeaProjects/samples/misc/delver.jar=$HOME/IdeaProjects/samples/misc/delver-conf.xml"
 function iqStart() {
     local _base_dir="${1:-"."}"
@@ -474,6 +477,7 @@ $(sed -n "/^  loggers:/,\$p" ${_cfg_file} | grep -v '^  loggers:')" > "${_cfg_fi
         unset JAVA_TOOL_OPTIONS
     fi
     if [ -n "${_CUSTOM_DNS}" ]; then
+        # TODO: it stopped working with 127.0.0.1
         _java_opts="${_java_opts} -Dsun.net.spi.nameservice.nameservers=${_CUSTOM_DNS} -Dsun.net.spi.nameservice.provider.1=dns,sun"
         # NOTE: below does not work for SCM due to the change added in INT-5729
         _java_opts="${_java_opts} -Dhttp.proxyHost=non-existing-hostname -Dhttp.proxyPort=8800 -Dhttp.nonProxyHosts=\"*.sonatype.com\""
@@ -492,9 +496,11 @@ $(sed -n "/^  loggers:/,\$p" ${_cfg_file} | grep -v '^  loggers:')" > "${_cfg_fi
             return 11
         fi
 
-        if [ -s "${_work_dir:-"."}/data/ods.h2.db" ] && [ ! -s "${_work_dir:-"."}/data/ods.h2.db.gz" ]; then
-            echo "gzip-ing ods.h2.db file ..."
-            gzip -k "${_work_dir:-"."}/data/ods.h2.db" || return $?
+        if [ -s "${_work_dir:-"."}/data/ods.h2.db" ] && [ ! -f "${_work_dir:-"."}/data/ods.h2.db.gz" ]; then
+            echo "No ${_work_dir:-"."}/data/ods.h2.db.gz. Gzip-ing ods.h2.db file ..."; sleep 3
+            gzip -k "$(readlink -f "${_work_dir:-"."}/data/ods.h2.db")" || return $?
+        else
+            echo "WARN Not making a backup of database ${_work_dir:-"."}/data/ods.h2.db"; sleep 5;
         fi
 
         echo "*** reset-admin *** "; sleep 3;
@@ -509,16 +515,18 @@ $(sed -n "/^  loggers:/,\$p" ${_cfg_file} | grep -v '^  loggers:')" > "${_cfg_fi
     cd -
 }
 function _iqStartSQLs() {
+#DELETE FROM insight_brain_ods.ldap_usermapping;
+#DELETE FROM insight_brain_ods.ldap_connection;
+#DELETE FROM insight_brain_ods.ldap_server;
+#DELETE FROM insight_brain_ods.mail_configuration;
     cat << EOF
-DELETE FROM insight_brain_ods.ldap_usermapping;
-DELETE FROM insight_brain_ods.ldap_connection;
-DELETE FROM insight_brain_ods.ldap_server;
-DELETE FROM insight_brain_ods.mail_configuration;
-DELETE FROM insight_brain_ods.ldap_connection;
+UPDATE insight_brain_ods.ldap_connection SET hostname = hostname || '.sptboot' WHERE hostname not like '%.sptboot';
+UPDATE insight_brain_ods.mail_configuration SET hostname = hostname || '.sptboot' WHERE hostname not like '%.sptboot';
 UPDATE insight_brain_ods.source_control SET remediation_pull_requests_enabled = false, status_checks_enabled = false, pull_request_commenting_enabled = false, source_control_evaluations_enabled = false;
 DELETE FROM insight_brain_ods.proxy_server_configuration;
-INSERT INTO insight_brain_ods.proxy_server_configuration (proxy_server_configuration_id, hostname, port, exclude_hosts) VALUES ('proxy-server-configuration', 'non-existing-hostname', 8080, '*.sonatype.com');
+INSERT INTO insight_brain_ods.proxy_server_configuration (proxy_server_configuration_id, hostname, port, exclude_hosts) VALUES ('proxy-server-configuration', 'non-existing-hostname', 8800, '*.sonatype.com');
 EOF
+
 }
 
 function _iqConfigAPI() {

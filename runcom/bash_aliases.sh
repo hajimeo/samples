@@ -280,7 +280,7 @@ function fvim() {
     local _max_depth="${3:-"7"}"
     local _result=1
     # Accept not only file name but also /<dir>/<filename> so that using grep
-    for _f in `find . -maxdepth ${_max_depth} -type f -print | grep -w "${_name}$"`; do
+    for _f in `find . -maxdepth ${_max_depth} -type f -print | grep "/${_name}$"`; do
         echo "# ${_f}" >&2
         vim "${_f}" && _result=$?
         [[ "${_find_all}" =~ ^(y|Y) ]] || break
@@ -575,7 +575,7 @@ function bar() {
     local _file="${2}"
     [ -z "${_time_regex}" ] && _time_regex="\d\d:\d"
     #ggrep -oP "${_datetime_regex}" | sed 's/ /./g' | bar_chart.py
-    rg "(^\"?20\d\d-\d\d-\d\d|\"timestamp\":\"20\d\d-\d\d-\d\d|\d\d.[A-Z][a-z]{2}.20\d\d).${_time_regex}" -o ${_file} | sed 's/ /./g' | bar_chart.py
+    rg "(^\"?20\d\d-\d\d-\d\d|\"timestamp\":\"20\d\d-\d\d-\d\d|\d\d.[A-Z][a-z]{2}.20\d\d|\"date\":\"20\d\d-\d\d-\d\d).${_time_regex}" -o ${_file} | sed 's/ /./g' | bar_chart.py
 }
 # Start Jupyter Lab as service
 function jpl() {
@@ -720,7 +720,6 @@ function ncWeb() {
 function goBuild() {
     local _goFile="$1"
     local _name="$2"
-    local _winAsWell="$3"
     local _destDir="${4:-"$HOME/IdeaProjects/samples/misc"}"
     [ -z "${_name}" ] && _name="$(basename "${_goFile}" ".go" | tr '[:upper:]' '[:lower:]')"
     if [ -d /opt/homebrew/opt/go/libexec ]; then
@@ -730,9 +729,7 @@ function goBuild() {
     env GOOS=linux GOARCH=arm64 go build -o "${_destDir%/}/${_name}_Linux_aarch64" ${_goFile} && \
     env GOOS=darwin GOARCH=amd64 go build -o "${_destDir%/}/${_name}_Darwin_x86_64" ${_goFile} && \
     env GOOS=darwin GOARCH=arm64 go build -o "${_destDir%/}/${_name}_Darwin_arm64" ${_goFile} || return $?
-    if [[ "${_winAsWell}" =~ ^[yY] ]]; then
-        env GOOS=windows GOARCH=amd64 go build -o "${_destDir%/}/${_name}_Windows_x86_64" ${_goFile}
-    fi
+    env GOOS=windows GOARCH=amd64 go build -o "${_destDir%/}/${_name}_Windows_x86_64" ${_goFile}
     ls -l ${_destDir%/}/${_name}_* || return $?
     echo "curl -o /usr/local/bin/${_name} -L \"https://github.com/hajimeo/samples/raw/master/misc/${_name}_\$(uname)_\$(uname -m)\""
     date
