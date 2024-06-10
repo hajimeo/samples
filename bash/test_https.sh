@@ -138,7 +138,7 @@ function export_key() {
             ${JAVA_HOME%/}/bin/keytool -importkeystore -noprompt -srckeystore ${_file} -srcstorepass "${_pass}" -srcalias ${_alias} \
              -destkeystore ${_basename}.p12 -deststoretype PKCS12 -deststorepass "${_pass}" -destkeypass "${_pass}" || return $?
         fi
-        # Generating tge key, and convert to RSA format
+        # Generating tmp key, and convert to RSA format
         openssl pkcs12 -in ${_basename}.p12 -passin "pass:${_pass}" -nodes -nocerts -out ${_out_key}.tmp && openssl rsa -in ${_out_key}.tmp -out ${_out_key}
         # Generating certs. 'sed' to remove "Bag Attributes" and "Key Attributes" lines
         openssl pkcs12 -in ${_basename}.p12 -passin "pass:${_pass}" -nokeys -chain | sed -ne '/-BEGIN CERTIFICATE-/,/-END CERTIFICATE-/p' > ${_out_crt}
@@ -349,15 +349,15 @@ function keytool_v() {
     eval "${_cmd} ${_pwd_opts}"
 }
 
-#keytool -printcert -rfc -sslserver ${_host}:${_port}
+#$ keytool -printcert -rfc -sslserver ${_host}:${_port}
 # If HTTP proxy with username and password, (at least Mac's) keytool doesn't work?
-#keytool -J-Djavax.net.debug=all -J-Dhttps.proxyHost=dh1.standalone.localdomain -J-Dhttps.proxyPort=28080 -printcert -rfc -sslserver ${_host}:${_port}
+#$ keytool -J-Djavax.net.debug=all -J-Dhttps.proxyHost=dh1.standalone.localdomain -J-Dhttps.proxyPort=28080 -printcert -rfc -sslserver ${_host}:${_port}
 #$ openssl s_client -help 2>&1 | grep proxy
 # -proxy val                 Connect to via specified proxy to the real server
 # -proxy_user val            UserID for proxy authentication
 # -proxy_pass val            Proxy authentication password source
 # -allow_proxy_certs         allow the use of proxy certificates
-#openssl s_client -proxy "dh1.standalone.localdomain:28080" -showcerts -connect files.pythonhosted.org:443 </dev/null | openssl x509 -outform PEM | tee certificates.pem
+#$ openssl s_client -proxy "dh1.standalone.localdomain:28080" -showcerts -connect files.pythonhosted.org:443 </dev/null | openssl x509 -outform PEM | tee certificates.pem
 function get_cert_from_https() {
     # Accept _PROXY_HOST_PORT _PROXY_USER_PWD
     local _host="$1"
