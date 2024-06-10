@@ -616,7 +616,7 @@ func _printLineExtra(output string, path string, modTimeTs int64, db *sql.DB, cl
 		return ""
 	}
 	// no need to open the properties file if no _REMOVE_DEL, no _WITH_PROPS, no DB connection (or not BS) and no _DEL_DATE_FROM/TO
-	if (!*_REMOVE_DEL) && (!*_WITH_PROPS) && (len(*_DB_CON_STR) == 0 || *_TRUTH != "BS") && _DEL_DATE_FROM_ts == 0 && _DEL_DATE_TO_ts == 0 {
+	if (!*_REMOVE_DEL) && (!*_WITH_PROPS) && (len(*_FILTER_P) == 0 && len(*_FILTER_PX) == 0) && (len(*_DB_CON_STR) == 0 || *_TRUTH != "BS") && _DEL_DATE_FROM_ts == 0 && _DEL_DATE_TO_ts == 0 {
 		return output
 	}
 

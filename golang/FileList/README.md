@@ -119,15 +119,19 @@ file-list -b ./content -p 'vol-' -f ".bytes" >/dev/null
 13:52:46.972949 INFO  Printed 136895 of 136895 (size:2423593014) in ./content and sub-dir starts with vol- (elapsed:26s)
 ```
 
-### List all files which properties contain 'repo-name=docker-proxy' and 'deleted=true'
+### List all files which properties contain 'repo-name=docker-proxy' and 'deleted=true' 
 ```
-file-list -b ./content -p "vol-" -c 10 -f ".properties" -P -fP "@Bucket\.repo-name=docker-proxy.+deleted=true" -R -s ./docker-proxy_soft_deleted.tsv
+file-list -b ./content -p "vol-" -c 10 -f ".properties" -P -R -fP "@Bucket.repo-name=docker-proxy,.+deleted=true" -s ./docker-proxy_soft_deleted.tsv
 ```
-NOTE: the attributes in a .properties file are sorted in memory, so that attributes start with "@" comes before "deleted=true" line.
+NOTE: the attributes in a .properties file are sorted in memory and concatenated with ",", so that the repo-name ends with ",". Also attributes start with "@" comes before "deleted=true" line.
 
+Then generate blobIDs with comma separated:
+```
+sed -n -E 's/.+([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})\..+/\1/p' ./docker-proxy_soft_deleted.tsv | tr '\n', ','
+```
 ### List all files which does NOT contain 'maven-metadata.xml'
 ```
-file-list -b ./content -p "vol-" -c 10 -f ".properties" -P -fPX "BlobStore\.blob-name=.+/maven-metadata.xml.*" -R -s ./all_excluding_maven-metadata.tsv
+file-list -b ./content -p "vol-" -c 10 -f ".properties" -P -R -fPX "BlobStore\.blob-name=.+/maven-metadata.xml.*" -s ./all_excluding_maven-metadata.tsv
 ```
 
 ### List files which were modified since 1 day ago (-mF "YYYY-MM-DD")
@@ -152,9 +156,13 @@ sed -n -E 's/.+([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})\..
 
 ### Remove 'deleted=true' (-RDel) which soft-deleted within 1 day (-dF <YYYY-MM-DD>) against S3 (-S3 -b <bucket> -p <prefix>/content/vol-) but only "raw-s3-hosted" (-R -fP <regex>) , and outputs the contents of .properties (-P) to check, but *Dry Run* (-Dry)
 ```
-file-list -RDel -dF "$(date -d "1 day ago" +%Y-%m-%d)" -S3 -b "apac-support-bucket" -p "node-nxrm-ha1/content/vol-" -R -fP "@Bucket\.repo-name=raw-s3-hosted,.+deleted=true" -P -c 10 -s ./undelete_raw-s3-hosted.out -Dry
+S3_BUCKET="apac-support-bucket" S3_PREFIX="$(hostname -s)_s3-test"file-list -RDel -dF "$(date -d "1 day ago" +%Y-%m-%d)" -S3 -b "${S3_BUCKET}" -p "${S3_PREFIX}/content/vol-" -R -fP "@Bucket\.repo-name=raw-s3-hosted,.+deleted=true" -P -c 10 -s ./undelete_raw-s3-hosted.out -Dry
 ```
-
+Just get the list
+```
+S3_BUCKET="apac-support-bucket" S3_PREFIX="$(hostname -s)_s3-test"
+file-list -S3 -b "${S3_BUCKET}" -p "${S3_PREFIX}/content/vol-" -R -fP "@Bucket\.repo-name=raw-s3-hosted,.+deleted=true" -P -c 10 -s .raw-s3-hosted_deleted.out
+```
 ### Check orphaned files by querying against PostgreSQL (-db "\<conn string or nexus-store.properties file path) with max 10 DB connections (-c 10), and using -P as it's faster because of generating better SQL query, and checking only *.properties files with -f (excluding .bytes files)
 ```
 file-list -b ./content -p vol- -c 10 -db "host=localhost port=5432 user=nxrm3pg password=******** dbname=nxrm3pg" -P -f ".properties"
@@ -188,5 +196,5 @@ echo "select blob_ref from asset" | orient-console ./db/component/ | file-list -
 ```
 ###  List specific .properties/.bytes files then delete with xargs + rm:
 ```
-file-list -b ./sonatype-work/nexus3/blobs/default/content -p "vol-" -c 4 -fP "@BlobStore\.blob-name=/@sonatype/policy-demo,.+@Bucket\.repo-name=npm-hosted," -R -H | cut -d '.' -f1 | xargs -I{} -t rm -v -f {}.{properties,bytes}
+file-list -b ./sonatype-work/nexus3/blobs/default/content -p "vol-" -c 4 -R -fP "@BlobStore\.blob-name=/@sonatype/policy-demo,.+@Bucket\.repo-name=npm-hosted," -H | cut -d '.' -f1 | xargs -I{} -t rm -v -f {}.{properties,bytes}
 ```

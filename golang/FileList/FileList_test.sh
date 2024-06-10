@@ -375,6 +375,9 @@ function test_SoftDeletedThenUndeleteThenOrphaned() {
             fi
             if [[ "${_WITH_S3}" =~ ^[yY] ]] || [ -s "${_working_dir%/}/blobs/${_bsName}/reconciliation/$(date '+%Y-%m-%d')" ]; then
                 _log "NEXT" "Access ${_NEXUS_URL%/}/ and make sure no asset in ${_repo_name} and maven-hosted. Run the Reconcile task for '$(genBsName)' blob store and with 'Since 0 day' (If S3, 1 day) and 'Restore blob metadata', then confirm ${_repo_name} has ${_ASSET_CREATE_NUM} assets."
+                # The diff of below should be 100:
+                #   rg -c 'Restored asset' blobstore.rebuildComponentDB-*.log
+                #   rg -c 'Deleting asset' blobstore.rebuildComponentDB-*.log
             fi
         fi
     fi
