@@ -54,6 +54,7 @@ function f_upload_download_tests() {
         curld -u "${user_pwd}" -o/dev/null "${repo_url%/}/${_img}" || return $?
         # public might not be writable if docker / k8s
         if [ -d "${installDirectory%/}" ] && [ -d "${installDirectory%/}/public" ]; then
+            # 'public' may not work from 3.68.1
             if dd if=/dev/zero of="${installDirectory%/}/public/${_img}" bs=1 count=0 seek=104857600 2>/dev/null; then
                 echo "# [$(date +"%Y-%m-%d %H:%M:%S")-${_i}] Downloading 100M from http://localhost:8081/ (may fail)"
                 curld -o/dev/null http://localhost:8081/${_img}
