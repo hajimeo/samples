@@ -310,6 +310,8 @@ function _updateNexusProps() {
     # NOTE: this would not work if elasticsearch directory is empty
     #       or if upgraded from older than 3.39 due to https://sonatype.atlassian.net/browse/NEXUS-31285
     grep -qE '^#?nexus.elasticsearch.autoRebuild' "${_cfg_file}" || echo "nexus.elasticsearch.autoRebuild=false" >> "${_cfg_file}"
+    grep -qE '^#?nexus.assetBlobCleanupTask.blobCreatedDelayMinute' "${_cfg_file}" || echo "nexus.assetBlobCleanupTask.blobCreatedDelayMinute=1" >> "${_cfg_file}"
+
     # ${nexus.h2.httpListenerPort:-8082} jdbc:h2:file:./nexus (no username)
     grep -qE '^#?nexus.h2.httpListenerEnabled' "${_cfg_file}" || echo "nexus.h2.httpListenerEnabled=true" >> "${_cfg_file}"
     # Binary (or HA-C) for 'connect remote:hostname/component admin admin'
@@ -348,34 +350,8 @@ function _nexus29730() {
     done
 }
 
-function _prepare_install() {
-    local _dirname="$1"
-    local _tgz="$2"
-    local _download_dir="${3:-"$HOME/.nexus_executable_cache"}"
-
-    local _extractTar=true
-    if [ -d "${_dirname}" ]; then
-        echo "WARN ${_dirname} exists. Will just update the settings..."
-        sleep 5
-        _extractTar=false
-    else
-        if [ ! -s "${_tgz}" ]; then
-            local _filename="$(basename "${_tgz}")"
-            local _url="https://download.sonatype.com/nexus/3/${_filename}"
-            [[ "${_filename}" =~ ^nexus-iq ]] && _url="https://download.sonatype.com/clm/server/${_filename}"
-            echo "no ${_tgz}. Downloading from ${_url} ..."
-            curl -o "${_tgz}" -L "${_url}" || return $?
-        fi
-        mkdir -v "${_dirname}" || return $?
-    fi
-
-    cd "${_dirname}" || return $?
-    if ${_extractTar}; then
-        tar -xf ${_tgz} || return $?
-    fi
-}
-
-# To install 2nd instance: _NXRM3_INSTALL_PORT=8082 _NXRM3_INSTALL_DIR=./nxrm_3.42.0-01_test nxrm3Install 3.42.0-01
+# To install 2nd instance: _NXRM3_INSTALL_PORT=8083 _NXRM3_INSTALL_DIR=./nxrm_3.42.0-01_test nxrm3Install 3.42.0-01
+# Re-create database: _RECREATE_DB=Y`
 # To upgrade (from ${_dirname}/): tar -xvf $HOME/.nexus_executable_cache/nexus-3.56.0-01-mac.tgz
 function nxrm3Install() {
     if [ -s "$HOME/IdeaProjects/samples/bash/setup_nexus3_repos.sh" ]; then
@@ -519,10 +495,10 @@ function _iqStartSQLs() {
 #DELETE FROM insight_brain_ods.ldap_connection;
 #DELETE FROM insight_brain_ods.ldap_server;
 #DELETE FROM insight_brain_ods.mail_configuration;
+#UPDATE insight_brain_ods.source_control SET remediation_pull_requests_enabled = false, status_checks_enabled = false, pull_request_commenting_enabled = false, source_control_evaluations_enabled = false;
     cat << EOF
 UPDATE insight_brain_ods.ldap_connection SET hostname = hostname || '.sptboot' WHERE hostname not like '%.sptboot';
 UPDATE insight_brain_ods.mail_configuration SET hostname = hostname || '.sptboot' WHERE hostname not like '%.sptboot';
-UPDATE insight_brain_ods.source_control SET remediation_pull_requests_enabled = false, status_checks_enabled = false, pull_request_commenting_enabled = false, source_control_evaluations_enabled = false;
 DELETE FROM insight_brain_ods.proxy_server_configuration;
 INSERT INTO insight_brain_ods.proxy_server_configuration (proxy_server_configuration_id, hostname, port, exclude_hosts) VALUES ('proxy-server-configuration', 'non-existing-hostname', 8800, '*.sonatype.com');
 EOF
