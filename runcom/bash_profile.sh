@@ -89,6 +89,7 @@ if [ "$(uname)" = "Darwin" ]; then
     fi
     if [ -d "/opt/homebrew/opt/openjdk@17/libexec/openjdk.jdk/Contents/Home" ]; then
         [ -z "${JAVA_HOME_17}" ] && export JAVA_HOME_17="/opt/homebrew/opt/openjdk@17/libexec/openjdk.jdk/Contents/Home"
+        [ -z "${JAVA_HOME}" ] && export JAVA_HOME="/opt/homebrew/opt/openjdk@17/libexec/openjdk.jdk/Contents/Home"
     fi
     if [ -d "$HOME/Apps/jdk11" ]; then
         [ -z "${JAVA_HOME_11}" ] && export JAVA_HOME_11="$HOME/Apps/jdk11"
@@ -117,12 +118,12 @@ if [ "$(uname)" = "Darwin" ]; then
     export DOCKER_DEFAULT_PLATFORM="linux/amd64"
 fi
 
-# The next line updates PATH for the Google Cloud SDK.
-if [ -f "$HOME/Downloads/google-cloud-sdk/path.bash.inc" ]; then . "$HOME/Downloads/google-cloud-sdk/path.bash.inc"; fi
-
-# The next line enables shell command completion for gcloud.
-if [ -f "$HOME/Downloads/google-cloud-sdk/completion.bash.inc" ]; then . "$HOME/Downloads/google-cloud-sdk/completion.bash.inc"; fi
-
 #THIS MUST BE AT THE END OF THE FILE FOR SDKMAN TO WORK!!!
 export SDKMAN_DIR="$HOME/.sdkman"
 [[ -s "$HOME/.sdkman/bin/sdkman-init.sh" ]] && source "$HOME/.sdkman/bin/sdkman-init.sh"
+
+# The next line updates PATH for the Google Cloud SDK.
+if [ -f '/Users/hosako/Apps/google-cloud-sdk/path.bash.inc' ]; then . '/Users/hosako/Apps/google-cloud-sdk/path.bash.inc'; fi
+
+# The next line enables shell command completion for gcloud.
+if [ -f '/Users/hosako/Apps/google-cloud-sdk/completion.bash.inc' ]; then . '/Users/hosako/Apps/google-cloud-sdk/completion.bash.inc'; fi
