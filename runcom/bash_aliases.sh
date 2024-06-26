@@ -21,7 +21,12 @@ fi
 # Debug network performance with curl
 alias curld='curl -w "\ntime_namelookup:\t%{time_namelookup}\ntime_connect:\t%{time_connect}\ntime_appconnect:\t%{time_appconnect}\ntime_pretransfer:\t%{time_pretransfer}\ntime_redirect:\t%{time_redirect}\ntime_starttransfer:\t%{time_starttransfer}\n----\ntime_total:\t%{time_total}\nhttp_code:\t%{http_code}\nspeed_download:\t%{speed_download}\nspeed_upload:\t%{speed_upload}\n"'
 # output the longest line *number* as wc|gwc -L does not show the line number
-alias wcln="awk 'length > max_length { max_length = length; longest_line_num = NR } END { print longest_line_num }'"
+alias longest_line="awk 'length > max_length { max_length = length; longest_line_num = NR } END { print longest_line_num }'"
+# count a specific character from each line with the line number. eg. gunzip -c large.sql.gz |
+function count_char() {
+    awk '/'$1'/ {print NR, gsub(/'$1'/, "", $0)}' $2  # if '/' needs to be '\/'
+    # then `sed -n '<line_num>p' ./file.txt
+}
 # Sum integer in a column by using paste (which concatenates files or characters(+))
 #alias sum_cols="gpaste -sd+ | bc"
 alias sum_cols="paste -sd+ - | bc"
@@ -94,20 +99,21 @@ function pyvTest() {
 #alias pyv='pyenv activate mypyvenv'    # I felt pyenv is slow, so not using
 alias pyv='source $HOME/.pyvenv/bin/activate'
 alias pyvN='source $HOME/.pyvenv_new/bin/activate'
-alias urlencode='python3 -c "import sys;from urllib import parse; print(parse.quote(sys.stdin.read()))"'
-#alias urlencode='python2 -c "import sys, urllib as ul; print(ul.quote(sys.stdin.read()))"'
-alias urldecode='python3 -c "import sys;from urllib import parse; print(parse.unquote(sys.stdin.read()))"'
-#alias urldecode='python2 -c "import sys, urllib as ul; print(ul.unquote_plus(sys.stdin.read()))"'
-# base64 encode/decode (coreutils base64 or openssl base64 -e|-d)
-alias b64encode='python3 -c "import sys, base64; print(base64.b64encode(sys.stdin.read().encode(\"utf-8\")).decode())"'
-#alias b64encode='python -c "import sys, base64; print(base64.b64encode(sys.stdin.read()))"'
-alias b64decode='python3 -c "import sys, base64; b=sys.stdin.read(); b += \"=\" * ((4-len(b)%4)%4); print(base64.b64decode(b).decode())"'                                                                                   # .decode() to remove "b'xxxx"
-# require python3
-alias htmlencode="python -c \"import sys,html;print(html.escape(sys.stdin.read()))\""
-alias htmldecode="python -c \"import sys,html;print(html.unescape(sys.stdin.read()))\""
+
+## Below uses sys.argv[1] as sys.stdin.read() requires `echo -n`
+alias urlencode='python3 -c "import sys;from urllib import parse; print(parse.quote(sys.argv[1]))"'
+alias urldecode='python3 -c "import sys;from urllib import parse; print(parse.unquote(sys.argv[1]))"'
+# base64 encode/decode (alternatives are coreutils's base64 or openssl base64 -e|-d)
+alias b64encode='python3 -c "import sys, base64; print(base64.b64encode(sys.argv[1].encode(\"utf-8\")).decode())"'
+#alias b64encode='python -c "import sys, base64; print(base64.b64encode(sys.argv[1]))"'
+alias b64decode='python3 -c "import sys, base64; b=sys.argv[1]; b += \"=\" * ((4-len(b)%4)%4); print(base64.b64decode(b).decode())"' # .decode() to remove "b'xxxx"
+
+alias htmlencode="python3 -c \"import sys,html;print(html.escape(sys.stdin.read()))\""
+alias htmldecode="python3 -c \"import sys,html;print(html.unescape(sys.stdin.read()))\""
 alias utc2int='python3 -c "import sys,time,dateutil.parser;from datetime import timezone;print(int(dateutil.parser.parse(sys.argv[1]).replace(tzinfo=timezone.utc).timestamp()))"' # doesn't work with yy/mm/dd (2 digits year)
-alias int2utc='python3 -c "import sys,datetime;print(datetime.datetime.utcfromtimestamp(int(sys.argv[1][0:10])).strftime(\"%Y-%m-%dT%H:%M:%S\")+\".\"+sys.argv[1][10:13]+\"Z\")"'
-#alias int2utc='python -c "import sys,time;print(time.asctime(time.gmtime(int(sys.argv[1])))+\" UTC\")"'
+# Python is strange. Behaves differently #.astimezone(zoneinfo.ZoneInfo(\"UTC\"))
+alias int2utc='python3 -c "import sys,datetime,zoneinfo;print(datetime.datetime.fromtimestamp(int(sys.argv[1][0:10])).isoformat())"'
+#alias int2utc='python3 -c "import sys,datetime;print(datetime.datetime.utcfromtimestamp(int(sys.argv[1][0:10])).strftime(\"%Y-%m-%dT%H:%M:%S\")+\".\"+sys.argv[1][10:13]+\"Z\")"'#alias int2utc='python -c "import sys,time;print(time.asctime(time.gmtime(int(sys.argv[1])))+\" UTC\")"'
 alias dec2hex='printf "%x\n"'
 alias hex2dec='printf "%d\n"'
 #alias python_i_with_pandas='python -i <(echo "import sys,json;import pandas as pd;f=open(sys.argv[1]);jd=json.load(f);df=pd.DataFrame(jd);")'   # Start python interactive after loading json object in 'df' (pandas dataframe)
@@ -159,11 +165,19 @@ alias kPods='kubectl get pods --show-labels -A'
 function kBash() {
     local _pod="${1}"
     local _ns="${2}"
+    #kubectl get pods -n sonatype-ha -l name=nxiqha-iq-server -o jsonpath={.items[0].metadata.name} | head -n1
+    if [[ "${_pod}" =~ (iq|iqha|IQHA) ]]; then
+        _pod="$(kPods | grep -m1 'name=nxiqha-iq-server,pod-template-hash=' | awk '{print $2}')"
+    elif [[ "${_pod}" =~ (rmha|RMHA) ]]; then
+        _pod="$(kPods | grep -m1 'app.kubernetes.io/name=nxrm-ha' | awk '{print $2}')"
+    elif [[ "${_pod}" =~ (rm|RM) ]]; then
+        _pod="$(kPods | grep -m1 'app=nxrm3pg,pod-template-hash=' | awk '{print $2}')"
+    fi
     if [ -z "${_ns}" ]; then
         _ns="$(kubectl get pods -A | grep -E "\s${_pod}\s.+\sRunning\s" | awk '{print $1}')"
         [ -z "${_ns}" ] && return 1
     fi
-    kubectl exec "$1" -n "${_ns}" -t -i -- bash
+    kubectl exec "${_pod}" -n "${_ns}" -t -i -- bash
 }
 function kConfMerge() {
     local _append="${1}"
@@ -193,8 +207,8 @@ if [ -d $HOME/IdeaProjects/work/bash ]; then
     alias srcLog="pyvN; source $HOME/IdeaProjects/work/bash/log_search.sh"
     alias srcRm="logT; source $HOME/IdeaProjects/work/bash/log_tests_nxrm.sh"
     alias srcIq="logT; source $HOME/IdeaProjects/work/bash/log_tests_nxiq.sh"
-    alias logRm="pyvN;$HOME/IdeaProjects/work/bash/log_tests_nxrm.sh"
-    alias logIq="pyvN;$HOME/IdeaProjects/work/bash/log_tests_nxiq.sh"
+    alias logRm="pyvN;$HOME/IdeaProjects/work/bash/log_tests_nxrm.sh && srcRm"
+    alias logIq="pyvN;$HOME/IdeaProjects/work/bash/log_tests_nxiq.sh && srcIq"
     alias instSona="source $HOME/IdeaProjects/work/bash/install_sonatype.sh"
 fi
 #alias xmldiff="python $HOME/IdeaProjects/samples/python/xml_parser.py" # this is for Hadoop xml files
@@ -686,7 +700,7 @@ function pgStatus() {
     local _log_path="${3-"${HOME%/}/postgresql.log"}"   # may not have permission on /var/log and /tmp might be small
     local _wal_backup_path="${4:-"$HOME/share/$USER/backups/$(hostname -s)_wal"}"
     #ln -s /Volumes/Samsung_T5/hajime/backups $HOME/share/$USER/backups
-    if [ "${_cmd}" == "start" ]; then
+    if [[ "${_cmd}" =~ start$ ]]; then
         if [ -n "${_log_path}" ] && [ -s "${_log_path}" ]; then
             echo -n > ${_log_path}
         fi
