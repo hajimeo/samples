@@ -339,7 +339,7 @@ function _test_template() {
     _head "${_level}" "${_message}"
     echo '```'${_style}
     echo "${_bad_result}"
-    [ -n "${_note}" ] && echo "# ${_note}"
+    [ -n "${_note}" ] && echo -e "# ${_note}"
     echo '```'
     return 1
 }
@@ -410,7 +410,7 @@ function e_requests() {
     fi
 }
 function e_threads() {
-    _NOT_SPLIT_BY_DATE=Y f_threads &>${_FILTERED_DATA_DIR%/}/f_threads.out
+    _NOT_SPLIT_BY_DATE=Y _THREAD_SAVE_DIR="_threads" f_threads &>${_FILTERED_DATA_DIR%/}/f_threads.out
 }
 function e_configs() {
     _extract_configs >${_FILTERED_DATA_DIR%/}/extracted_configs.md
