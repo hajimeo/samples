@@ -191,6 +191,7 @@ public class Main
       results = tx.query(new OSQLSynchQuery(input));
     }
     // TODO: Not sure if these are catchable. Also BufferUnderflowException tends to cause 'OutOfMemoryError: Java heap space'
+    //       com.orientechnologies.common.directmemory.OByteBufferPool#acquireDirect
     catch (ODatabaseException | OCommandExecutionException | ClassCastException | java.nio.BufferUnderflowException | java.lang.NullPointerException e) {
       log("[ERROR] " + e.getMessage());
       //e.printStackTrace();
