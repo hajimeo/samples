@@ -157,8 +157,13 @@ EOF
     else
         cd "${_dirpath%/}" || return $?
         echo "To start: java -jar ${_jar_file} server ${_cfg_file} 2>./log/iq-server.err"
-        type iqStart &>/dev/null && echo "      Or: iqStart"
-        type f_config_update &>/dev/null && echo "      also: f_config_update"
+        if type iqStart &>/dev/null; then
+            if type f_config_update &>/dev/null; then
+                echo "      Or: iqStart & f_config_update; fg"
+            else
+                echo "      Or: iqStart"
+            fi
+        fi
     fi
 }
 
@@ -269,6 +274,9 @@ for r in a['memberMappings']:
 ### Misc. setup functions
 function f_config_update() {
     local _baseUrl="${1:-"${_IQ_URL}"}"
+    if [ -n "${_IQ_URL%/}" ] && type _wait_url &>/dev/null; then
+        _wait_url "${_IQ_URL%/}"
+    fi
     f_api_config '{"hdsUrl":"https://clm-staging.sonatype.com/"}'
     f_api_config '{"baseUrl":"'${_baseUrl%/}'/","forceBaseUrl":false}'
     f_api_config '{"enableDefaultPasswordWarning":false}'
@@ -350,11 +358,11 @@ Also update _IQ_URL. For example: export _IQ_URL=\"https://${_fqdn}:${_port}/\""
 #  vs. CLI scan : iqCli . "private-repo" "source"
 function f_setup_scm() {
     local __doc__="Setup IQ SCM"
-    local _git_url="${1}"   # https://github.com/hajimeo/private-repo
+    local _git_url="${1}"   # https://github.com/sonatype/support-apac-scm-test https://github.com/hajimeo/private-repo
     local _org_name="${2}"
     local _token="${3:-"${GITHUB_TOKEN}"}"
     local _provider="${4:-"github"}"
-    local _branch="${5:-"master"}"
+    local _branch="${5:-"main"}"
     [ -z "${_org_name}" ] && _org_name="${_provider}_org"
 
     # Automatic Source Control Configuration
