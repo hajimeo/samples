@@ -32,7 +32,7 @@ Reload jn_utils.py after modifying the code (but anyway you lose loaded sqlite t
 Show the values of affected ID in group by
     GROUP_CONCAT(rid, ',') as rids
 Convert Unix timestamp with milliseconds to datetime
-    DATETIME(ROUND(dateColumn / 1000), 'unixepoch')
+    DATETIME(ROUND(dateColumn / 1000), 'unixepoch', 'localtime')
 Cast real/float to decimal with 2 decimal point
     ROUND(avg(elapsedTime), 2)
 Get date_hour
