@@ -175,6 +175,7 @@ spec:
                 -Djava.util.prefs.userRoot=/nexus-data/javaprefs \
                 -Dnexus.licenseFile=/etc/sonatype/sonatype-license.lic \
                 -Dnexus.scripts.allowCreation=true \
+                -Dnexus.app.scan.enabled=true \
                 -Dnexus.datastore.enabled=true \
                 -Dnexus.datastore.nexus.jdbcUrl=\${JDBC_URL} \
                 -Dnexus.datastore.nexus.username=\${DB_USER} \
