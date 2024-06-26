@@ -62,10 +62,11 @@ Read one file and output only necessary lines.
 	echolines "threads.txt" "^\".+" "" "./threads_per_thread"
 	find ./threads -type f -name '[0-9]*_*.out' | xargs -P3 -t -I{} bash -c '_d="$(basename "{}" ".out")";echolines "{}" "^\".+" "" "./threads_per_thread/${_d}"'
 
-## Get duration of each line:
-	export ELAPSED_REGEX="^\d\d\d\d-\d\d-\d\d.(\d\d:\d\d:\d\d.\d\d\d)" ASCII_DISABLED=Y
-	echolines "./log/nexus.log" "^\d\d\d\d-\d\d-\d\d.\d\d:\d\d:\d\d.\d\d\d" "^\d\d\d\d-\d\d-\d\d.\d\d:\d\d:\d\d.\d\d\d" | rg '^# \d\d' | sort -t'|' -k3n
-## Get duration of NXRM3 queries, and sort by the longuest:
+## Get duration of each line of a thread #with thread+username+classnames:
+	export ELAPSED_REGEX="^\d\d\d\d-\d\d-\d\d.(\d\d:\d\d:\d\d.\d\d\d)" ASCII_DISABLED=Y #ELAPSED_KEY_REGEX="\[(qtp\S+\s+\S+\s+\S+)"
+	rg 'qtp1529377038-106' ./nexus.log | echolines "" "^\d\d\d\d-\d\d-\d\d.\d\d:\d\d:\d\d.\d\d\d" "^\d\d\d\d-\d\d-\d\d.\d\d:\d\d:\d\d.\d\d\d" | rg '^# ' | sort -t'|' -k3n
+	#vimdiff <(rg '\d+ms|.+' -o qtp1529377038-106_admin_dur2.out) <(rg '\d+ms|.+' -o qtp1755872334-99_admin_dur2.out)
+## Get duration of NXRM3 queries, and sort by the longest:
 	export ELAPSED_REGEX="^\d\d\d\d-\d\d-\d\d.(\d\d:\d\d:\d\d.\d\d\d)"
 	echolines "./log/nexus.log" "Preparing:" "(^.+Total:.+)" | rg '^# \d\d' | sort -t'|' -k3n
 ## Get duration of the first 30 S3 pool requests (with org.apache.http = DEBUG. This example also checks 'Connection leased'):
