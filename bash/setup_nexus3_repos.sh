@@ -94,6 +94,7 @@ Just get the repositories setting:
 : ${_SHARE_DIR:="/var/tmp/share"}
 : ${_IS_NXRM2:="N"}
 : ${_NO_DATA:="N"}          # To just create repositories
+#: ${_NO_REPO_CREATE:="N"}
 : ${_ASYNC_CURL:="N"}       # _get_asset won't wait for the result
 : ${_BLOBTORE_NAME:=""}     # eg: default. Empty means auto
 : ${_IS_NEWDB:=""}
@@ -112,7 +113,7 @@ _RESP_FILE=""
 
 
 ### Nexus installation functions ##############################################################################
-# To install 1st/2nd instance: _NEXUS_ENABLE_HA=Y f_install_nexus3 "" "nxrmha"
+# To install 1st/2nd instance: _NEXUS_ENABLE_HA=Y _NXRM3_INSTALL_PORT=8083 f_install_nexus3 "" "nxrmha"
 # To upgrade (from ${_dirpath}/): tar -xvf $HOME/.nexus_executable_cache/nexus-3.68.1-02-mac.tgz
 function f_install_nexus3() {
     local __doc__="Install specific NXRM3 version"
@@ -1122,6 +1123,7 @@ function f_create_file_blobstore() {
 }
 
 # AWS_ACCESS_KEY_ID=xxx AWS_SECRET_ACCESS_KEY=yyy f_create_s3_blobstore
+# _NO_REPO_CREATE=Y f_create_s3_blobstore
 function f_create_s3_blobstore() {
     local __doc__="Create a S3 blobstore. AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY are required"
     local _bs_name="${1:-"s3-test"}"
@@ -1142,13 +1144,16 @@ function f_create_s3_blobstore() {
         return 1
     fi
     _log "DEBUG" "$(cat ${_TMP%/}/f_apiS_last.out)"
-    if ! _is_repo_available "raw-s3-hosted"; then
+    if [[ ! "${_NO_REPO_CREATE}" =~ [yY] ]] && ! _is_repo_available "raw-s3-hosted"; then
         _log "INFO" "Creating raw-s3-hosted ..."
-        _apiS '{"action":"coreui_Repository","method":"create","data":[{"attributes":{"storage":{"blobStoreName":"'${_bs_name}'","writePolicy":"ALLOW","strictContentTypeValidation":true'$(_get_extra_sto_opt)'},"cleanup":{"policyName":[]}},"name":"raw-s3-hosted","format":"","type":"","url":"","online":true,"recipe":"raw-hosted"}],"type":"rpc"}' || return $?
+        # Not sure why but the file created by `dd` doesn't work if strictContentTypeValidation is true
+        _apiS '{"action":"coreui_Repository","method":"create","data":[{"attributes":{"storage":{"blobStoreName":"'${_bs_name}'","writePolicy":"ALLOW","strictContentTypeValidation":false'$(_get_extra_sto_opt)'},"cleanup":{"policyName":[]}},"name":"raw-s3-hosted","format":"","type":"","url":"","online":true,"recipe":"raw-hosted"}],"type":"rpc"}' || return $?
     fi
     _log "INFO" "AWS CLI command examples (not AWS_REGION may matter):
-aws s3api head-object --bucket ${_bucket} --key ${_prefix}metadata.properties  # same as 'metadata.exists()'
+aws s3api get-bucket-acl --bucket ${_bucket}
+aws s3api get-bucket-policy --bucket ${_bucket}                 # same as 'checkBucketOwner'
 aws s3api get-bucket-ownership-controls --bucket ${_bucket}     # same as 'checkBucketOwner'
+aws s3api head-object --bucket ${_bucket} --key ${_prefix}metadata.properties  # same as 'metadata.exists()'
 aws s3 ls s3://${_bucket}/${_prefix}content/   # --recursive but 1000 limits (same for list-objects)
 aws s3api list-objects --bucket ${_bucket} --query \"Contents[?contains(Key, 'f062f002-88f0-4b53-aeca-7324e9609329.properties')]\"
 aws s3api get-object-tagging --bucket ${_bucket} --key \"${_prefix}content/vol-42/chap-31/f062f002-88f0-4b53-aeca-7324e9609329.properties\"
@@ -1160,20 +1165,22 @@ function f_create_azure_blobstore() {
     local __doc__="Create an Azure blobstore. AZURE_ACCOUNT_NAME and AZURE_ACCOUNT_KEY are required"
     #https://learn.microsoft.com/en-us/azure/active-directory/develop/howto-create-service-principal-portal#get-tenant-and-app-id-values-for-signing-in
     local _bs_name="${1:-"az-test"}"
-    local _container_name="${2:-"$(hostname -s)_${_bs_name}"}"
+    local _container_name="${2:-"$(hostname -s | tr '[:upper:]' '[:lower:]')-${_bs_name}"}"
     local _an="${3:-"${AZURE_ACCOUNT_NAME}"}"
     local _ak="${4:-"${AZURE_ACCOUNT_KEY}"}"
-    # nexus.azure.server=<your.desired.blob.storage.server>
+    # NOTE: nexus.azure.server=<your.desired.blob.storage.server>
+    # Container names can contain only lowercase letters, numbers, and the dash (-) character, and must be 3-63 characters long.
     if ! f_api "/service/rest/v1/blobstores/azure" '{"name":"'${_bs_name}'","bucketConfiguration":{"authentication":{"authenticationMethod":"ACCOUNTKEY","accountKey":"'${_ak}'"},"accountName":"'${_an}'","containerName":"'${_container_name}'"}}' > ${_TMP%/}/f_api_last.out; then
         _log "ERROR" "Failed to create blobstore: ${_bs_name} ."
         _log "ERROR" "$(cat ${_TMP%/}/f_api_last.out)"
         return 1
     fi
     _log "DEBUG" "$(cat ${_TMP%/}/f_api_last.out)"
-    if ! _is_repo_available "raw-az-hosted"; then
+    if [[ ! "${_NO_REPO_CREATE}" =~ [yY] ]] && ! _is_repo_available "raw-az-hosted"; then
         _log "INFO" "Creating raw-az-hosted ..."
-        _apiS '{"action":"coreui_Repository","method":"create","data":[{"attributes":{"storage":{"blobStoreName":"'${_bs_name}'","writePolicy":"ALLOW","strictContentTypeValidation":true'$(_get_extra_sto_opt)'},"cleanup":{"policyName":[]}},"name":"raw-az-hosted","format":"","type":"","url":"","online":true,"recipe":"raw-hosted"}],"type":"rpc"}' || return $?
+        _apiS '{"action":"coreui_Repository","method":"create","data":[{"attributes":{"storage":{"blobStoreName":"'${_bs_name}'","writePolicy":"ALLOW","strictContentTypeValidation":false'$(_get_extra_sto_opt)'},"cleanup":{"policyName":[]}},"name":"raw-az-hosted","format":"","type":"","url":"","online":true,"recipe":"raw-hosted"}],"type":"rpc"}' || return $?
     fi
+    _log "TODO" "Azure CLI command examples"
 }
 
 function f_create_group_blobstore() {
@@ -2286,7 +2293,7 @@ EOF
 function f_upload_dummies_maven_snapshot() {
     local __doc__="Upload dummy jar files into maven snapshot hosted repository. Requires 'mvn' command"
     local _repo_name="${1:-"maven-snapshots"}"
-    local _how_many="${2:-"10"}"
+    local _how_many="${2:-"5"}"     # 10 takes longer
     local _group="${3:-"com.example"}"
     local _name="${4:-"my-app"}"
     local _ver="${5:-"1.0-SNAPSHOT"}"
