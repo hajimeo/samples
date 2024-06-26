@@ -1048,6 +1048,16 @@ function f_splitScriptLog() {
     fi
 }
 
+function f_jvm2threads() {
+    local _jvm_log="$1"
+    local _export_to="${2:-"./threads"}"
+    if [ "$(ls -A "${_export_to}")" ]; then
+        echo "${_export_to} is not empty"
+        return 1
+    fi
+    HTML_REMOVE=Y echolines "${_jvm_log}" "^\d\d\d\d-\d\d-\d\d \d\d:\d\d:\d\d$" "(^\s+class space.+|^\s+Metaspace\s+.+)" "${_export_to}"
+}
+
 #f_splitByRegex threads.txt "^${_DATE_FORMAT}.+"
 #_THREAD_FILE_GLOB="?-dump.txt" f_threads "."   # Don't use "*" beginning of the file name
 # NOTE: f_last_tid_in_log would be useful.
@@ -1058,7 +1068,7 @@ function f_threads() {
     local _file="$1"    # Or dir contains thread_xxxx.txt files
     local _split_search="${2}"  # "^\".+" or if NXRM2, "^[a-zA-Z].+"
     local _running_thread_search_re="${3-"\.sonatype\."}"
-    local _save_dir="${4}"
+    local _save_dir="${4-"${_THREAD_SAVE_DIR}"}"
     local _not_split_by_date="${5:-${_NOT_SPLIT_BY_DATE}}"
     local _thread_file_glob="${6:-${_THREAD_FILE_GLOB:-"thread*.txt*"}}"
 
