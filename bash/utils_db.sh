@@ -265,7 +265,7 @@ function _postgresql_create_role_and_db() {
                 sleep 5
                 ${_psql_as_admin} -d template1 -c "DROP DATABASE \"${_dbname}\";"
             else
-                _log "WARN" "${_dbname} already exists. May need to run below first:
+                _log "WARN" "${_dbname} already exists. May need to run below first (or _RECREATE_DB=Y):
         ${_psql_as_admin} -d ${_dbname} -c \"DROP SCHEMA ${_schema:-"public"} CASCADE;CREATE SCHEMA ${_schema:-"public"} AUTHORIZATION ${_dbusr};GRANT ALL ON SCHEMA ${_schema:-"public"} TO ${_dbusr};\""
                 sleep 3
                 _create_db=false
