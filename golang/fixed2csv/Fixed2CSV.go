@@ -2,7 +2,12 @@ package main
 
 import (
 	"bufio"
+	"bytes"
+	"encoding/json"
 	"fmt"
+	"github.com/yukithm/json2csv"
+	"io"
+	"log"
 	"os"
 	"regexp"
 	"strings"
@@ -44,6 +49,23 @@ func line2CSV(line string, positions []int) string {
 	return csvStr
 }
 
+func jsList2csv(jsonListObj []interface{}) string {
+	// NOTE: Assuming all records have same keys in same order
+	csv, err := json2csv.JSON2CSV(jsonListObj)
+	if err != nil {
+		log.Fatal(err)
+	}
+	// CSV bytes convert & writing...
+	b := &bytes.Buffer{}
+	wr := json2csv.NewCSVWriter(b)
+	err = wr.WriteCSV(csv)
+	if err != nil {
+		log.Fatal(err)
+	}
+	wr.Flush()
+	return b.String()
+}
+
 func main() {
 	if len(os.Args) < 2 {
 		fmt.Println("Please provide an input file which uses fixed width for columns")
@@ -51,10 +73,13 @@ func main() {
 	}
 	inFile := os.Args[1]
 	outFile := inFile + ".csv"
-	if len(os.Args) > 2 {
+	if len(os.Args) > 2 && len(os.Args[2]) > 0 {
 		outFile = os.Args[2]
 	}
-	var positions []int = nil
+	jsonKey := ""
+	if len(os.Args) > 3 && len(os.Args[3]) > 0 {
+		jsonKey = os.Args[3]
+	}
 
 	inputFile, err := os.Open(inFile)
 	if err != nil {
@@ -70,24 +95,50 @@ func main() {
 	}
 	defer outputFile.Close()
 
-	scanner := bufio.NewScanner(inputFile)
-	for scanner.Scan() {
-		line := scanner.Text()
-		// Ignore comment lines
-		if strings.HasPrefix(line, "#") {
-			continue
+	if strings.HasSuffix(inFile, ".json") {
+		jsonBytes, err := os.ReadFile(inFile)
+		if err != nil {
+			fmt.Printf("Error reading %s as JSON file: %v\n", inFile, err)
+			return
 		}
-		// Assuming the first line is the header, which can be used to determine the width
-		if positions == nil {
-			positions = nonSpacePos(line)
+		var jsonObject []interface{}
+		if len(jsonKey) == 0 {
+			err = json.Unmarshal(jsonBytes, &jsonObject)
+		} else {
+			var jsonObjectTmp map[string]interface{}
+			err = json.Unmarshal(jsonBytes, &jsonObjectTmp)
+			jsonObject = jsonObjectTmp[jsonKey].([]interface{})
 		}
-		csvStr := line2CSV(line, positions)
-		fmt.Fprintln(outputFile, csvStr)
-	}
-
-	// Check for errors.
-	if err := scanner.Err(); err != nil {
-		fmt.Println(err)
-		return
+		if err != nil {
+			fmt.Printf("Error parsing %s as JSON file: %v\n", inFile, err)
+			return
+		}
+		csvStr := jsList2csv(jsonObject)
+		_, err = io.WriteString(outputFile, csvStr)
+		if err != nil {
+			fmt.Printf("Error writing %s as JSON into %s file: %v\n", inFile, outputFile, err)
+			return
+		}
+	} else {
+		var positions []int = nil
+		scanner := bufio.NewScanner(inputFile)
+		for scanner.Scan() {
+			line := scanner.Text()
+			// Ignore comment lines
+			if strings.HasPrefix(line, "#") {
+				continue
+			}
+			// Assuming the first line is the header, which can be used to determine the width
+			if positions == nil {
+				positions = nonSpacePos(line)
+			}
+			csvStr := line2CSV(line, positions)
+			fmt.Fprintln(outputFile, csvStr)
+		}
+		// Check for errors.
+		if err := scanner.Err(); err != nil {
+			fmt.Println(err)
+			return
+		}
 	}
 }
