@@ -150,11 +150,6 @@ function takeDumps() {
     if [ -z "${_jstack}" ]; then
         if [ ! -f /proc/${_pid}/fd/1 ]; then
             _admin_url="$(detectAdminUrl)"
-            if [ -n "${_admin_url}" ]; then
-                echo "[$(date +'%Y-%m-%d %H:%M:%S')] WARN  No 'jstack' and no stdout file. Using ${_admin_url%/}/threads" >&2
-            else
-                echo "[$(date +'%Y-%m-%d %H:%M:%S')] WARN  No 'jstack' and no stdout file (so best effort)" >&2
-            fi
         fi
         if [ -z "${_admin_url}" ]; then
             tailStdout "${_pid}" "$((${_count} * ${_interval} + 4))" "${_outPfx}000.log" "${_installDir}"
@@ -168,16 +163,21 @@ function takeDumps() {
             # TODO: If _storeProp is given, do extra check for IQ
             _wpid_in_for="" #$!
         fi
-        if [ -n "${_jstack}" ]; then
+        if [ -n "${_jstack}" ] && [ -n "${_pid}" ]; then
+            #echo "[$(date +'%Y-%m-%d %H:%M:%S')] DEBUG ${_jstack} -l ${_pid} >> \"${_outPfx}000.log\"" >&2
             ${_jstack} -l ${_pid} >> "${_outPfx}000.log"
         elif [ -n "${_admin_url}" ]; then
+            echo "[$(date +'%Y-%m-%d %H:%M:%S')] WARN  No 'jstack' and no stdout file. Using ${_admin_url%/}/threads" >&2
             local _curl_m="$((${_interval} + 3))"   # for IQ admin port, wait a bit longer
             date --rfc-3339=seconds >> "${_outPfx}000.log"
             if ! curl -m${_curl_m:-"5"} -sSf -k "${_admin_url%/}/threads" >> "${_outPfx}000.log"; then
                 kill -3 "${_pid}"   # Need to use 'docker logs' or 'kubectl logs'
             fi
-        else
+        elif [ -n "${_pid}" ]; then
+            echo "[$(date +'%Y-%m-%d %H:%M:%S')] WARN  No 'jstack' and no admin url (so best effort)" >&2
             kill -3 "${_pid}"
+        else
+            echo "[$(date +'%Y-%m-%d %H:%M:%S')] ERROR  No 'jstack' and no admin url and no PID" >&2
         fi
         (date +"%Y-%m-%d %H:%M:%S"; top -H -b -n1 2>/dev/null | head -n60) >> "${_outPfx}001.log"
         (date +"%Y-%m-%d %H:%M:%S"; netstat -topen 2>/dev/null || cat /proc/net/tcp* 2>/dev/null) >> "${_outPfx}002.log"
