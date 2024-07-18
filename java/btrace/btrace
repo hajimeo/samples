@@ -10,6 +10,18 @@
 #   curl -O -L "https://github.com/btraceio/btrace/releases/download/v2.2.3/btrace-v2.2.3-bin.tar.gz"
 #   tar xf ./btrace-v2.2.3-bin.tar.gz
 #
+# WARNING: BTrace bootstrap classpath resource [ /Users/hosako/Library/Application%20Support/VisualVM/2.1.8/modules/ext/btrace-boot.jar] does not exist
+#   ln -s  /Users/hosako/Library/Application\ Support /Users/hosako/Library/Application%20Support
+#
+# If Nexus Repository 3 (nxrm3)
+cat <<'EOF' >/dev/null
+_conf="$(find . -maxdepth 4 -type f -name 'config.properties' -path '*/etc/karaf/*' | head -n1)"
+if [ -n "${_conf}" ] && ! grep -q 'org.openjdk.btrace' ${_conf}; then
+    sed -i '' '/^org.osgi.framework.bootdelegation = /a \
+    org.openjdk.btrace.*, \\
+' ${_conf}
+fi
+EOF
 
 if [ -z "$BTRACE_HOME" ]; then
     # resolve links - $0 could be a link to btrace's home
