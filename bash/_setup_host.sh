@@ -2105,21 +2105,30 @@ For trial license: https://developer.atlassian.com/platform/marketplace/timebomb
 Then, '3 hour expiration for all Atlassian host products'"
 }
 
+# If Mac: f_jira "" "$USER" "./jira" "./jira-home"
 function f_jira() {
-    local _ver="${1:-"8.14.1"}"
-    local _user="${2-"jira"}"
-    local _data_dir="${3-"/var/jira-home"}" # some persistent location if docker
+    local _ver="${1:-"9.14.0"}"
+    local _user="${2-"$USER"}"
+    local _inst_dir="${3-"/opt/jira"}"
+    local _data_dir="${4-"/var/jira-home"}" # some share location if docker
     # rm -rf /opt/jira/* /var/jira-home/*
-    _download_and_extract "https://product-downloads.atlassian.com/software/jira/downloads/atlassian-jira-software-${_ver}.tar.gz" "/opt/jira" "" "" "${_user}" || return $?
-    if ! grep -qE "^jira.home *= *[^ ]+" "/opt/jira/atlassian-jira-software-${_ver}-standalone/atlassian-jira/WEB-INF/classes/jira-application.properties"; then
-        _upsert "/opt/jira/atlassian-jira-software-${_ver}-standalone/atlassian-jira/WEB-INF/classes/jira-application.properties" "jira.home" "${_data_dir%/}/${_ver}" || return $?
+    [ ! -d "${_inst_dir%/}" ] && mkdir -p "${_inst_dir%/}"
+    [ ! -d "${_data_dir%/}" ] && mkdir -p "${_data_dir%/}"
+    _inst_dir="$(readlink -f ${_inst_dir%/})"
+    _data_dir="$(readlink -f ${_data_dir%/})"   # this needs to be absolute path
+    _download_and_extract "https://product-downloads.atlassian.com/software/jira/downloads/atlassian-jira-software-${_ver}.tar.gz" "${_inst_dir%/}" "${_inst_dir%/}" || return $?
+    if ! grep -qE "^jira.home *= *[^ ]+" "${_inst_dir%/}atlassian-jira-software-${_ver}-standalone/atlassian-jira/WEB-INF/classes/jira-application.properties"; then
+        _upsert "${_inst_dir%/}/atlassian-jira-software-${_ver}-standalone/atlassian-jira/WEB-INF/classes/jira-application.properties" "jira.home" "${_data_dir%/}/${_ver}" || return $?
     fi
-    [ -d "${_data_dir%/}" ] || mkdir -p -m 777 "${_data_dir%/}"
-    if [ -n "${_user}" ]; then
+    if [ -n "${_user}" ] && [ "${_user}" != "$USER" ]; then
         f_useradd "${_user}" || return $?
-        chown -R "${_user}:" "/opt/jira/atlassian-jira-software-${_ver}-standalone"
     fi
-    sudo -i -u "${_user}" bash /opt/jira/atlassian-jira-software-${_ver}-standalone/bin/start-jira.sh || return $?
+    if [ "${_user}" != "$USER" ]; then
+        chown -R "${_user}" "${_inst_dir%/}" "${_data_dir%/}"
+        sudo -i -u "${_user}" bash ${_inst_dir%/}/atlassian-jira-software-${_ver}-standalone/bin/start-jira.sh || return $?
+    else
+        bash ${_inst_dir%/}/atlassian-jira-software-${_ver}-standalone/bin/start-jira.sh || return $?
+    fi
     _info "Access http://$(hostname -f):8080/
 For trial license: https://developer.atlassian.com/platform/marketplace/timebomb-licenses-for-testing-server-apps/
 Then, '3 hour expiration for all Atlassian host products'"
