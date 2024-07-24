@@ -24,7 +24,7 @@ Read one file and output only necessary lines.
 	chmod a+x /usr/local/bin/echolines
 
 # HOW TO USE:
-	echolines [some_file1,some_file2] START_REGEX [END_REGEX] [OUT_DIR]
+	echolines [some_file1,some_file2] START_REGEXP [END_REGEXP] [OUT_DIR]
 
 # NOTE:
 	If END_REGEXP is provided but *without any capture group*, the end line is not echoed (not included).
@@ -54,8 +54,12 @@ Read one file and output only necessary lines.
 		(experimental) To make ASCII chart width shorter by rotating per <num> lines
 
 # USAGE EXAMPLES:
-## NXRM2 thread dumps:
-	echolines "wrapper.log.2,wrapper.log.1,wrapper.log" "^jvm 1    \| \d\d\d\d-\d\d-\d\d \d\d:\d\d:\d\d$" "(^\s+class space.+)" | sed 's/^jvm 1    | //' > threads.txt
+## Read the result with 'q' (after "rg '^# (.+)' -o -r '$1' > ./durations.out"):
+	q -O -d"|" -T "SELECT c1 as start_time, c2 as end_time, CAST(c3 as INT) as ms, c4 as key FROM ./durations.out WHERE ms > 10000"
+
+## NXRM2 thread dumps (not perfect. still contains some junk lines):
+	export EXCL_REGEX="^jvm 1\s+\|\s+\d\d\d\d-\d\d-\d\d \d\d:\d\d:\d\d .+"
+	echolines "wrapper.log.2,wrapper.log.1,wrapper.log" "^jvm 1\s+\|\s+\d\d\d\d-\d\d-\d\d \d\d:\d\d:\d\d$" "(^\s+class space.+)" | sed 's/^jvm 1    | //' > threads.txt
 ## NXRM3 thread dumps:
 	HTML_REMOVE=Y echolines "./jvm.log" "^\d\d\d\d-\d\d-\d\d \d\d:\d\d:\d\d$" "(^\s+class space.+|^\s+Metaspace\s+.+)" "threads"
 	# If would like to split per thread:
@@ -63,30 +67,33 @@ Read one file and output only necessary lines.
 	find ./threads -type f -name '[0-9]*_*.out' | xargs -P3 -t -I{} bash -c '_d="$(basename "{}" ".out")";echolines "{}" "^\".+" "" "./threads_per_thread/${_d}"'
 
 ## Get duration of each line of a thread #with thread+username+classnames:
-	export ELAPSED_REGEX="^\d\d\d\d-\d\d-\d\d.(\d\d:\d\d:\d\d.\d\d\d)" ASCII_DISABLED=Y #ELAPSED_KEY_REGEX="\[(qtp\S+\s+\S+\s+\S+)"
+	export ELAPSED_REGEX="^\d\d\d\d-\d\d-\d\d.(\d\d:\d\d:\d\d.\d\d\d)" ASCII_DISABLED=Y ELAPSED_KEY_REGEX="\[(qtp\S+\s+\S+\s+\S+)"
 	rg 'qtp1529377038-106' ./nexus.log | echolines "" "^\d\d\d\d-\d\d-\d\d.\d\d:\d\d:\d\d.\d\d\d" "^\d\d\d\d-\d\d-\d\d.\d\d:\d\d:\d\d.\d\d\d" | rg '^# ' | sort -t'|' -k3n
-	#vimdiff <(rg '\d+ms|.+' -o qtp1529377038-106_admin_dur2.out) <(rg '\d+ms|.+' -o qtp1755872334-99_admin_dur2.out)
-## Get duration of NXRM3 queries, and sort by the longest:
-	export ELAPSED_REGEX="^\d\d\d\d-\d\d-\d\d.(\d\d:\d\d:\d\d.\d\d\d)"
-	echolines "./log/nexus.log" "Preparing:" "(^.+Total:.+)" | rg '^# \d\d' | sort -t'|' -k3n
+## Get duration of NXRM3 SQL queries, and sort by the longest:
+	export ELAPSED_REGEX="^\d\d\d\d-\d\d-\d\d.(\d\d:\d\d:\d\d.\d\d\d)" ASCII_DISABLED=Y ELAPSED_KEY_REGEX="(\[qtp\S+\s+\S+\s+\S+)"
+	echolines "./log/nexus.log" " - ==>  Preparing:" "(^.+ - <== .+)" | rg '^# (.+)' -o -r '$1'    #| sort -t'|' -k3n
+### Get durations of specific method, which stops if 0 update, and related log lines:
+	echolines "./log/nexus.log" "trimBrowseNodes - ==>  Preparing:" "(^.+Updates: 0)" | tee trimBrowseNodes.log | rg '^# (.+)' -o -r '$1' > trimBrowseNodes_dur.out
 ## Get duration of the first 30 S3 pool requests (with org.apache.http = DEBUG. This example also checks 'Connection leased'):
 	export ELAPSED_REGEX="^\d\d\d\d-\d\d-\d\d.(\d\d:\d\d:\d\d.\d\d\d)" ELAPSED_KEY_REGEX="\[(s3-parallel-[^\]]+)"
 	rg -m30 '\[s3-parallel-.+ Connection (request|leased|released):' ./log/nexus.log > connections.out
 	sed -n "1,30p" connections.out | echolines "" " leased:" "(^.+ released:.+)" | rg '^# '
 ## Get duration of Tasks
 	export ELAPSED_REGEX="^\d\d\d\d-\d\d-\d\d.(\d\d:\d\d:\d\d.\d\d\d)" ELAPSED_KEY_REGEX="Task '([^']+)'" ASCII_DISABLED=Y
-	echolines "./log/nexus.log" "QuartzTaskInfo .+ -> RUNNING" "(^.+QuartzTaskInfo .+ RUNNING -> .+)" | rg '^#'
+	echolines "./log/nexus.log" "QuartzTaskInfo .+ -> RUNNING" "(^.+QuartzTaskInfo .+ RUNNING -> .+)" | rg '^# (.+)' -o -r '$1' | sort -t'|' -k2
+	export ELAPSED_REGEX="^\d\d\d\d-\d\d-\d\d.(\d\d:\d\d:\d\d.\d\d\d)" ELAPSED_KEY_REGEX="\[([^\]]+)" ASCII_DISABLED=Y
+	echolines "./log/tasks/allTasks.log" " - Task information:" "(^.+ - Task complete)" "per_thread" | rg '^# (.+)' -o -r '$1' | sort -t'|' -k2
 ## Get duration of blob-store-group-removal-\d+ .bytes files, with ASCII
 	export ELAPSED_REGEX="^\d\d\d\d-\d\d-\d\d.(\d\d:\d\d:\d\d.\d\d\d)" ELAPSED_KEY_REGEX="(blob-store-group-removal-\d+)"
-	rg 'blob-store-group-removal-\d+' -m2000 nexus.log | echolines "" "Writing blob" "(^.+Finished upload to key.+)" | rg '^#' > bytes_duration_summary.tsv
+	rg 'blob-store-group-removal-\d+' -m2000 nexus.log | echolines "" "Writing blob" "(^.+Finished upload to key.+)" | rg '^# (.+)' -o -r '$1' > bytes_duration_summary.tsv
 ## Get duration of DEBUG cooperation2.datastore.internal.CooperatingFuture
 	export ELAPSED_REGEX="\d\d\d\d-\d\d-\d\d.(\d\d:\d\d:\d\d.\d\d\d)" ELAPSED_KEY_REGEX="\[(qtp[^\]]+)"
-	rg -F '/dotenv?null' -m2000 nexus.log | echolines "" "Requesting" "(^.+Completing.+)" | rg '^#' > bytes_duration_summary.tsv
+	rg -F '/dotenv?null' -m2000 nexus.log | echolines "" "Requesting" "(^.+Completing.+)" | rg '^# (.+)' -o -r '$1' > bytes_duration_summary.tsv
 
 ## Get duration of IQ Evaluate a File, and sort by threadId and time
 	rg 'POST /rest/scan/.+Scheduling scan task (\S+)' -o -r '$1' log/clm-server.log | xargs -I{} rg -w "{}" ./log/clm-server.log | sort | uniq > scan_tasks.log
 	export ELAPSED_REGEX="^\d\d\d\d-\d\d-\d\d.(\d\d:\d\d:\d\d.\d\d\d)"
-	ELAPSED_KEY_REGEX="\[([^ \]]+)" echolines ./scan_tasks.log "Running scan task" "(^.+Completed scan task.+)" | rg '^# \d\d' | sort -t'|' -k3,3 -k1,1
+	ELAPSED_KEY_REGEX="\[([^ \]]+)" echolines ./scan_tasks.log "Running scan task" "(^.+Completed scan task.+)" | rg '^# (.+)' -o -r '$1' | sort -t'|' -k3,3 -k1,1
 
 ## Get duration of Eclipse Memory Analyzer Tool (MAT) threads (<file-name>.threads)
 	echolines ./java_pid1404494.threads "^Thread 0x\S+" "" "./threads_per_thread"
@@ -112,7 +119,7 @@ var ELAPSED_KEY_REGEXP *regexp.Regexp
 var ELAPSED_FORMAT = os.Getenv("ELAPSED_FORMAT")
 var ASCII_WIDTH = helpers.GetEnvInt64("ASCII_WIDTH", 100)
 var ASCII_ROTATE_NUM = helpers.GetEnvInt("ASCII_ROTATE_NUM", -1)
-var NO_KEY = "no-key"
+var NO_KEY = "no-key" // This string is used as key when no ELAPSED_KEY_REGEXP
 var HTML_REMOVE = helpers.GetBoolEnv("HTML_REMOVE", false)
 var SPLIT_FILE = helpers.GetBoolEnv("SPLIT_FILE", false)
 var REM_CHAR_REGEXP = regexp.MustCompile(`[^0-9a-zA-Z_]`)
@@ -124,13 +131,12 @@ var OUT_FILES = make(map[string]*os.File)
 var START_DATETIMES = make(map[string]string)
 var FILE_NAME_PFXS = make(map[string]string)
 var FIRST_START_TIME time.Time
-var ELAPSED_DIVIDE_MS = os.Getenv("ELAPSED_DIVIDE_MS")
+var ELAPSED_DIVIDE_MS = helpers.GetEnvInt64("ELAPSED_DIVIDE_MS", -1)
 var ASCII_DISABLED = helpers.GetBoolEnv("ASCII_DISABLED", false)
-var DIVIDE_MS int64 = 0
 var KEY_PADDING = 0
 var FOUND_COUNT = 0
 
-// fmt.Printf("# s:%s | e:%s | %8d ms | %*s | %s\n", startTimeStr, endTimeStr, duration.Milliseconds(), KEY_PADDING, key, ascii)
+// fmt.Printf("# s:%s | e:%s | %8d | %*s | %s\n", startTimeStr, endTimeStr, duration.Milliseconds(), KEY_PADDING, key, ascii)
 type Duration struct {
 	startTimeStr string
 	endTimeStr   string
@@ -166,7 +172,9 @@ func processFile(inFile *os.File) {
 			// This means ELAPSED_KEY_REGEXP is given but this line doesn't match so OK to skip
 			continue
 		}
-		_dlog(strconv.Itoa(FOUND_COUNT) + " key = " + key)
+		if key != NO_KEY {
+			_dlog(strconv.Itoa(FOUND_COUNT) + " key = " + key)
+		}
 		// Need to check the end line first before checking the start line.
 		if echoEndLine(line, key) {
 			continue
@@ -198,7 +206,7 @@ func processFile(inFile *os.File) {
 	if len(START_DATETIMES) > 0 {
 		for k, v := range START_DATETIMES {
 			pad := len(v)
-			fmt.Printf("# %s|%-"+strconv.Itoa(pad)+"s|%8sms|%s\n", v, "<none>", " ", k)
+			fmt.Printf("# %s|%-"+strconv.Itoa(pad)+"s|%8s|%s\n", v, "<none>", " ", k)
 		}
 	}
 }
@@ -377,7 +385,7 @@ func echoDurations(duras []Duration) {
 	totalDuration := calcDurationFromStrings(firstStartTimeStr, lastEndTimeStr)
 	divideMs := totalDuration.Milliseconds() / ASCII_WIDTH
 	_dlog("totalDuration / ASCII_WIDTH = " + strconv.FormatInt(divideMs, 10))
-	if divideMs > minDuraMs {
+	if minDuraMs > 0 && divideMs > minDuraMs {
 		divideMs = minDuraMs
 	}
 	for i, dura := range duras {
@@ -404,22 +412,22 @@ func echoDurationInner(dura Duration, maxKeyLen int, divideMs int64) {
 		}
 		_dlog("KEY_PADDING = " + strconv.Itoa(KEY_PADDING))
 	}
-	if DIVIDE_MS > 0 {
-		// if DIVIDE_MS is specified, using
-		divideMs = DIVIDE_MS
+	if ELAPSED_DIVIDE_MS > 0 {
+		// if ELAPSED_DIVIDE_MS is specified, using
+		divideMs = ELAPSED_DIVIDE_MS
 	}
-	_dlog("divideMs = " + strconv.FormatInt(divideMs, 10))
 
 	ascii := ""
 	if ASCII_DISABLED == false {
+		_dlog("divideMs = " + strconv.FormatInt(divideMs, 10))
+		_dlog("durationMs = " + strconv.FormatInt(dura.durationMs, 10))
 		ascii = asciiChart(dura.startTimeStr, dura.durationMs, divideMs)
 		ascii = "|" + ascii
 	}
 	if dura.key == NO_KEY {
-		// As "sec,ms" contains comma, using "|". Also "<num> ms" for easier sorting (it was "ms:<num>")
-		fmt.Printf("# %s|%s|%8dms%s\n", dura.startTimeStr, dura.endTimeStr, dura.durationMs, ascii)
+		fmt.Printf("# %s|%s|%8d%s\n", dura.startTimeStr, dura.endTimeStr, dura.durationMs, ascii)
 	} else {
-		fmt.Printf("# %s|%s|%8dms|%*s%s\n", dura.startTimeStr, dura.endTimeStr, dura.durationMs, KEY_PADDING, dura.key, ascii)
+		fmt.Printf("# %s|%s|%8d|%*s%s\n", dura.startTimeStr, dura.endTimeStr, dura.durationMs, KEY_PADDING, dura.key, ascii)
 	}
 }
 
@@ -434,16 +442,20 @@ func asciiChart(startTimeStr string, durationMs int64, divideMs int64) string {
 		duraSinceFirstSTart = startTime.Sub(FIRST_START_TIME)
 	}
 	var ascii = ""
-	repeat := int(math.Ceil(float64(duraSinceFirstSTart.Milliseconds()) / float64(divideMs)))
+	var repeat = 0
+	var repeat2 = 0
+	if divideMs > 1 {
+		repeat = int(math.Ceil(float64(duraSinceFirstSTart.Milliseconds()) / float64(divideMs)))
+		repeat2 = int(math.Ceil(float64(durationMs) / float64(divideMs)))
+		_dlog("repeat = " + strconv.Itoa(repeat))
+		_dlog("repeat2 = " + strconv.Itoa(repeat2))
+	}
 	for i := 0; i < repeat; i++ {
 		ascii += " "
 	}
-	_dlog(repeat)
-	repeat = int(math.Ceil(float64(durationMs) / float64(divideMs)))
-	for i := 0; i < repeat; i++ {
+	for i := 0; i < repeat2; i++ {
 		ascii += "-"
 	}
-	_dlog(repeat)
 	return ascii
 }
 
@@ -533,9 +545,6 @@ func main() {
 	}
 	if len(ELAPSED_KEY_REGEX) > 0 {
 		ELAPSED_KEY_REGEXP = regexp.MustCompile(ELAPSED_KEY_REGEX)
-	}
-	if len(ELAPSED_DIVIDE_MS) > 0 {
-		DIVIDE_MS, _ = strconv.ParseInt(ELAPSED_DIVIDE_MS, 10, 64)
 	}
 
 	defer closeAllFiles()
