@@ -196,17 +196,17 @@ def request2table(filepath, tablename="t_request", max_file_size=(1024 * 1024 * 
                         col_names=col_names, line_matching=line_matching,
                         max_file_size=max_file_size,
                         line_from=line_from, line_until=line_until)
-    if not bool(rtn):
-        return False
-    req2table_post(tablename=tablename, add_startTime=True)
-    return True
+    if ju.exists(tablename):
+        ju._info("%s has been created (may want to run 'al.req2table_post()')" % tablename)
+        return True
+    return False
 
 
 def req2table_post(tablename="t_request", add_startTime=True, datetime_col="date", elapsed_col="elapsedTime"):
     """
     Post actions after converting request log to table
     :param tablename: request table
-    :param add_startTime: If True, add a new column for start time
+    :param add_startTime: This one is slower and if True, add a new column for start time
     :param datetime_col: Name of the column which stores datetime information
     :param elapsed_col: Name of the column which stores elapsed time information
     :return: void
@@ -232,7 +232,7 @@ def req2table_post(tablename="t_request", add_startTime=True, datetime_col="date
         except Exception as e:
             ju._err(str(e))
         try:
-            ju._info(f"Populating startTime from '{datetime_col}' and '{elapsed_col}' columns ...")
+            ju._info(f"Populating startTime from '{datetime_col}' and '{elapsed_col}' columns (this one is slow) ...")
             _ = ju.execute(sql=f"UPDATE {tablename} SET startTime = UDF_STARTED_TIME(`{datetime_col}`, {elapsed_col})")
         except Exception as e:
             ju._err(str(e))
@@ -252,6 +252,24 @@ def applog2table(filepath, tablename="t_applog", max_file_size=(1024 * 1024 * 10
     return ju.logs2table(log_path, tablename=tablename, col_names=col_names,
                          line_matching=line_matching, max_file_size=max_file_size,
                          line_from=line_from, line_until=line_until)
+
+
+def etl_request(log_suffix=".log", max_file_size=(1024 * 1024 * 100), add_startTime=True, tablename="t_request"):
+    if ju.exists(tablename):
+        ju._info("%s already exists." % tablename)
+        return True
+    # If request.*csv* exists, use that. if not, logs2table, which is slower.
+    _ = ju.load_csvs(src="./_filtered/", include_ptn="request.csv", max_file_size=(max_file_size * 5),
+                     conn=ju.connect())
+    if ju.exists(tablename) is False:
+        _ = request2table("request" + log_suffix)
+    if ju.exists(tablename):
+        req2table_post(tablename=tablename, add_startTime=add_startTime)
+        global isHeaderContentLength
+        # non NXRM3 request.log wouldn't have headerContentLength
+        isHeaderContentLength = ju.exists(tablename, "headerContentLength")
+        return True
+    return False
 
 
 def etl(path="", log_suffix=".log", dist="./_filtered", max_file_size=(1024 * 1024 * 100), time_from_regex=None,
@@ -338,21 +356,14 @@ def etl(path="", log_suffix=".log", dist="./_filtered", max_file_size=(1024 * 10
                 _ = ju.json2df(log_path, tablename="t_audit_logs",
                                line_by_line=True, line_from=line_from, line_until=line_until)
 
-        # xxxxx.csv. If CSV, probably 3 times higher should be OK
-        _ = ju.load_csvs(src="./_filtered/", include_ptn="*.csv", max_file_size=(max_file_size * 5), conn=ju.connect())
-
         # ./work/db/xxxxx.json (new DB)
         _ = ju.load_jsons(".", include_ptn=".+/db/.+\.json", exclude_ptn='(samlConfigurationExport\.json|export\.json)',
                           useRegex=True, conn=ju.connect())
 
-        # If request.*csv* exists, use that (should be already created by load_csvs and should be loaded by above load_csvs (because it's faster), if not, logs2table, which is slower.
-        if ju.exists("t_request") is False:
-            _ = request2table("request" + log_suffix)
+        # xxxxx.csv. If CSV, probably 3 times higher should be OK
+        _ = ju.load_csvs(src="./_filtered/", include_ptn="*.csv", max_file_size=(max_file_size * 5), conn=ju.connect())
 
-        if ju.exists("t_request"):
-            # non NXRM3 request.log wouldn't have headerContentLength
-            isHeaderContentLength = ju.exists("t_request", "headerContentLength")
-            req2table_post(tablename="t_request", add_startTime=add_startTime)
+        etl_request(log_suffix=log_suffix, max_file_size=max_file_size, add_startTime=add_startTime)
 
         # Loading application log file(s) into database.
         nxrm_logs = applog2table("nexus" + log_suffix, "t_nxrm_logs")
@@ -418,7 +429,7 @@ def analyze_log_table(log_table_name, where_sql="", tail_num=10000):
 
 def analyse_request_logs(tablename="t_request", tail_num=10000, use_headerContentLength=False):
     """
-    Analyse request log. Expecting `t_request` already exists.
+    Analyse request log. Expecting afeter etl_request() so taht `t_request` already exists.
     :param tablename: Request table name
     :param tail_num: How many rows/records to display. Default is 10K
     :param use_headerContentLength: In the report, Add a few aggregate collumns which use headerContentLength column
@@ -442,10 +453,10 @@ def analyse_request_logs(tablename="t_request", tail_num=10000, use_headerConten
         avgBytesPerMsAgg = "CAST(SUM(CAST(bytesSent AS INT) + CAST(headerContentLength AS INT)) / SUM(CAST(elapsedTime AS INTEGER)) AS INT) AS avgBytesPerMs,"
 
     if ju.exists(tablename):
-        display_name = "RequestLog_StatusCode_Hourly_aggs"
+        display_name = "RequestLog_StatusCode_Hourly_aggs_2xx_5xx"
         # Join db_repos.json and request.log
         #   AND UDF_REGEX('.+ /nexus/content/repositories/([^/]+)', {tablename}.requestURL, 1) IN (SELECT repository_name FROM t_db_repo where t_db_repo.`attributes.storage.blobStoreName` = 'nexus3')
-        query = f"""SELECT substr(`date`, 1, 14) AS date_hour, substr(statusCode, 1, 1) || 'xx' as status_code,
+        query = f"""SELECT substr(`date`, 1, 14)||':00:00' AS date_hour, substr(statusCode, 1, 1) || 'xx' as status_code,
     CAST(MAX(CAST(elapsedTime AS INT)) AS INT) AS max_elaps, 
     CAST(AVG(CAST(elapsedTime AS INT)) AS INT) AS avg_elaps, 
     CAST(AVG(CAST(bytesSent AS INT)) AS INT) AS avg_bytes, 
@@ -453,8 +464,11 @@ def analyse_request_logs(tablename="t_request", tail_num=10000, use_headerConten
     count(*) AS requests
 FROM {tablename}
 {where_sql}
+  AND (statusCode like '2%' OR statusCode like '5%')
 GROUP BY 1, 2"""
-        ju.display(ju.q(query), name=display_name, desc=query)
+        df = ju.q(query)
+        ju.display(df, name=display_name, desc=query)
+        #ju.draw(df.tail(tail_num), name=display_name, desc=query)
 
         display_name = "RequestLog_Status_ByteSent_Elapsed"
         query = f"""SELECT TIME(substr(date, 13, 8)) as hhmmss,
@@ -489,7 +503,8 @@ def analyse_logs(path="", log_suffix=".log", tail_num=10000, max_file_size=(1024
     if use_headerContentLength:
         isHeaderContentLength = use_headerContentLength
     if bool(skip_etl) is False:
-        etl(path=path, log_suffix=log_suffix, max_file_size=max_file_size, add_startTime=add_startTime, time_from_regex=time_from_regex, time_until_regex=time_until_regex)
+        etl(path=path, log_suffix=log_suffix, max_file_size=max_file_size, add_startTime=add_startTime,
+            time_from_regex=time_from_regex, time_until_regex=time_until_regex)
 
     analyse_request_logs(tablename="t_request", tail_num=tail_num, use_headerContentLength=use_headerContentLength)
 
