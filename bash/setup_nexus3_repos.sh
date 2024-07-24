@@ -114,7 +114,7 @@ _RESP_FILE=""
 
 ### Nexus installation functions ##############################################################################
 # To install 1st/2nd instance: _NEXUS_ENABLE_HA=Y _NXRM3_INSTALL_PORT=8083 f_install_nexus3 "" "nxrmha"
-# To upgrade (from ${_dirpath}/): tar -xvf $HOME/.nexus_executable_cache/nexus-3.68.1-02-mac.tgz
+# To upgrade (from ${_dirpath}/): tar -xvf $HOME/.nexus_executable_cache/nexus-3.69.0-02-mac.tgz
 function f_install_nexus3() {
     local __doc__="Install specific NXRM3 version"
     local _ver="${1:-"${r_NEXUS_VERSION}"}"     # 'latest'
@@ -208,6 +208,7 @@ EOF
         echo "To start: ./nexus-${_ver}/bin/nexus run"
         type nxrmStart &>/dev/null && echo "      Or: nxrmStart"
         type f_setup_https &>/dev/null && echo "      ssl: f_setup_https <port>"
+        _isYes "${_NEXUS_ENABLE_HA:-"${r_NEXUS_ENABLE_HA}"}" && echo "      Make sure ./sonatype-work/nexus3/blobs/default is shared"
     fi
 }
 
@@ -588,13 +589,14 @@ function f_setup_yum() {
     # https://support.sonatype.com/hc/en-us/articles/213464848-Authenticated-Access-to-Nexus-from-Yum-Doesn-t-Work
     # If no xxxx-proxy, create it
     if ! _is_repo_available "${_prefix}-proxy"; then
-        _apiS '{"action":"coreui_Repository","method":"create","data":[{"attributes":{"proxy":{"remoteUrl":"http://mirror.centos.org/centos/","contentMaxAge":1440,"metadataMaxAge":1440},"httpclient":{"blocked":false,"autoBlock":true},"storage":{"blobStoreName":"'${_bs_name}'","strictContentTypeValidation":true'${_extra_sto_opt}'},"negativeCache":{"enabled":true,"timeToLive":1440},"cleanup":{"policyName":[]}},"name":"'${_prefix}'-proxy","format":"","type":"","url":"","online":true,"routingRuleId":"","authEnabled":false,"httpRequestSettings":false,"recipe":"yum-proxy"}],"type":"rpc"}' || return $?
+        # http://mirror.centos.org/centos/ is dead
+        _apiS '{"action":"coreui_Repository","method":"create","data":[{"attributes":{"proxy":{"remoteUrl":"https://vault.centos.org/","contentMaxAge":1440,"metadataMaxAge":1440},"httpclient":{"blocked":false,"autoBlock":true},"storage":{"blobStoreName":"'${_bs_name}'","strictContentTypeValidation":true'${_extra_sto_opt}'},"negativeCache":{"enabled":true,"timeToLive":1440},"cleanup":{"policyName":[]}},"name":"'${_prefix}'-proxy","format":"","type":"","url":"","online":true,"routingRuleId":"","authEnabled":false,"httpRequestSettings":false,"recipe":"yum-proxy"}],"type":"rpc"}' || return $?
     fi
     # Add some data for xxxx-proxy (Ubuntu has "yum" command)
     # NOTE: using 'yum' command is a bit too slow, so not using at this moment, but how to
     #   _echo_yum_repo_file "${_prefix}-proxy" > /etc/yum.repos.d/nexus-yum-test.repo
     #   yum --disablerepo="*" --enablerepo="nexusrepo-test" install --downloadonly --downloaddir=${_TMP%/} dos2unix
-    f_get_asset "${_prefix}-proxy" "7/os/x86_64/Packages/dos2unix-6.0.3-7.el7.x86_64.rpm" "${_TMP%/}/dos2unix-6.0.3-7.el7.x86_64.rpm"
+    f_get_asset "${_prefix}-proxy" "7.9.2009/os/x86_64/Packages/dos2unix-6.0.3-7.el7.x86_64.rpm" "${_TMP%/}/dos2unix-6.0.3-7.el7.x86_64.rpm"
     if ! _is_repo_available "${_prefix}-epel-proxy"; then
         _apiS '{"action":"coreui_Repository","method":"create","data":[{"attributes":{"proxy":{"remoteUrl":"https://dl.fedoraproject.org/pub/epel/","contentMaxAge":1440,"metadataMaxAge":1440},"httpclient":{"blocked":false,"autoBlock":true},"storage":{"blobStoreName":"'${_bs_name}'","strictContentTypeValidation":true'${_extra_sto_opt}'},"negativeCache":{"enabled":true,"timeToLive":1440},"cleanup":{"policyName":[]}},"name":"'${_prefix}'-epel-proxy","format":"","type":"","url":"","online":true,"routingRuleId":"","authEnabled":false,"httpRequestSettings":false,"recipe":"yum-proxy"}],"type":"rpc"}' || return $?
     fi
@@ -605,13 +607,14 @@ function f_setup_yum() {
         _apiS '{"action":"coreui_Repository","method":"create","data":[{"attributes":{"yum":{"repodataDepth":3,"deployPolicy":"PERMISSIVE"},"storage":{"blobStoreName":"'${_bs_name}'","writePolicy":"ALLOW","strictContentTypeValidation":true'${_extra_sto_opt}'},"cleanup":{"policyName":[]}},"name":"'${_prefix}'-hosted","format":"","type":"","url":"","online":true,"recipe":"yum-hosted"}],"type":"rpc"}' || return $?
     fi
     # add some data for xxxx-hosted
-    local _upload_file="$(find ${_TMP%/} -type f -size +1k -name "dos2unix-*.el7.x86_64.rpm" 2>/dev/null | tail -n1)"
+    local _upload_file="$(find -L ${_TMP%/} -type f -size +1k -name "dos2unix-*.rpm" 2>/dev/null | tail -n1)"
     if [ ! -s "${_upload_file}" ]; then
-        if curl -sSf -o ${_TMP%/}/aether-api-1.13.1-13.el7.noarch.rpm "http://mirror.centos.org/centos/7/os/x86_64/Packages/aether-api-1.13.1-13.el7.noarch.rpm"; then
+        if curl -sSf -o ${_TMP%/}/aether-api-1.13.1-13.el7.noarch.rpm "https://vault.centos.org/7.9.2009/os/x86_64/Packages/aether-api-1.13.1-13.el7.noarch.rpm"; then
             _upload_file=${_TMP%/}/aether-api-1.13.1-13.el7.noarch.rpm
         fi
     fi
     if [ -s "${_upload_file}" ]; then
+        # NOTE: the file was from https://vault.centos.org/7.9.2009/, but using /7/
         #curl -D/dev/stderr -u admin:admin123 -X PUT "${_NEXUS_URL%/}/repository/${_prefix}-hosted/7/os/x86_64/Packages/$(basename ${_upload_file})" -T ${_upload_file}
         _ASYNC_CURL="Y" f_upload_asset "${_prefix}-hosted" -F "yum.asset=@${_upload_file}" -F "yum.asset.filename=$(basename ${_upload_file})" -F "yum.directory=7/os/x86_64/Packages"
     fi
@@ -1375,7 +1378,7 @@ function _apiS() {
     [ -z "${_method}" ] && _method="GET"
 
     # Mac's /tmp is symlink so without the ending "/", would needs -L but does not work with -delete
-    find ${_TMP%/}/ -type f -name '.nxrm_c_*' -mmin +1 -delete 2>/dev/null
+    find -L ${_TMP%/} -type f -name '.nxrm_c_*' -mmin +1 -delete 2>/dev/null
     local _c="${_TMP%/}/.nxrm_c_$$"
     if [ ! -s ${_c} ]; then
         curl -sf -D ${_TMP%/}/_apiS_header_$$.out -b ${_c} -c ${_c} -o ${_TMP%/}/_apiS_$$.out -k "${_nexus_url%/}/service/rapture/session" -d "${_user_pwd}"
@@ -1868,7 +1871,7 @@ function f_put_realms() {
 }
 
 function f_enable_quarantines() {
-    local __doc__="Enable Firewall Audit & Quarantine capability"
+    local __doc__="Enable Firewall Audit & Quarantine capability against *all* proxy repositories"
     local _proxy_name_rx="${1:-"[^\"]+"}"
     f_api "/service/rest/v1/repositories" | grep -B2 -E '^\s*"type"\s*:\s*"proxy"' | sed -n -E 's/^ *"name": *"('${_proxy_name_rx}')".*/\1/p' | while read -r _repo; do
         f_iq_quarantine "${_repo}"
@@ -2237,29 +2240,46 @@ function _gen_mvn_settings() {
 EOF
 }
 
-function _mvn_deploy_file() {
-    local _deploy_repo="${1}"
+#f_deploy_maven "maven-hosted" "/tmp/dummy.jar" "my.deploy.test:dummy:1.0" "-Dpackaging=jar -DcreateChecksum=true"
+function f_deploy_maven() {
+    local _repo_name="${1}"
     local _file="${2}"
-    local _options="${3}"   # -DcreateChecksum=true
-    local _usr="${4:-"${_ADMIN_USER}"}"
-    local _pwd="${5:-"${_ADMIN_PWD}"}"
-    [ -z "${_deploy_repo}" ] && return 11
+    local _gav="${3}"
+    local _options="${4}"   # -DcreateChecksum=true
+    local _usr="${5:-"${_ADMIN_USER}"}"
+    local _pwd="${6:-"${_ADMIN_PWD}"}"
+    [ -z "${_repo_name}" ] && return 11
+    [ ! -f "${_file}" ] && return 12
+    [[ "${_gav}" =~ ^" "*([^: ]+)" "*:" "*([^: ]+)" "*:" "*([^: ]+)" "*$ ]] || return 13
+    local _g="${BASH_REMATCH[1]}"
+    local _a="${BASH_REMATCH[2]}"
+    local _v="${BASH_REMATCH[3]}"
+    local _repo_url="${_NEXUS_URL%/}/repository/${_repo_name%/}/"
     # https://issues.apache.org/jira/browse/MRESOLVER-56     -Daether.checksums.algorithms="SHA256,SHA512"
     if [ ! -s "${_TMP%/}/m2_settings.xml" ]; then
         _gen_mvn_settings "${_TMP%/}/m2_settings.xml" || return $?
     fi
-    #-DaltDeploymentRepository="nexusDummy::default::${_deploy_repo}"
-    mvn -s "${_TMP%/}/m2_settings.xml" deploy:deploy-file -Durl=${_deploy_repo} -Dfile="${_file}" -DrepositoryId="nexusDummy" -Drepo.id="nexusDummy" -Drepo.login="${_usr}" -Drepo.pwd="${_pwd}" ${_options}
+    #-DaltDeploymentRepository="nexusDummy::default::${_repo_url}"
+    local _cmd="mvn -s \"${_TMP%/}/m2_settings.xml\" deploy:deploy-file -Durl=${_repo_url} -Dfile=\"${_file}\" -DrepositoryId=\"nexusDummy\" -Drepo.id=\"nexusDummy\" -DgroupId=\"${_g}\" -DartifactId=\"${_a}\" -Dversion=\"${_v}\" -DgeneratePom=true -Drepo.login=\"${_usr}\" ${_options}"
+    echo "${_cmd}"
+    eval "${_cmd} -Drepo.pwd=\"${_pwd}\""
 }
 
 function f_upload_dummies_maven() {
     local __doc__="Upload dummy jar files into maven hosted repository"
-    local _repo_name="${1:-"maven-hosted"}"
+    local _repo_name="${1:-"maven-releases"}"
     local _how_many="${2:-"10"}"
     local _parallel="${3:-"3"}"
     local _ver_sfx="${4:-"${_MVN_VER_SFX}"}"   # Can't use '-SNAPSHOT' as "Upload to snapshot repositories not supported"
     local _usr="${5:-"${_ADMIN_USER}"}"
     local _pwd="${6:-"${_ADMIN_PWD}"}"
+
+    if ! _is_repo_available "${_repo_name}"; then
+        local _ds_name="$(_get_datastore_name)"
+        local _bs_name="$(_get_blobstore_name)"
+        local _extra_sto_opt="$(_get_extra_sto_opt "${_ds_name}")"
+        _apiS '{"action":"coreui_Repository","method":"create","data":[{"attributes":{"maven":{"versionPolicy":"RELEASE","layoutPolicy":"STRICT"},"storage":{"blobStoreName":"'${_bs_name}'","writePolicy":"ALLOW_ONCE","strictContentTypeValidation":true'${_extra_sto_opt}'},"cleanup":{"policyName":[]}},"name":"'${_repo_name}'","format":"","type":"","url":"","online":true,"recipe":"maven2-hosted"}],"type":"rpc"}' || return $?
+    fi
 
     # _SEQ_START is for continuing
     local _seq_start="${_SEQ_START:-1}"
@@ -2300,6 +2320,13 @@ function f_upload_dummies_maven_snapshot() {
     local _usr="${6:-"${_ADMIN_USER}"}"
     local _pwd="${7:-"${_ADMIN_PWD}"}"
 
+    if ! _is_repo_available "${_repo_name}"; then
+        local _ds_name="$(_get_datastore_name)"
+        local _bs_name="$(_get_blobstore_name)"
+        local _extra_sto_opt="$(_get_extra_sto_opt "${_ds_name}")"
+        _apiS '{"action":"coreui_Repository","method":"create","data":[{"attributes":{"maven":{"versionPolicy":"SNAPSHOT","layoutPolicy":"STRICT"},"storage":{"blobStoreName":"'${_bs_name}'","writePolicy":"ALLOW","strictContentTypeValidation":true'${_extra_sto_opt}'},"cleanup":{"policyName":[]}},"name":"'${_repo_name}'","format":"","type":"","url":"","online":true,"recipe":"maven2-hosted"}],"type":"rpc"}' || return $?
+    fi
+
     # _SEQ_START is for continuing
     local _seq_start="${_SEQ_START:-1}"
     local _seq_end="$((${_seq_start} + ${_how_many} - 1))"
@@ -2310,7 +2337,7 @@ function f_upload_dummies_maven_snapshot() {
     _gen_dummy_jar "${_TMP%/}/dummy.jar" || return $?
 
     for _ in $(eval "${_seq}"); do
-        _mvn_deploy_file "${_repo_url}" "${_TMP%/}/dummy.jar" "-DgroupId=${_group} -DartifactId=${_name} -Dversion=${_ver} -Dpackaging=jar" || break
+        f_deploy_maven "${_repo_name}" "${_TMP%/}/dummy.jar" "${_group}:${_name}:${_ver}" "-Dpackaging=jar -DcreateChecksum=true" || break
     done
 }
 
@@ -2366,8 +2393,8 @@ function f_upload_dummies_nuget() {
     fi
     local _nuspec="$(unzip -l "${_TMP%/}/${_pkg_name}.latest.nupkg" | grep -oE '[^ ]+\.nuspec$')"
     local _psmdcp="$(unzip -l "${_TMP%/}/${_pkg_name}.latest.nupkg" | grep -oE '[^ ]+\.psmdcp$')"
-    #local _nuspec="$(find ${_TMP%/}/${_pkg_name} -type f -name '*.nuspec' -print | head -n1)"
-    #local _psmdcp="$(find ${_TMP%/}/${_pkg_name} -type f -name '*.psmdcp' -print | head -n1)"
+    #local _nuspec="$(find -L ${_TMP%/}/${_pkg_name} -type f -name '*.nuspec' -print | head -n1)"
+    #local _psmdcp="$(find -L ${_TMP%/}/${_pkg_name} -type f -name '*.psmdcp' -print | head -n1)"
     if [ -z "${_nuspec}" ]; then
         _log "ERROR" "${_TMP%/}/${_pkg_name}.latest.nupkg does not have .nuspec file"
         return 1
@@ -2895,7 +2922,7 @@ function _is_repo_available() {
     local _repo_name="$1"
     local _nexus_url="${2:-"${r_NEXUS_URL:-"${_NEXUS_URL}"}"}"
     # At this moment, not always checking
-    find ${_TMP%/}/ -type f -name '_does_repo_exist*.out' -mmin +5 -delete 2>/dev/null
+    find -L ${_TMP%/} -type f -name '_does_repo_exist*.out' -mmin +5 -delete 2>/dev/null
     if [ ! -s ${_TMP%/}/_does_repo_exist$$.out ]; then
         _NEXUS_URL="${_nexus_url}" f_api "/service/rest/v1/repositories" | grep '"name":' > ${_TMP%/}/_does_repo_exist$$.out
     fi
@@ -2911,7 +2938,7 @@ function _is_blob_available() {
     local _bs_name="$1"
     local _nexus_url="${2:-"${r_NEXUS_URL:-"${_NEXUS_URL}"}"}"
     # At this moment, not always checking
-    find ${_TMP%/}/ -type f -name '_does_blob_exist*.out' -mmin +5 -delete 2>/dev/null
+    find -L ${_TMP%/} -type f -name '_does_blob_exist*.out' -mmin +5 -delete 2>/dev/null
     if [ ! -s ${_TMP%/}/_does_blob_exist$$.out ]; then
         _NEXUS_URL="${_nexus_url}" f_api "/service/rest/beta/blobstores" | grep '"name":' > ${_TMP%/}/_does_blob_exist$$.out
     fi
