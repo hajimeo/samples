@@ -172,16 +172,18 @@ EOF
 function f_api_config() {
     local __doc__="/api/v2/config"
     local _d="$1"
-    local _cmd="_curl \"${_IQ_URL%/}/api/v2/config"
+    local _path="$2"
+    local _method="${3:-"GET"}"
+    local _content_type="${4}"
+    local _url="${_IQ_URL%/}/api/v2/config${_path}"
+    local _cmd="_curl -X \"${_method}\""
     if [[ "${_d}" =~ ^property= ]]; then
-        _cmd="${_cmd}?${_d}\""
+        _url="${_url}?${_d}"
     elif [ -n "${_d}" ]; then
-        _cmd="${_cmd}\" -H \"Content-Type: application/json\" -X PUT -d '${_d}'"
-    else
-        _cmd="${_cmd}\""
+        _cmd="_curl -X \"PUT\" -H \"Content-Type: application/json\" -d '${_d}'"
     fi
     #echo "${_cmd}"
-    eval "${_cmd}" || return $?
+    eval "${_cmd} ${_url}" || return $?
 }
 
 function f_api_orgId() {
@@ -280,6 +282,7 @@ function f_config_update() {
     f_api_config '{"hdsUrl":"https://clm-staging.sonatype.com/"}'
     f_api_config '{"baseUrl":"'${_baseUrl%/}'/","forceBaseUrl":false}'
     f_api_config '{"enableDefaultPasswordWarning":false}'
+    _curl -X DELETE "${_IQ_URL%/}/api/v2/config/features/internalFirewallOnboardingEnabled"
 }
 
 function f_add_testuser() {
