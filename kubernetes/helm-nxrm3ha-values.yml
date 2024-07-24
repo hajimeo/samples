@@ -4,19 +4,17 @@
 # LIMITATION:
 #   Can't (or need to be careful) use special characters such as double-quotes and dollar mark.
 
-#$ export HELM_NAME="sonatype-helm" NAME_SPACE="nexusrepo" RELEASE_NAME="nxrm3ha" ADMIN_PWD="admin123" LICENSE_B64="$(base64 -i $HOME/share/sonatype/sonatype-license.lic)" DB_SERVER="192.168.4.31"
-#$ export NFS_SERVER="192.168.4.31" SHARE_DIR="/var/tmp/share/sonatype/${RELEASE_NAME}-nfs"
+#$ export HELM_NAME="sonatype-helm" NAME_SPACE="nexusrepo" RELEASE_NAME="nxrm3ha" ADMIN_PWD="admin123" LICENSE_B64="$(base64 -i $HOME/share/sonatype/sonatype-license.lic)" DB_SERVER="192.168.4.31";export NFS_SERVER="192.168.4.31" SHARE_DIR="/var/tmp/share/sonatype/${RELEASE_NAME}-nfs"
 
 # Most likely only once
 #$ helm repo add ${HELM_NAME} https://sonatype.github.io/helm3-charts/
 #$ helm search repo ${HELM_NAME}/nxrm-ha --versions | head
 #$ #kubectl create namespace ${NAME_SPACE}
-
 # Setting up NFS PV and PVC (used in `additionalVolumes`)
 #$ eval "echo \"$(cat ./k8s-nfs-pv-pvc-tmpl.yaml | grep -v '^\s*#')\"" > ./${RELEASE_NAME}-nfs-pv-pvc.yaml
 #$ kubectl apply -f ./${RELEASE_NAME}-nfs-pv-pvc.yaml -n ${NAME_SPACE}
 
-
+# Install / reinstall / upgrade
 #$ helm repo update ${HELM_NAME}
 #$ #helm uninstall ${RELEASE_NAME} -n ${NAME_SPACE}
 #$ eval "echo \"$(cat ./helm-nxrm3ha-values.yml | grep -v '^\s*#')\"" > ./${RELEASE_NAME}_values.yaml
@@ -38,7 +36,7 @@ namespaces:
 statefulset:
   name: nxrm-statefulset
   serviceName: nxrm-statefulset-service
-  replicaCount: 2
+  replicaCount: 1
   clustered: true
   additionalVolumeMounts:
     - name: nexus-blobs-volume
