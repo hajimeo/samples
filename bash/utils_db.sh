@@ -89,12 +89,14 @@ function _postgresql_configure() {
     #_upsert ${_postgresql_conf} "huge_page_size" "0"    # Use default kernel setting
 
     ### Performance tuning (so not mandatory). Expecting the server has at least 4GB RAM
-    _upsert ${_postgresql_conf} "max_connections" "200" "#max_connections"   # NOTE: work_mem * max_conn < shared_buffers.
     # @see: https://pgtune.leopard.in.ua/#/ and https://pgpedia.info/index.html
+    _upsert ${_postgresql_conf} "max_connections" "200" "#max_connections"   # NOTE: work_mem * max_conn < shared_buffers.
+    _upsert ${_postgresql_conf} "statement_timeout" "8h" "#statement_timeout" # NOTE: ALTER ROLE nexus SET statement_timeout = '1h';
     _upsert ${_postgresql_conf} "shared_buffers" "1024MB" "#shared_buffers" # Default 8MB. RAM * 25%. Make sure enough kernel.shmmax (ipcs -l) and /dev/shm if very old Linux or BSD
     _upsert ${_postgresql_conf} "work_mem" "8MB" "#work_mem"    # Default 4MB. RAM * 25% / max_connections (200) + extra a few MB. NOTE: I'm not expecting my PG uses 200 though
-    #_upsert ${_postgresql_conf} "maintenance_work_mem" "64MB" "#maintenance_work_mem"    # Default 64MB. Can be higher than work_mem
-    _upsert ${_postgresql_conf} "effective_cache_size" "3072MB" "#effective_cache_size" # Default 4GB. RAM * 50% ~ 75%
+    #_upsert ${_postgresql_conf} "maintenance_work_mem" "64MB" "#maintenance_work_mem"    # Default 64MB. Used for VACUUM, CREATE INDEX etc.
+    #_upsert ${_postgresql_conf} "autovacuum_work_mem" "-1" "#autovacuum_work_mem"    # Default -1 means uses the above for AUTO vacuum.
+    _upsert ${_postgresql_conf} "effective_cache_size" "3072MB" "#effective_cache_size" # Default 4GB. RAM * 50% ~ 75%. Used by planner.
     #_upsert ${_postgresql_conf} "wal_buffers" "16MB" "#wal_buffers" # Default -1 (1/32 of shared_buffers) Usually higher provides better write performance
     #_upsert ${_postgresql_conf} "random_page_cost" "1.1" "#random_page_cost"   # Default 4.0. If very fast disk is used, recommended to use same as seq_page_cost (1.0)
     #_upsert ${_postgresql_conf} "effective_io_concurrency" "200" "#effective_io_concurrency"   # Default 1. Was for RAID so number of disks. If SSD, somehow 200 is recommended
@@ -266,7 +268,7 @@ function _postgresql_create_role_and_db() {
                 ${_psql_as_admin} -d template1 -c "DROP DATABASE \"${_dbname}\";"
             else
                 _log "WARN" "${_dbname} already exists. May need to run below first (or _RECREATE_DB=Y):
-        ${_psql_as_admin} -d ${_dbname} -c \"DROP SCHEMA ${_schema:-"public"} CASCADE;CREATE SCHEMA ${_schema:-"public"} AUTHORIZATION ${_dbusr};GRANT ALL ON SCHEMA ${_schema:-"public"} TO ${_dbusr};\""
+                ${_psql_as_admin} -d ${_dbname} -c \"DROP SCHEMA ${_schema:-"public"} CASCADE;CREATE SCHEMA ${_schema:-"public"} AUTHORIZATION ${_dbusr};GRANT ALL ON SCHEMA ${_schema:-"public"} TO ${_dbusr};\""
                 sleep 3
                 _create_db=false
             fi
