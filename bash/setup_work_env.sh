@@ -69,7 +69,6 @@ function f_prepare() {
         sudo usermod -a -G docker $USER && _log "NOTE" "Please re-login as user group has been changed."
     fi
 
-    # Currently only for Mac
     f_install_misc
 }
 
@@ -90,9 +89,13 @@ EOF
 
     if type brew &>/dev/null; then
         #arch -x86_64 /usr/local/bin/brew install gnu-sed grep coreutils findutils graphviz
-        brew install gnu-sed grep coreutils findutils graphviz
+        brew install gnu-sed grep coreutils findutils graphviz pigz
         # 'q' is installable with brew
         brew install harelba/q/q
+    else
+        _install coreutils findutils graphviz pigz
+        # TODO: https://github.com/harelba/q/releases/download/v3.1.6/q-text-as-data-3.1.6-1.x86_64.deb
+        #_install q
     fi
 }
 
