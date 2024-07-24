@@ -353,6 +353,14 @@ function _sed() {
     ${_cmd} "$@"
 }
 
+function _gunzip() {
+    if type unpigz &>/dev/null; then
+        unpigz "$@"
+    else
+        gunzip "$@"
+    fi
+}
+
 function _grep() {
     local _cmd="grep"; which ggrep &>/dev/null && _cmd="ggrep"
     ${_cmd} "$@"
