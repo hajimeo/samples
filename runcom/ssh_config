@@ -8,7 +8,7 @@ Host *
 Host backup.osakos.com
   HostKeyAlgorithms=+ssh-rsa
 
-Host 10.230.*
+Host 10.230.140.2
   StrictHostKeyChecking no
   UserKnownHostsFile /dev/null
   IdentityFile ~/.ssh/support-shared.cer
