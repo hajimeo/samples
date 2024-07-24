@@ -533,7 +533,7 @@ function f_start_end_time(){
     local _start_date="$(_date2iso "`rg -z -N -om1 -r '$1' "$_date_regex" ${_log}`")" || return $?
     local _extension="${_log##*.}"
     if [ "${_extension}" = 'gz' ]; then
-        local _end_date="$(_date2iso "`gunzip -c ${_log} | _tac | rg -z -N -om1 -r '$1' "$_date_regex"`")" || return $?
+        local _end_date="$(_date2iso "`_gunzip -c ${_log} | _tac | rg -z -N -om1 -r '$1' "$_date_regex"`")" || return $?
     else
         local _end_date="$(_date2iso "`_tac ${_log} | rg -z -N -om1 -r '$1' "$_date_regex"`")" || return $?
     fi
@@ -891,7 +891,7 @@ function f_count_lines() {
 
     local _ext="${_file##*.}"
     if [[ "${_ext}" =~ gz ]]; then
-        local _line_num=`gunzip -c ${_file} | wc -l | tr -d '[:space:]'`
+        local _line_num=`_gunzip -c ${_file} | wc -l | tr -d '[:space:]'`
         rg -n --no-filename -z "${_search_regex}" ${_file} | rg -o '^(\d+):(2\d\d\d-\d\d-\d\d) (\d\d:\d\d:\d\d,\d\d\d)' -r '${2}T${3} ${1}' | line_parser.py thread_num ${_line_num} | bar_chart.py -A
     else
         local _line_num=`wc -l <${_file} | tr -d '[:space:]'`
@@ -946,12 +946,12 @@ function f_check_netstat() {
     echo "# Large Receive / Send Q from netstat"
     rg "^(Proto|tcp\s+(\d{4,}\s+\d+|\d+\s+\d{4,})\s+[^ ]+:${_port}\s+.+/)" ${_file}
     echo ""
-    echo "# Counting _WAIT"
-    rg "\s+([^ ]+_WAIT)\s+" -o -r '$1' ${_file} | sort | uniq -c
+    echo "# Counting _WAIT|SYN_RECV"
+    rg "\s+([^ ]+_WAIT[0-9]?|SYN_RECV)\s+" -o -r '$1' ${_file} | sort | uniq -c
     echo "# Counting _WAIT against Local Address:${_port}"
     rg "\s+[^ ]+:${_port}\s+([^:]+):\d+\s+([^ ]+_WAIT)\s+" -o -r '$1 $2' ${_file} | sort | uniq -c
-    echo "# Counting _WAIT against Foreign Address:${_port} (top 20)"
-    rg "\s+[^ ]+:${_port}\s+([^:]+:\d+)\s+([^ ]+_WAIT)\s+" -o -r '$1 $2' --no-filename ${_file} | sort | uniq -c | rg -v '^\s+1\s+' | sort -nr | head -n20
+    echo "# Counting _WAIT against Foreign Address:${_port} (top 10)"
+    rg "\s+[^ ]+:${_port}\s+([^:]+:\d+)\s+([^ ]+_WAIT)\s+" -o -r '$1 $2' --no-filename ${_file} | sort | uniq -c | rg -v '^\s+1\s+' | sort -nr | head -n10
     echo "(check /proc/sys/net/ipv4/tcp_tw_reuse)"
 }
 
@@ -1051,7 +1051,7 @@ function f_splitScriptLog() {
 function f_jvm2threads() {
     local _jvm_log="$1"
     local _export_to="${2:-"./threads"}"
-    if [ "$(ls -A "${_export_to}")" ]; then
+    if [ "$(ls -A "${_export_to}" 2>/dev/null)" ]; then
         echo "${_export_to} is not empty"
         return 1
     fi
@@ -1245,15 +1245,17 @@ function f_analyse_multiple_dumps() {
     rg -A10 '^### Counting thread states' ./f_thread_*.out
     echo " "
 
-    echo "## Long *RUN*ning (or BLOCKED) and no-change (same hash) threads which contain '${_running_thread_search_re}'"
-    _long_running "${_individual_thread_dir%/}" "${_running_thread_search_re}"
-    _long_blocked "${_individual_thread_dir%/}" "${_running_thread_search_re}"
+    echo "## Multiple *RUN*ning and no-change (same hash) threads which contain '${_running_thread_search_re}' and over 1KB"
+    _long_running "${_individual_thread_dir%/}" "${_running_thread_search_re}" "" "1k"
     echo 'NOTE: rg -A7 -m1 "RUNNABLE" -g <filename>'
-    # TODO: also check similar file sizes (wc -c?)
+    echo " "
+    echo "## Multiple BLOCKED and no-change (same hash) threads which contain '${_running_thread_search_re}' and over 1KB"
+    _long_blocked "${_individual_thread_dir%/}" "${_running_thread_search_re}"
     echo " "
 
-    echo "## Long running (more than ${_times} times) threads which contain '${_running_thread_search_re}'"
-    rg -l "${_running_thread_search_re}" ${_individual_thread_dir%/}/ | xargs -I {} basename {} | sort | uniq -c | rg "^\s+([${_times}-9]|\d\d+)\s+.+ ([^ ]+$)" -o -r '$1' | sort
+    # not easy to check size so using _running_thread_search_re
+    echo "## Long Running (more than ${_times} times) threads which contain '${_running_thread_search_re}' (size can be diff)"
+    rg -l "${_running_thread_search_re}" -g '*run*.out' -g '*RUN*.out' ${_individual_thread_dir%/}/ | while read -r _f; do echo "$(basename ${_f}) ($(du -k ${_f} | cut -f1) block)"; done | sort | uniq -c | rg "^\s+([${_times}-9]|\d\d+)\s+.+" -o | sort -nr
     #| rg -v "(ParallelGC|G1 Concurrent Refinement|Parallel Marking Threads|GC Thread|VM Thread)"
     echo " "
 
@@ -1286,20 +1288,24 @@ function _thread_state_sum() {
 function _long_running() {
     local _search_dir="${1:-"."}"
     local _search_re="${2}"
-    local _min_count="${3:-"2"}"
+    local _min_count="${3:-"3"}"
     local _size="${4:-"1k"}"
-    if [ -n "${_search_re}" ]; then
-        # TODO: not utilising _size
-        rg -l "${_search_re}" -g '*run*.out' -g '*RUN*.out' ${_search_dir%/}
-    else
-        find ${_search_dir%/} -type f \( -name '*run*.out' -o -name '*RUN*.out' \) -size +${_size} -print
-    fi | xargs -I {} md5sum {} | rg '([0-9a-z]+)\s+.+/([^/]+)$' -o -r '$1 $2' | sort | uniq -c | sort -nr | rg "^\s*([${_min_count}-9]|\d\d+)\s+"
+    find ${_search_dir%/} -type f \( -name '*run*.out' -o -name '*RUN*.out' \) -size +${_size} -print | while read -r _f; do
+        if rg -q "${_search_re}" ${_f}; then
+            md5sum ${_f}
+        fi
+    done | rg '([0-9a-z]+)\s+.+/([^/]+)$' -o -r '$1 $2' | sort | uniq -c | rg "^\s*([${_min_count}-9]|\d\d+)\s+" | sort -nr
 }
 function _long_blocked() {
     local _search_dir="${1:-"."}"
     local _search_re="${2}"
     local _min_count="${3:-"2"}"
-    rg -l --multiline --multiline-dotall " BLOCKED .+${_search_re}" -g '*wait*.out' ${_search_dir%/} | xargs -I {} md5sum {} | rg '([0-9a-z]+)\s+.+/([^/]+)$' -o -r '$1 $2' | sort | uniq -c | sort -nr | rg "^\s*([${_min_count}-9]|\d\d+)\s+"
+    local _size="${4:-"1k"}"
+    find ${_search_dir%/} -type f \( -name '*wait*.out' -o -name '*WAIT*.out' \) -size +${_size} -print | while read -r _f; do
+        if rg -q --multiline --multiline-dotall " BLOCKED .+${_search_re}" ${_f}; then
+            md5sum ${_f}
+        fi
+    done | rg '([0-9a-z]+)\s+.+/([^/]+)$' -o -r '$1 $2' | sort | uniq -c | rg "^\s*([${_min_count}-9]|\d\d+)\s+" | sort -nr
 }
 function _threads_extra_check() {
     local _file="${1:-"threads.txt"}"
@@ -1429,14 +1435,21 @@ function f_request2csv() {
         echo "_pattern_str required." >&2
         return 1
     fi
-    #echo '"clientHost","user","dateTime","method","requestUrl","statusCode","contentLength","byteSent","elapsedTime_ms","userAgent","thread"' > ${_csv}
     echo "\"$(echo "${_pattern_str}" | tr -cd '[:alnum:]._ ' | _sed 's/ /","/g')\"" > "${_out_file}"
     local _pattern="^$(_gen_pattern "${_pattern_str}")"
     echo "# pattern: ${_pattern}" >&2
-    local _num=$(( $(echo -n "${_pattern_str}" | tr -d -c ' ' | wc -m) + 1 ))
-    local _pattern_out="\"\$1\""
-    for _i in `seq 2 ${_num}`; do
-        _pattern_out="${_pattern_out},\"\$${_i}\""
+    local _pattern_out=""
+    local _i=1
+    for _col in ${_pattern_str}; do
+        if [ -n "${_pattern_out}" ]; then
+            _pattern_out="${_pattern_out},"
+        fi
+        if [[ "${_col}" =~ (bytesSent|elapsedTime) ]]; then
+            _pattern_out="${_pattern_out}\$${_i}"
+        else
+            _pattern_out="${_pattern_out}\"\$${_i}\""
+        fi
+        _i=$((_i + 1))
     done
     if [ -n "${_filter}" ]; then
         # TODO: this would be slower than single 'rg'
@@ -1547,17 +1560,20 @@ function f_healthlog2csv() {
     python3 -c "import pandas as pd;import csv;df=pd.read_json('/tmp/_health_monitor_$$.json');df.to_csv('${_out_file}', mode='w', header=True, index=False, escapechar='\\\', quoting=csv.QUOTE_NONNUMERIC)"
 }
 
-#SELECT TIME(substr(date_time, 12, 8)) as hhmmss, AVG(mbs) as avg_MBperSec, count(*) as requests FROM t_blob_iostat GROUP BY hhmmss
+#SELECT TIME(substr(date_time, 12, 8)) as hhmmss, AVG(mbs) as avg_MBperSec, count(*) as requests FROM t_log_iostat GROUP BY hhmmss
 function f_iostat2csv() {
-    local __doc__="Convert some log which contains org.sonatype.nexus.blobstore.iostat to csv"
+    local __doc__="Convert some log which contains org.sonatype.nexus.blobstore.iostat to csv (may not include 'deleted')"
     local _glob="${1:-"nexus.log"}"
-    local _out_file="${2:-"./blob_iostat.csv"}"
-    # Converting ,\d\d\d to .\d\d\d
-    rg -q 'org.sonatype.nexus.blobstore.iostat' -m1 -g "${_glob}" || return 1
-    # NOTE "read" and "written" only, no "deleted", also always bytes and ms
-    rg "^(${_DATE_FORMAT}.\d\d:\d\d:\d\d).([\d]+)[^\[]+\[([^\]]+)\] [^ ]* ([^ ]*) org.sonatype.nexus.blobstore.iostat - blobstore ([^:]+): (.+) bytes ([^ ]+) in .+ \((.+) mb/s\)" -o -r '"$1.$2","$3","$4","$5",$6,"$7",$8' --no-filename -g "${_glob}" > "${_out_file}" || return $?
-    head -n1 ${_out_file} | rg -q '^date_time' || echo "date_time,thread,user,blobstore,bytes,type,mbs
-$(cat "${_out_file}")" > ${_out_file}
+    local _out_file="${2:-"./log_iostat.csv"}"
+    local _rg_opts="-g \"${_glob}\""
+    if [ -s "${_glob}" ]; then
+        _rg_opts="${_glob}"
+    fi
+    # NOTE "read" and "written" only, no "deleted" as it's different
+    #2024-07-23 14:05:45,646+0000 DEBUG [qtp498394633-47939]  *SYSTEM org.sonatype.nexus.blobstore.iostat - blobstore imc-snapshots: 1410 bytes written in 92.8994 ms (0.0151777 mb/s)
+    #2024-07-23 20:30:45,643+0000 DEBUG [qtp498394633-47939]  *SYSTEM org.sonatype.nexus.blobstore.iostat - blobstore imc-snapshots: blob deleted in 51.5723 ms
+    rg "^(${_DATE_FORMAT}.\d\d:\d\d:\d\d).([\d]+)[^\[]+\[([^\]]+)\] [^ ]* ([^ ]*) org.sonatype.nexus.blobstore.iostat - blobstore ([^:]+): (\d*) *(\S+) (\S+) in (\S+) (\S+)" -o -r '"$1.$2","$3","$4","$5",$6,"$7","$8",$9,"$10"' --no-filename ${_rg_opts} > "${_out_file}" || return $?
+    _add_header "${_out_file}" "date_time,thread,user,blobstore,size,size_unit,type,elapsed,elapsed_unit"
 }
 
 function f_get_pems_from_xml() {
@@ -1572,9 +1588,9 @@ for c in j['capabilitiesConfiguration']['capabilities']['capability']:
             f.write(c['properties']['property']['value'])
 "
 }
-
 # curl -O https://repo1.maven.org/maven2/com/h2database/h2/1.4.196/h2-1.4.196.jar
 # curl -o $HOME/IdeaProjects/libs/h2-1.4.200.jar https://repo1.maven.org/maven2/com/h2database/h2/1.4.200/h2-1.4.200.jar
+# Jira Data Center: curl -O https://repo1.maven.org/maven2/com/h2database/h2/2.1.214/h2-2.1.214.jar
 function f_h2_start() {
     local __doc__="http://www.h2database.com/javadoc/org/h2/tools/Server.html"
     # NXRM3
@@ -1586,7 +1602,8 @@ function f_h2_start() {
     local _baseDir="${1}"
     local _port="${2:-"8082"}"
     local _Xmx="${3:-"8g"}"
-    local _h2_ver="${4:-"1.4.200"}"
+    local _h2_jar="${4}"
+    local _h2_ver="${5:-"1.4.200"}"
     if [ -z "${_baseDir}" ]; then
         if [ -d ./sonatype-work/clm-server/data ]; then
             _baseDir="./sonatype-work/clm-server/data/"
@@ -1597,8 +1614,11 @@ function f_h2_start() {
             _baseDir="."
         fi
     fi
+    if [ -z "${_h2_jar}" ]; then
+        _h2_jar="$HOME/IdeaProjects/libs/h2-${_h2_ver}.jar"
+    fi
     # NOTE: 1.4.200 is used by NXRM# but may causes org.h2.jdbc.JdbcSQLIntegrityConstraintViolationException with IQ    # -ifNotExists
-    java -Xmx${_Xmx} -cp $HOME/IdeaProjects/libs/h2-${_h2_ver}.jar org.h2.tools.Server -webPort ${_port} -baseDir "${_baseDir}" -webAllowOthers -tcpAllowOthers -pgAllowOthers
+    java -Xmx${_Xmx} -cp ${_h2_jar} org.h2.tools.Server -webPort ${_port} -baseDir "${_baseDir}" -webAllowOthers -tcpAllowOthers -pgAllowOthers
 }
 
 # TODO: backup function with:
@@ -1677,14 +1697,14 @@ function _getAfterFirstMatch() {
             local _tmp_start_line_num=$_start_line_num
             [[ "$_exclude_first_line" =~ ^(y|Y) ]] && _tmp_start_line_num=$(($_start_line_num + 1))
             if [ "${_extension}" = 'gz' ]; then
-                _end_line_num=`gunzip -c "$_file_path" | tail -n +${_tmp_start_line_num} | _grep -m1 -nP "$_end_regex" | cut -d ":" -f 1`
+                _end_line_num=`_gunzip -c "$_file_path" | tail -n +${_tmp_start_line_num} | _grep -m1 -nP "$_end_regex" | cut -d ":" -f 1`
             else
                 _end_line_num=`tail -n +${_tmp_start_line_num} "$_file_path" | _grep -m1 -nP "$_end_regex" | cut -d ":" -f 1`
             fi
             _end_line_num=$(( $_end_line_num + $_start_line_num - 1 ))
         fi
         if [ "${_extension}" = 'gz' ]; then
-            gunzip -c "${_file_path}" | _sed -n "${_start_line_num},${_end_line_num}p"
+            _gunzip -c "${_file_path}" | _sed -n "${_start_line_num},${_end_line_num}p"
         else
             _sed -n "${_start_line_num},${_end_line_num}p" "${_file_path}"
         fi
@@ -1717,7 +1737,7 @@ function f_splitByRegex() {
     local _orig_ext="${_base_name##*.}"
     local _tmp_file="/tmp/$(basename "${_file}" .${_orig_ext})"
     if [ "${_orig_ext}" == 'gz' ]; then
-        gunzip -c "${_file}" > "${_tmp_file}" || return $?
+        _gunzip -c "${_file}" > "${_tmp_file}" || return $?
         _file="${_tmp_file}"
     fi
     # this may not be working
@@ -1762,7 +1782,7 @@ function f_splitPerHour() {
     local _dest_dir="${2:-"_hourly_logs"}"
     f_splitByRegex "${_file}" "^${_DATE_FORMAT}.\d\d" "${_dest_dir}"
 }
-
+#f_extractFromLog .nexus-2024-07-08.log.gz "^2024-07-08 19:45:[23]" "^2024-07-08 19:46:4" | tee nexus-2024-07-08_1945to1946.out
 function f_extractFromLog() {
     local __doc__="Extract specific lines from file"
     local _file="$1"    # can't be a glob as used in sed later
@@ -1777,7 +1797,7 @@ function f_extractFromLog() {
         [ -z "${_n2}" ] && return 12
     fi
     if [ "${_file##*.}" = 'gz' ]; then
-        gunzip -c "${_file}"
+        _gunzip -c "${_file}"
     else
         cat "${_file}"
     fi | _sed -n "${_n1},${_n2}p;"
@@ -1892,7 +1912,7 @@ function _replace_number() {
      -e "s/[0-9]{${_min},}+\b/${_N_}/g"
 }
 
-# DEPRECATED: utils.sh now has this so this fuction should be removed.
+# DEPRECATED: utils.sh now has this so this function should be removed.
 function _load_yaml() {
     local _yaml_file="${1}"
     local _name_space="${2}"
@@ -2038,11 +2058,18 @@ function _line_num() {
     local _opt="${2:-"-l"}"
     local _cmd="wc ${_opt}"
     if [[ "${_file}" =~ \.gz$ ]]; then
-        _cmd="gunzip -c ${_file} | ${_cmd}"
+        _cmd="_gunzip -c ${_file} | ${_cmd}"
     elif [ -n "${_file}" ]; then
         _cmd="cat ${_file} | ${_cmd}"
     fi
     eval "${_cmd}" | tr -d "[:space:]"
+}
+function _add_header() {
+    local _file="$1"
+    local _header="$2"
+    if [ -s "${_file}" ]; then
+        head -n1 "${_file}" | rg -q "${_header}" || _sed -i'' "1i ${_header}" "${_file}"
+    fi
 }
 function _sed() {
     local _cmd="sed"; which gsed &>/dev/null && _cmd="gsed"

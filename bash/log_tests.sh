@@ -68,7 +68,7 @@ _APP_VER="${_APP_VER_OVERWRITE:-"<null>"}"          # 3.36.0-01
 
 # Aliases (can't use alias in shell script, so functions)
 _rg() {
-    local _max_filesize="${_RG_MAX_FILESIZE-"4G"}"
+    local _max_filesize="${_RG_MAX_FILESIZE-"8G"}"
     if [ -n "${_max_filesize}" ]; then
         rg --max-filesize "${_max_filesize}" -z "$@"
     else
@@ -76,7 +76,7 @@ _rg() {
     fi 2>/tmp/._rg_last.err
     local _rc=$?
     if [ ${_rc:-0} -ne 0 ] && [ -s /tmp/._rg_last.err ]; then
-         echo "[$(date +'%Y-%m-%d %H:%M:%S')] rg $*" >> /tmp/_rg.log
+         echo "[$(date +'%Y-%m-%d %H:%M:%S')] rg (${_max_filesize}) $*" >> /tmp/_rg.log
          cat /tmp/._rg_last.err >> /tmp/_rg.log
     fi
     return ${_rc}
@@ -375,28 +375,29 @@ function _split_log() {
         _start_log_line=".* Initializing Nexus IQ Server .*"   # IQ
     fi
     if [ -n "${_start_log_line}" ]; then
-        if _size_check "${_log_path}" "$((${_LOG_THRESHOLD_BYTES} * 20))"; then
+        if _size_check "${_log_path}" "$((${_LOG_THRESHOLD_BYTES} * 100))"; then
             f_splitByRegex "${_log_path}" "${_start_log_line}" "_split_logs"
         else
-            _LOG "WARN" "Not doing f_splitByRegex for '${_log_path}' as the size is larger than _LOG_THRESHOLD_BYTES:${_LOG_THRESHOLD_BYTES} * 20"
+            _LOG "WARN" "Not doing f_splitByRegex for '${_log_path}' as the size is larger than _LOG_THRESHOLD_BYTES:${_LOG_THRESHOLD_BYTES} * 100"
         fi
     fi
 }
 function e_app_logs() {
-    local _log_path="$(find . -maxdepth 3 -type f -print | grep -m1 -E "/(${_NXRM_LOG}|${_NXIQ_LOG}|server.log)$")"
-    [ -z "${_log_path}" ] && _log_path="*.log"
-    _LOG_GLOB="$(basename ${_log_path} | sed 's/.\///')"
-
-    if [ -s "${_log_path}" ]; then
-        _split_log "${_log_path}"
+    local _log_path="$1"
+    if [ -z "${_log_path}" ]; then
+        _log_path="$(find . -maxdepth 3 -type f -print | grep -m1 -E "/(${_NXRM_LOG}|${_NXIQ_LOG}|server.log)$")"
     fi
+    [ ! -s "${_log_path}" ] && return 1
+
+    local _log_glob="$(basename ${_log_path} | sed 's/.\///')"
+    _split_log "${_log_path}"
     local _since_last_restart="$(ls -1r _split_logs/* 2>/dev/null | head -n1)"
     local _excludes="(WARN .+ high disk watermark|This is NOT an error|Attempt to access soft-deleted blob .+nexus-repository-docker|CacheInfo missing for)"
     if [ -n "${_since_last_restart}" ]; then
         f_topErrors "${_since_last_restart}" "" "" "${_excludes}" >${_FILTERED_DATA_DIR%/}/f_topErrors.out
     elif _size_check "${_log_path}"; then
         # TODO: this one is slow
-        _TOP_ERROR_MAX_N=10000 f_topErrors "${_LOG_GLOB}" "" "" "${_excludes}" >${_FILTERED_DATA_DIR%/}/f_topErrors.out
+        _TOP_ERROR_MAX_N=10000 f_topErrors "${_log_glob:-"${_LOG_GLOB}"}" "" "" "${_excludes}" >${_FILTERED_DATA_DIR%/}/f_topErrors.out
     fi
 }
 function e_requests() {
@@ -452,7 +453,7 @@ function r_requests() {
     # first and end time per user
     #_q -H "select clientHost, user, count(*), min(date), max(date) from ${_FILTERED_DATA_DIR%/}/request.csv group by 1,2"
     _head "REQUESTS" "Counting repository, method, status code for last 1000 requests and top 20 (NOTE: 200 status does not mean the request completed (especially small bytesSent or headerContentLength)"
-    _code "$(_rg "\[\d\d/[^/]+/20\d\d:(${_hour:-"\\d\\d"}).+ \"(\S+) .*/repository/([^/]+)/\S* HTTP/...\" (\d)" -o -r '${1} ${3} ${2} ${4}**' -g ${_REQUEST_LOG} --no-filename | tail -n1000 | sort | uniq -c | sort -nr | head -n20)"
+    _code "$(_rg "\[\d\d/[^/]+/20\d\d:(${_hour:-"\\d\\d"}).+ \"(\S+) .*/(repository|rest/integration/repositories/[^/]+)/([^/]+)/\S* HTTP/...\" (\d)" -o -r '${1} ${4} ${2} ${5}xx' -g ${_REQUEST_LOG} --no-filename | tail -n1000 | sort | uniq -c | sort -nr | head -n20)"
 }
 function r_list_logs() {
     _head "APP LOG" "max 100 *.log files' start and end (start time, end time, difference(sec), filesize)"
@@ -499,14 +500,11 @@ function t_system() {
     if ! _rg -g jmx.json -q 'x86_64'; then
         _head "WARN" "No 'x86_64' found in jmx.json. Might be 32 bit Java or Windows, check the top of jvm.log)"
     fi
-    if _rg -g sysinfo.json -q 'DOCKER_TYPE'; then
+    if _rg -g sysinfo.json -q '(DOCKER_TYPE|"SONATYPE_INTERNAL_HOST_SYSTEM"\s*:\s*"Docker"|"container"\s*:\s*"oci")'; then
         _head "WARN" "Might be installed on DOCKER"
     fi
     if _rg -g sysinfo.json -q 'KUBERNETES_'; then
         _head "WARN" "Might be installed on KUBERNETES (shouldn't use H2/OrientDB)"
-    fi
-    if _rg -g sysinfo.json -q 'REDHAT'; then
-        _head "WARN" "Might be RHEL8 (TODO: most likely inaccurate)"
     fi
 }
 function t_pg_config() {
