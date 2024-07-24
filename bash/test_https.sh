@@ -295,7 +295,7 @@ function test_https() {
 # Test email server's (SMTP) connectivity for STARTTLS
 # Below are not perfect as it won't send STARTTLS
 #curl -v -sf -k --ssl-reqd "smtps://localhost:25"
-#keytool -J-Djavax.net.debug=ssl:record:plaintext -printcert -sslserver localhost:25
+#keytool -J-Djavax.net.debug=ssl:record:plaintext -printcert -rfc -sslserver localhost:25
 function test_smtps() {
     local _host_port="${1}" # smtp.office365.com:587
     echo -n | openssl s_client -connect ${_host_port} -starttls smtp # -debug
@@ -349,7 +349,8 @@ function keytool_v() {
     eval "${_cmd} ${_pwd_opts}"
 }
 
-#$ keytool -printcert -rfc -sslserver ${_host}:${_port}
+#$ keytool -printcert -rfc -sslserver ${_host}:${_port} > server.pem
+#$ keytool -printcert -file server.pem
 # If HTTP proxy with username and password, (at least Mac's) keytool doesn't work?
 #$ keytool -J-Djavax.net.debug=all -J-Dhttps.proxyHost=dh1.standalone.localdomain -J-Dhttps.proxyPort=28080 -printcert -rfc -sslserver ${_host}:${_port}
 #$ openssl s_client -help 2>&1 | grep proxy
