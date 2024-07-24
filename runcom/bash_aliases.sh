@@ -112,7 +112,7 @@ alias htmlencode="python3 -c \"import sys,html;print(html.escape(sys.stdin.read(
 alias htmldecode="python3 -c \"import sys,html;print(html.unescape(sys.stdin.read()))\""
 alias utc2int='python3 -c "import sys,time,dateutil.parser;from datetime import timezone;print(int(dateutil.parser.parse(sys.argv[1]).replace(tzinfo=timezone.utc).timestamp()))"' # doesn't work with yy/mm/dd (2 digits year)
 # Python is strange. Behaves differently #.astimezone(zoneinfo.ZoneInfo(\"UTC\"))
-alias int2utc='python3 -c "import sys,datetime,zoneinfo;print(datetime.datetime.fromtimestamp(int(sys.argv[1][0:10])).isoformat())"'
+alias int2utc='python3 -c "import sys,datetime;print(datetime.datetime.utcfromtimestamp(int(sys.argv[1][0:10])).isoformat()+\" UTC\")"'
 #alias int2utc='python3 -c "import sys,datetime;print(datetime.datetime.utcfromtimestamp(int(sys.argv[1][0:10])).strftime(\"%Y-%m-%dT%H:%M:%S\")+\".\"+sys.argv[1][10:13]+\"Z\")"'#alias int2utc='python -c "import sys,time;print(time.asctime(time.gmtime(int(sys.argv[1])))+\" UTC\")"'
 alias dec2hex='printf "%x\n"'
 alias hex2dec='printf "%d\n"'
@@ -227,7 +227,7 @@ alias gcviewer='java -Xmx4g -jar $HOME/Apps/gcviewer-1.37-SNAPSHOT.jar' # &>/tmp
 alias gitbucket='java -jar gitbucket.war &> /tmp/gitbucket.out &'   #https://github.com/gitbucket/gitbucket/releases/download/4.34.0/gitbucket.war
 alias groovyi='groovysh -e ":set interpreterMode true"'
 # JAVA_HOME_11 is set in bash_profile.sh
-alias jenkins='${JAVA_HOME_11%/}/bin/java -jar $HOME/Apps/jenkins.war'  #curl -o $HOME/Apps/jenkins.war -L https://get.jenkins.io/war-stable/2.426.3/jenkins.war
+alias jenkins='${JAVA_HOME_11%/}/bin/java -Djava.util.logging.config.file=$HOME/Apps/jenkins-logging.properties -jar $HOME/Apps/jenkins.war'  #curl -o $HOME/Apps/jenkins.war -L https://get.jenkins.io/war-stable/2.426.3/jenkins.war
 # http (but https fails) + reverse proxy server https://www.mock-server.com/mock_server/getting_started.html
 alias mockserver='java -jar $HOME/Apps/mockserver-netty.jar'  #curl -o $HOME/Apps/mockserver-netty.jar -L https://search.maven.org/remotecontent?filepath=org/mock-server/mockserver-netty/5.11.1/mockserver-netty-5.11.1-jar-with-dependencies.jar
 alias jkCli='java -jar $HOME/Apps/jenkins-cli.jar -s http://localhost:8080/ -auth admin:admin123' #curl -o $HOME/Apps/jenkins-cli.jar -L http://localhost:8080/jnlpJars/jenkins-cli.jar
@@ -238,6 +238,9 @@ alias jkCli='java -jar $HOME/Apps/jenkins-cli.jar -s http://localhost:8080/ -aut
 [ -f $HOME/share/java/blobpath.jar ] && alias blobpathJ="java -jar $HOME/share/java/blobpath.jar"
 # JAVA_HOME_11 is set in bash_profile.sh
 alias matJ11='/Applications/mat.app/Contents/MacOS/MemoryAnalyzer -vm ${JAVA_HOME_11%/}/bin'
+if [ -s $HOME/IdeaProjects/samples/bash/patch_java.sh ]; then
+    alias patchJava='$HOME/IdeaProjects/samples/bash/patch_java.sh'
+fi
 
 ## Chrome aliases for Mac (URL needs to be IP as hostname wouldn't be resolvable on remote)
 #alias shib-local='open -na "Google Chrome" --args --user-data-dir=$HOME/.chromep/local --proxy-server=socks5://localhost:28081'
@@ -787,7 +790,7 @@ function backupC() {
         #${_find} $HOME/Documents/tests/* -type d -mtime +2 -empty -print -delete
         ${_find} "$HOME/Documents/tests" -maxdepth 1 -type d -mtime +120 | rg '(nxrm|nxiq)_[0-9.-]+_([^_]+)' -o -r '$2' | rg -v -i -w 'h2' | xargs -I{} -t psql -c "DROP DATABASE {}"
         ${_find} "$HOME/Documents/tests" -maxdepth 1 -type d -mtime +120 -name 'nx??_[0-9]*' -print0 | xargs -0 -I{} -t rm -rf {}
-        # SELECT datname, sessions, stats_reset, session_time, active_time, pg_database_size(datname) as db_bytes FROM pg_stat_database WHERE datname NOT IN ('', 'template0', 'template1', 'postgres') ORDER BY stats_reset LIMIT 10;
+        #psql -d template1 -tAc "SELECT 'DROP DATABASE '||datname||';    -- '||pg_database_size(datname)||' bytes' FROM pg_stat_database WHERE datname NOT IN ('', 'template0', 'template1', 'postgres', CURRENT_USER) AND stats_reset < (now() - interval '60 days') ORDER BY stats_reset"
      fi
 
     [ ! -d "${_src}" ] && return 11
@@ -932,18 +935,18 @@ function set_classpath() {
 function update_cacerts() {
     local _pem="$1"
     local _alias="$2"
+    local _truststore="${3:-"${JAVA_HOME%/}/jre/lib/security/cacerts"}"
     [ -z "${JAVA_HOME}" ] && return 1
-    [ ! -f "${JAVA_HOME%/}/jre/lib/security/cacerts" ] && return 2
     [ ! -f "${_pem}" ] && return 3
     [ -z "${_alias}" ] && _alias="$(basename "${_pem%%.*}")"
-    echo 'sudo keytool -import -alias "'${_alias}'" -keystore "'${JAVA_HOME%/}'/jre/lib/security/cacerts" -file "'${_pem}'" -noprompt -storepass changeit' >&2
-    sudo keytool -import -alias "${_alias}" -keystore "${JAVA_HOME%/}/jre/lib/security/cacerts" -file "${_pem}" -noprompt -storepass changeit
+    echo 'keytool -import -alias "'${_alias}'" -keystore "'${_truststore}'" -file "'${_pem}'" -noprompt -storepass changeit' >&2
+    keytool -import -alias "${_alias}" -keystore "${_truststore}" -file "${_pem}" -noprompt -storepass changeit
 }
 
 
 
 function startCommonUtils() {
     pgStatus start
-    tabby_start
+    #tabby_start
     slackS
 }

@@ -191,6 +191,12 @@ function nxrmStart() {
     fi
     local _nexus_ver="$(basename "$(dirname "$(dirname "$(realpath "${_nexus_file}")")")")"
     local _jetty_https="$(find ${_base_dir%/} -maxdepth 4 -path '*/etc/*' -type f -name 'jetty-https.xml' 2>/dev/null | sort | tail -n1)"
+    local _karaf_conf="$(find . -maxdepth 4 -type f -name 'config.properties' -path '*/etc/karaf/*' | head -n1)"
+    if [ -n "${_karaf_conf}" ] && ! grep -q 'org.openjdk.btrace' ${_karaf_conf}; then
+        sed -i '' '/^org.osgi.framework.bootdelegation = /a \
+        org.openjdk.btrace.*, \\
+    ' ${_karaf_conf}
+    fi
     local _cfg_file="${_sonatype_work%/}/etc/nexus.properties"
     if [ -n "${_nexus_vmopt}" ]; then   # This means NXRM3
         # To avoid 'Caused by: java.lang.IllegalStateException: Insufficient configured threads' https://support.sonatype.com/hc/en-us/articles/360000744687-Understanding-Eclipse-Jetty-9-4-Thread-Allocation#ReservedThreadExecutor
@@ -370,14 +376,15 @@ function nxrm3Install() {
 # NOTE: copy jetty-https.xml and keystore.jks into above directory
 #       -Dapplication-port-ssl=8443 does not work
 #chown -R 200:200 "${_NEXUS_DATA_LOCAL}";
-#docker run --init -d -p 18081:8081 -p 18443:8443 --name=nxrm3dockerWithHTTPS --tmpfs /tmp:noexec -e INSTALL4J_ADD_VM_PARAMS="-Dssl.etc=\${karaf.data}/etc/ssl -Dnexus-args=\${jetty.etc}/jetty.xml,\${jetty.etc}/jetty-https.xml,\${jetty.etc}/jetty-requestlog.xml -Djava.util.prefs.userRoot=/nexus-data" -v /var/tmp/share:/var/tmp/share -v ${_NEXUS_DATA_LOCAL}:/nexus-data dh1.standalone.localdomain:5000/sonatype/nexus3:latest
-# export INSTALL4J_ADD_VM_PARAMS="-XX:ActiveProcessorCount=2 -Xms2g -Xmx2g -XX:MaxDirectMemorySize=2g -XX:+PrintGC -XX:+PrintGCDateStamps -Dnexus.licenseFile=/var/tmp/share/sonatype/sonatype-license.lic"
-# export INSTALL4J_ADD_VM_PARAMS="-XX:ActiveProcessorCount=2 -Xms2g -Xmx2g -XX:MaxDirectMemorySize=2g -Dnexus.licenseFile=/var/tmp/share/sonatype/sonatype-license.lic -Dnexus.datastore.enabled=true -Dnexus.datastore.nexus.jdbcUrl=jdbc\:postgresql\://localhost/nxrm?ssl=true&sslmode=require -Dnexus.datastore.nexus.username=nxrm -Dnexus.datastore.nexus.password=nxrm123 -Dnexus.datastore.nexus.maximumPoolSize=10 -Dnexus.datastore.nexus.advanced=maxLifetime=600000"
+#docker run --init -d -p 18081:8081 -p 18443:8443 --name=nxrm3dockerWithHTTPS --tmpfs /tmp:noexec -e INSTALL4J_ADD_VM_PARAMS="-Djava.util.prefs.userRoot=/nexus-data -Dssl.etc=\${karaf.data}/etc/ssl -Dnexus-args=\${jetty.etc}/jetty.xml,\${jetty.etc}/jetty-https.xml,\${jetty.etc}/jetty-requestlog.xml" -v /var/tmp/share:/var/tmp/share -v ${_NEXUS_DATA_LOCAL}:/nexus-data dh1.standalone.localdomain:5000/sonatype/nexus3:latest
+# export INSTALL4J_ADD_VM_PARAMS="-Djava.util.prefs.userRoot=/nexus-data -XX:ActiveProcessorCount=2 -Xms2g -Xmx2g -XX:MaxDirectMemorySize=2g -XX:+PrintGC -XX:+PrintGCDateStamps -Dnexus.licenseFile=/var/tmp/share/sonatype/sonatype-license.lic"
+# export INSTALL4J_ADD_VM_PARAMS="-Djava.util.prefs.userRoot=/nexus-data -XX:ActiveProcessorCount=2 -Xms2g -Xmx2g -XX:MaxDirectMemorySize=2g -Dnexus.licenseFile=/var/tmp/share/sonatype/sonatype-license.lic -Dnexus.datastore.enabled=true -Dnexus.datastore.nexus.jdbcUrl=jdbc\:postgresql\://localhost/nxrm?ssl=true&sslmode=require -Dnexus.datastore.nexus.username=nxrm -Dnexus.datastore.nexus.password=nxrm123 -Dnexus.datastore.nexus.maximumPoolSize=10 -Dnexus.datastore.nexus.advanced=maxLifetime=600000"
+alias rmDocker='nxrmDocker'
 function nxrmDocker() {
     local _name="${1:-"nxrm3"}"
     local _tag="${2:-"latest"}"
-    local _ports="${3:-"8081:8081 5000:5000"}"
-    local _extra_opts="${4-"--platform=linux/amd64"}"    # this is docker options not INSTALL4J_ADD_VM_PARAMS
+    local _ports="${3:-"8081:8081 15000:15000"}"
+    local _extra_opts="${4}"    # this is docker options not INSTALL4J_ADD_VM_PARAMS. eg --platform=linux/amd64
     local _work_dir="${_WORK_DIR:-"/var/tmp/share"}"
     local _docker_host="${_DOCKER_HOST}"  #:-"dh1.standalone.localdomain:5000"
 
@@ -392,6 +399,7 @@ function nxrmDocker() {
         done
     fi
     local _opts="--name=${_name}"
+    #[ -z "${INSTALL4J_ADD_VM_PARAMS}" ] && INSTALL4J_ADD_VM_PARAMS="-Djava.util.prefs.userRoot=/nexus-data -Djdk.lang.Process.launchMechanism=vfork"
     [ -n "${INSTALL4J_ADD_VM_PARAMS}" ] && _opts="${_opts} -e INSTALL4J_ADD_VM_PARAMS=\"${INSTALL4J_ADD_VM_PARAMS}\""
     [ -d "${_work_dir%/}" ] && _opts="${_opts} -v ${_work_dir%/}:/var/tmp/share:z"  # :z or :Z for SELinux https://docs.docker.com/storage/bind-mounts/#configure-the-selinux-label
     [ -d "${_nexus_data%/}" ] && _opts="${_opts} -v ${_nexus_data%/}:/nexus-data"
@@ -402,6 +410,7 @@ function nxrmDocker() {
     eval "${_cmd}"
     echo "To get the admin password:
     docker exec -ti ${_name} cat /nexus-data/admin.password"
+    # If fails on Arm Mac, softwareupdate --install-rosetta --agree-to-license
 }
 
 # To start local (on Mac) IQ server, do not forget to delete LDAP and populate HTTP proxy (and DNS), also reset admin.
@@ -432,9 +441,9 @@ function iqStart() {
     grep -qE '^enableDefaultPasswordWarning:' "${_cfg_file}" || echo -e "enableDefaultPasswordWarning: false\n$(cat "${_cfg_file}")" > "${_cfg_file}"
     grep -qE '^baseUrl:' "${_cfg_file}" || echo -e "baseUrl: http://$(hostname -f):8070/\n$(cat "${_cfg_file}")" > "${_cfg_file}"
 
-    grep -qE '^\s*port: 8443$' "${_cfg_file}" && sed -i.tmp 's/port: 8443/port: 8470/g' "${_cfg_file}"
-    grep -qE '^\s*threshold:\s*INFO$' "${_cfg_file}" && sed -i.tmp 's/threshold: INFO/threshold: ALL/g' "${_cfg_file}"
-    grep -qE '^\s*level:\s*(DEBUG|TRACE)$' "${_cfg_file}" || sed -i.tmp -E 's/level: .+/level: DEBUG/g' "${_cfg_file}"
+    grep -qE '^\s*port: 8443$' "${_cfg_file}" && sed -i'' 's/port: 8443/port: 8470/g' "${_cfg_file}"
+    grep -qE '^\s*threshold:\s*INFO$' "${_cfg_file}" && sed -i'' 's/threshold: INFO/threshold: ALL/g' "${_cfg_file}"
+    grep -qE '^\s*level:\s*(DEBUG|TRACE)$' "${_cfg_file}" || sed -i'' -E 's/level: .+/level: DEBUG/g' "${_cfg_file}"
     cd "${_base_dir}"
     if ! grep -qE '^\s+"?com.sonatype.insight.policy.violation' "${_cfg_file}"; then
         # Mac's sed doesn't work with '/a'
@@ -501,8 +510,8 @@ UPDATE insight_brain_ods.ldap_connection SET hostname = hostname || '.sptboot' W
 UPDATE insight_brain_ods.mail_configuration SET hostname = hostname || '.sptboot' WHERE hostname not like '%.sptboot';
 DELETE FROM insight_brain_ods.proxy_server_configuration;
 INSERT INTO insight_brain_ods.proxy_server_configuration (proxy_server_configuration_id, hostname, port, exclude_hosts) VALUES ('proxy-server-configuration', 'non-existing-hostname', 8800, '*.sonatype.com');
+INSERT INTO insight_brain_ods.system_configuration_property (system_configuration_property_id, name, value) VALUES (md5(random()::text), 'internalFirewallOnboardingEnabled', false) on conflict do nothing;
 EOF
-
 }
 
 function _iqConfigAPI() {
@@ -530,14 +539,14 @@ function iqInstall() {
     fi
 }
 
-#iqDocker "nxiq-test" "1.146.0" "8170" "8171" "8544" #"--read-only -v /tmp/nxiq-test:/tmp"
+#iqDocker "nxiq-test" "" "8170" "8171" "8544" #"--read-only -v /tmp/nxiq-test:/tmp"
 function iqDocker() {
     local _name="${1:-"nxiq"}"
     local _tag="${2:-"latest"}"
     local _port="${3:-"8070"}"
     local _port2="${4:-"8071"}"
     local _port_ssl="${5:-"8444"}"
-    local _extra_opts="${6-"--platform=linux/amd64"}"
+    local _extra_opts="${6}"    # --platform=linux/amd64
     local _license="${7}"
     local _work_dir="${_WORK_DIR:-"/var/tmp/share"}"
     local _docker_host="${_DOCKER_HOST}"  #:-"dh1.standalone.localdomain:5000"
