@@ -424,19 +424,33 @@ public class H2Console {
         String query = "SELECT TABLE_SCHEMA, TABLE_NAME FROM INFORMATION_SCHEMA.TABLES";
         String where = " WHERE LOWER(TABLE_SCHEMA) NOT IN ('information_schema')";
         if (schema_and_table.length == 1) {
-            if (!schema_and_table[1].equals("%")) {
-                where += " AND LOWER(TABLE_SCHEMA) like LOWER('" + schema_and_table[0] + "')";
+            // Assuming table_name
+            if (!schema_and_table[0].equals("%")) {
+                where += " AND LOWER(TABLE_NAME) like LOWER('" + schema_and_table[0] + "')";
             }
+            // Nothing to export as too wide
         } else if (schema_and_table.length == 2) {
-            where += " AND LOWER(TABLE_SCHEMA) like LOWER('" + schema_and_table[0] + "') AND LOWER(TABLE_NAME) like LOWER('" + schema_and_table[1] + "')";
+            if (!schema_and_table[0].equals("%") && !schema_and_table[1].equals("%")) {
+                where += " AND LOWER(TABLE_SCHEMA) like LOWER('" + schema_and_table[0] + "') AND LOWER(TABLE_NAME) like LOWER('" + schema_and_table[1] + "')";
+            } else if (!schema_and_table[0].equals("%") && schema_and_table[1].equals("%")) {
+                // <schema_name>.*
+                where += " AND LOWER(TABLE_SCHEMA) like LOWER('" + schema_and_table[0] + "')";
+            } else if (schema_and_table[0].equals("%") && !schema_and_table[1].equals("%")) {
+                // bit unusual but *.<table_name>
+                where += " AND LOWER(TABLE_NAME) like LOWER('" + schema_and_table[1] + "')";
+            } else if (schema_and_table[1].endsWith("%")) {
+                // bit unusual but *.<table_name>
+                where += " AND LOWER(TABLE_NAME) like LOWER('" + schema_and_table[1].substring(0, schema_and_table[1].length() - 1) + "') || '%'";
+            }
         } else {
-            log("Incorrect schema_and_table:" + schema_and_table.toString());
+            log("Incorrect schema_and_table:" + Arrays.toString(schema_and_table));
             return;
         }
 
         ResultSet rs;
         try {
             Boolean probablyExported = false;
+            log(query + where, isDebug);
             if (stat.execute(query + where)) {
                 rs = stat.getResultSet();
                 Statement _stat = conn.createStatement();
@@ -452,7 +466,7 @@ public class H2Console {
                 }
             }
             if (!probablyExported) {
-                log("Nothing to export for " + schema_and_table.toString());
+                log("Nothing to export to " + exportToPath + "for " + Arrays.toString(schema_and_table));
             }
         } catch (SQLException e) {
             log(e.getMessage());

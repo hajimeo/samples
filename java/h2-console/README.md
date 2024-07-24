@@ -9,7 +9,7 @@ curl -O -L "https://github.com/hajimeo/samples/raw/master/misc/h2-console.jar"
 
 ## Usage Examples:
 ### Start interactive console
-```
+```shell
 java -Xmx16g -jar ./h2-console.jar <DB file path>
 # or
 java -Xmx16g -jar ./h2-console_v200.jar <DB file path>
@@ -32,11 +32,16 @@ echo "<*SIMPLE* SELECT statement which returns so many rows>" | java -Dpaging=10
 ```
 #### Export table(s)
 ```
-export public.* to ./export_dir
+export yum_asset to .;
+export public.* to ./export_dir;
+```
+```shell
+echo -e "export *.yum_* to .;\nexport *.repository to .;\nexport *.tag to ." | java -jar ./h2-console_v200.jar ./nexus.mv.db
+tar -czvf component_db_yum_$(date +"%Y%m%d%H%M%S").tgz ./tbl_public_*
 ```
 ### Recover database:
 Instead of `-jar`, use `-cp`
-```
+```shell
 java -Xmx4g -cp ./h2-console.jar org.h2.tools.Recover -dir ./ -db ods
 ```
 NOTE: Recover does not use large heap, but RunScript may need (depending on the size of ods.h2.sql)
@@ -60,7 +65,7 @@ echo "select <PK>, <TEXT_column> from <table_name>" | java -jar ~/IdeaProjects/s
 - Replace jline3
 
 ## My note:
-```
+```shell
 mvn clean package && cp -v -p ./target/h2-console-1.0-SNAPSHOT.jar ../../misc/h2-console.jar; sed -i .bak 's/>1.4.196</>1.4.200</' ./pom.xml && mvn clean package && cp -v -p ./target/h2-console-1.0-SNAPSHOT.jar ../../misc/h2-console_v200.jar; mv -f -v ./pom.xml.bak ./pom.xml
 ```
 
