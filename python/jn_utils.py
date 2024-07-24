@@ -460,12 +460,16 @@ def json2df(filename, tablename=None, conn=None, chunksize=1000, if_exists='repl
                     _df = pd.concat(_dfs, sort=False)
             elif flatten is True:
                 _debug("flatten for %s ..." % (str(file_path)))
+                j_obj = json2dict(file_path=file_path, rtn_list_if_1=True)
                 try:
-                    j_obj = json2dict(file_path=file_path, rtn_list_if_1=True)
                     # 'fillna' is for workaround-ing "probably unsupported type." (because of N/a)
                     _df = pd.json_normalize(j_obj).fillna("")
                 except JSONDecodeError as e:
                     _err("%s for %s" % (str(e), file_path))
+                    continue
+                except AttributeError as e:
+                    # TODO: should retry without flatten: True
+                    _err("%s for type %s, %s" % (str(e), type(j_obj), file_path))
                     continue
             else:
                 try:
@@ -1280,7 +1284,7 @@ def _system(command, direct=False, direct_executable=_SH_EXECUTABLE):
             sys.stdout.write(out.decode() + "\n")
 
 
-def display(df, name="", desc="", tail=1000):
+def display(df, name="", desc="", tail=100):
     """
     Wrapper of IPython.display.display for *DataFrame* object
     This function also change the table cel (th, td) alignments.
@@ -1368,7 +1372,7 @@ def _pivot_ui(df, outfile_path="pivottablejs.html", **kwargs):
     _info("%s is created." % outfile_path)
 
 
-def draw(df, width=16, x_col=0, x_colname=None, name=None, desc="", tail=10, is_x_col_datetime=True, kind="line"):
+def draw(df, width=16, x_col=0, x_colname=None, name=None, desc="", tail=10, is_x_col_datetime=True, kind="line", group_col=None):
     """
     Helper function for df.plot()
     As pandas.DataFrame.plot is a bit complicated, using simple options only if this method is used.
@@ -1384,6 +1388,7 @@ def draw(df, width=16, x_col=0, x_colname=None, name=None, desc="", tail=10, is_
     :param tail: To return some sample rows.
     :param is_x_col_datetime: If True and if x_col column type is not date, cast to date
     :param kind: Default is "line". "bar" and "hist" would be useful too.
+    :param group_col: If given, used in df.groupby.
     :return: DF (use .tail() or .head() to limit the rows)
     #>>> draw(ju.q("SELECT date, statuscode, bytesSent, elapsedTime from t_request_csv")).tail()
     #>>> draw(ju.q("select QueryHour, SumSqSqlWallTime, SumPostPlanTime, SumSqPostPlanTime from query_stats")).tail()
@@ -1403,6 +1408,15 @@ def draw(df, width=16, x_col=0, x_colname=None, name=None, desc="", tail=10, is_
             df[x_colname] = pd.to_datetime(df[x_colname])
         except Exception as e:
             _err(e)  # Write the error but keep processing.
+    if group_col:
+        for key, grp_df in df.groupby([group_col]):
+            plot(grp_df, width=width, height_inch=height_inch, x_colname=x_colname, name=name+" => "+str(key), kind=kind)
+    else:
+        plot(df, width=width, height_inch=height_inch, x_colname=x_colname, name=name, desc=desc, kind=kind)
+    return df.tail(tail)
+
+
+def plot(df, width=16, height_inch=8, x_colname=None, name=None, desc="", kind="line"):
     df.plot(figsize=(width, height_inch), x=x_colname, subplots=True, sharex=True, kind=kind)  # , title=name
     if bool(name) is False:
         name = _timestamp(format="%Y%m%d%H%M%S%f")
@@ -1423,7 +1437,6 @@ def draw(df, width=16, x_col=0, x_colname=None, name=None, desc="", tail=10, is_
     #    labels = df[x_colname].tolist()
     #    lables = labels[::interval]
     #    plt.xticks(list(range(interval)), lables)
-    return df.tail(tail)
 
 
 def gantt(df, index_col="", start_col="min_dt", end_col="max_dt", width=8, name="", tail=10):
@@ -1806,7 +1819,7 @@ def _insert2table(conn, tablename, tpls, chunk_size=4000):
     :param conn: Connection object created by connect()
     :param tablename: Table name
     :param tpls: a Tuple or a list of Tuples, which each Tuple contains values for a row
-    :return: execute() method result
+    :return: estimated inserted number
     #>>> _insert2table(connect(), "test", [('a', 'b', None, 'aaaa')])
     >>> pass    # TODO: implement test
     """
@@ -1817,11 +1830,13 @@ def _insert2table(conn, tablename, tpls, chunk_size=4000):
         tpls = [tpls]
     chunked_list = _chunks(tpls, chunk_size)
     placeholders = ','.join('?' * len(first_obj))
+    inserted = 0
     for values in chunked_list:
         res = conn.executemany("INSERT INTO " + tablename + " VALUES (" + placeholders + ")", values)
         if bool(res) is False:
             return res
-    return res
+        inserted += len(values)
+    return inserted
 
 
 def _find_matching(line, prev_matches, prev_message, begin_re, line_re, size_re=None, time_re=None, num_cols=None):
@@ -2015,7 +2030,7 @@ def logs2table(filename, tablename=None, conn=None,
                max_file_num=10, max_file_size=(1024 * 1024 * 100),
                appending=False, multiprocessing=None):
     """
-    Insert multiple log files into *one* table
+    Insert multiple log files into *one* database table (no dataframe)
     :param filename: a file name (or path) or *simple* glob regex
     :param tablename: Table name. If empty, generated from filename
     :param conn:  Connection object (ju.connect())
@@ -2031,7 +2046,7 @@ def logs2table(filename, tablename=None, conn=None,
     :param max_file_size: To avoid memory issue, setting max file size per file
     :param appending: default is False. If False, use 'DROP TABLE IF EXISTS'
     :param multiprocessing: (Experimental) default is False. If True, use multiple CPUs
-    :return: True if no error, or DataFrame list
+    :return: True if no error
     #>>> (col_names, line_matching) = al._gen_regex_for_request_logs('request.log')
          ju.logs2table('request.log', tablename="t_request", line_beginning="^.", col_names=col_names, line_matching=line_matching)
     #>>> logs2table(filename='nexus.log*', tablename='t_nexus_log',
@@ -2052,7 +2067,7 @@ def logs2table(filename, tablename=None, conn=None,
     global _SIZE_REGEX
     global _TIME_REGEX
     global _MULTI_PROC
-    if bool(tablename) and conn is None:
+    if conn is None:
         conn = connect()
     # NOTE: as python dict does not guarantee the order, col_def_str is using string
     if bool(num_cols) is False:
@@ -2068,7 +2083,6 @@ def logs2table(filename, tablename=None, conn=None,
         raise ValueError('Glob: %s returned too many files (%s)' % (filename, str(len(files))))
     if multiprocessing is None:
         multiprocessing = _MULTI_PROC
-
     if bool(conn):
         col_def_str = ""
         if isinstance(col_names, dict):
@@ -2137,15 +2151,11 @@ def logs2table(filename, tablename=None, conn=None,
         for tuples in rs:
             inserted_num += _log2tables_inner(tuples, conn, tablename, col_names, dfs)
 
-    if bool(conn):
-        if inserted_num > 0:
-            _info("Created table: %s" % (tablename))
-            _autocomp_inject(tablename=tablename)
-        return bool(inserted_num)
-    if bool(dfs) is False:
-        return None
-    _info("Completed.")
-    return pd.concat(dfs, sort=False)
+    if inserted_num > 0:
+        _info("Inserted %d rows (estimate) into %s" % (inserted_num, tablename))
+        _autocomp_inject(tablename=tablename)
+    return bool(inserted_num)
+    #return pd.concat(dfs, sort=False)
 
 
 def _log2tables_inner(tuples, conn, tablename, col_names, dfs):
@@ -2156,7 +2166,7 @@ def _log2tables_inner(tuples, conn, tablename, col_names, dfs):
     if bool(conn):
         res = _insert2table(conn=conn, tablename=tablename, tpls=tuples)
         if bool(res):  # TODO: if fails once, should stop?
-            return 1
+            return res
     else:
         dfs.append(pd.DataFrame.from_records(tuples, columns=col_names))
     return 0
