@@ -907,7 +907,7 @@ function pubS() {
     [ $HOME/IdeaProjects/samples/misc/h2-console.jar -nt /tmp/pubS.last ] && scp $HOME/IdeaProjects/samples/misc/h2-console.jar dh1:/var/tmp/share/java/
     [ $HOME/IdeaProjects/samples/misc/filelist_Linux_x86_64 -nt /tmp/pubS.last ] && scp $HOME/IdeaProjects/samples/misc/filelist_Linux_x86_64 dh1:/var/tmp/share/bin/
     if [ -d "$HOME/IdeaProjects/nexus-monitoring/resources" ] && [ $HOME/IdeaProjects/samples/misc/h2-console.jar -nt /tmp/pubS.last ]; then
-        cp -v -f $HOME/IdeaProjects/samples/misc/*-console.jar $HOME/IdeaProjects/nexus-monitoring/resources/
+        cp -v -f $HOME/IdeaProjects/samples/misc/*-console*.jar $HOME/IdeaProjects/nexus-monitoring/resources/
         cp -v -f $HOME/IdeaProjects/samples/misc/filelist_* $HOME/IdeaProjects/nexus-monitoring/resources/
     fi
     sync_nexus_binaries &>/dev/null &
