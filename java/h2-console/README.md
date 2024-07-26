@@ -37,7 +37,11 @@ export public.* to ./export_dir;
 ```
 ```shell
 echo -e "export *.yum_* to .;\nexport *.repository to .;\nexport *.tag to ." | java -jar ./h2-console_v200.jar ./nexus.mv.db
-tar -czvf component_db_yum_$(date +"%Y%m%d%H%M%S").tgz ./tbl_public_*
+tar -czvf ./component_db_yum_$(date +"%Y%m%d%H%M%S").tgz ./tbl_public_*
+```
+```
+echo "TRUNCATE TABLE REPOSITORY" | java -jar ./h2-console_v200.jar ./nexus.mv.db
+rg '^INSERT ' tbl_public_repository.sql | java -jar ./h2-console_v200.jar ./nexus.mv.db
 ```
 ### Recover database:
 Instead of `-jar`, use `-cp`
