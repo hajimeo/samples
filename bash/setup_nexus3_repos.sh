@@ -176,7 +176,7 @@ function f_install_nexus3() {
     _upsert "${_prop}" "nexus.scripts.allowCreation" "true" || return $?
     if ! _isYes "${_NEXUS_NO_AUTO_TASKS:-"${r_NEXUS_NO_AUTO_TASKS}"}"; then
         _upsert "${_prop}" "nexus.elasticsearch.autoRebuild" "false" || return $?
-        _upsert "${_prop}" "nexus.browse.component.tree.automaticRebuild" "true" || return $?
+        _upsert "${_prop}" "nexus.browse.component.tree.automaticRebuild" "false" || return $?
     fi
 
     if [ -n "${_dbname}" ]; then
@@ -607,7 +607,10 @@ function f_setup_yum() {
         _apiS '{"action":"coreui_Repository","method":"create","data":[{"attributes":{"yum":{"repodataDepth":3,"deployPolicy":"PERMISSIVE"},"storage":{"blobStoreName":"'${_bs_name}'","writePolicy":"ALLOW","strictContentTypeValidation":true'${_extra_sto_opt}'},"cleanup":{"policyName":[]}},"name":"'${_prefix}'-hosted","format":"","type":"","url":"","online":true,"recipe":"yum-hosted"}],"type":"rpc"}' || return $?
     fi
     # add some data for xxxx-hosted
-    local _upload_file="$(find -L ${_TMP%/} -type f -size +1k -name "dos2unix-*.rpm" 2>/dev/null | tail -n1)"
+    local _upload_file="$(_rpm_build "test-rpm" "9.9.9" "1" 2>/dev/null)"
+    if [ ! -s "${_upload_file}" ]; then
+        _upload_file="$(find -L ${_TMP%/} -type f -size +1k -name "dos2unix-*.rpm" 2>/dev/null | tail -n1)"
+    fi
     if [ ! -s "${_upload_file}" ]; then
         if curl -sSf -o ${_TMP%/}/aether-api-1.13.1-13.el7.noarch.rpm "https://vault.centos.org/7.9.2009/os/x86_64/Packages/aether-api-1.13.1-13.el7.noarch.rpm"; then
             _upload_file=${_TMP%/}/aether-api-1.13.1-13.el7.noarch.rpm
@@ -616,7 +619,7 @@ function f_setup_yum() {
     if [ -s "${_upload_file}" ]; then
         # NOTE: the file was from https://vault.centos.org/7.9.2009/, but using /7/
         #curl -D/dev/stderr -u admin:admin123 -X PUT "${_NEXUS_URL%/}/repository/${_prefix}-hosted/7/os/x86_64/Packages/$(basename ${_upload_file})" -T ${_upload_file}
-        _ASYNC_CURL="Y" f_upload_asset "${_prefix}-hosted" -F "yum.asset=@${_upload_file}" -F "yum.asset.filename=$(basename ${_upload_file})" -F "yum.directory=7/os/x86_64/Packages"
+        _ASYNC_CURL="Y" f_upload_asset "${_prefix}-hosted" -F "yum.asset=@${_upload_file}" -F "yum.asset.filename=$(basename ${_upload_file})" -F "yum.directory=7/os/dummy/Packages"
     fi
     #curl -u 'admin:admin123' --upload-file /etc/pki/rpm-gpg/RPM-GPG-KEY-pmanager ${r_NEXUS_URL%/}/repository/yum-hosted/RPM-GPG-KEY-pmanager
 
@@ -630,6 +633,57 @@ function f_setup_yum() {
     #f_get_asset "${_prefix}-proxy" "7/os/x86_64/repodata/repomd.xml"
     # This can be very slow ...
     _ASYNC_CURL="Y" f_get_asset "${_prefix}-group" "7/os/x86_64/repodata/repomd.xml"
+}
+function _rpm_build() {
+    # https://stackoverflow.com/questions/880227/what-is-the-minimum-i-have-to-do-to-create-an-rpm-file
+    local __doc__="Create a simple RPM package, and echo the rpm file name (so no stdout from other)"
+    local _name="${1:-"foobar"}"
+    local _version="${2:-"1.0"}"
+    local _release="${3:-"1"}"
+    local _work_dir="${4:-"."}"
+    _work_dir="$(readlink -f "${_work_dir}")"
+    if ! type rpmbuild &>/dev/null; then
+        _log "ERROR" "rpmbuild is not available. Please install rpm-build package (brew install rpm)"
+        return 1
+    fi
+
+    local _tmpdir="$(mktemp -d)"
+    cd ${_tmpdir} || return $?
+
+    if [ -s "${HOME%/}/.rpmmacros" ] && [ ! -s "${HOME%/}/.rpmmacros_$$" ]; then
+        cp -v -p "${HOME%/}/.rpmmacros" "${HOME%/}/.rpmmacros_$$" >&2
+    fi
+    cat << EOF > ${HOME%/}/.rpmmacros
+%_topdir   ${_work_dir%/}/rpmbuild
+%_tmppath  %{_topdir}/tmp
+EOF
+    mkdir -p ./{RPMS,SRPMS,BUILD,SOURCES,SPECS,tmp}
+    cat << EOF > ./SPECS/${_name}.spec
+Summary: A very simple toy bin rpm package
+Name: ${_name}
+Version: ${_version}
+Release: ${_release}
+License: GPL+
+Group: ${_name}-group
+
+%description
+%{summary}
+
+%prep
+# Empty section.
+
+%clean
+# Empty section.
+
+%files
+%defattr(-,root,root,-)
+EOF
+    rpmbuild -bb ./SPECS/${_name}.spec >&2
+    local _rc="$?"
+    find ${_work_dir%/}/rpmbuild/RPMS -type f -name "${_name}-${_version}-${_release}.*.rpm"
+    [ -s "${HOME%/}/.rpmmacros_$$" ] && mv -f "${HOME%/}/.rpmmacros_$$" "${HOME%/}/.rpmmacros" >&2
+    cd - &>/dev/null
+    return ${_rc}
 }
 function _echo_yum_repo_file() {
     local _repo="${1:-"yum-group"}"
