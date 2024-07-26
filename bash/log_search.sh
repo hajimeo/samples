@@ -58,6 +58,12 @@ Or
     echo "Available functions:"
     _list
 }
+
+_elapsed() {
+    local _end_time=$(date +%s)
+    echo "elapsed $(( _end_time - _STARTED_TS ))s"
+    _STARTED_TS=${_end_time}
+}
 ### Public functions ###################################################################################################
 
 function f_postgres_log() {
@@ -1059,7 +1065,7 @@ function f_jvm2threads() {
 }
 
 #f_splitByRegex threads.txt "^${_DATE_FORMAT}.+"
-#_THREAD_FILE_GLOB="?-dump.txt" f_threads "."   # Don't use "*" beginning of the file name
+#f_threads "?-dump.txt"   # Don't use "*" beginning of the file name
 # NOTE: f_last_tid_in_log would be useful.
 # Full thread dump OpenJDK 64-Bit Server VM (25.352-b08 mixed mode):
 function f_threads() {
@@ -1070,10 +1076,16 @@ function f_threads() {
     local _running_thread_search_re="${3-"\.sonatype\."}"
     local _save_dir="${4-"${_THREAD_SAVE_DIR}"}"
     local _not_split_by_date="${5:-${_NOT_SPLIT_BY_DATE}}"
-    local _thread_file_glob="${6:-${_THREAD_FILE_GLOB:-"thread*.txt*"}}"
 
-    [ -z "${_file}" ] && _file="$(find . -type f -name threads.txt 2>/dev/null | grep '/threads.txt$' -m 1)"
-    [ -z "${_file}" ] && _file="."
+    local _thread_file_glob="${_THREAD_FILE_GLOB:-"thread*.txt*"}"
+    if [ -z "${_file}" ]; then
+        _file="$(find . -type f -name threads.txt 2>/dev/null | grep "${_thread_file_glob}" -m 1)"
+        [ -z "${_file}" ] && _file="."
+    elif [ ! -f "${_file}" ] && [ ! -d "${_file}" ]; then
+        _thread_file_glob="${_file}"
+        _file="."
+    fi
+
     if [ -z "${_split_search}" ]; then
         if rg -q "^\".+" "${_file}"; then
             _split_search="^\".+"
@@ -1120,6 +1132,7 @@ function f_threads() {
             fi
             _LOG "INFO" "Saving outputs into f_thread_${_filename%.*}.out ..."
             f_threads "${_f}" "${_split_search}" "${_running_thread_search_re}" "${_save_dir%/}/${_filename%.*}" "Y" > ./f_thread_${_filename%.*}.out
+            _LOG "INFO" "f_thread_${_filename%.*}.out $(_elapsed)"
         done
 
         echo " "
@@ -1128,7 +1141,9 @@ function f_threads() {
         return $?
     fi
 
+    _elapsed &>/dev/null
     f_splitByRegex "${_file}" "${_split_search}" "${_save_dir%/}" ""
+    _LOG "INFO" "f_splitByRegex $(_elapsed)"
 
     echo "## Listening ports (acceptor)"
     # Sometimes this can be a hostname
@@ -1246,11 +1261,18 @@ function f_analyse_multiple_dumps() {
     echo " "
 
     echo "## Multiple *RUN*ning and no-change (same hash) threads which contain '${_running_thread_search_re}' and over 1KB"
+    _elapsed &>/dev/null
     _long_running "${_individual_thread_dir%/}" "${_running_thread_search_re}" "" "1k"
+    _LOG "INFO" "_long_running $(_elapsed)"
     echo 'NOTE: rg -A7 -m1 "RUNNABLE" -g <filename>'
     echo " "
     echo "## Multiple BLOCKED and no-change (same hash) threads which contain '${_running_thread_search_re}' and over 1KB"
     _long_blocked "${_individual_thread_dir%/}" "${_running_thread_search_re}"
+    _LOG "INFO" "_long_blocked $(_elapsed)"
+    echo " "
+    echo "## Potential network slowness \"ConditionObject\.await .+ ${_running_thread_search_re}\""
+    _many_wait "${_individual_thread_dir%/}" "${_running_thread_search_re}"
+    _LOG "INFO" "_many_wait $(_elapsed)"
     echo " "
 
     # not easy to check size so using _running_thread_search_re
@@ -1290,7 +1312,7 @@ function _long_running() {
     local _search_re="${2}"
     local _min_count="${3:-"3"}"
     local _size="${4:-"1k"}"
-    find ${_search_dir%/} -type f \( -name '*run*.out' -o -name '*RUN*.out' \) -size +${_size} -print | while read -r _f; do
+    find ${_search_dir%/} -type f -iname '*run*.out' -size +${_size} -print | while read -r _f; do
         if rg -q "${_search_re}" ${_f}; then
             md5sum ${_f}
         fi
@@ -1301,11 +1323,25 @@ function _long_blocked() {
     local _search_re="${2}"
     local _min_count="${3:-"2"}"
     local _size="${4:-"1k"}"
-    find ${_search_dir%/} -type f \( -name '*wait*.out' -o -name '*WAIT*.out' \) -size +${_size} -print | while read -r _f; do
+    find ${_search_dir%/} -type f -iname '*wait*.out' -size +${_size} -print | while read -r _f; do
         if rg -q --multiline --multiline-dotall " BLOCKED .+${_search_re}" ${_f}; then
             md5sum ${_f}
         fi
     done | rg '([0-9a-z]+)\s+.+/([^/]+)$' -o -r '$1 $2' | sort | uniq -c | rg "^\s*([${_min_count}-9]|\d\d+)\s+" | sort -nr
+}
+function _many_wait() {
+    local _search_dir="${1:-"."}"   # "_threads"
+    local _search_re="${2}"         # "sonatype"
+    local _min_100_count="${3:-"2"}"
+    #local _size="${4:-"1k"}"   # For performance, not using size
+    #find ${_search_dir%/} -type f -iname '*waiting_on_condition*.out' -size -${_size} -print | while read -r _f; do
+    rg -l "ConditionObject\.await\(." -g '*waiting_on_condition*.out' -g '*WAITING_ON_CONDITION*.out' | while read -r _f; do
+        local _method=""
+        if [ -n "${_search_re}" ]; then
+            _method="$(rg -m1 "${_search_re}" ${_f})"
+        fi
+        echo "$(dirname "${_f}") ${_method}"
+    done | sort | uniq -c | rg "^\s*([${_min_100_count}-9]\d\d|\d\d\d\d+)\s+" | sort -nr
 }
 function _threads_extra_check() {
     local _file="${1:-"threads.txt"}"
