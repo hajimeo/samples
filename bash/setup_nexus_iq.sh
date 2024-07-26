@@ -282,7 +282,8 @@ function f_config_update() {
     f_api_config '{"hdsUrl":"https://clm-staging.sonatype.com/"}'
     f_api_config '{"baseUrl":"'${_baseUrl%/}'/","forceBaseUrl":false}'
     f_api_config '{"enableDefaultPasswordWarning":false}'
-    _curl -X DELETE "${_IQ_URL%/}/api/v2/config/features/internalFirewallOnboardingEnabled"
+    #curl -u "admin:admin123" "${_IQ_URL%/}/api/v2/config/features/internalFirewallOnboardingEnabled" -X DELETE #POST
+    f_api_config "" "/features/internalFirewallOnboardingEnabled" "DELETE"
 }
 
 function f_add_testuser() {
