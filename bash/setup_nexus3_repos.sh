@@ -1260,7 +1260,7 @@ function f_create_group_blobstore() {
 }
 
 function f_iq_quarantine() {
-    local __doc__="Create Firewall Audit and Quarantine capability"
+    local __doc__="Create Firewall Audit and Quarantine capability (also set up IQ connection)"
     local _repo_name="$1"
     local _iq_url="${2:-"${_IQ_URL}"}"
     if [ -z "${_iq_url}" ] || ! curl -sfI "${_iq_url}" &>/dev/null ; then
@@ -1309,7 +1309,7 @@ function f_move_jars() {
 }
 
 function f_get_asset() {
-    local __doc__="Get/download an asset"
+    local __doc__="Get/download one asset"
     if [[ "${_IS_NXRM2}" =~ ^[yY] ]]; then
         _get_asset_NXRM2 "$@"
     else
@@ -1380,7 +1380,7 @@ function _get_asset_NXRM2() {
 #      If NXRM2, below curl also works:
 #curl -D- -u admin:admin123 -T <(echo "test upload") "http://localhost:8081/nexus/content/repositories/raw-hosted/test/test.txt"
 function f_upload_asset() {
-    local __doc__="Upload an asset with Upload API"
+    local __doc__="Upload one asset with Upload API"
     local _repo_or_fmt="$1"    # format if NXRM2
     local _forms=${@:2} #-F "maven2.groupId=junit" -F "maven2.artifactId=junit" -F "maven2.version=4.21" -F "maven2.asset1=@${_TMP%/}/junit-4.12.jar" -F "maven2.asset1.extension=jar"
     # NOTE: Because _forms takes all arguments except first one, can't assign any other arguments
@@ -1919,7 +1919,7 @@ function f_nexus_change_pwd() {
 }
 
 function f_put_realms() {
-    local __doc__="PUT some realms"
+    local __doc__="PUT some security realms"
     local _realms="\"NexusAuthenticatingRealm\",\"User-Token-Realm\",\"rutauth-realm\",\"DockerToken\",\"ConanToken\",\"NpmToken\",\"NuGetApiKey\",\"LdapRealm\""
     # NOTE: ,\"NexusAuthorizingRealm\" was removed from 3.61
     f_api "/service/rest/v1/security/realms/available" | grep -q '"NexusAuthorizingRealm"' && _realms="\"NexusAuthenticatingRealm\",\"NexusAuthorizingRealm\",\"User-Token-Realm\",\"rutauth-realm\",\"DockerToken\",\"ConanToken\",\"NpmToken\",\"NuGetApiKey\",\"LdapRealm\""
@@ -1953,6 +1953,7 @@ function f_create_cleanup_policy() {
 }
 
 function f_create_csel() {
+    local __doc__="Create/add a test content selector"
     local _csel_name="${1:-"csel-test"}"
     local _expression="${2:-"format == 'raw' and path =^ '/test/'"}" # TODO: currently can't use double quotes
     local _repos="${3:-"*"}"
@@ -1963,6 +1964,7 @@ function f_create_csel() {
 
 # Create a test user and test role
 function f_create_testuser() {
+    local __doc__="Create/add a test user with a test role"
     local _userid="${1:-"testuser"}"
     local _privs="${2-"\"nx-repository-view-*-*-*\",\"nx-search-read\",\"nx-component-upload\""}" # NOTE: nx-usertoken-current does not work with OSS as no User Token
     local _role="${3-"test-role"}"
@@ -1973,6 +1975,7 @@ function f_create_testuser() {
 }
 
 function f_setup_https() {
+    local __doc__="Enable HTTPS/SSL by using the provided .jks which contains key/cert"
     local _jks="${1}"   # If empty, will use *.standalone.localdomain cert.
     local _port="${2:-"8443"}"
     local _pwd="${3:-"password"}"
@@ -2056,14 +2059,6 @@ Also update _NEXUS_URL. For example: export _NEXUS_URL=\"https://local.standalon
     _log "INFO" "To trust this certificate, _trust_ca \"\${_ca_pem}\""
 }
 
-function f_nexus_mount_volume() {
-    local _mount="$1"
-    local _v=""
-    if [ -n "${_mount}" ]; then
-        _v="${_v% } -v ${_mount%/}:/nexus-data"
-    fi
-    echo "${_v}"
-}
 
 
 # SAML server: https://github.com/hajimeo/samples/blob/master/golang/SamlTester/README.md
@@ -2071,6 +2066,7 @@ function f_nexus_mount_volume() {
 # NXRM3 meta: curl -o ${_sp_meta_file} -u "admin:admin123" "http://localhost:8081/service/rest/v1/security/saml/metadata"
 # If IQ: f_start_saml_server "" "" "http://localhost:8070/api/v2/config/saml/metadata"
 function f_start_saml_server() {
+    local __doc__="Install and start a dummy SAML service"
     local _idp_base_url="${1:-"http://localhost:2080/"}"
     local _sp_meta_file="${2:-"./metadata.xml"}"
     local _sp_meta_url="${3-"http://localhost:8081/service/rest/v1/security/saml/metadata"}"
@@ -2117,6 +2113,7 @@ function f_setup_saml_freeipa() {
 }
 
 function f_start_ldap_server() {
+    local __doc__="Install and start a dummy LDAP server with glauth"
     local _fname="$(uname | tr '[:upper:]' '[:lower:]')$(uname -m).zip"
     local _download_dir="/tmp"
     if [ ! -s "${_download_dir%/}/${_fname}" ]; then
@@ -2156,7 +2153,7 @@ function f_setup_ldap_freeipa() {
 }
 
 function f_repository_replication_deprecated() {
-    local __doc__="DEPRECATED Setup Repository Replication v1 using 'admin' user"
+    local __doc__="DEPRECATED: Setup Repository Replication v1 using 'admin' user"
     local _src_repo="${1:-"raw-hosted"}"
     local _tgt_repo="${2:-"raw-repl-hosted"}"
     local _target_url="${3:-"http://$(hostname):8081/"}"
@@ -2208,6 +2205,7 @@ EOF
 }
 
 function f_register_script() {
+    local __doc__="Register a groovy script"
     local _script_file="$1"
     local _script_name="$2"
     [ -s "${_script_file%/}" ] || return 1
@@ -2640,6 +2638,7 @@ function f_delete_asset() {
     echo "Deleted ${_line_num} assets"
 }
 function f_get_all_assets() {
+    local __doc__="Delete all assets from one repository with Search REST API (require correct search index)"
     local _repo="$1"
     local _attr="${2:-"id"}"    # or "downloadUrl"
     local _max_loop="${3:-200}" # 50 * 200 = 10000 max
@@ -2715,6 +2714,7 @@ function f_delete_all_assets() {
 # Just search components with the tag
 #   f_api "/service/rest/v1/search?tag=raw-test-tag"
 function f_staging_move() {
+    local __doc__="To test staging move API with search and tag APIs"
     local _move_to_repo="${1}"
     local _tag="${2}"
     local _search="${3}"
@@ -2728,7 +2728,7 @@ function f_staging_move() {
         fi
         if [ -n "${_tag}" ]; then
             # If tag is given, associate the search matching components to this tag
-            f_associate_tags "${_search}" "${_tag}" || return $?
+            f_associate_tag "${_search}" "${_tag}" || return $?
         fi
     fi
     # Move!
@@ -2744,7 +2744,8 @@ function f_staging_move() {
 
 # Test associate only after f_setup_maven & f_upload_dummies_maven
 # search: repository=maven-hosted&maven.groupId=setup.nexus3.repos&maven.artifactId=dummy&maven.baseVersion=3
-function f_associate_tags() {
+function f_associate_tag() {
+    local __doc__="Associate one tag to the search result"
     local _search="${1}"
     local _tag="${2:-"tag-test"}"
     # Ignore if tag association fails
@@ -2758,6 +2759,7 @@ function f_associate_tags() {
 # TODO: add `/service/rest/v1/staging/delete`
 
 function f_run_tasks_by_type() {
+    local __doc__="Run/start multiple tasks by type"
     local _task_type="$1"   #assetBlob.cleanup
     if [ -z "${_task_type}" ]; then
         f_api "/service/rest/v1/tasks"
@@ -2829,6 +2831,7 @@ function _export_postgres_config() {
 # Example export command (Using --no-owner and --clean, but not using --data-only as needs CREATE statements. -t with * requires PostgreSQL v12 or higher):
 # Other interesting tables: -t "*_browse_node" -t "*deleted_blob*" -t "change_blobstore"
 function f_export_postgresql_component() {
+    local __doc__="Export specific tables from PostgreSQL, like OrientDB's component database"
     local _workingDirectory="${1}"
     local _exportTo="${2:-"./component_db_$(date +"%Y%m%d%H%M%S").sql.gz"}"
     _export_postgres_config "${_workingDirectory%/}/etc/fabric/nexus-store.properties" || return $?
@@ -2840,6 +2843,7 @@ function f_export_postgresql_component() {
 #VACUUM(FREEZE, ANALYZE, VERBOSE);  -- or FULL (FREEZE marks the table as vacuumed)
 #SELECT relname, reltuples as row_count_estimate FROM pg_class WHERE relnamespace ='public'::regnamespace::oid AND relkind = 'r' AND relname NOT LIKE '%_browse_%' AND (relname like '%repository%' OR relname like '%component%' OR relname like '%asset%') ORDER BY 2 DESC LIMIT 40;
 function f_restore_postgresql_component() {
+    local __doc__="Restore f_export_postgresql_component generated gzip file into the database"
     local _workingDirectory="${1}"
     local _importFrom="${2}"
     _export_postgres_config "${_workingDirectory%/}/etc/fabric/nexus-store.properties" || return $?
