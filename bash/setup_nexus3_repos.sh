@@ -32,8 +32,8 @@ DOWNLOADS:
     curl ${_DL_URL%/}/bash/${_filename} -o ${_WORK_DIR%/}/sonatype/${_filename}
 
 REQUIREMENTS / DEPENDENCIES:
-    If Mac, 'gsed' and 'ggrep' are required.
-    brew install gnu-sed grep
+    If Mac, 'gsed' and 'ggrep' are required (brew install gnu-sed grep)
+    Also, currently requires 'python'
 
 COMMAND OPTIONS:
     -A
@@ -116,7 +116,7 @@ _RESP_FILE=""
 # To install 1st/2nd instance: _NEXUS_ENABLE_HA=Y _NXRM3_INSTALL_PORT=8083 f_install_nexus3 "" "nxrmha"
 # To upgrade (from ${_dirpath}/): tar -xvf $HOME/.nexus_executable_cache/nexus-3.69.0-02-mac.tgz
 function f_install_nexus3() {
-    local __doc__="Install specific NXRM3 version"
+    local __doc__="Install specific NXRM3 version (to recreate DB, _RECREATE_DB=Y)"
     local _ver="${1:-"${r_NEXUS_VERSION}"}"     # 'latest'
     local _dbname="${2-"${r_NEXUS_DBNAME}"}"   # If h2, use H2
     local _dbusr="${3-"nexus"}"     # Specifying default as do not want to create many users/roles
@@ -607,12 +607,15 @@ function f_setup_yum() {
         _apiS '{"action":"coreui_Repository","method":"create","data":[{"attributes":{"yum":{"repodataDepth":3,"deployPolicy":"PERMISSIVE"},"storage":{"blobStoreName":"'${_bs_name}'","writePolicy":"ALLOW","strictContentTypeValidation":true'${_extra_sto_opt}'},"cleanup":{"policyName":[]}},"name":"'${_prefix}'-hosted","format":"","type":"","url":"","online":true,"recipe":"yum-hosted"}],"type":"rpc"}' || return $?
     fi
     # add some data for xxxx-hosted
-    local _upload_file="$(_rpm_build "test-rpm" "9.9.9" "1" 2>/dev/null)"
-    if [ ! -s "${_upload_file}" ]; then
-        _upload_file="$(find -L ${_TMP%/} -type f -size +1k -name "dos2unix-*.rpm" 2>/dev/null | tail -n1)"
+    local _upload_file=""   #$(_rpm_build "test-rpm" "9.9.9" "1" 2>/dev/null)
+    if curl -sSf -L -o ${_TMP%/}/test-rpm-9.9.9-1.noarch.rpm "https://github.com/hajimeo/samples/raw/master/misc/test-rpm-9.9.9-1.noarch.rpm"; then
+        _upload_file=${_TMP%/}/test-rpm-9.9.9-1.noarch.rpm
     fi
     if [ ! -s "${_upload_file}" ]; then
-        if curl -sSf -o ${_TMP%/}/aether-api-1.13.1-13.el7.noarch.rpm "https://vault.centos.org/7.9.2009/os/x86_64/Packages/aether-api-1.13.1-13.el7.noarch.rpm"; then
+        _upload_file="$(find -L ${_TMP%/} -type f -size +1k -name "*.rpm" 2>/dev/null | head -n1)"
+    fi
+    if [ ! -s "${_upload_file}" ]; then
+        if curl -sSf -L -o ${_TMP%/}/aether-api-1.13.1-13.el7.noarch.rpm "https://vault.centos.org/7.9.2009/os/x86_64/Packages/aether-api-1.13.1-13.el7.noarch.rpm"; then
             _upload_file=${_TMP%/}/aether-api-1.13.1-13.el7.noarch.rpm
         fi
     fi
@@ -665,6 +668,7 @@ Version: ${_version}
 Release: ${_release}
 License: GPL+
 Group: ${_name}-group
+BuildArch: noarch
 
 %description
 %{summary}
@@ -1932,6 +1936,7 @@ function f_enable_quarantines() {
     done
 }
 
+#f_create_cleanup_policy "1dayold" "" "" "1"
 function f_create_cleanup_policy() {
     local __doc__="Create a cleanup policy. NOTE: a backslash needs to be escaped with 3 more backslashes"
     local _policy_name="${1}"
