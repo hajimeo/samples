@@ -14,20 +14,19 @@
 #$ eval "echo \"$(cat ./k8s-nfs-pv-pvc-tmpl.yaml | grep -v '^\s*#')\"" > ./${RELEASE_NAME}-nfs-pv-pvc.yaml
 #$ kubectl apply -f ./${RELEASE_NAME}-nfs-pv-pvc.yaml -n ${NAME_SPACE}
 
-# Install / reinstall / upgrade
+# Install / reinstall / upgrade:
 #$ helm repo update ${HELM_NAME}
 #$ #helm uninstall ${RELEASE_NAME} -n ${NAME_SPACE}
 #$ eval "echo \"$(cat ./helm-nxrm3ha-values.yml | grep -v '^\s*#')\"" > ./${RELEASE_NAME}_values.yaml
 #$ helm upgrade -i ${RELEASE_NAME} ${HELM_NAME}/nxrm-ha -f ./${RELEASE_NAME}_values.yaml -n ${NAME_SPACE} --debug # --version 65.0.0 --dry-run
 
-# For troubleshooting
+# For troubleshooting:
 #$ git -C ~/IdeaProjects/nxrm3-ha-repository pull && git -C ~/IdeaProjects/nxrm3-ha-repository fetch
 #$ helm upgrade ${RELEASE_NAME} ~/IdeaProjects/nxrm3-ha-repository/nxrm-ha -f ./${RELEASE_NAME}_values.yaml --dry-run > ${RELEASE_NAME}_dry-run.yaml
-
 #$ helm template nxrm3ha sonatype-helm/nxrm-ha -f ./helm-nxrm3ha-values.yml -n sonatype-helm >./helm-nxrm3ha-deploying.yaml
 #$ kubectl -n sonatype-helm apply -f ./helm-nxrm3ha-deploying.yaml
 
-# Seems broken?
+# Seems namespaces broken?
 namespaces:
   nexusNs:
     enabled: false
@@ -76,6 +75,10 @@ statefulset:
     path: /
     periodSeconds: 60
   imagePullSecrets: {}
+
+# TODO: this wouldn't work with more than 1 replica?
+#pvc:
+#  existingClaim: nexushelmha-nfs-pv-claim
 
 service:  #Nexus Repo NodePort Service
   nexus:
