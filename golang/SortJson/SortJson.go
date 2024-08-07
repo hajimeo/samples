@@ -5,10 +5,14 @@
 package main
 
 import (
+	"bufio"
 	"bytes"
+	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"os"
+	"time"
 )
 
 func sortJson(bytes []byte) ([]byte, error) {
@@ -28,17 +32,47 @@ func prettyBytes(strB []byte) (string, error) {
 	return prettyJSON.String(), nil
 }
 
-func main() {
-	if len(os.Args) < 2 {
-		fmt.Println("Please provide an input file which uses fixed width for columns")
-		return
+// AI generated :-)
+func readWithTimeout(r io.Reader, timeout time.Duration) ([]byte, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), timeout)
+	defer cancel()
+
+	reader := bufio.NewReader(r)
+	done := make(chan []byte)
+	errCh := make(chan error)
+
+	go func() {
+		data, err := io.ReadAll(reader)
+		if err != nil {
+			errCh <- err
+			return
+		}
+		done <- data
+	}()
+
+	select {
+	case <-ctx.Done():
+		return nil, ctx.Err()
+	case data := <-done:
+		return data, nil
+	case err := <-errCh:
+		return nil, err
 	}
-	inFile := os.Args[1]
+}
+
+func main() {
+	inFile := ""
+	var jsonFile []byte
+	if len(os.Args) > 1 {
+		inFile = os.Args[1]
+		jsonFile, _ = os.ReadFile(inFile)
+	} else {
+		jsonFile, _ = readWithTimeout(os.Stdin, 10*time.Second)
+	}
 	outFile := ""
 	if len(os.Args) > 2 {
 		outFile = os.Args[2]
 	}
-	jsonFile, _ := os.ReadFile(inFile)
 	jsonSorted, err := sortJson(jsonFile)
 	if err != nil {
 		fmt.Println(err)
