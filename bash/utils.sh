@@ -367,7 +367,8 @@ function _grep() {
 }
 
 function _sortjson() {
-    if type python &>/dev/null; then
+    # because `python` can be an alias
+    if python --version &>/dev/null; then
         if [[ "${JSON_NO_SORT}" =~ ^(y|Y) ]]; then
             python -c "import sys,json;print(json.dumps(json.load(sys.stdin), indent=4))"
         elif [ -n "${JSON_SEARCH_KEY}" ]; then
