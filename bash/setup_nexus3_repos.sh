@@ -117,7 +117,7 @@ _RESP_FILE=""
 # To upgrade (from ${_dirpath}/): tar -xvf $HOME/.nexus_executable_cache/nexus-3.69.0-02-mac.tgz
 function f_install_nexus3() {
     local __doc__="Install specific NXRM3 version (to recreate DB, _RECREATE_DB=Y)"
-    local _ver="${1:-"${r_NEXUS_VERSION}"}"     # 'latest'
+    local _ver="${1:-"${r_NEXUS_VERSION}"}"     # 'latest' or '3.71.0-03-java17'
     local _dbname="${2-"${r_NEXUS_DBNAME}"}"   # If h2, use H2
     local _dbusr="${3-"nexus"}"     # Specifying default as do not want to create many users/roles
     local _dbpwd="${4-"${_dbusr}123"}"
@@ -125,7 +125,6 @@ function f_install_nexus3() {
     local _dirpath="${6-"${r_NEXUS_INSTALL_PATH:-"${_NXRM3_INSTALL_DIR}"}"}"    # If not specified, create a new dir under current dir
     local _download_dir="${7}"
     local _schema="${_DB_SCHEMA}"
-    local _starting="${_NEXUS_START}"
     if [ -z "${_ver}" ] || [ "${_ver}" == "latest" ]; then
       _ver="$(curl -s -I https://github.com/sonatype/nexus-public/releases/latest | sed -n -E '/^location/ s/^location: http.+\/release-([0-9\.-]+).*$/\1/p')"
     fi
@@ -153,6 +152,7 @@ function f_install_nexus3() {
     fi
     local _tgz_name="nexus-${_ver}-unix.tar.gz"
     [ "`uname`" = "Darwin" ] && _tgz_name="nexus-${_ver}-mac.tgz"
+    # download-staging.sonatype.com
     _prepare_install "${_dirpath}" "https://download.sonatype.com/nexus/${_ver%%.*}/${_tgz_name}" "${r_NEXUS_LICENSE_FILE}" || return $?
     local _license_path="${_LICENSE_PATH}"
 
@@ -192,24 +192,19 @@ advanced=maxLifetime\=600000
 EOF
             _log "INFO" "Creating database with \"${_dbusr}\" \"********\" \"${_dbname}\" \"${_schema}\""
             if ! _postgresql_create_dbuser "${_dbusr}" "${_dbpwd}" "${_dbname}" "${_schema}"; then
-                _log "WARN" "Failed to create ${_dbusr} or ${_dbname}"
+                _log "WARN" "Failed to create ${_dbusr} or ${_dbname}" || return $?
             fi
         fi
     fi
+
+    cd "${_dirpath%/}" || return $?
+    echo "To start: ./nexus-${_ver}/bin/nexus run"
+    type nxrmStart &>/dev/null && echo "      Or: nxrmStart"
+    type f_setup_https &>/dev/null && echo "      Before starting, ssl: f_setup_https <port>"
     if [ "${_port}" != "8081" ]; then
         echo "May need to execute 'export _NEXUS_URL=\"http://localhost:${_port}/\"'"
     fi
-
-    if _isYes "${_starting}"; then
-        echo "Starting with: ${_dirpath%/}/nexus-${_ver}/bin/nexus start"; sleep 3
-        eval "${_dirpath%/}/nexus-${_ver}/bin/nexus start"
-    else
-        cd "${_dirpath%/}" || return $?
-        echo "To start: ./nexus-${_ver}/bin/nexus run"
-        type nxrmStart &>/dev/null && echo "      Or: nxrmStart"
-        type f_setup_https &>/dev/null && echo "      ssl: f_setup_https <port>"
-        _isYes "${_NEXUS_ENABLE_HA:-"${r_NEXUS_ENABLE_HA}"}" && echo "      Make sure ./sonatype-work/nexus3/blobs/default is shared"
-    fi
+    _isYes "${_NEXUS_ENABLE_HA:-"${r_NEXUS_ENABLE_HA}"}" && echo "      Make sure ./sonatype-work/nexus3/blobs/default is shared"
 }
 
 function f_uninstall_nexus3() {
@@ -523,7 +518,7 @@ function _populate_docker_proxy() {
 #ssh -2CNnqTxfg -L18182:localhost:18182 node3250    #ps aux | grep 2CNnqTxfg
 # then: _populate_docker_hosted "" "local.standalone.localdomain:18182"
 # Create an image which uses blobs from proxy (pull & push from group repo)
-# After deleting alpine_hosted (and 'docker system prune -a'):
+# After deleting alpine_hosted (and 'docker system prune -a -f'):
 #   _populate_docker_hosted "local.standalone.localdomain:15000/alpine:latest" "local.standalone.localdomain:15000"
 #   _TAG_TO="thrivent-web/doi-invite" _populate_docker_hosted "local.standalone.localdomain:15000/alpine:latest" "local.standalone.localdomain:15000"
 function _populate_docker_hosted() {
@@ -531,18 +526,19 @@ function _populate_docker_hosted() {
     local _host_port="${2:-"${r_DOCKER_PROXY:-"${r_DOCKER_GROUP:-"${r_NEXUS_URL:-"${_NEXUS_URL}"}"}"}"}"
     local _backup_ports="${3-"18182 18181 15000 443"}"
     local _cmd="${4-"${r_DOCKER_CMD}"}"
-    local _tag_to="${5:-"${_TAG_TO}"}"
+    local _tag_to="${5:-"${_TAG_TO}"}"  # If empty, it uploads three images
     local _num_layers="${6:-"${_NUM_LAYERS:-"1"}"}" # Can be used to test overwriting image
     [ -z "${_cmd}" ] && _cmd="$(_docker_cmd)"
     [ -z "${_cmd}" ] && return 0    # If no docker command, just exist
     _host_port="$(_docker_login "${_host_port}" "${_backup_ports}" "${r_ADMIN_USER:-"${_ADMIN_USER}"}" "${r_ADMIN_PWD:-"${_ADMIN_PWD}"}" "${_cmd}")" || return $?
 
-    local _base_image_base="$(basename "${_base_img}")"
-    if [ -z "${_tag_to}" ] && [[ "${_base_image_base}" =~ ([^:]+):?.* ]]; then
-        _tag_to="${BASH_REMATCH[1]}_hosted"
+    local _tag_to_img="$(basename "${_tag_to%:*}")"
+    if [ -z "${_tag_to}" ]; then
+        _tag_to_img="dummies/$(basename "${_base_img%:*}")_hosted"
+        _tag_to="${_tag_to_img}:9.99.0 ${_tag_to_img}:9.99.1 ${_tag_to_img}:9.99.1-SNAPSHOT"
     fi
 
-    for _imn in $(${_cmd} images --format "{{.Repository}}" | grep -w "${_tag_to}"); do
+    for _imn in $(${_cmd} images --format "{{.Repository}}" | grep -w "${_tag_to_img}"); do
         _log "WARN" "Deleting ${_imn} (waiting for 3 secs)";sleep 3
         if ! ${_cmd} rmi ${_imn}; then
             _log "WARN" "Deleting ${_imn} failed but keep continuing..."
@@ -558,23 +554,25 @@ function _populate_docker_hosted() {
     # NOTE: Trying to create a layer. NOTE: 'CMD' doesn't create new layers.
     local _build_str="FROM ${_base_img}"    #\nRUN apk add --no-cache mysql-client
     for i in $(seq 1 ${_num_layers}); do
-        _build_str="${_build_str}\nRUN echo 'Adding layer ${i} for ${_tag_to}' > /var/tmp/layer_${i}"
+        _build_str="${_build_str}\nRUN echo 'Adding layer ${i} for ${_tag_to_img}' > /var/tmp/layer_${i}"
     done
-    #echo -e "FROM alpine:3.7\nRUN apk add --no-cache mysql-client\nCMD echo 'Built ${_tag_to} from image:${_base_img}' > Dockerfile
+    #echo -e "FROM alpine:3.7\nRUN apk add --no-cache mysql-client\nCMD echo 'Built ${_tag_to_img} from image:${_base_img}' > Dockerfile
     echo -e "${_build_str}" > Dockerfile
-    ${_cmd} build --rm -t ${_tag_to} .
+    ${_cmd} build --rm -t ${_tag_to_img} .
     local _rc=$?
     cd -  && mv -v ${_build_dir} ${_TMP%/}/
     if [ ${_rc} -ne 0 ]; then
-        _log "ERROR" "'${_cmd} build --rm -t ${_tag_to} .' failed (${_rc}, ${_TMP%/}/$(basename "${_build_dir}"))"
+        _log "ERROR" "'${_cmd} build --rm -t ${_tag_to_img} .' failed (${_rc}, ${_TMP%/}/$(basename "${_build_dir}"))"
         return ${_rc}
     fi
     # It seems newer docker appends "localhost/" so trying this one first.
-    if ! ${_cmd} tag localhost/${_tag_to} ${_host_port}/${_tag_to} 2>/dev/null; then
-        ${_cmd} tag ${_tag_to} ${_host_port}/${_tag_to} || return $?
-    fi
-    _log "DEBUG" "${_cmd} push ${_host_port}/${_tag_to}"
-    ${_cmd} push ${_host_port}/${_tag_to} || return $?
+    for _new_tag in ${_tag_to}; do
+        if ! ${_cmd} tag localhost/${_tag_to_img} ${_host_port}/${_new_tag} 2>/dev/null; then
+            ${_cmd} tag ${_tag_to_img} ${_host_port}/${_new_tag} || return $?
+        fi
+        _log "DEBUG" "${_cmd} push ${_host_port}/${_new_tag}"
+        ${_cmd} push ${_host_port}/${_new_tag} || return $?
+    done
 }
 
 function f_setup_yum() {
@@ -582,6 +580,7 @@ function f_setup_yum() {
     local _prefix="${1:-"yum"}"
     local _bs_name="${2:-"${r_BLOBSTORE_NAME:-"${_BLOBTORE_NAME}"}"}"
     local _ds_name="${3:-"${r_DATASTORE_NAME:-"${_DATASTORE_NAME}"}"}"
+    local _yum_upload_path="${_YUM_UPLOAD_PATH:-"dummy/os/any/Packages"}"
     [ -z "${_bs_name}" ] && _bs_name="$(_get_blobstore_name)"
     [ -z "${_ds_name}" ] && _ds_name="$(_get_datastore_name)"
     local _extra_sto_opt="$(_get_extra_sto_opt "${_ds_name}")"
@@ -608,7 +607,7 @@ function f_setup_yum() {
     fi
     # add some data for xxxx-hosted
     local _upload_file=""   #$(_rpm_build "test-rpm" "9.9.9" "1" 2>/dev/null)
-    if curl -sSf -L -o ${_TMP%/}/test-rpm-9.9.9-1.noarch.rpm "https://github.com/hajimeo/samples/raw/master/misc/test-rpm-9.9.9-1.noarch.rpm"; then
+    if [ -s "${_TMP%/}/test-rpm-9.9.9-1.noarch.rpm" ] || curl -sSf -L -o ${_TMP%/}/test-rpm-9.9.9-1.noarch.rpm "https://github.com/hajimeo/samples/raw/master/misc/test-rpm-9.9.9-1.noarch.rpm"; then
         _upload_file=${_TMP%/}/test-rpm-9.9.9-1.noarch.rpm
     fi
     if [ ! -s "${_upload_file}" ]; then
@@ -622,7 +621,7 @@ function f_setup_yum() {
     if [ -s "${_upload_file}" ]; then
         # NOTE: the file was from https://vault.centos.org/7.9.2009/, but using /7/
         #curl -D/dev/stderr -u admin:admin123 -X PUT "${_NEXUS_URL%/}/repository/${_prefix}-hosted/7/os/x86_64/Packages/$(basename ${_upload_file})" -T ${_upload_file}
-        _ASYNC_CURL="Y" f_upload_asset "${_prefix}-hosted" -F "yum.asset=@${_upload_file}" -F "yum.asset.filename=$(basename ${_upload_file})" -F "yum.directory=7/os/dummy/Packages"
+        _ASYNC_CURL="Y" f_upload_asset "${_prefix}-hosted" -F "yum.asset=@${_upload_file}" -F "yum.asset.filename=$(basename ${_upload_file})" -F "yum.directory=${_yum_upload_path%/}"
     fi
     #curl -u 'admin:admin123' --upload-file /etc/pki/rpm-gpg/RPM-GPG-KEY-pmanager ${r_NEXUS_URL%/}/repository/yum-hosted/RPM-GPG-KEY-pmanager
 
@@ -1066,17 +1065,22 @@ function f_setup_raw() {
     [ -z "${_ds_name}" ] && _ds_name="$(_get_datastore_name)"
     local _extra_sto_opt="$(_get_extra_sto_opt "${_ds_name}")"
     # NOTE: using "strictContentTypeValidation":false for raw repositories
-    # If no xxxx-proxy, create it (but no standard remote URL for Raw format)
-    if ! _is_repo_available "${_prefix}-jenkins-proxy"; then
-        _apiS '{"action":"coreui_Repository","method":"create","data":[{"attributes":{"raw":{"contentDisposition":"ATTACHMENT"},"proxy":{"remoteUrl":"https://updates.jenkins.io/","contentMaxAge":1440,"metadataMaxAge":1440},"httpclient":{"blocked":false,"autoBlock":true,"connection":{"useTrustStore":false}},"storage":{"blobStoreName":"'${_bs_name}'","strictContentTypeValidation":false'${_extra_sto_opt}'},"negativeCache":{"enabled":true,"timeToLive":1440},"cleanup":{"policyName":[]}},"name":"'${_prefix}'-jenkins-proxy","format":"","type":"","url":"","online":true,"routingRuleId":"","authEnabled":false,"httpRequestSettings":false,"recipe":"raw-proxy"}],"type":"rpc"}' || return $?
-    fi
-    # add some data for xxxx-proxy
-    #f_get_asset "${_prefix}-jenkins-proxy" "download/plugins/nexus-jenkins-plugin/3.9.20200722-164144.e3a1be0/nexus-jenkins-plugin.hpi"
 
     # If no xxxx-hosted, create it
     if ! _is_repo_available "${_prefix}-hosted"; then
         _apiS '{"action":"coreui_Repository","method":"create","data":[{"attributes":{"storage":{"blobStoreName":"'${_bs_name}'","writePolicy":"ALLOW","strictContentTypeValidation":false'${_extra_sto_opt}'},"cleanup":{"policyName":[]}},"name":"'${_prefix}'-hosted","format":"","type":"","url":"","online":true,"recipe":"raw-hosted"}],"type":"rpc"}' || return $?
     fi
+
+    # If no xxxx-proxy, create it (but no standard remote URL for Raw format)
+    if ! _is_repo_available "${_prefix}-repl-proxy"; then
+        # TODO: using localhost:8081 or ${_NEXUS_URL%/} is not perfect
+        _apiS '{"action":"coreui_Repository","method":"create","data":[{"attributes":{"replication":{"enabled":false,"preemptivePullEnabled":true,"assetPathRegex":""},"raw":{"contentDisposition":"ATTACHMENT"},"proxy":{"remoteUrl":"'${_NEXUS_URL%/}'/repository/'${_prefix}'-hosted/","contentMaxAge":1440,"metadataMaxAge":1440},"httpclient":{"blocked":false,"autoBlock":true},"storage":{"dataStoreName":"nexus","blobStoreName":"'${_bs_name}'","strictContentTypeValidation":false'${_extra_sto_opt}'},"negativeCache":{"enabled":true,"timeToLive":1440},"cleanup":{"policyName":[]}},"name":"'${_prefix}'-repl-proxy","format":"","type":"","url":"","online":true,"routingRuleId":"","authEnabled":false,"httpRequestSettings":false,"recipe":"raw-proxy"}],"type":"rpc"}' #|| return $?
+    fi
+    if ! _is_repo_available "${_prefix}-repl-proxy" && ! _is_repo_available "${_prefix}-jenkins-proxy"; then
+        _apiS '{"action":"coreui_Repository","method":"create","data":[{"attributes":{"raw":{"contentDisposition":"ATTACHMENT"},"proxy":{"remoteUrl":"https://updates.jenkins.io/","contentMaxAge":1440,"metadataMaxAge":1440},"httpclient":{"blocked":false,"autoBlock":true,"connection":{"useTrustStore":false}},"storage":{"blobStoreName":"'${_bs_name}'","strictContentTypeValidation":false'${_extra_sto_opt}'},"negativeCache":{"enabled":true,"timeToLive":1440},"cleanup":{"policyName":[]}},"name":"'${_prefix}'-jenkins-proxy","format":"","type":"","url":"","online":true,"routingRuleId":"","authEnabled":false,"httpRequestSettings":false,"recipe":"raw-proxy"}],"type":"rpc"}' || return $?
+    fi
+    # add some data for xxxx-proxy
+    #f_get_asset "${_prefix}-jenkins-proxy" "download/plugins/nexus-jenkins-plugin/3.9.20200722-164144.e3a1be0/nexus-jenkins-plugin.hpi"
 
     # Quicker way: NOTE --limit-rate=4k can be a handy option to test:
     #   time curl -D- -u 'admin:admin123' -T <(echo 'test') "${_NEXUS_URL%/}/repository/raw-hosted/test/test.txt"
@@ -1110,11 +1114,13 @@ function _get_inst_dir() {
     readlink -f "${_install_dir%/}"
 }
 function _get_work_dir() {
-    local _install_dir="$(_get_inst_dir)"
-    [ -z "${_install_dir}" ] && return 1
     local _work_dir="$(ps auxwww | sed -n -E '/org.sonatype.nexus.karaf.NexusMain/ s/.+-Dkaraf.data=([\S]+) .+/\1/p' | head -n1)"
-    [ -n "${_work_dir}" ] && _work_dir="${_install_dir%/}/${_work_dir%/}"
-    [ -z "${_work_dir}" ] && _work_dir="$(find . -mindepth 1 -maxdepth 2 -type d -path '*/sonatype-work/*' -name 'nexus3' | sort | tail -n1)"
+    if [ -n "${_work_dir}" ] && [[ ! "${_work_dir}" =~ ^/ ]]; then
+        local _install_dir="$(_get_inst_dir)"
+        _work_dir="${_install_dir%/}/${_work_dir%/}"
+    else
+        _work_dir="$(find . -mindepth 1 -maxdepth 2 -type d -path '*/sonatype-work/*' -name 'nexus3' | sort | tail -n1)"
+    fi
     readlink -f "${_work_dir}"
 }
 function _get_blobstore_name() {
@@ -2152,7 +2158,7 @@ function f_setup_ldap_freeipa() {
     _apiS '{"action":"coreui_Role","method":"create","data":[{"version":"","source":"LDAP","id":"ipausers","name":"ipausers-role","description":"ipausers-role-desc","privileges":["nx-repository-view-*-*-*","nx-search-read","nx-component-upload"],"roles":[]}],"type":"rpc"}'
 }
 
-function f_repository_replication_deprecated() {
+function f_repository_replication_Deprecated() {
     local __doc__="DEPRECATED: Setup Repository Replication v1 using 'admin' user"
     local _src_repo="${1:-"raw-hosted"}"
     local _tgt_repo="${2:-"raw-repl-hosted"}"
@@ -2554,45 +2560,68 @@ function f_upload_dummies_helm() {
     done
 }
 
+# This can be used for populating yum-proxy with 'vault' and _YUM_REMOTE_URL
 function f_upload_dummies_yum() {
-    local __doc__="Upload rpms from http://mirror.centos.org/centos/7/os/x86_64/Packages/"
+    local __doc__="Upload rpms from vault.centos.org or 'rpmbuild' command or using same rpm but different path"
     local _repo_name="${1:-"yum-hosted"}"
     local _how_many="${2:-"10"}"
     local _pkg_name="${3}"      # used with grep -E "\b${_pkg_name}\b"
     local _usr="${4:-"${_ADMIN_USER}"}"
     local _pwd="${5:-"${_ADMIN_PWD}"}"
+    local _upload_method="${6-"${_YUM_DUMMY_UPLOAD_METHOD:-"path"}"}"  # "vault" or "build" or "path"
 
-    local _repo_url="${_NEXUS_URL%/}/repository/${_repo_name}/"
     local _seq_start="${_SEQ_START:-1}"
     local _seq_end="$((${_seq_start} + ${_how_many} - 1))"
-    local _tmpdir="$(mktemp -d)"
-    local _yum_remote_url="${_YUM_REMOTE_URL:-"http://mirror.centos.org/centos/7/os/x86_64/Packages/"}"
-    local _yum_upload_path="${_YUM_UPLOAD_PATH:-"7/os/x86_64/"}"
+    local _seq="seq ${_seq_start} ${_seq_end}"
 
-    # not using _tmpdir as don't want to download always
-    if [ ! -s /tmp/yum_index.yaml ] || [ ! -s /tmp/yum_urls.out ]; then
-        curl -o /tmp/yum_index.yaml -f -L "${_yum_remote_url%/}/" || return $?
-        sed -n -r 's@^.+href="([^"]+\.rpm)".+$@'${_yum_remote_url%/}/'\1@pg' /tmp/yum_index.yaml > /tmp/yum_urls.out
-    fi
-    if [ ! -s /tmp/yum_urls.out ]; then
-        return 1
-    fi
+    local _repo_url="${_NEXUS_URL%/}/repository/${_repo_name}/"
+    local _yum_remote_url="${_YUM_REMOTE_URL:-"https://vault.centos.org/7.9.2009/os/x86_64/Packages/"}"
+    local _yum_upload_path="${_YUM_UPLOAD_PATH:-"dummy/os/any/Packages"}"
 
-    if [ -n "${_pkg_name}" ]; then
-        grep -E "\b${_pkg_name}\b" /tmp/helm_urls.out
-    else
-        cat /tmp/yum_urls.out
-    fi | sed -n "${_seq_start},${_seq_end}p" | sort -R | while read -r _url; do
-        _name="$(basename "${_url}")"
-        if [ -n "${_pkg_name}" ] && ! echo "${_name}" | grep -qE "\b${_pkg_name}\b"; then
-            continue
+    if [[ "${_upload_method}" =~ ^[vV] ]]; then
+        # not using _tmpdir for index, as don't want to download always
+        if [ ! -s /tmp/yum_index.yaml ] || [ ! -s /tmp/yum_urls.out ]; then
+            curl -o /tmp/yum_index.yaml -f -L "${_yum_remote_url%/}/" || return $?
+            sed -n -r 's@^.+href="([^"]+\.rpm)".+$@'${_yum_remote_url%/}/'\1@pg' /tmp/yum_index.yaml > /tmp/yum_urls.out
         fi
-        curl -sSf -w "Download: %{http_code} ${_name} (%{time_total} secs, %{size_download} bytes)\n" "${_url}" -o ${_tmpdir%/}/${_name} || continue
-        curl -sSf -w "Upload  : %{http_code} ${_name} (%{time_total} secs, %{size_download} bytes)\n" -T ${_tmpdir%/}/${_name} -u "${_usr}:${_pwd}" "${_repo_url%/}/${_yum_upload_path%/}/Packages/${_name}" || return $?
-        rm -f ${_tmpdir%/}/${_name}
-        #sleep 60
-        #curl -sf -w "Download: %{http_code} ${_YUM_GROUP_REPO} repomd.xml (%{time_total} secs, %{size_download} bytes)\n" -o/dev/null "${_NEXUS_URL%/}/repository/${_YUM_GROUP_REPO}/${_yum_upload_path%/}/repodata/repomd.xml"
-    done
+        if [ ! -s /tmp/yum_urls.out ]; then
+            return 101
+        fi
+
+        local _tmpdir="$(mktemp -d)"
+        if [ -n "${_pkg_name}" ]; then
+            grep -E "\b${_pkg_name}\b" /tmp/yum_urls.out
+        else
+            cat /tmp/yum_urls.out
+        fi | sed -n "${_seq_start},${_seq_end}p" | sort -R | while read -r _url; do
+            _name="$(basename "${_url}")"
+            if [ -n "${_pkg_name}" ] && ! echo "${_name}" | grep -qE "\b${_pkg_name}\b"; then
+                continue
+            fi
+            curl -sSf -w "Download: %{http_code} ${_name} (%{time_total} secs, %{size_download} bytes)\n" "${_url}" -o ${_tmpdir%/}/${_name} || continue
+            curl -sSf -w "Upload  : %{http_code} ${_name} (%{time_total} secs, %{size_download} bytes)\n" -T ${_tmpdir%/}/${_name} -u "${_usr}:${_pwd}" "${_repo_url%/}/${_yum_upload_path%/}/Packages/${_name}" || return $?
+            rm -f ${_tmpdir%/}/${_name}
+            #sleep 60
+            #curl -sf -w "Download: %{http_code} ${_YUM_GROUP_REPO} repomd.xml (%{time_total} secs, %{size_download} bytes)\n" -o/dev/null "${_NEXUS_URL%/}/repository/${_YUM_GROUP_REPO}/${_yum_upload_path%/}/repodata/repomd.xml"
+        done
+    elif [[ "${_upload_method}" =~ ^[bB] ]]; then
+        for i in $(eval "${_seq}"); do
+            local _upload_file="$(_rpm_build "test-rpm" "0.0.0" "${i}" 2>/dev/null)"
+            [ -s "${_upload_file}" ] || return 102
+            f_upload_asset "${_repo_name}" -F yum.asset=@${_upload_file} -F yum.asset.filename=test-rpm-0.0.0-${i}.noarch.rpm -F yum.directory=${_yum_upload_path%/}/Packages || return $?
+        done
+    elif [[ "${_upload_method}" =~ ^[pP] ]]; then
+        # Fastest but using a bug in Nexus3
+        local _upload_file=${_TMP%/}/test-rpm-9.9.9-1.noarch.rpm
+        if [ ! -s "${_upload_file}" ] && ! curl -sSf -L -o ${_upload_file}"https://github.com/hajimeo/samples/raw/master/misc/test-rpm-9.9.9-1.noarch.rpm"; then
+            return 103
+        fi
+        for i in $(eval "${_seq}"); do
+            f_upload_asset "${_repo_name}" -F yum.asset=@${_upload_file} -F yum.asset.filename=test-rpm-9.9.9-1.noarch.rpm -F yum.directory=dummy/os/path${i}/Packages || return $?
+        done
+    else
+        return 111
+    fi
 }
 
 
@@ -2832,10 +2861,15 @@ function _export_postgres_config() {
 # Other interesting tables: -t "*_browse_node" -t "*deleted_blob*" -t "change_blobstore"
 function f_export_postgresql_component() {
     local __doc__="Export specific tables from PostgreSQL, like OrientDB's component database"
-    local _workingDirectory="${1}"
-    local _exportTo="${2:-"./component_db_$(date +"%Y%m%d%H%M%S").sql.gz"}"
+    local _exportTo="${1:-"./component_db_$(date +"%Y%m%d%H%M%S").sql.gz"}"
+    local _fmt="${2}"
+    local _workingDirectory="${3}"
+    if [ -z "${_workingDirectory}" ]; then
+        _workingDirectory="$(_get_work_dir)"
+        [ -z "${_workingDirectory}" ] && _log "ERROR" "No sonatype work directory found (to read nexus-store.properties)" && return 1
+    fi
+    [ -z "${_fmt}" ] && _fmt="*"
     _export_postgres_config "${_workingDirectory%/}/etc/fabric/nexus-store.properties" || return $?
-    local _fmt="*"
     PGGSSENCMODE=disable pg_dump -h ${_DBHOST} -p ${_DBPORT:-"5432"} -U ${_DBUSER} -d ${_DBNAME} -c -O -t "repository" -t "${_fmt}_content_repository" -t "${_fmt}_component" -t "${_fmt}_component_tag" -t "${_fmt}_asset" -t "${_fmt}_asset_blob" -t "tag" -Z 6 -f "${_exportTo}"
 }
 
@@ -2844,16 +2878,26 @@ function f_export_postgresql_component() {
 #SELECT relname, reltuples as row_count_estimate FROM pg_class WHERE relnamespace ='public'::regnamespace::oid AND relkind = 'r' AND relname NOT LIKE '%_browse_%' AND (relname like '%repository%' OR relname like '%component%' OR relname like '%asset%') ORDER BY 2 DESC LIMIT 40;
 function f_restore_postgresql_component() {
     local __doc__="Restore f_export_postgresql_component generated gzip file into the database"
-    local _workingDirectory="${1}"
-    local _importFrom="${2}"
-    _export_postgres_config "${_workingDirectory%/}/etc/fabric/nexus-store.properties" || return $?
-
-    if [ -z "${_importFrom}" ]; then
-        _importFrom="$(ls -1 ./component_db_*.sql.gz | tail -n1)"
-        [ -z "${_importFrom}" ] && return 1
+    local _sql_file="${1}"
+    local _workingDirectory="${2}"
+    if [ -z "${_workingDirectory}" ]; then
+        _workingDirectory="$(_get_work_dir)"
+        [ -z "${_workingDirectory}" ] && _log "ERROR" "No sonatype work directory found (to read nexus-store.properties)" && return 1
     fi
-    (gunzip -c "${_importFrom}" | sed -E 's/^DROP TABLE ([^;]+);$/DROP TABLE \1 cascade;/') | PGGSSENCMODE=disable psql -h ${_DBHOST} -p ${_DBPORT:-"5432"} -U ${_DBUSER} -d ${_DBNAME} -L ./psql_restore.log 2>./psql_restore.log
-    grep -w ERROR ./psql_restore.log && return 1
+    if [ -z "${_sql_file}" ]; then
+        _sql_file="$(ls -1 ./component_db_*.sql.gz | tail -n1)"
+        [ -z "${_sql_file}" ] && _log "ERROR" "No sql file to restore/import" && return 1
+    fi
+
+    _export_postgres_config "${_workingDirectory%/}/etc/fabric/nexus-store.properties" || return $?
+    local _cmd="psql -h ${_DBHOST} -p ${_DBPORT:-"5432"} -U ${_DBUSER} -d ${_DBNAME}"
+    if [[ "${_sql_file}" =~ \.gz$ ]]; then
+        gunzip -c "${_sql_file}" || return $?
+    else
+        cat "${_sql_file}" || return $?
+    fi | sed -E 's/^DROP TABLE ([^;]+);$/DROP TABLE \1 cascade;/' | PGGSSENCMODE=disable ${_cmd} -L ./psql_restore.log 2>./psql_restore.log
+    _log "INFO" "Executed '... ${_sql_file} | ${_cmd} ... ./psql_restore.log"
+    grep -w ERROR ./psql_restore.log | grep -v "cannot drop constraint"
 }
 
 #f_query_postgresql ./sonatype-work/nexus3 "SELECT blob_ref FROM %TABLE%" "%_asset_blob"
