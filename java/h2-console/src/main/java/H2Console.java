@@ -23,6 +23,9 @@ import java.util.regex.Pattern;
 import static java.lang.String.valueOf;
 
 public class H2Console {
+    static private Boolean isDebug;
+    static final private List<String> numTypes = Arrays.asList("smallint", "integer", "int", "int4", "bigint", "decimal", "numeric", "real", "smallserial", "serial", "bigserial");
+    static private String outputFormat = "csv";    // or json
     static final private String H2_DEFAULT_OPTS = "DATABASE_TO_UPPER=FALSE;LOCK_MODE=0;DEFAULT_LOCK_TIMEOUT=600000";
     static final private String PROMPT = "=> ";
     static private String h2Opts = "";
@@ -38,9 +41,11 @@ public class H2Console {
     static private String lastRid = "0";
     static private String dbUser = "";
     static private String dbPwd = "";
-    static private Boolean isDebug;
     private static Connection conn;
     private static Statement stat;
+    private static Hashtable<String, String> columnsWithType;
+    private static List<String> columns;
+    private static final String sep = System.getProperty("file.separator");
 
     private H2Console() {
     }
@@ -71,6 +76,21 @@ public class H2Console {
         if (debug) {
             log("DEBUG: " + msg);
         }
+    }
+
+    private static List<String> setColumnsWithType(ResultSet rs) throws SQLException {
+        ResultSetMetaData meta = rs.getMetaData();
+        int colLen = meta.getColumnCount();
+        List<String> columns = new ArrayList<>();
+        columnsWithType = new Hashtable<>();
+        for (int i = 1; i <= colLen; i++) {
+            String s = meta.getColumnLabel(i);
+            String t = meta.getColumnTypeName(i).toLowerCase();
+            log("column: " + s + "(" + t + ")", isDebug);
+            columns.add(s);
+            columnsWithType.put(s, t);
+        }
+        return columns;
     }
 
     private static List<String> getColumns(ResultSet rs) throws SQLException {
@@ -145,8 +165,80 @@ public class H2Console {
         if (!isPaging || rowCount < paging) {
             terminal.writer().println("\n]");
         }
-        // TODO: not working?  and not organised properly
         terminal.flush();
+        return rowCount;
+    }
+
+    private static String fixedWidth(String value, String label, Hashtable<String, Integer> maxLen, Boolean isNumType) {
+        if (isNumType) {
+            return String.format("%-" + (maxLen.get(label) + 3) + "s", value + ",");
+        }
+        return String.format("%-" + (maxLen.get(label) + 3) + "s", ("\"" + value.replace("\"", "\\\"") + "\","));
+    }
+
+    private static int printRsAsFixedWidth(ResultSet rs) throws SQLException {
+        List<Hashtable<String, String>> resultUpToNth = new ArrayList<>();
+        Hashtable<String, Integer> maxLen = new Hashtable<>();
+        int rowCount = 0;
+        while (rs.next()) {
+            Hashtable<String, String> row = new Hashtable<>();
+            for (String label : columns) {
+                Object obj = rs.getObject(label);
+                String value = "null";
+                if (obj != null) {
+                    value = obj.toString();
+                }
+                //log(label + " = " + value, isDebug);
+                if (!maxLen.containsKey(label)) {
+                    maxLen.put(label, label.length());
+                }
+                if (maxLen.get(label) < value.length()) {
+                    maxLen.put(label, value.length());
+                }
+                row.put(label, value);
+            }
+            resultUpToNth.add(row);
+            // sample only first N
+            rowCount++;
+            if (rowCount >= 1000) {
+                break;
+            }
+        }
+
+        StringBuilder header = new StringBuilder();
+        for (String label : columns) {
+            if (!maxLen.containsKey(label)) {
+                continue;
+            }
+            header.append(fixedWidth(label, label, maxLen, true));
+        }
+        terminal.writer().println(header.toString().replaceAll(",\\s*$", ""));
+        terminal.flush();
+        /*StringBuilder hr = new StringBuilder();
+        for (String label : columns) {
+            hr.append(String.format("%" + (maxLen.get(label) + 2) + "s", " ").replace(" ", "-")).append(" ");
+        }
+        terminal.writer().println(hr);
+        terminal.flush();*/
+
+        for (Hashtable<String, String> row : resultUpToNth) {
+            StringBuilder line = new StringBuilder();
+            for (String label : columns) {
+                line.append(fixedWidth(row.get(label).toString(), label, maxLen, numTypes.contains(columnsWithType.get(label))));
+            }
+            terminal.writer().println(line.toString().replaceAll(",\\s*$", ""));
+            terminal.flush();
+        }
+
+        while (rs.next()) {
+            StringBuilder line = new StringBuilder();
+            for (String label : columns) {
+                line.append(fixedWidth(rs.getString(label), label, maxLen, numTypes.contains(columnsWithType.get(label))));
+            }
+            terminal.writer().println(line.toString().replaceAll(",\\s*$", ""));
+            terminal.flush();
+            rowCount++;
+        }
         return rowCount;
     }
 
@@ -222,7 +314,12 @@ public class H2Console {
             ResultSet rs;
             if (stat.execute(query)) {
                 rs = stat.getResultSet();
-                lastRows = printRsAsJson(rs, isPaging);
+                columns = setColumnsWithType(rs);
+                if (outputFormat.equalsIgnoreCase("json")) {
+                    lastRows = printRsAsJson(rs, isPaging);
+                } else {
+                    lastRows = printRsAsFixedWidth(rs);
+                }
             } else {
                 lastRows = stat.getUpdateCount();
             }
@@ -298,6 +395,19 @@ public class H2Console {
         if (input.trim().startsWith("--")) {
             return true;
         }
+
+        if (input.toLowerCase().startsWith("set debug true")) {
+            isDebug = true;
+            System.err.println("OK. isDebug=" + isDebug);
+            return true;
+        }
+        if (input.toLowerCase().startsWith("set debug false")) {
+            isDebug = false;
+            System.err.println("OK. isDebug=" + isDebug);
+            return true;
+        }
+
+        log("input: " + input, isDebug);
         if (input.toLowerCase().startsWith("set autocommit true")) {
             log(input, isDebug);
             conn.setAutoCommit(true);
@@ -310,16 +420,22 @@ public class H2Console {
             System.err.println("OK.");
             return true;
         }
-        if (input.toLowerCase().startsWith("set debug true")) {
-            isDebug = true;
-            System.err.println("OK. isDebug=" + isDebug);
+        if (input.toLowerCase().startsWith("set output text")) {
+            outputFormat = "text";
+            System.err.println("OK.");
             return true;
         }
-        if (input.toLowerCase().startsWith("set debug false")) {
-            isDebug = false;
-            System.err.println("OK. isDebug=" + isDebug);
+        if (input.toLowerCase().startsWith("set output json")) {
+            outputFormat = "json";
+            System.err.println("OK.");
             return true;
         }
+        if (input.toLowerCase().startsWith("set output csv")) {
+            outputFormat = "csv";
+            System.err.println("OK.");
+            return true;
+        }
+
         if (input.toLowerCase().startsWith("set paging")) {
             Matcher matcher = setPagingPtn.matcher(input);
             if (matcher.find()) {
@@ -581,7 +697,7 @@ public class H2Console {
         if (h2Opts.isEmpty()) {
             h2Opts = H2_DEFAULT_OPTS;
             if (path.endsWith(".h2.db")) {
-                h2Opts = h2Opts + ";MV_STORE=FALSE;";
+                h2Opts = h2Opts + ";MV_STORE=FALSE";
                 if (path.endsWith("ods.h2.db")) {
                     h2Opts = h2Opts + ";SCHEMA=insight_brain_ods";
                 }
