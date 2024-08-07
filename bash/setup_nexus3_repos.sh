@@ -121,9 +121,10 @@ function f_install_nexus3() {
     local _dbname="${2-"${r_NEXUS_DBNAME}"}"   # If h2, use H2
     local _dbusr="${3-"nexus"}"     # Specifying default as do not want to create many users/roles
     local _dbpwd="${4-"${_dbusr}123"}"
-    local _port="${5-"${r_NEXUS_INSTALL_PORT:-"${_NXRM3_INSTALL_PORT}"}"}"      # If not specified, checking from 8081
-    local _dirpath="${6-"${r_NEXUS_INSTALL_PATH:-"${_NXRM3_INSTALL_DIR}"}"}"    # If not specified, create a new dir under current dir
-    local _download_dir="${7}"
+    local _dbhost="${5}"               # Database hostname:port. If empty localhost:5432
+    local _port="${6-"${r_NEXUS_INSTALL_PORT:-"${_NXRM3_INSTALL_PORT}"}"}"      # If not specified, checking from 8081
+    local _dirpath="${7-"${r_NEXUS_INSTALL_PATH:-"${_NXRM3_INSTALL_DIR}"}"}"    # If not specified, create a new dir under current dir
+    local _download_dir="${8}"
     local _schema="${_DB_SCHEMA}"
     if [ -z "${_ver}" ] || [ "${_ver}" == "latest" ]; then
       _ver="$(curl -s -I https://github.com/sonatype/nexus-public/releases/latest | sed -n -E '/^location/ s/^location: http.+\/release-([0-9\.-]+).*$/\1/p')"
@@ -180,10 +181,11 @@ function f_install_nexus3() {
     fi
 
     if [ -n "${_dbname}" ]; then
+        [ -z "${_dbhost}" ] && _dbhost="$(hostname -f):5432"
         grep -q "^nexus.datastore.enabled" "${_prop}" 2>/dev/null || echo "nexus.datastore.enabled=true" >> "${_prop}" || return $?
         if [[ ! "${_dbname}" =~ [hH]2 ]]; then
             cat << EOF > "${_dirpath%/}/sonatype-work/nexus3/etc/fabric/nexus-store.properties"
-jdbcUrl=jdbc\:postgresql\://$(hostname -f)\:5432/${_dbname}
+jdbcUrl=jdbc\:postgresql\://${_dbhost//:/\\:}/${_dbname}
 username=${_dbusr}
 password=${_dbpwd}
 schema=${_schema:-"public"}
