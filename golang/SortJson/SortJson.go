@@ -16,11 +16,21 @@ import (
 	"time"
 )
 
+// This key is not used recursively and just print the value of this key.
+var JSON_SEARCH_KEY = os.Getenv("JSON_SEARCH_KEY")
+
 func sortJson(bytes []byte) ([]byte, error) {
 	var ifc interface{}
 	err := json.Unmarshal(bytes, &ifc)
 	if err != nil {
 		return nil, err
+	}
+	if len(JSON_SEARCH_KEY) > 0 {
+		// TODO: This may cause error
+		value, ok := ifc.(map[string]interface{})[JSON_SEARCH_KEY].(string)
+		if ok {
+			fmt.Println(value)
+		}
 	}
 	return json.Marshal(ifc)
 }
@@ -75,8 +85,8 @@ func main() {
 		outFile = os.Args[2]
 	}
 
-	var NO_JSON_SORT = os.Getenv("NO_JSON_SORT")
-	if len(NO_JSON_SORT) == 0 || (NO_JSON_SORT != "Y" && NO_JSON_SORT != "y") {
+	var JSON_NO_SORT = os.Getenv("JSON_NO_SORT")
+	if len(JSON_NO_SORT) == 0 || (JSON_NO_SORT != "Y" && JSON_NO_SORT != "y") {
 		jsonSorted, err := sortJson(jsonBytes)
 		if err != nil {
 			fmt.Println(err)
@@ -105,5 +115,8 @@ func main() {
 		}
 		return
 	}
-	fmt.Println(jsonSortedPP)
+	if len(JSON_SEARCH_KEY) == 0 {
+		fmt.Println(jsonSortedPP)
+		return
+	}
 }

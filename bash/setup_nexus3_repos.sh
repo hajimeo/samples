@@ -11,8 +11,6 @@
 #   #export _NEXUS_URL="http://localhost:8081/"
 #   _AUTO=true main
 #
-# TODO: some of functions uses python, which does not exist in the image
-#
 _DL_URL="${_DL_URL:-"https://raw.githubusercontent.com/hajimeo/samples/master"}"
 type _import &>/dev/null || _import() { [ ! -s /tmp/${1} ] && curl -sf --compressed "${_DL_URL%/}/bash/$1" -o /tmp/${1}; . /tmp/${1}; }
 
@@ -33,7 +31,7 @@ DOWNLOADS:
 
 REQUIREMENTS / DEPENDENCIES:
     If Mac, 'gsed' and 'ggrep' are required (brew install gnu-sed grep)
-    Also, currently requires 'python'
+    'python' is required for f_setup_cocoapods, f_register_script, f_run_tasks_by_type
 
 COMMAND OPTIONS:
     -A
@@ -1491,7 +1489,8 @@ function _apiS() {
     fi
     if [ "${_method}" == "GET" ]; then
         if ! cat ${_TMP%/}/_apiS_nxrm$$.out | python -m json.tool 2>/dev/null; then
-            cat ${_TMP%/}/_apiS_nxrm$$.out
+            echo -n "$(cat ${_TMP%/}/_apiS_nxrm$$.out)"
+            echo ""
         fi
     else
         _log "DEBUG" "$(cat ${_TMP%/}/_apiS_nxrm$$.out)"
@@ -1530,7 +1529,7 @@ function f_api() {
         return ${_rc}
     fi
     if [[ "${_sort_keys}" =~ ^[yY] ]]; then
-      cat ${_TMP%/}/f_api_nxrm_$$.out | python -c "import sys,json;print(json.dumps(json.load(sys.stdin), indent=4, sort_keys=True))"
+      cat ${_TMP%/}/f_api_nxrm_$$.out | _sortjson
     elif ! cat ${_TMP%/}/f_api_nxrm_$$.out | python -m json.tool 2>/dev/null; then
         echo -n "$(cat ${_TMP%/}/f_api_nxrm_$$.out)"
         echo ""
@@ -2652,7 +2651,7 @@ function f_delete_asset() {
             break
         fi
         grep -qE '"continuationToken": *"[0-9a-f]+' ${_TMP%/}/${FUNCNAME[0]}_${i}.json || break
-        local cToken="$(cat ${_TMP%/}/${FUNCNAME[0]}_${i}.json | python -c 'import sys,json;a=json.loads(sys.stdin.read());print(a["continuationToken"])')"
+        local cToken="$(cat ${_TMP%/}/${FUNCNAME[0]}_${i}.json | JSON_SEARCH_KEY="continuationToken" _sortjson
         _query="&continuationToken=${cToken}"
     done
     grep -E '^            "id":' -h ${_TMP%/}/${FUNCNAME[0]}_*_matched_IDs.out | sort | uniq > ${_TMP%/}/${FUNCNAME[0]}_$$.out || return $?
@@ -2685,7 +2684,7 @@ function f_get_all_assets() {
         f_api "${_path}${_base_query}${_query}" > ${_TMP%/}/${FUNCNAME[0]}.json || return $?
         grep -E '^            "'${_attr}'":' -h ${_TMP%/}/${FUNCNAME[0]}.json | sort | uniq >> ${_TMP%/}/${FUNCNAME[0]}_$$.out || return $?
         grep -qE '"continuationToken": *"[0-9a-f]+' ${_TMP%/}/${FUNCNAME[0]}.json || break
-        local cToken="$(cat ${_TMP%/}/${FUNCNAME[0]}.json | python -c 'import sys,json;a=json.loads(sys.stdin.read());print(a["continuationToken"])')"
+        local cToken="$(cat ${_TMP%/}/${FUNCNAME[0]}.json | JSON_SEARCH_KEY="continuationToken" _sortjson
         if [ -z "${_base_query}" ]; then
             _query="?continuationToken=${cToken}"
         else
