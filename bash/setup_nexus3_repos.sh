@@ -1488,7 +1488,7 @@ function _apiS() {
         return ${_rc}
     fi
     if [ "${_method}" == "GET" ]; then
-        if ! cat ${_TMP%/}/_apiS_nxrm$$.out | python -m json.tool 2>/dev/null; then
+        if ! cat ${_TMP%/}/_apiS_nxrm$$.out | JSON_NO_SORT="Y" _sortjson 2>/dev/null; then
             echo -n "$(cat ${_TMP%/}/_apiS_nxrm$$.out)"
             echo ""
         fi
@@ -1530,7 +1530,7 @@ function f_api() {
     fi
     if [[ "${_sort_keys}" =~ ^[yY] ]]; then
       cat ${_TMP%/}/f_api_nxrm_$$.out | _sortjson
-    elif ! cat ${_TMP%/}/f_api_nxrm_$$.out | python -m json.tool 2>/dev/null; then
+    elif ! cat ${_TMP%/}/f_api_nxrm_$$.out | JSON_NO_SORT="Y" _sortjson 2>/dev/null; then
         echo -n "$(cat ${_TMP%/}/f_api_nxrm_$$.out)"
         echo ""
     fi
