@@ -366,6 +366,21 @@ function _grep() {
     ${_cmd} "$@"
 }
 
+function _sortjson() {
+    if type python &>/dev/null; then
+        if [[ "${NO_JSON_SORT}" =~ ^(y|Y) ]]; then
+            python -c "import sys,json;print(json.dumps(json.load(sys.stdin), indent=4))"
+        else
+            python -c "import sys,json;print(json.dumps(json.load(sys.stdin), indent=4, sort_keys=True))"
+        fi
+    else
+        if [ ! -e /tmp/sortjson ]; then
+            curl -sSf -o /tmp/sortjson -L "https://github.com/hajimeo/samples/raw/master/misc/sortjson_$(uname)_$(uname -m)" && chmod a+x /tmp/sortjson
+        fi
+        /tmp/sortjson
+    fi
+}
+
 # eval "$(_load_yaml ./test.yml)"
 function _load_yaml() {
     local _yaml_file="${1}"
