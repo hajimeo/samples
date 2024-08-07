@@ -1,7 +1,8 @@
 /*
- * Sort JSON in recursively (thanks to Unmarshal)
- * @see: https://stackoverflow.com/questions/18668652/how-to-produce-json-with-sorted-keys-in-go
- */
+Sort JSON in recursively (thanks to Unmarshal)
+@see: https://stackoverflow.com/questions/18668652/how-to-produce-json-with-sorted-keys-in-go
+curl -o /tmp/sortjson -L "https://github.com/hajimeo/samples/raw/master/misc/sortjson_$(uname)_$(uname -m)" && chmod a+x /tmp/sortjson
+*/
 package main
 
 import (
@@ -62,24 +63,29 @@ func readWithTimeout(r io.Reader, timeout time.Duration) ([]byte, error) {
 
 func main() {
 	inFile := ""
-	var jsonFile []byte
+	var jsonBytes []byte
 	if len(os.Args) > 1 {
 		inFile = os.Args[1]
-		jsonFile, _ = os.ReadFile(inFile)
+		jsonBytes, _ = os.ReadFile(inFile)
 	} else {
-		jsonFile, _ = readWithTimeout(os.Stdin, 10*time.Second)
+		jsonBytes, _ = readWithTimeout(os.Stdin, 10*time.Second)
 	}
 	outFile := ""
 	if len(os.Args) > 2 {
 		outFile = os.Args[2]
 	}
-	jsonSorted, err := sortJson(jsonFile)
-	if err != nil {
-		fmt.Println(err)
-		return
+
+	var NO_JSON_SORT = os.Getenv("NO_JSON_SORT")
+	if len(NO_JSON_SORT) == 0 || (NO_JSON_SORT != "Y" && NO_JSON_SORT != "y") {
+		jsonSorted, err := sortJson(jsonBytes)
+		if err != nil {
+			fmt.Println(err)
+			return
+		}
+		jsonBytes = jsonSorted
 	}
 
-	jsonSortedPP, err := prettyBytes(jsonSorted)
+	jsonSortedPP, err := prettyBytes(jsonBytes)
 	if err != nil {
 		fmt.Println(err)
 		return
