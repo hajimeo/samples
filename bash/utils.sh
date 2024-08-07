@@ -368,7 +368,7 @@ function _grep() {
 
 function _sortjson() {
     if type python &>/dev/null; then
-        if [[ "${NO_JSON_SORT}" =~ ^(y|Y) ]]; then
+        if [[ "${JSON_NO_SORT}" =~ ^(y|Y) ]]; then
             python -c "import sys,json;print(json.dumps(json.load(sys.stdin), indent=4))"
         else
             python -c "import sys,json;print(json.dumps(json.load(sys.stdin), indent=4, sort_keys=True))"
