@@ -121,7 +121,7 @@ function f_install_nexus3() {
     local _dbname="${2-"${r_NEXUS_DBNAME}"}"   # If h2, use H2
     local _dbusr="${3-"nexus"}"     # Specifying default as do not want to create many users/roles
     local _dbpwd="${4-"${_dbusr}123"}"
-    local _dbhost="${5}"               # Database hostname:port. If empty localhost:5432
+    local _dbhost="${5}"               # Database hostname:port. If empty, $(hostname -f):5432
     local _port="${6-"${r_NEXUS_INSTALL_PORT:-"${_NXRM3_INSTALL_PORT}"}"}"      # If not specified, checking from 8081
     local _dirpath="${7-"${r_NEXUS_INSTALL_PATH:-"${_NXRM3_INSTALL_DIR}"}"}"    # If not specified, create a new dir under current dir
     local _download_dir="${8}"
@@ -181,7 +181,13 @@ function f_install_nexus3() {
     fi
 
     if [ -n "${_dbname}" ]; then
-        [ -z "${_dbhost}" ] && _dbhost="$(hostname -f):5432"
+        if [ -z "${_dbhost}" ]; then
+            _log "INFO" "Creating database with \"${_dbusr}\" \"********\" \"${_dbname}\" \"${_schema}\" in localhost:5432"
+            if ! _postgresql_create_dbuser "${_dbusr}" "${_dbpwd}" "${_dbname}" "${_schema}"; then
+                _log "WARN" "Failed to create ${_dbusr} or ${_dbname}" || return $?
+            fi
+            _dbhost="$(hostname -f):5432"
+        fi
         grep -q "^nexus.datastore.enabled" "${_prop}" 2>/dev/null || echo "nexus.datastore.enabled=true" >> "${_prop}" || return $?
         if [[ ! "${_dbname}" =~ [hH]2 ]]; then
             cat << EOF > "${_dirpath%/}/sonatype-work/nexus3/etc/fabric/nexus-store.properties"
@@ -192,10 +198,6 @@ schema=${_schema:-"public"}
 maximumPoolSize=40
 advanced=maxLifetime\=600000
 EOF
-            _log "INFO" "Creating database with \"${_dbusr}\" \"********\" \"${_dbname}\" \"${_schema}\""
-            if ! _postgresql_create_dbuser "${_dbusr}" "${_dbpwd}" "${_dbname}" "${_schema}"; then
-                _log "WARN" "Failed to create ${_dbusr} or ${_dbname}" || return $?
-            fi
         fi
     fi
 
