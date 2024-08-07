@@ -2670,7 +2670,7 @@ function f_delete_asset() {
     echo "Deleted ${_line_num} assets"
 }
 function f_get_all_assets() {
-    local __doc__="Delete all assets from one repository with Search REST API (require correct search index)"
+    local __doc__="Get all assets but only one attribute from one repository with Search REST API (require correct search index)"
     local _repo="$1"
     local _attr="${2:-"id"}"    # or "downloadUrl"
     local _max_loop="${3:-200}" # 50 * 200 = 10000 max
@@ -2682,6 +2682,7 @@ function f_get_all_assets() {
     cat /dev/null > ${_TMP%/}/${FUNCNAME[0]}_$$.out
     for i in $(seq "1" "${_max_loop}"); do
         f_api "${_path}${_base_query}${_query}" > ${_TMP%/}/${FUNCNAME[0]}.json || return $?
+        # TODO: should output only '"_attr":"_value_"'
         grep -E '^            "'${_attr}'":' -h ${_TMP%/}/${FUNCNAME[0]}.json | sort | uniq >> ${_TMP%/}/${FUNCNAME[0]}_$$.out || return $?
         grep -qE '"continuationToken": *"[0-9a-f]+' ${_TMP%/}/${FUNCNAME[0]}.json || break
         local cToken="$(cat ${_TMP%/}/${FUNCNAME[0]}.json | JSON_SEARCH_KEY="continuationToken" _sortjson)"
