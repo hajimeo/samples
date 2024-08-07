@@ -2651,7 +2651,7 @@ function f_delete_asset() {
             break
         fi
         grep -qE '"continuationToken": *"[0-9a-f]+' ${_TMP%/}/${FUNCNAME[0]}_${i}.json || break
-        local cToken="$(cat ${_TMP%/}/${FUNCNAME[0]}_${i}.json | JSON_SEARCH_KEY="continuationToken" _sortjson
+        local cToken="$(cat ${_TMP%/}/${FUNCNAME[0]}_${i}.json | JSON_SEARCH_KEY="continuationToken" _sortjson)"
         _query="&continuationToken=${cToken}"
     done
     grep -E '^            "id":' -h ${_TMP%/}/${FUNCNAME[0]}_*_matched_IDs.out | sort | uniq > ${_TMP%/}/${FUNCNAME[0]}_$$.out || return $?
@@ -2684,7 +2684,7 @@ function f_get_all_assets() {
         f_api "${_path}${_base_query}${_query}" > ${_TMP%/}/${FUNCNAME[0]}.json || return $?
         grep -E '^            "'${_attr}'":' -h ${_TMP%/}/${FUNCNAME[0]}.json | sort | uniq >> ${_TMP%/}/${FUNCNAME[0]}_$$.out || return $?
         grep -qE '"continuationToken": *"[0-9a-f]+' ${_TMP%/}/${FUNCNAME[0]}.json || break
-        local cToken="$(cat ${_TMP%/}/${FUNCNAME[0]}.json | JSON_SEARCH_KEY="continuationToken" _sortjson
+        local cToken="$(cat ${_TMP%/}/${FUNCNAME[0]}.json | JSON_SEARCH_KEY="continuationToken" _sortjson)"
         if [ -z "${_base_query}" ]; then
             _query="?continuationToken=${cToken}"
         else
