@@ -7,12 +7,17 @@
 #$ export HELM_NAME="sonatype-helm" NAME_SPACE="nexusrepo" RELEASE_NAME="nxrm3ha" ADMIN_PWD="admin123" LICENSE_B64="$(base64 -i $HOME/share/sonatype/sonatype-license.lic)" DB_SERVER="192.168.4.31";export NFS_SERVER="192.168.4.31" SHARE_DIR="/var/tmp/share/sonatype/${RELEASE_NAME}-nfs"
 
 # Most likely only once
-#$ helm repo add ${HELM_NAME} https://sonatype.github.io/helm3-charts/
-#$ helm search repo ${HELM_NAME}/nxrm-ha --versions | head
 #$ #kubectl create namespace ${NAME_SPACE}
+
+# https://github.com/sonatype/nxrm3-ha-repository/blob/main/nxrm-ha/README.md#configuration-for-dynamic-persistent-volume-provisioning-2
+#$ helm install nfs-subdir-external-provisioner nfs-subdir-external-provisioner/nfs-subdir-external-provisioner --set nfs.server=${NFS_SERVER} --set nfs.path=${SHARE_DIR} --set storageClass.create=true
+
 # Setting up NFS PV and PVC (used in `additionalVolumes`)
 #$ eval "echo \"$(cat ./k8s-nfs-pv-pvc-tmpl.yaml | grep -v '^\s*#')\"" > ./${RELEASE_NAME}-nfs-pv-pvc.yaml
 #$ kubectl apply -f ./${RELEASE_NAME}-nfs-pv-pvc.yaml -n ${NAME_SPACE}
+
+#$ helm repo add ${HELM_NAME} https://sonatype.github.io/helm3-charts/
+#$ helm search repo ${HELM_NAME}/nxrm-ha --versions | head
 
 # Install / reinstall / upgrade:
 #$ helm repo update ${HELM_NAME}
@@ -20,11 +25,13 @@
 #$ eval "echo \"$(cat ./helm-nxrm3ha-values.yml | grep -v '^\s*#')\"" > ./${RELEASE_NAME}_values.yaml
 #$ helm upgrade -i ${RELEASE_NAME} ${HELM_NAME}/nxrm-ha -f ./${RELEASE_NAME}_values.yaml -n ${NAME_SPACE} --debug # --version 65.0.0 --dry-run
 
+
 # For troubleshooting:
 #$ git -C ~/IdeaProjects/nxrm3-ha-repository pull && git -C ~/IdeaProjects/nxrm3-ha-repository fetch
 #$ helm upgrade ${RELEASE_NAME} ~/IdeaProjects/nxrm3-ha-repository/nxrm-ha -f ./${RELEASE_NAME}_values.yaml --dry-run > ${RELEASE_NAME}_dry-run.yaml
 #$ helm template nxrm3ha sonatype-helm/nxrm-ha -f ./helm-nxrm3ha-values.yml -n sonatype-helm >./helm-nxrm3ha-deploying.yaml
 #$ kubectl -n sonatype-helm apply -f ./helm-nxrm3ha-deploying.yaml
+
 
 # Seems namespaces broken?
 namespaces:
@@ -38,12 +45,17 @@ statefulset:
   replicaCount: 1
   clustered: true
   additionalVolumeMounts:
+    - name: nexus-deploy-volume
+      mountPath: /opt/sonatype/nexus/deploy
     - name: nexus-blobs-volume
       mountPath: /nexus-data/blobs
   additionalVolumes:
+    - name: nexus-deploy-volume
+      persistentVolumeClaim:
+        claimName: ${RELEASE_NAME}-deploy-nfs-pv-claim
     - name: nexus-blobs-volume
       persistentVolumeClaim:
-        claimName: ${RELEASE_NAME}-nfs-pv-claim
+        claimName: ${RELEASE_NAME}-blobs-nfs-pv-claim
   container:
     image:
       repository: sonatype/nexus3
@@ -77,8 +89,16 @@ statefulset:
   imagePullSecrets: {}
 
 # TODO: this wouldn't work with more than 1 replica?
-#pvc:
+pvc:
+  accessModes: ReadWriteMany
+  storage: 10Gi
+  volumeClaimTemplate:
+    enabled: true
 #  existingClaim: nexushelmha-nfs-pv-claim
+# Check the value of `kubectl get sc`
+storageClass:
+  enabled: false
+  name: nfs-client
 
 service:  #Nexus Repo NodePort Service
   nexus:

@@ -132,10 +132,10 @@ spec:
             failureThreshold: 3
             timeoutSeconds: 10
           env:
-            #- name: LC_ALL
-            #  value: 'en_US.UTF-8'
-            #- name: LANG
-            #  value: 'en_US.UTF-8'
+            - name: LC_ALL
+              value: 'en_US.UTF-8'
+            - name: LANG
+              value: 'en_US.UTF-8'
             - name: PATH
               value: '/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin/:/nexus-data/bin'
             # TODO: NEXUS_DATASTORE_NEXUS_USERNAME and NEXUS_DATASTORE_NEXUS_PASSWORD do not work

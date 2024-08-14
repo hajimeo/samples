@@ -29,7 +29,8 @@ iq_server:
       cpu: 1
       memory: 4Gi
   # -XX:ActiveProcessorCount=1 -XX:+UseG1GC
-  javaOpts: "-Xms2g -Xmx2g -Dcom.sun.management.jmxremote=true -Dcom.sun.management.jmxremote.port=9000 -Dcom.sun.management.jmxremote.rmi.port=9000 -Dcom.sun.management.jmxremote.authenticate=false -Dcom.sun.management.jmxremote.ssl=false -Dcom.sun.management.jmxremote.local.only=true -Djava.rmi.server.hostname=127.0.0.1"
+  # -Dcom.sun.management.jmxremote=true -Dcom.sun.management.jmxremote.port=9000 -Dcom.sun.management.jmxremote.rmi.port=9000 -Dcom.sun.management.jmxremote.authenticate=false -Dcom.sun.management.jmxremote.ssl=false -Dcom.sun.management.jmxremote.local.only=true -Djava.rmi.server.hostname=127.0.0.1
+  javaOpts: "-Xms2g -Xmx2g -XX:MaxDirectMemorySize=1g -Djdk.nio.maxCachedBufferSize=262144"
   # TODO: doesn't work: -XX:+LogVMOutput -XX:LogFile=/sonatype-work/clm-cluster/log/jvm.log
   # -XX:+PrintGCDetails -XX:+PrintGCDateStamps -XX:+PrintGCCause -XX:+PrintClassHistogramAfterFullGC -XX:+UseGCLogFileRotation -XX:NumberOfGCLogFiles=10 -XX:GCLogFileSize=100M -Xloggc:/sonatype-work/clm-cluster/log/gc.%t.log
   #It seems -Djava.util.prefs.userRoot=/sonatype-work/javaprefs is no longer required?

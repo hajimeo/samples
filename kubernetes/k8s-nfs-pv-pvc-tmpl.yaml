@@ -3,12 +3,12 @@
 apiVersion: v1
 kind: PersistentVolume
 metadata:
-  name: ${RELEASE_NAME}-nfs-pv-volume
+  name: ${RELEASE_NAME}-blobs-nfs-pv-volume
   labels:
     type: nfs
 spec:
   capacity:
-    storage: 30Gi
+    storage: 50Gi
   volumeMode: Filesystem
   persistentVolumeReclaimPolicy: Retain
   storageClassName: nfs
@@ -19,17 +19,53 @@ spec:
     - ReadWriteMany
   nfs:
     server: ${NFS_SERVER}
-    path: ${SHARE_DIR}
+    path: ${SHARE_DIR%/}/blobs
+    readOnly: false
+---
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: ${RELEASE_NAME}-deploy-nfs-pv-volume
+  labels:
+    type: nfs
+spec:
+  capacity:
+    storage: 50Gi
+  volumeMode: Filesystem
+  persistentVolumeReclaimPolicy: Retain
+  storageClassName: nfs
+  mountOptions:
+    - hard
+    - nfsvers=4.1
+  accessModes:
+    - ReadWriteMany
+  nfs:
+    server: ${NFS_SERVER}
+    path: ${SHARE_DIR%/}/deploy
     readOnly: false
 ---
 apiVersion: v1
 kind: PersistentVolumeClaim
 metadata:
-  name: ${RELEASE_NAME}-nfs-pv-claim
+  name: ${RELEASE_NAME}-blobs-nfs-pv-claim
 spec:
   storageClassName: nfs
   accessModes:
     - ReadWriteMany
   resources:
     requests:
-      storage: 6Gi
+      storage: 40Gi
+  volumeName: ${RELEASE_NAME}-blobs-nfs-pv-volume
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: ${RELEASE_NAME}-deploy-nfs-pv-claim
+spec:
+  storageClassName: nfs
+  accessModes:
+    - ReadWriteMany
+  resources:
+    requests:
+      storage: 2Gi
+  volumeName: ${RELEASE_NAME}-deploy-nfs-pv-volume
