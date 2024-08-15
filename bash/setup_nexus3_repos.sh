@@ -31,7 +31,7 @@ DOWNLOADS:
 
 REQUIREMENTS / DEPENDENCIES:
     If Mac, 'gsed' and 'ggrep' are required (brew install gnu-sed grep)
-    'python' is required for f_setup_cocoapods, f_register_script, f_run_tasks_by_type
+    'python' is required for f_setup_cocoapods, f_register_script
 
 COMMAND OPTIONS:
     -A
@@ -114,7 +114,7 @@ _RESP_FILE=""
 # To install 1st/2nd instance: _NEXUS_ENABLE_HA=Y _NXRM3_INSTALL_PORT=8083 f_install_nexus3 "" "nxrmha"
 # To upgrade (from ${_dirpath}/): tar -xvf $HOME/.nexus_executable_cache/nexus-3.69.0-02-mac.tgz
 function f_install_nexus3() {
-    local __doc__="Install specific NXRM3 version (to recreate DB, _RECREATE_DB=Y)"
+    local __doc__="Install specific NXRM3 version (to recreate sonatype-work and DB, _RECREATE_ALL=Y)"
     local _ver="${1:-"${r_NEXUS_VERSION}"}"     # 'latest' or '3.71.0-03-java17'
     local _dbname="${2-"${r_NEXUS_DBNAME}"}"   # If h2, use H2
     local _dbusr="${3-"nexus"}"     # Specifying default as do not want to create many users/roles
@@ -149,6 +149,14 @@ function f_install_nexus3() {
         [ -n "${_dbname}" ] && _dirpath="${_dirpath}_${_dbname}"
         [ "${_port}" != "8081" ] && _dirpath="${_dirpath}_${_port}"
     fi
+
+    if [[ "${_RECREATE_ALL}" =~ [yY] ]]; then
+        if [ -d "${_dirpath%/}" ]; then
+            _log "WARN" "As _RECREATE_ALL=${_RECREATE_ALL}, removing ${_dirpath%/}"; sleep 3
+            rm -v -rf "${_dirpath%/}" || return $?
+        fi
+        _RECREATE_DB="Y"
+    fi
     local _tgz_name="nexus-${_ver}-unix.tar.gz"
     [ "`uname`" = "Darwin" ] && _tgz_name="nexus-${_ver}-mac.tgz"
     # download-staging.sonatype.com
@@ -181,7 +189,7 @@ function f_install_nexus3() {
     if [ -n "${_dbname}" ]; then
         if [ -z "${_dbhost}" ]; then
             _log "INFO" "Creating database with \"${_dbusr}\" \"********\" \"${_dbname}\" \"${_schema}\" in localhost:5432"
-            if ! _postgresql_create_dbuser "${_dbusr}" "${_dbpwd}" "${_dbname}" "${_schema}"; then
+            if ! _RECREATE_DB=${_RECREATE_DB} _postgresql_create_dbuser "${_dbusr}" "${_dbpwd}" "${_dbname}" "${_schema}"; then
                 _log "WARN" "Failed to create ${_dbusr} or ${_dbname}" || return $?
             fi
             _dbhost="$(hostname -f):5432"
@@ -205,6 +213,14 @@ EOF
     type f_setup_https &>/dev/null && echo "      Before starting, ssl: f_setup_https <port>"
     if [ "${_port}" != "8081" ]; then
         echo "May need to execute 'export _NEXUS_URL=\"http://localhost:${_port}/\"'"
+    fi
+    if [[ "${_ver}" =~ ^3\.(7[1-9]\.|[89][0-9]\.|[1-9][0-9][0-9]).+ ]]; then
+        if [ -d "${JAVA_HOME_17}" ]; then
+            export JAVA_HOME="${JAVA_HOME_17}"
+            echo "      export JAVA_HOME=\"${JAVA_HOME_17}\""
+        else
+            echo "      Make sure JAVA_HOME is set to Java 17"
+        fi
     fi
     _isYes "${_NEXUS_ENABLE_HA:-"${r_NEXUS_ENABLE_HA}"}" && echo "      Make sure ./sonatype-work/nexus3/blobs/default is shared"
 }
@@ -621,8 +637,8 @@ function f_setup_yum() {
         fi
     fi
     if [ -s "${_upload_file}" ]; then
-        # NOTE: the file was from https://vault.centos.org/7.9.2009/, but using /7/
-        #curl -D/dev/stderr -u admin:admin123 -X PUT "${_NEXUS_URL%/}/repository/${_prefix}-hosted/7/os/x86_64/Packages/$(basename ${_upload_file})" -T ${_upload_file}
+        # NOTE: curl also works
+        #curl -D/dev/stderr -u admin:admin123 "${_NEXUS_URL%/}/repository/${_prefix}-hosted/7/os/x86_64/Packages/" -T ${_upload_file}
         _ASYNC_CURL="Y" f_upload_asset "${_prefix}-hosted" -F "yum.asset=@${_upload_file}" -F "yum.asset.filename=$(basename ${_upload_file})" -F "yum.directory=${_yum_upload_path%/}"
     fi
     #curl -u 'admin:admin123' --upload-file /etc/pki/rpm-gpg/RPM-GPG-KEY-pmanager ${r_NEXUS_URL%/}/repository/yum-hosted/RPM-GPG-KEY-pmanager
@@ -2221,7 +2237,7 @@ function f_register_script() {
     [ -z "${_script_name}" ] && _script_name="$(basename ${_script_file} .groovy)"
     python -c "import sys,json;print(json.dumps(open('${_script_file}').read()))" > ${_TMP%/}/${_script_name}_$$.out || return $?
     echo "{\"name\":\"${_script_name}\",\"content\":$(cat ${_TMP%/}/${_script_name}_$$.out),\"type\":\"groovy\"}" > ${_TMP%/}/${_script_name}_$$.json
-    # Delete if exists
+    _log "INFO" "Delete ${_script_name} if exists (may return error if not exist)"
     f_api "/service/rest/v1/script/${_script_name}" "" "DELETE"
     f_api "/service/rest/v1/script" "$(cat ${_TMP%/}/${_script_name}_$$.json)" || return $?
     echo "To run:
@@ -2791,6 +2807,7 @@ function f_associate_tag() {
 }
 # TODO: add `/service/rest/v1/staging/delete`
 
+#f_run_tasks_by_type "assetBlob.cleanup"
 function f_run_tasks_by_type() {
     local __doc__="Run/start multiple tasks by type"
     local _task_type="$1"   #assetBlob.cleanup
@@ -2799,9 +2816,7 @@ function f_run_tasks_by_type() {
         return $?
     fi
     f_api "/service/rest/v1/tasks?type=${_task_type}" > ${_TMP%/}/${FUNCNAME[0]}.json || return $?
-    cat ${_TMP%/}/${FUNCNAME[0]}.json | python -c 'import sys,json;a=json.loads(sys.stdin.read());
-for t in a["items"]:
-  print(t["id"])' | while read -r _id; do
+    cat ${_TMP%/}/${FUNCNAME[0]}.json | JSON_SEARCH_KEY="items.id" _sortjson | while read -r _id; do
         _log "INFO" "/service/rest/v1/tasks/${_id}/run"
         f_api "/service/rest/v1/tasks/${_id}/run" "" "POST" || return $?
         cat ${_TMP%/}/_api_header_$$.out

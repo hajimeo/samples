@@ -13,6 +13,8 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"reflect"
+	"strings"
 	"time"
 )
 
@@ -26,13 +28,46 @@ func sortJson(bytes []byte) ([]byte, error) {
 		return nil, err
 	}
 	if len(JSON_SEARCH_KEY) > 0 {
-		// TODO: This may cause error
-		value, ok := ifc.(map[string]interface{})[JSON_SEARCH_KEY].(string)
-		if ok {
-			fmt.Println(value)
-		}
+		keys := strings.Split(JSON_SEARCH_KEY, ".")
+		printJsonValuesByKeys(ifc, keys)
 	}
 	return json.Marshal(ifc)
+}
+
+func printJsonValuesByKeys(jsonObj interface{}, keys []string) {
+	//fmt.Printf("DEBUG: %v\n", keys)
+	key := keys[0]
+	// if slice (list/array), loop to find the key
+	if reflect.TypeOf(jsonObj).Kind() == reflect.Slice {
+		for _, obj := range jsonObj.([]interface{}) {
+			// Not accepting nested lists, so assuming it's a dict (ignoring if not dict)
+			maybeMap, isDict := obj.(map[string]interface{})
+			if isDict {
+				printJsonValuesByKeys(maybeMap, keys)
+			}
+		}
+		return
+	}
+	maybeMap, isDict := jsonObj.(map[string]interface{})
+	if isDict {
+		value, ok := maybeMap[key]
+		if ok {
+			// if dict and only one key, print and exit
+			if len(keys) == 1 {
+				//fmt.Printf("DEBUG: %v\n", reflect.TypeOf(value).Kind())
+				out := value
+				if reflect.TypeOf(value).Kind() != reflect.String {
+					out, _ = json.Marshal(value)
+				}
+				fmt.Printf("%s\n", out)
+				return
+			}
+			// if dict and more than one key, continue to find the key
+			printJsonValuesByKeys(value, keys[1:])
+		}
+		// If dict and not found, just exit
+		return
+	}
 }
 
 func prettyBytes(strB []byte) (string, error) {
