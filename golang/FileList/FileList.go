@@ -1,19 +1,19 @@
 /*
 #go mod init github.com/hajimeo/samples/golang/FileList
 #go mod tidy
-goBuild ./FileList.go
+goBuild ./FileList.go      <<< Check ../README.md
 
-echo 3 > /proc/sys/vm/drop_caches
-
-$HOME/IdeaProjects/samples/misc/filelist_$(uname)_$(uname -m) -b <workingDirectory>/blobs/default/content -p "vol-" -c1 10
-$HOME/IdeaProjects/samples/misc/filelist_$(uname)_$(uname -m) -b <workingDirectory>/blobs/default/content -p "vol-" -c1 10
-
+# Can drop the file cache for testing
+#echo 3 > /proc/sys/vm/drop_caches
 cd /opt/sonatype/sonatype-work/nexus3/blobs/default/
 file-list -b ./content -p vol- -c 4 -db /opt/sonatype/sonatype-work/nexus3/etc/fabric/nexus-store.properties -bsName default > ./$(date '+%Y-%m-%d') 2> ./file-list_$(date +"%Y%m%d").log &
 
-Fr S3: https://pkg.go.dev/github.com/aws/aws-sdk-go/service/s3
-
-TODO: update https://support.sonatype.com/hc/en-us/articles/8402517424531-Restore-undelete-accidentally-soft-deleted-blobs
+For S3:
+	https://pkg.go.dev/github.com/aws/aws-sdk-go/service/s3
+    https://aws.github.io/aws-sdk-go-v2/docs/configuring-sdk/#specifying-credentials
+For Azure:
+	https://learn.microsoft.com/en-us/azure/storage/blobs/storage-quickstart-blobs-go
+	https://github.com/Azure-Samples/storage-blobs-go-quickstart/blob/master/storage-quickstart.go
 */
 
 package main
@@ -26,13 +26,6 @@ import (
 	"encoding/json"
 	"flag"
 	"fmt"
-	"github.com/aws/aws-sdk-go-v2/aws"
-	"github.com/aws/aws-sdk-go-v2/config"
-	"github.com/aws/aws-sdk-go-v2/service/s3"
-	"github.com/aws/aws-sdk-go-v2/service/s3/types"
-	_ "github.com/lib/pq"
-	"github.com/pkg/errors"
-	regexp "github.com/wasilibs/go-re2"
 	"io"
 	"log"
 	"math"
@@ -45,6 +38,14 @@ import (
 	"sync"
 	"sync/atomic"
 	"time"
+
+	"github.com/aws/aws-sdk-go-v2/aws"
+	"github.com/aws/aws-sdk-go-v2/config"
+	"github.com/aws/aws-sdk-go-v2/service/s3"
+	"github.com/aws/aws-sdk-go-v2/service/s3/types"
+	_ "github.com/lib/pq"
+	"github.com/pkg/errors"
+	regexp "github.com/wasilibs/go-re2"
 )
 
 func _usage() {
@@ -101,8 +102,9 @@ var _START_TIME_ts int64
 var _REPO_TO_FMT map[string]string
 var _ASSET_TABLES []string
 
-// AWS related
-var _IS_S3 *bool
+// AWS / Azure related
+var _BS_TYPE *string
+var _IS_S3 *bool // TODO: remove this later
 var _MAXKEYS *int
 var _WITH_OWNER *bool
 var _WITH_TAGS *bool
@@ -114,20 +116,18 @@ var _RX *regexp.Regexp
 var _R_DELETED_DT, _ = regexp.Compile("[^#]?deletedDateTime=([0-9]+)")
 var _R_DELETED, _ = regexp.Compile("deleted=true") // should not use ^ as replacing one-line text
 var _R_REPO_NAME, _ = regexp.Compile("[^#]?@Bucket.repo-name=(.+)")
-
-// var _R_BLOB_NAME, _ = regexp.Compile("[^#]?@BlobStore.blob-name=(.+)")
 var _R_BLOB_ID, _ = regexp.Compile("[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}")
 
 // Global variables
-var _CHECKED_N int64 // Atomic (maybe slower?)
-var _PRINTED_N int64 // Atomic (maybe slower?)
-var _TTL_SIZE int64  // Atomic (maybe slower?)
+var _CHECKED_N int64 = 0 // Atomic (maybe slower?)
+var _PRINTED_N int64 = 0 // Atomic (maybe slower?)
+var _TTL_SIZE int64 = 0  // Atomic (maybe slower?)
 var _SLOW_MS int64 = 100
 var _SEP = "	"
 var _PROP_EXT = ".properties"
 var (
-	_S3_OBJECT_OUTPUTS = make(map[string]*s3.GetObjectOutput)
-	mu                 sync.RWMutex
+	_OBJECT_OUTPUTS = make(map[string]interface{})
+	mu              sync.RWMutex
 )
 
 type StoreProps map[string]string
@@ -165,9 +165,10 @@ func _setGlobals() {
 	_MOD_DATE_FROM = flag.String("mF", "", "File modification date YYYY-MM-DD (from). For DB, used against blob_created")
 	_MOD_DATE_TO = flag.String("mT", "", "File modification date YYYY-MM-DD (to). For DB, used against blob_created")
 
-	// AWS S3 related
+	// AWS S3 / Azure related
+	_BS_TYPE = flag.String("bsType", "F", "F (file) or S (s3) or A (azure)")
 	_CONC_2 = flag.Int("c2", 8, "AWS S3: Concurrent number for retrieving AWS Tags")
-	_IS_S3 = flag.Bool("S3", false, "AWS S3: If true, access S3 bucket with AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY and AWS_REGION")
+	_IS_S3 = flag.Bool("S3", false, "AWS S3: If true, access S3 bucket with AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY and AWS_REGION") // TODO: remove this
 	_MAXKEYS = flag.Int("m", 1000, "AWS S3: Integer value for Max Keys (<= 1000)")
 	_WITH_OWNER = flag.Bool("O", false, "AWS S3: If true, get the owner display name")
 	_WITH_TAGS = flag.Bool("T", false, "AWS S3: If true, get tags of each object")
@@ -191,9 +192,15 @@ func _setGlobals() {
 			prefix = strings.TrimSuffix(*_PREFIX, string(filepath.Separator)) + string(filepath.Separator)
 		}
 	}
+	// for backward compatibility TODO: remove this
 	if _IS_S3 != nil && *_IS_S3 {
-		// No basedir requiref for S3
+		*_BS_TYPE = "S"
+	}
+	if _BS_TYPE != nil && *_BS_TYPE == "S" {
+		// No basedir required for S3
 		_CONTENT_PATH = prefix + "content"
+	} else if _BS_TYPE != nil && *_BS_TYPE == "A" {
+		_log("TODO", " Do something ")
 	} else {
 		_CONTENT_PATH = basedir + prefix + "content"
 	}
@@ -266,30 +273,30 @@ func _setGlobals() {
 	_log("DEBUG", "_setGlobals completed for "+strings.Join(os.Args[1:], " "))
 }
 
-func _cacheAddS3Obj(key string, value *s3.GetObjectOutput, maxSize int) {
+func cacheAddObject(key string, value interface{}, maxSize int) {
 	mu.Lock()
-	for k := range _S3_OBJECT_OUTPUTS {
-		if len(_S3_OBJECT_OUTPUTS) > maxSize {
-			delete(_S3_OBJECT_OUTPUTS, k)
+	for k := range _OBJECT_OUTPUTS {
+		if len(_OBJECT_OUTPUTS) > maxSize {
+			delete(_OBJECT_OUTPUTS, k)
 		} else {
 			break
 		}
 	}
-	_S3_OBJECT_OUTPUTS[key] = value
+	_OBJECT_OUTPUTS[key] = value
 	mu.Unlock()
 }
 
-func _cacheReadS3Obj(key string) *s3.GetObjectOutput {
+func cacheReadObj(key string) interface{} {
 	mu.RLock()
 	defer mu.RUnlock()
-	value, exists := _S3_OBJECT_OUTPUTS[key]
+	value, exists := _OBJECT_OUTPUTS[key]
 	if exists {
 		return value
 	}
 	return nil
 }
 
-func _chunkSlice(slice []string, chunkSize int) [][]string {
+func chunkSlice(slice []string, chunkSize int) [][]string {
 	var chunks [][]string
 	for i := 0; i < len(slice); i += chunkSize {
 		end := i + chunkSize
@@ -336,11 +343,14 @@ func _elapsed(startTsMs int64, message string, thresholdMs int64) {
 	}
 }
 
-func writeContents(path string, contents string, client *s3.Client) error {
-	if _IS_S3 != nil && *_IS_S3 {
-		return writeContentsS3(path, contents, client)
+func writeContents(path string, contents string, client interface{}) error {
+	switch client.(type) {
+	// TODO: add Azure
+	case *s3.Client:
+		return writeContentsS3(path, contents, client.(*s3.Client))
+	default:
+		return writeContentsFile(path, contents)
 	}
-	return writeContentsFile(path, contents)
 }
 
 func writeContentsFile(path string, contents string) error {
@@ -492,10 +502,12 @@ func genDbConnStrFromFile(filePath string) string {
 	return connStr
 }
 
-func getBlobSize(path string, client *s3.Client) int64 {
-	if _IS_S3 != nil && *_IS_S3 {
-		return getBlobSizeS3(path, client)
-	} else {
+func getBlobSize(path string, client interface{}) int64 {
+	switch client.(type) {
+	// TODO: add Azure
+	case *s3.Client:
+		return getBlobSizeS3(path, client.(*s3.Client))
+	default:
 		return getBlobSizeFile(path)
 	}
 }
@@ -514,7 +526,7 @@ func getBlobSizeS3(blobPath string, client *s3.Client) int64 {
 		_log("WARN", "Failed to request "+blobPath)
 		return -1
 	}
-	return result.ContentLength
+	return *result.ContentLength
 }
 
 func tags2str(tagset []types.Tag) string {
@@ -530,6 +542,7 @@ func tags2str(tagset []types.Tag) string {
 	return str
 }
 
+// TODO: create another printLine for Azure
 func printLineS3(item types.Object, client *s3.Client, db *sql.DB) {
 	path := *item.Key
 	modTime := item.LastModified
@@ -544,7 +557,7 @@ func printLineS3(item types.Object, client *s3.Client, db *sql.DB) {
 		blobPath := getPathWithoutExt(path) + ".bytes"
 		blobSize = getBlobSizeS3(blobPath, client)
 	}
-	output := genOutput(path, *modTime, propSize, blobSize, db, client)
+	output := genOutput(path, *modTime, *propSize, blobSize, db, client)
 
 	if *_WITH_OWNER {
 		output = fmt.Sprintf("%s%s%s", output, _SEP, owner)
@@ -675,11 +688,14 @@ func getNowStr() string {
 	return currentTime.Format("2006-01-02 15:04:05")
 }
 
-func getContents(path string, client *s3.Client) (string, error) {
-	if _IS_S3 != nil && *_IS_S3 {
-		return getContentsS3(path, client)
+func getContents(path string, client interface{}) (string, error) {
+	switch client.(type) {
+	// TODO: add Azure
+	case *s3.Client:
+		return getContentsS3(path, client.(*s3.Client))
+	default:
+		return getContentsFile(path)
 	}
-	return getContentsFile(path)
 }
 
 func getContentsFile(path string) (string, error) {
@@ -687,7 +703,8 @@ func getContentsFile(path string) (string, error) {
 	if _DEBUG != nil && *_DEBUG {
 		defer _elapsed(time.Now().UnixMilli(), "DEBUG Read "+path, int64(thresholdMs))
 	} else {
-		if *_IS_S3 {
+		// If cloud storage, increase the threshold
+		if _BS_TYPE != nil && (*_BS_TYPE != "" && *_BS_TYPE != "F") {
 			thresholdMs = 3000
 		} else {
 			thresholdMs = 1000
@@ -704,9 +721,9 @@ func getContentsFile(path string) (string, error) {
 }
 
 func getObjectS3(path string, client *s3.Client) (*s3.GetObjectOutput, error) {
-	value := _cacheReadS3Obj(path)
+	value := cacheReadObj(path)
 	if value != nil {
-		return value, nil
+		return value.(*s3.GetObjectOutput), nil
 	}
 	if _DEBUG != nil && *_DEBUG {
 		defer _elapsed(time.Now().UnixMilli(), "DEBUG Read "+path, 0)
@@ -719,9 +736,9 @@ func getObjectS3(path string, client *s3.Client) (*s3.GetObjectOutput, error) {
 	}
 	value, err := client.GetObject(context.TODO(), input)
 	if err == nil {
-		_cacheAddS3Obj(path, value, (1 + *_CONC_1*2))
+		cacheAddObject(path, value, (1 + *_CONC_1*2))
 	}
-	return value, err
+	return value.(*s3.GetObjectOutput), err
 }
 
 func getContentsS3(path string, client *s3.Client) (string, error) {
@@ -965,8 +982,8 @@ func isBlobMissingInDB(contents string, blobId string, db *sql.DB) bool {
 	return noRows
 }
 
-func isSoftDeleted(path string, s3Client *s3.Client) bool {
-	contents, err := getContents(path, s3Client)
+func isSoftDeleted(path string, client interface{}) bool {
+	contents, err := getContents(path, client)
 	if err != nil {
 		_log("WARN", fmt.Sprintf("isSoftDeleted for path:%s failed with '%s', assuming not soft-deleted.", path, err.Error()))
 		return false
@@ -994,7 +1011,7 @@ func shouldBeUnDeleted(contents string, path string) bool {
 	return false
 }
 
-func removeDel(contents string, path string, client *s3.Client) bool {
+func removeDel(contents string, path string, client interface{}) bool {
 	if !shouldBeUnDeleted(contents, path) {
 		return false
 	}
@@ -1015,21 +1032,23 @@ func removeDel(contents string, path string, client *s3.Client) bool {
 		return false
 	}
 
-	if _IS_S3 != nil && *_IS_S3 {
-		errTag := removeTagsS3(path, client)
+	switch client.(type) {
+	// TODO: add Azure
+	case *s3.Client:
+		errTag := removeTagsS3(path, client.(*s3.Client))
 		if errTag != nil {
 			_log("ERROR", fmt.Sprintf("Removed 'deleted=true' but removeTagsS3 for path:%s failed with %s", path, errTag))
 			return false
 		}
 
 		bPath := getPathWithoutExt(path) + ".bytes"
-		errTag = removeTagsS3(bPath, client)
+		errTag = removeTagsS3(bPath, client.(*s3.Client))
 		if errTag != nil {
 			_log("WARN", fmt.Sprintf("Removed 'deleted=true' but removeTagsS3 for path:%s failed with %s", bPath, errTag))
 			return true
 		}
 		_log("INFO", fmt.Sprintf("Removed 'deleted=true' and S3 tag for path:%s", path))
-	} else {
+	default:
 		_log("INFO", fmt.Sprintf("Removed 'deleted=true' for path:%s", path))
 	}
 	return true
@@ -1093,7 +1112,7 @@ func getDirsS3(client *s3.Client) []string {
 	inputV1 := &s3.ListObjectsInput{
 		Bucket:    _BASEDIR,
 		Prefix:    _PREFIX,
-		MaxKeys:   int32(*_MAXKEYS),
+		MaxKeys:   aws.Int32(int32(*_MAXKEYS)),
 		Delimiter: &delimiter,
 	}
 	resp, err := client.ListObjects(context.TODO(), inputV1)
@@ -1377,8 +1396,8 @@ func listObjectsS3(dir string, db *sql.DB, client *s3.Client) int64 {
 	var subTtl int64
 	input := &s3.ListObjectsV2Input{
 		Bucket:     _BASEDIR,
-		MaxKeys:    int32(*_MAXKEYS),
-		FetchOwner: *_WITH_OWNER,
+		MaxKeys:    aws.Int32(int32(*_MAXKEYS)),
+		FetchOwner: aws.Bool(*_WITH_OWNER),
 		Prefix:     &dir,
 	}
 	// TODO: below does not seem to be working, as StartAfter should be Key
@@ -1420,7 +1439,7 @@ func listObjectsS3(dir string, db *sql.DB, client *s3.Client) int64 {
 		if *_TOP_N > 0 && *_TOP_N <= _PRINTED_N {
 			_log("DEBUG", fmt.Sprintf("Found %d and reached %d", _PRINTED_N, *_TOP_N))
 			break
-		} else if resp.IsTruncated {
+		} else if *resp.IsTruncated {
 			_log("DEBUG", fmt.Sprintf("Set ContinuationToken to %s", *resp.NextContinuationToken))
 			input.ContinuationToken = resp.NextContinuationToken
 		} else {
@@ -1468,7 +1487,7 @@ func listObjects(dir string, client *s3.Client) {
 	if db != nil {
 		defer db.Close()
 	}
-	if _IS_S3 != nil && *_IS_S3 {
+	if _BS_TYPE != nil && *_BS_TYPE == "S" {
 		subTtl = listObjectsS3(dir, db, client)
 	} else {
 		subTtl = listObjectsFile(dir, db)
@@ -1477,14 +1496,16 @@ func listObjects(dir string, client *s3.Client) {
 	_elapsed(startMs, fmt.Sprintf("INFO  Completed %s for %d files (current total: %d)", dir, subTtl, _CHECKED_N), 0)
 }
 
-func printObjectByBlobId(blobId string, db *sql.DB, client *s3.Client) {
+func printObjectByBlobId(blobId string, db *sql.DB, client interface{}) {
 	if len(blobId) == 0 {
 		_log("DEBUG2", fmt.Sprintf("Empty blobId"))
 		return
 	}
 	path := _CONTENT_PATH + string(filepath.Separator) + genBlobPath(blobId) + _PROP_EXT
-	if _IS_S3 != nil && *_IS_S3 {
-		obj, err := getObjectS3(path, client)
+	switch client.(type) {
+	// TODO: add Azure
+	case *s3.Client:
+		obj, err := getObjectS3(path, client.(*s3.Client))
 		if err != nil {
 			_log("ERROR", fmt.Sprintf("Failed to access %s", path))
 			return
@@ -1494,8 +1515,8 @@ func printObjectByBlobId(blobId string, db *sql.DB, client *s3.Client) {
 		item.LastModified = obj.LastModified
 		item.Size = obj.ContentLength
 		//item.Owner.DisplayName = nil // TODO: not sure how to get owner from header
-		printLineS3(item, client, db)
-	} else {
+		printLineS3(item, client.(*s3.Client), db)
+	default:
 		defer _elapsed(time.Now().UnixMilli(), "WARN  slow file read for path:"+path, 100)
 		fileInfo, err := os.Stat(path)
 		if err != nil {
@@ -1504,6 +1525,18 @@ func printObjectByBlobId(blobId string, db *sql.DB, client *s3.Client) {
 		}
 		printLineFile(path, fileInfo, db)
 	}
+}
+
+func mainFinally() {
+	// If DB connection string is given, and if not S3, output soft-deleted count (not sure if Azure uses this table)
+	if len(*_DB_CON_STR) > 0 && (_BS_TYPE == nil || *_BS_TYPE != "S") {
+		println("")
+		softDeletedCount(*_DB_CON_STR)
+	}
+	println("")
+	//_log("INFO", fmt.Sprintf("Completed. (elapsed:%ds)", time.Now().Unix()-_START_TIME_ts))
+	_log("INFO", fmt.Sprintf("Completed %d of %d (size:%d, elapsed:%ds)", _PRINTED_N, _CHECKED_N, _TTL_SIZE, time.Now().Unix()-_START_TIME_ts))
+	os.Exit(0)
 }
 
 // Define, set, and validate command arguments
@@ -1526,7 +1559,7 @@ func main() {
 	}
 
 	var client *s3.Client
-	if _IS_S3 != nil && *_IS_S3 {
+	if _BS_TYPE != nil && *_BS_TYPE == "S" {
 		cfg, err := config.LoadDefaultConfig(context.TODO())
 		if _DEBUG2 != nil && *_DEBUG2 {
 			// https://aws.github.io/aws-sdk-go-v2/docs/configuring-sdk/logging/
@@ -1564,18 +1597,12 @@ func main() {
 		}
 		_log("INFO", "Reading "+*_BLOB_IDS_FILE)
 		printOrphanedBlobsFromIdFile(*_BLOB_IDS_FILE, *_DB_CON_STR, *_CONC_1)
-		if len(*_DB_CON_STR) > 0 && (_IS_S3 == nil || !*_IS_S3) {
-			println("")
-			softDeletedCount(*_DB_CON_STR)
-		}
-		println("")
-		_log("INFO", fmt.Sprintf("Completed. (elapsed:%ds)", time.Now().Unix()-_START_TIME_ts))
-		return
+		mainFinally()
 	}
 
 	_log("INFO", fmt.Sprintf("Retriving sub directories under %s", *_BASEDIR))
 	var subDirs []string
-	if _IS_S3 != nil && *_IS_S3 {
+	if _BS_TYPE != nil && *_BS_TYPE == "S" {
 		subDirs = getDirsS3(client)
 	} else {
 		subDirs = getDirs(*_BASEDIR, *_PREFIX)
@@ -1619,7 +1646,7 @@ func main() {
 			blobIds = append(blobIds, blobId)
 		}
 
-		chunks := _chunkSlice(blobIds, *_CONC_1)
+		chunks := chunkSlice(blobIds, *_CONC_1)
 		for _, chunk := range chunks {
 			guard <- struct{}{}
 			wg.Add(1)
@@ -1653,11 +1680,5 @@ func main() {
 		}
 	}
 	wg.Wait()
-	if len(*_DB_CON_STR) > 0 && (_IS_S3 == nil || !*_IS_S3) {
-		println("")
-		softDeletedCount(*_DB_CON_STR)
-	}
-	println("")
-	_log("INFO", fmt.Sprintf("Completed %d of %d (size:%d) in %s and sub-dir starts with '%s' (elapsed:%ds)", _PRINTED_N, _CHECKED_N, _TTL_SIZE, *_BASEDIR, *_PREFIX, time.Now().Unix()-_START_TIME_ts))
-	//_log("INFO", fmt.Sprintf("Printed %d items (size: %d) in bucket: %s with prefix: %s", _PRINTED_N, _TTL_SIZE, *_BASEDIR, *_PREFIX))
+	mainFinally()
 }

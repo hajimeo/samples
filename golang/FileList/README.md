@@ -8,72 +8,9 @@ chmod a+x ./file-list
 ```
 
 ## ARGUMENTS:
+Display help:
 ```
 $ file-list --help
-
-List .properties and .bytes files as *Tab* Separated Values (Path LastModified Size).
-
-HOW TO and USAGE EXAMPLES:
-    https://github.com/hajimeo/samples/blob/master/golang/FileList/README.md
-
-Usage of file-list:
-  -BSize
-        If true, includes .bytes size (When -f is '.properties')
-  -Dry
-        If true, RDel does not do anything
-  -H    If true, no header line
-  -L    If true, just list directories and exit
-  -O    AWS S3: If true, get the owner display name
-  -P    If true, the .properties file content is included in the output
-  -R    If true, .properties content is *sorted* and -fP|-fPX string is treated as regex
-  -RDel
-        Remove 'deleted=true' from .properties. Requires -dF
-  -S3
-        AWS S3: If true, access S3 bucket with AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY and AWS_REGION
-  -T    AWS S3: If true, get tags of each object
-  -X    If true, verbose logging
-  -XX
-        If true, more verbose logging
-  -b string
-        Base directory (default: '.') or S3 Bucket name (default ".")
-  -bF string
-        file path whic contains the list of blob IDs
-  -bsName string
-        eg. 'default'. If provided, the SQL query will be faster. 3.47 and higher only
-  -c int
-        Concurrent number for reading directories (default 1)
-  -c2 int
-        AWS S3: Concurrent number for retrieving AWS Tags (default 8)
-  -dF string
-        Deleted date YYYY-MM-DD (from). Used to search deletedDateTime
-  -dT string
-        Deleted date YYYY-MM-DD (to). To exclude newly deleted assets
-  -db string
-        DB connection string or path to DB connection properties file
-  -dd int
-        NOT IN USE: Directory Depth to find sub directories (eg: 'vol-NN', 'chap-NN') (default 2)
-  -f string
-        Filter for the file path (eg: '.properties' to include only this extension)
-  -fP string
-        Filter for the content of the .properties files (eg: 'deleted=true')
-  -fPX string
-        Excluding Filter for .properties (eg: 'BlobStore.blob-name=.+/maven-metadata.xml.*')
-  -m int
-        AWS S3: Integer value for Max Keys (<= 1000) (default 1000)
-  -mF string
-        File modification date YYYY-MM-DD from
-  -mT string
-        File modification date YYYY-MM-DD to
-  -n int
-        Return first N lines (0 = no limit). (TODO: may return more than N)
-  -p string
-        Prefix of sub directories (eg: 'vol-') This is not recursive
-  -repoFmt string
-        eg. 'maven2'. If provided, the SQL query will be faster
-  -s string
-        Save the output (TSV text) into the specified path
-  -src string
-        Using database or blobstore as source [BS|DB] (default "BS")
 ```
 
 ## Usage Examples
@@ -136,32 +73,41 @@ file-list -b ./content -p "vol-" -c 10 -f ".properties" -P -R -fPX "BlobStore\.b
 
 ### List files which were modified since 1 day ago (-mF "YYYY-MM-DD")
 ```
-file-list -b ./content -p "vol-" -c 10 -mF "$(date -d "1 day ago" +%Y-%m-%d)" -s ./$(date '+%Y-%m-%d').tsv
+file-list -b ./content -p "vol-" -c 10 -mF "$(date -d "1 day ago" +%Y-%m-%d)" -s ./$(date +"%Y%m%d%H%M%S").tsv
 ```
 
 ### Check files, which were soft-deleted since 1 day ago (-dF), including .properties file contents (-P -f ".properties")
 ```
-file-list -b ./content -p vol- -c 10 -dF "$(date -d "1 day ago" +%Y-%m-%d)" -P -f ".properties" -s ./$(date '+%Y-%m-%d').tsv
+file-list -b ./content -p vol- -c 10 -dF "$(date -d "1 day ago" +%Y-%m-%d)" -P -f ".properties" -s ./$(date +"%Y%m%d%H%M%S").tsv
 ```
 
-### (**DANGEROUS**) Remove 'deleted=true' (-RDel and -dF "YYYY-MM-DD") for 'raw-hosted' repository
+### (**DANGEROUS**) Remove 'deleted=true' (-RDel and -dF "YYYY-MM-DD") from all or only for 'raw-hosted' repository for undeleting with Reconcile 
 NOTE: If using -RDel to remove "deleted=true", recommend to save the STDERR into a file (like above) in case of reverting.
 ```
-file-list -b ./content -p "vol-" -c 10 -P -fP "@Bucket.repo-name=raw-hosted,.+deleted=true" -dF "$(date -d "1 day ago" +%Y-%m-%d)" -RDel -s ./$(date '+%Y-%m-%d').tsv 2>./file-list_$(date +"%Y%m%d%H%M%S").log
+file-list -b ./content -p "vol-" -c 10 -RDel -mF "$(date +%Y-%m-%d)" -s ./undelete_all_$(date +"%Y%m%d%H%M%S").tsv 2>./undelete_all.log
+```
+```
+file-list -b ./content -p "vol-" -c 10 -P -R -fP "@Bucket.repo-name=raw-hosted,.+deleted=true" -dF "$(date -d "1 day ago" +%Y-%m-%d)" -RDel -s ./undelete_raw-hosted_$(date +"%Y%m%d%H%M%S").tsv 2>./undelete_raw-hosted.log
 ```
 Create a text file for the Reconcile Task with **Since 0 day** (if S3, Since 1 day)
 ```
-sed -n -E 's/.+([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})\..+([0-9]{4}.[0-9]{2}.[0-9]{2}.[0-9]{2}:[0-9]{2}:[0-9]{2}).+/\2,\1/p' ./$(date '+%Y-%m-%d').tsv > "./reconciliation/$(date '+%Y-%m-%d')"
+sed -n -E 's/.+([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})\..+([0-9]{4}.[0-9]{2}.[0-9]{2}.[0-9]{2}:[0-9]{2}:[0-9]{2}).+/\2,\1/p' ./$(date +"%Y%m%d%H%M%S").tsv > "./reconciliation/$(date '+%Y-%m-%d')"
 ```
 
-### Remove 'deleted=true' (-RDel) which soft-deleted within 1 day (-dF <YYYY-MM-DD>) against S3 (-S3 -b <bucket> -p <prefix>/content/vol-) but only "raw-s3-hosted" (-R -fP <regex>) , and outputs the contents of .properties (-P) to check, but *Dry Run* (-Dry)
+### Remove 'deleted=true' (-RDel) which soft-deleted within 1 day (-dF <YYYY-MM-DD>) against S3 (-bsType S -b <bucket> -p <prefix>/content/vol-) but only "raw-s3-hosted" (-R -fP <regex>) , and outputs the contents of .properties (-P) to check, but *Dry Run* (-Dry)
 ```
-S3_BUCKET="apac-support-bucket" S3_PREFIX="$(hostname -s)_s3-test"file-list -RDel -dF "$(date -d "1 day ago" +%Y-%m-%d)" -S3 -b "${S3_BUCKET}" -p "${S3_PREFIX}/content/vol-" -R -fP "@Bucket\.repo-name=raw-s3-hosted,.+deleted=true" -P -c 10 -s ./undelete_raw-s3-hosted.out -Dry
+S3_BUCKET="apac-support-bucket" S3_PREFIX="$(hostname -s)_s3-test"
+file-list -RDel -dF "$(date -d "1 day ago" +%Y-%m-%d)" -bsType S -b "${S3_BUCKET}" -p "${S3_PREFIX}/content/vol-" -R -fP "@Bucket\.repo-name=raw-s3-hosted,.+deleted=true" -P -c 10 -s ./undelete_raw-s3-hosted.out -Dry
 ```
 Just get the list
 ```
 S3_BUCKET="apac-support-bucket" S3_PREFIX="$(hostname -s)_s3-test"
-file-list -S3 -b "${S3_BUCKET}" -p "${S3_PREFIX}/content/vol-" -R -fP "@Bucket\.repo-name=raw-s3-hosted,.+deleted=true" -P -c 10 -s .raw-s3-hosted_deleted.out
+file-list -bsType S -b "${S3_BUCKET}" -p "${S3_PREFIX}/content/vol-" -R -fP "@Bucket\.repo-name=raw-s3-hosted,.+deleted=true" -P -c 10 -s ./raw-s3-hosted_deleted.out
+```
+
+### Remove 'deleted=true' (-RDel) which @BlobStore.blob-name=/test/test_1k.img but only "raw-hosted" (-R -fP <regex>) , and outputs the contents of .properties (-P) to check, but *Dry Run* (-Dry)
+```
+file-list -RDel -dF "$(date +%Y-%m-%d)" -b ./content -p "vol-" -R -fP "@BlobStore\.blob-name=/test/test_1k.img,.+@Bucket\.repo-name=raw-hosted,.+deleted=true" -P -c 10 -s ./undelete_raw-hosted.out
 ```
 ### Check orphaned files by querying against PostgreSQL (-db "\<conn string or nexus-store.properties file path) with max 10 DB connections (-c 10), and using -P as it's faster because of generating better SQL query, and checking only *.properties files with -f (excluding .bytes files)
 ```
@@ -173,7 +119,7 @@ NOTE: the above outputs blobs with properties content, which are not in <format>
 
 ### Check orphaned files from the text file (-bF ./blobIds.txt), which contains Blob IDs, instead of walking blobs directory, against 'default' blob store (-bsName 'default')
 ```
-file-list -b ./content -p vol- -c 10 -db "host=localhost port=5432 user=nxrm3pg password=******** dbname=nxrm3pg" -bF ./blobIds.txt -bsName "default" -s /tmp/orphaned_list.out 2>/tmp/orphaned_verify.log
+file-list -b ./content -p vol- -c 10 -db "host=localhost port=5432 user=nxrm3pg password=******** dbname=nxrm3pg" -bF ./blobIds.txt -bsName "default" -s ./orphaned_list.out 2>./orphaned_verify.log
 # If the file contains unnecessary lines (eg: .bytes), use '-bf -'
 cat ./blobIds.txt | grep -v '.bytes' | file-list -b ./content -p vol- -c 10 -db "host=localhost port=5432 user=nxrm3pg password=******** dbname=nxrm3pg" -bsName default -bF - -s ./orphaned.out
 ```
@@ -186,7 +132,7 @@ file-list -b ./blobs/default/content -p vol- -c 10 -src DB -db ./etc/fabric/nexu
 file-list -b ./blobs/default/content -p vol- -c 10 -src DB -db "host=localhost port=5432 user=nxrm3pg dbname=nxrm3pg password=********" -bsName default -X -s ./dead-list.out 2>./dead-list.log 
 ```
 ```
-file-list -S3 -b "apac-support-bucket" -p "filelist_test/content/vol-" -c 10 -src DB -db ./etc/fabric/nexus-store.properties -bsName "s3-test" -s ./dead-list_s3.out -X 2>./dead-list_s3.log 
+file-list -bsType S -b "apac-support-bucket" -p "filelist_test/content/vol-" -c 10 -src DB -db ./etc/fabric/nexus-store.properties -bsName "s3-test" -s ./dead-list_s3.out -X 2>./dead-list_s3.log 
 ```
 In above example, `filelist_test` is the S3 bucket prefix and `-X` is for debug (verbose) output.
 ### For OrientDB

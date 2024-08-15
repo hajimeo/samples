@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # FileList system testing
-#   goBuild FileList.go
+#   # Do not forget to build the latest binary with `goBuild ./FileList.go`. then
 #   ./FileList_test.sh
 #
 #   # Delete RM3 & DB and start from scratch
@@ -29,7 +29,7 @@ _FILE_LIST="${1}" # If not specified, will try from the PATH
 _DBUSER="${2:-"nxrm"}"
 _DBPWD="${3:-"${_DBUSER}123"}"
 _DBNAME="${4:-"${_DBUSER}filelisttest"}" # Use some unique name (lowercase)
-_VER="${5:-"3.61.0-02"}"         # Specify your nexus version (NOTE: 3.62 and 3.63 are not suitable as NEXUS-40708)
+_VER="${5:-"3.70.1-02"}"         # Specify your nexus version (NOTE: 3.62 and 3.63 are not suitable as NEXUS-40708)
 _NEXUS_TGZ_DIR="${6:-"$HOME/.nexus_executable_cache"}"
 
 # Global variables
@@ -37,7 +37,7 @@ _NEXUS_TGZ_DIR="${6:-"$HOME/.nexus_executable_cache"}"
 #_NO_RM3_STOP_AFTER_TEST="N"
 #_EXIT_AT_FIRST_TEST_ERROR="N"
 #_WITH_S3="N"
-_NEXUS_DEFAULT_PORT="18081"
+_NEXUS_DEFAULT_PORT="8081"
 _ASSET_CREATE_NUM=100
 _PID=""
 _WORKING_DIR=""
@@ -132,7 +132,12 @@ function deleteAssets() {
     while f_api "/service/rest/v1/tasks?type=assetBlob.cleanup" | grep '"currentState"' | grep -v '"WAITING"'; do
         sleep 3
     done
-    #f_run_tasks_by_type "assetBlob.cleanup" &>/dev/null; sleep 5
+    # Just in case, one more time, like if S3, somehow not instant...
+    sleep 5;
+    f_run_tasks_by_type "assetBlob.cleanup" &>/dev/null
+    while f_api "/service/rest/v1/tasks?type=assetBlob.cleanup" | grep '"currentState"' | grep -v '"WAITING"'; do
+        sleep 3
+    done
 }
 
 function prepareRM3() {
@@ -176,6 +181,8 @@ function prepareRM3() {
     _upsert "${_etc%/}/nexus.properties" "nexus.security.randompassword" "false" || return $?
     _upsert "${_etc%/}/nexus.properties" "nexus.onboarding.enabled" "false" || return $?
     _upsert "${_etc%/}/nexus.properties" "nexus.scripts.allowCreation" "true" || return $?
+    _upsert "${_etc%/}/nexus.properties" "nexus.blobstore.s3.ownership.check.disabled" "true" || return $?
+    _upsert "${_etc%/}/nexus.properties" "nexus.assetBlobCleanupTask.blobCreatedDelayMinute" "0" || return $?
 
     cat <<EOF > ${_etc%/}/fabric/nexus-store.properties
 name=nexus
@@ -330,8 +337,8 @@ function test_SoftDeletedThenUndeleteThenOrphaned() {
         _log "WARN" "/tmp/${_tsv}_deleted_modified_today.tsv contains only ${_file_list_ln:-0} lines. Retrying after 10 seconds with -XX ..."; sleep 10
         _file_list_ln="$(_exec "${_cmd} -mF \"$(date -u +%Y-%m-%d)\" -XX" "/tmp/${_tsv}_deleted_modified_today.tsv")"
     fi
-    if [ ${_file_list_ln:-0} -le 1 ] || [ ${_file_list_ln:-0} -lt ${_soft_deleted} ]; then
-        _log "ERROR" "Test might be failed. file-list didn't find expected soft-deleted (${_ASSET_CREATE_NUM} + ${_soft_deleted}) blobs but ${_file_list_ln} blobs"
+    if [ ${_file_list_ln:-0} -le 1 ] || [ ${_file_list_ln:-0} -lt ${_ASSET_CREATE_NUM} ]; then
+        _log "ERROR" "Test might be failed. file-list didn't find expected soft-deleted (${_ASSET_CREATE_NUM}) blobs but ${_file_list_ln} blobs"
         if [[ ! "${_WITH_S3}" =~ ^[yY] ]]; then
             ${_GREP} -l '^deleted=true' ${_working_dir%/}/blobs/${_bsName}/content/vol-* | wc -l
         fi
@@ -359,7 +366,7 @@ function test_SoftDeletedThenUndeleteThenOrphaned() {
         if [ -s "${_working_dir%/}/etc/fabric/nexus-store.properties" ] ; then
             sleep 5
             # Default -src (truth) is 'BS', so adding -db should be enough
-            _file_list_ln="$(_exec "${_cmd_base} -mF \"$(date -u +%Y-%m-%d)\" -P -fP \"@Bucket\.repo-name=${_repo_name},\" -R -src BS -db ${_working_dir%/}/etc/fabric/nexus-store.properties -P -f .properties" "/tmp/${_tsv}_orphaned.tsv")"
+            _file_list_ln="$(_exec "${_cmd_base} -mF \"$(date -u +%Y-%m-%d)\" -fP \"@Bucket\.repo-name=${_repo_name},\" -R -src BS -db ${_working_dir%/}/etc/fabric/nexus-store.properties -P -f .properties" "/tmp/${_tsv}_orphaned.tsv")"
             if [ ${_file_list_ln:-0} -le 1 ] || [ ${_file_list_ln} -lt ${_ASSET_CREATE_NUM} ]; then
                 _log "ERROR" "Test failed. file-list didn't find expected minimum un-soft-deleted ${_ASSET_CREATE_NUM} blobs but ${_file_list_ln} blobs"
                 [[ "${_EXIT_AT_FIRST_TEST_ERROR}" =~ ^[yY] ]] && return 1
@@ -374,7 +381,11 @@ function test_SoftDeletedThenUndeleteThenOrphaned() {
                 fi
             fi
             if [[ "${_WITH_S3}" =~ ^[yY] ]] || [ -s "${_working_dir%/}/blobs/${_bsName}/reconciliation/$(date '+%Y-%m-%d')" ]; then
-                _log "NEXT" "Access ${_NEXUS_URL%/}/ and make sure no asset in ${_repo_name} and maven-hosted. Run the Reconcile task for '$(genBsName)' blob store and with 'Since 0 day' (If S3, 1 day) and 'Restore blob metadata', then confirm ${_repo_name} has ${_ASSET_CREATE_NUM} assets."
+                if [ -s "$HOME/IdeaProjects/work/nexus-groovy/templates/UndeleteFileAPI.groovy" ]; then
+                    f_register_script "$HOME/IdeaProjects/work/nexus-groovy/templates/UndeleteFileAPI.groovy" || return $?
+                else
+                    _log "NEXT" "Access ${_NEXUS_URL%/}/ and make sure no asset in ${_repo_name} and maven-hosted. Run the Reconcile task for '$(genBsName)' blob store and with 'Since 0 day' (If S3, 1 day) and 'Restore blob metadata', then confirm ${_repo_name} has ${_ASSET_CREATE_NUM} assets."
+                fi
                 # The diff of below should be 100:
                 #   rg -c 'Restored asset' blobstore.rebuildComponentDB-*.log
                 #   rg -c 'Deleting asset' blobstore.rebuildComponentDB-*.log

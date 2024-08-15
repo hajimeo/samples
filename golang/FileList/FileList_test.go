@@ -12,8 +12,9 @@ import (
 
 // To create DB, an easy way is running ./FileList_test.sh
 // var TEST_DB_CONN_STR = "host=localhost port=5432 user=nxrm password=nxrm123 dbname=nxrmfilelisttest"
+var tempDir = os.TempDir()
 var TEST_DB_CONN_STR = ""
-var DUMMY_FILE_PATH = "/tmp/00000000-abcd-ef00-1234-123456789abc.properties"
+var DUMMY_FILE_PATH = tempDir + "00000000-abcd-ef00-1234-123456789abc.properties"
 var DUMMY_PROP_TXT = `#2021-06-02 22:56:12,617+0000
 #Wed Jun 02 22:56:12 UTC 2021
 deletedDateTime=1622674572617
@@ -27,7 +28,7 @@ sha1=c6b3eecd723b7b26fd92308e7ff25d1142059521
 deletedReason=Updating asset AttachedEntityId{asset->\#24\:3384}
 @Bucket.repo-name=nuget.org-proxy
 size=63`
-var DUMMY_DB_PROPS_PATH = "/tmp/dummy-store.properties"
+var DUMMY_DB_PROPS_PATH = tempDir + "/dummy-store.properties"
 var DUMMY_DB_PROP_TXT = `#2022-08-14 20:58:43,970+0000
 #Sun Aug 14 20:58:43 UTC 2022
 password=nexus123
@@ -35,7 +36,7 @@ maximumPoolSize=10
 jdbcUrl=jdbc\:postgresql\://localhost\:5432/nxrmfilelisttest?ssl\=true&sslfactory\=org.postgresql.ssl.NonValidatingFactory
 advanced=maxLifetime\=600000
 username=nexus`
-var DUMMY_BLOB_IDS_PATH = "/tmp/dummy-blobids.txt"
+var DUMMY_BLOB_IDS_PATH = tempDir + "/dummy-blobids.txt"
 var DUMMY_BLOB_IDS_TXT = `./vol-25/chap-40/79a659c7-32a1-4a72-84e0-1a7d07a9f11f.properties
 ./vol-24/chap-01/d04770e3-cc0e-4a37-a562-1bfd6150cb8a.properties
 ./vol-24/chap-32/4a626c00-fbb7-4a96-826e-0b6c46465e5f.properties
@@ -128,7 +129,7 @@ func TestGenOutput(t *testing.T) {
 
 func TestGetPathWithoutExt(t *testing.T) {
 	pathWoExt := getPathWithoutExt(DUMMY_FILE_PATH)
-	if pathWoExt != "/tmp/00000000-abcd-ef00-1234-123456789abc" {
+	if pathWoExt != tempDir+"00000000-abcd-ef00-1234-123456789abc" {
 		t.Errorf("getPathWithoutExt with %s didn't return '/tmp/00000000-abcd-ef00-1234-123456789abc'", DUMMY_FILE_PATH)
 	}
 }
@@ -503,6 +504,35 @@ func TestReadPropertiesFile(t *testing.T) {
 		t.Errorf("Error: %v", props)
 	}
 	//t.Log(props)
+}
+
+func TestWriteContents(t *testing.T) {
+	err := writeContents(DUMMY_FILE_PATH, DUMMY_PROP_TXT, nil)
+	if err != nil {
+		t.Errorf("Error: failed to write into %v is not 'testValue'", DUMMY_FILE_PATH)
+	}
+}
+
+func TestCacheAddObject(t *testing.T) {
+	cacheAddObject("testKey", "testValue", 1)
+	rtn := cacheReadObj("testKey").(string)
+	if rtn != "testValue" {
+		t.Errorf("Error: rtn %v is not 'testValue'", rtn)
+	}
+}
+
+func TestChunkSlice(t *testing.T) {
+	letters := []string{"a", "b", "c", "d", "e"}
+	chunks := chunkSlice(letters, 2)
+	if len(chunks) != 3 {
+		t.Errorf("Error: chunks size should be 3 but %v", len(chunks))
+	}
+	if len(chunks[2]) != 1 {
+		t.Errorf("Error: chunks[2] size should be 1 but %v", len(chunks[2]))
+	}
+	if chunks[2][0] != "e" {
+		t.Errorf("Error: chunks[2][0] should be 'e' but %v", len(chunks[2][0]))
+	}
 }
 
 func TestGetObjectS3(t *testing.T) {
