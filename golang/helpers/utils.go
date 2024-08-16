@@ -2,6 +2,7 @@ package helpers
 
 import (
 	"bufio"
+	"fmt"
 	"log"
 	"os"
 	"strconv"
@@ -84,6 +85,12 @@ func GetEnvBool(key string, fallback bool) bool {
 
 func GetBoolEnv(key string, fallback bool) bool {
 	return GetEnvBool(key, fallback)
+}
+
+func IsNumeric(obj interface{}) bool {
+	s := fmt.Sprintf("%v", obj)
+	_, err := strconv.ParseFloat(s, 64)
+	return err == nil
 }
 
 func DeferPanic() {

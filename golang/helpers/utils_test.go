@@ -71,6 +71,36 @@ func TestGetEnv(t *testing.T) {
 	}
 }
 
+func TestIsNumeric_ValidNumber_ReturnsTrue(t *testing.T) {
+	if !IsNumeric(123) {
+		t.Errorf("Expected true for numeric input")
+	}
+	if !IsNumeric(123.45) {
+		t.Errorf("Expected true for numeric input")
+	}
+	if !IsNumeric("123") {
+		t.Errorf("Expected true for numeric input")
+	}
+	if !IsNumeric("123.45") {
+		t.Errorf("Expected true for numeric input")
+	}
+}
+
+func TestIsNumeric_InvalidNumber_ReturnsFalse(t *testing.T) {
+	if IsNumeric("abc") {
+		t.Errorf("Expected false for non-numeric input")
+	}
+	if IsNumeric("123abc") {
+		t.Errorf("Expected false for non-numeric input")
+	}
+	if IsNumeric(nil) {
+		t.Errorf("Expected false for nil input")
+	}
+	if IsNumeric(true) {
+		t.Errorf("Expected false for boolean input")
+	}
+}
+
 func TestUniqueSlice(t *testing.T) {
 	s := []string{"aaaa", "bbbb", "cccc", "bbbb", "dddd", "aaaa"}
 	rtn := UniqueSlice(s)
