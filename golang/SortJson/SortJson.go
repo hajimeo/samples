@@ -2,6 +2,16 @@
 Sort JSON in recursively (thanks to Unmarshal)
 @see: https://stackoverflow.com/questions/18668652/how-to-produce-json-with-sorted-keys-in-go
 curl -o /tmp/sortjson -L "https://github.com/hajimeo/samples/raw/master/misc/sortjson_$(uname)_$(uname -m)" && chmod a+x /tmp/sortjson
+
+Arguments:
+- If the first argument is set, it will read the file as input.
+- If the second argument is set, it will write the result to the file.
+- If no argument is set, it will read from stdin.
+
+Used Environment variables:
+- JSON_SEARCH_KEY: If set, it will print the value of the key. If the key is nested, use dot (.) as a separator.
+- JSON_NO_SORT: If set to "Y" or "y", it will not sort the keys.
+- OUTPUT_DELIMITER: Default is ","
 */
 package main
 
@@ -14,14 +24,17 @@ import (
 	"io"
 	"os"
 	"reflect"
+	"regexp"
 	"strings"
 	"time"
 )
 
 // This key is not used recursively and just print the value of this key.
-var JSON_SEARCH_KEY = os.Getenv("JSON_SEARCH_KEY")
+var JSON_SEARCH_KEY = helpers.GetEnv("JSON_SEARCH_KEY", "")
+var OUTPUT_DELIMITER = helpers.GetEnv("OUTPUT_DELIMITER", ",")
+var bracesRg = regexp.MustCompile(`[\[\](){}]`)
 
-func sortJson(bytes []byte) ([]byte, error) {
+func sortByKeys(bytes []byte) ([]byte, error) {
 	var ifc interface{}
 	err := json.Unmarshal(bytes, &ifc)
 	if err != nil {
@@ -36,7 +49,7 @@ func sortJson(bytes []byte) ([]byte, error) {
 
 func printJsonValuesByKeys(jsonObj interface{}, keys []string) {
 	//fmt.Printf("DEBUG: %v\n", keys)
-	key := keys[0]
+	maybeKey := keys[0]
 	// if slice (list/array), loop to find the key
 	if reflect.TypeOf(jsonObj).Kind() == reflect.Slice {
 		for _, obj := range jsonObj.([]interface{}) {
@@ -50,24 +63,64 @@ func printJsonValuesByKeys(jsonObj interface{}, keys []string) {
 	}
 	maybeMap, isDict := jsonObj.(map[string]interface{})
 	if isDict {
-		value, ok := maybeMap[key]
-		if ok {
-			// if dict and only one key, print and exit
-			if len(keys) == 1 {
-				//fmt.Printf("DEBUG: %v\n", reflect.TypeOf(value).Kind())
-				out := value
-				if reflect.TypeOf(value).Kind() != reflect.String {
-					out, _ = json.Marshal(value)
+		tmpKeys := str2slice(maybeKey)
+		if len(tmpKeys) == 1 {
+			value, ok := maybeMap[tmpKeys[0]]
+			if ok {
+				// if dict and only one key, print and exit
+				if len(keys) == 1 {
+					pritnValue(value, false)
+					return
 				}
-				fmt.Printf("%s\n", out)
-				return
+				// if dict and more than one key, continue to find the key
+				printJsonValuesByKeys(value, keys[1:])
 			}
-			// if dict and more than one key, continue to find the key
-			printJsonValuesByKeys(value, keys[1:])
+		} else {
+			// Assuming only the end of keys can be slice/list
+			for i, key := range tmpKeys {
+				value, ok := maybeMap[key]
+				if ok {
+					pritnValue(value, len(tmpKeys) > (i+1))
+				}
+			}
 		}
 		// If dict and not found, just exit
 		return
 	}
+}
+
+func pritnValue(value interface{}, needDelimiter bool) {
+	//fmt.Printf("DEBUG: %v\n", reflect.TypeOf(value).Kind())
+	if helpers.IsNumeric(value) {
+		fmt.Printf("%s", value)
+	} else {
+		if reflect.TypeOf(value).Kind() != reflect.String {
+			outBytes, _ := json.Marshal(value)
+			fmt.Printf("%s", outBytes)
+		} else {
+			fmt.Printf("\"%s\"", value)
+		}
+	}
+	if needDelimiter {
+		fmt.Printf("%s", OUTPUT_DELIMITER)
+	} else {
+		fmt.Printf("\n")
+	}
+}
+
+/*
+Convert [aaaa,bbb] to slice (list)
+*/
+func str2slice(listLikeStr string) []string {
+	return strings.Split(bracesRg.ReplaceAllString(listLikeStr, ""), ",")
+	/*
+		var result []string
+		err := json.Unmarshal([]byte(listLikeStr), &result)
+		if err != nil {
+			result = append(result, listLikeStr)
+		}
+		return result
+	*/
 }
 
 func prettyBytes(strB []byte) (string, error) {
@@ -122,7 +175,7 @@ func main() {
 
 	var JSON_NO_SORT = os.Getenv("JSON_NO_SORT")
 	if len(JSON_NO_SORT) == 0 || (JSON_NO_SORT != "Y" && JSON_NO_SORT != "y") {
-		jsonSorted, err := sortJson(jsonBytes)
+		jsonSorted, err := sortByKeys(jsonBytes)
 		if err != nil {
 			fmt.Println(err)
 			return
@@ -150,6 +203,7 @@ func main() {
 		}
 		return
 	}
+	// If specific keys are requested, no pretty printed JSON
 	if len(JSON_SEARCH_KEY) == 0 {
 		fmt.Println(jsonSortedPP)
 		return
