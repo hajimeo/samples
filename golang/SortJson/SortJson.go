@@ -104,7 +104,7 @@ func pritnValue(value interface{}, needDelimiter bool) {
 	if needDelimiter {
 		fmt.Printf("%s", OUTPUT_DELIMITER)
 	} else {
-		fmt.Printf("\n")
+		fmt.Printf("\n") // TODO: this is not good if Windows
 	}
 }
 
