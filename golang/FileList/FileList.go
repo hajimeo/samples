@@ -168,7 +168,7 @@ func _setGlobals() {
 	// AWS S3 / Azure related
 	_BS_TYPE = flag.String("bsType", "F", "F (file) or S (s3) or A (azure)")
 	_CONC_2 = flag.Int("c2", 8, "AWS S3: Concurrent number for retrieving AWS Tags")
-	_IS_S3 = flag.Bool("S3", false, "AWS S3: If true, access S3 bucket with AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY and AWS_REGION") // TODO: remove this
+	_IS_S3 = flag.Bool("S3", false, "AWS S3: If true, access S3 bucket with AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY, AWS_REGION and AWS_ENDPOINT_URL") // TODO: remove this
 	_MAXKEYS = flag.Int("m", 1000, "AWS S3: Integer value for Max Keys (<= 1000)")
 	_WITH_OWNER = flag.Bool("O", false, "AWS S3: If true, get the owner display name")
 	_WITH_TAGS = flag.Bool("T", false, "AWS S3: If true, get tags of each object")
