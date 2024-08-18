@@ -27,6 +27,13 @@ func Elapsed(startTsMs int64, message string, thresholdMs int64) {
 	}
 }
 
+func TruncateStr(s string, maxLength int) string {
+	if len(s) <= maxLength {
+		return s
+	}
+	return s[:maxLength]
+}
+
 func DatetimeStrToInt(datetimeStr string) int64 {
 	if len(datetimeStr) == 0 {
 		panic("datetimeStr is empty")

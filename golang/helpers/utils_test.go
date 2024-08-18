@@ -24,6 +24,27 @@ func TestElapsed(t *testing.T) {
 	Elapsed(startMs, fmt.Sprintf("TEST startMs = %d", startMs), 0)
 }
 
+func TestTruncateStr_StringShorterThanMaxLength_ReturnsOriginal(t *testing.T) {
+	result := TruncateStr("short", 10)
+	if result != "short" {
+		t.Errorf("Expected 'short' but got %v", result)
+	}
+}
+
+func TestTruncateStr_StringEqualToMaxLength_ReturnsOriginal(t *testing.T) {
+	result := TruncateStr("exactlength", 11)
+	if result != "exactlength" {
+		t.Errorf("Expected 'exactlength' but got %v", result)
+	}
+}
+
+func TestTruncateStr_StringLongerThanMaxLength_ReturnsTruncated(t *testing.T) {
+	result := TruncateStr("thisisaverylongstring", 10)
+	if result != "thisisaver" {
+		t.Errorf("Expected 'thisisaver' but got %v", result)
+	}
+}
+
 func TestDatetimeStrToInt(t *testing.T) {
 	result := DatetimeStrToInt("2023-10-20")
 	if result != 1697760000 {
