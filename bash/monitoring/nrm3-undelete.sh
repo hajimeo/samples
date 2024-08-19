@@ -17,6 +17,13 @@ EXAMPLES:
     bash ./nrm3-undelete.sh -I      # only once
     bash ./nrm3-undelete.sh -s default -b <blobIDs>
 
+To run concurrently:
+    split -l 200 ./blobIDs.out blobIDs_
+    bash ./nrm3-undelete.sh -I    # To install the groovy script
+    for f in $(ls -1 ./blobIDs_a*); do
+      bash ./nrm3-undelete.sh -b $f -s default &
+    done; wait
+
 OPTIONS:
     -I  Installing the groovy script for undeleting (only once per Nexus)
     -b  blob IDs (comma separated), or a file contains lines of blobIDs
