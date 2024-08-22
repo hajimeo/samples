@@ -1,6 +1,16 @@
 #_import() { curl -sf --compressed "https://raw.githubusercontent.com/hajimeo/samples/master/$1" -o /tmp/_i;. /tmp/_i; }
 #_import "runcom/nexus_alias.sh"
 
+if [ -z "${_WORK_DIR%/}" ]; then
+    if [ "`uname`" = "Darwin" ]; then
+        # dovker -v does not work with symlink
+        _WORK_DIR="$HOME/share"
+    else
+        _WORK_DIR="/var/tmp/share"
+    fi
+fi
+
+
 # For identifying elasticsearch directory name (hash id) from a repository name
 alias esIndexName='python3 -c "import sys,hashlib; print(hashlib.sha1(sys.argv[1].encode(\"utf-16-le\")).hexdigest())"'
 # Covert specs.4.8.gz to string
@@ -25,17 +35,23 @@ h=md5.hexdigest()
 print(\"Specs/%s/%s/%s/%s/%s/%s.podspec.json\" % (h[0],h[1],h[2],n,v,n))"
 }
 
-
-
-if [ -z "${_WORK_DIR%/}" ]; then
-    if [ "`uname`" = "Darwin" ]; then
-        # dovker -v does not work with symlink
-        _WORK_DIR="$HOME/share"
-    else
-        _WORK_DIR="/var/tmp/share"
+function _java_home() {
+    local _check_path="${1}"
+    local _is_java17=false
+    if [[ "${_check_path}" =~ 3\.(7[1-9]\.|[89][0-9]\.|[1-9][0-9][0-9]).+ ]]; then
+        _is_java17=true
+    elif [[ "${_check_path}" =~ \.1[89][0-9]\. ]]; then
+        _is_java17=true
     fi
-fi
-
+    if ${_is_java17}; then
+        if [ -d "${JAVA_HOME_17}" ]; then
+            export JAVA_HOME="${JAVA_HOME_17}"
+            echo "# export JAVA_HOME=\"${JAVA_HOME_17}\""
+        else
+            echo "# Make sure JAVA_HOME is set to Java 17"; sleep 3
+        fi
+    fi
+}
 function _get_rm_url() {
     local _rm_url="${1:-${_NEXUS_URL}}"
     if [ -z "${_rm_url}" ]; then
@@ -85,6 +101,7 @@ function _get_iq_url() {
 # Start iq CLI
 # To debug, use suspend=y
 #JAVA_TOOL_OPTIONS="-agentlib:jdwp=transport=dt_socket,server=y,suspend=y,address=5007" iqCli
+#iqCli "container:amazonlinux:2023"
 function iqCli() {
     local __doc__="https://help.sonatype.com/integrations/nexus-iq-cli#NexusIQCLI-Parameters"
     local _path="${1:-"./"}"
@@ -149,6 +166,8 @@ function iqMvn() {
     echo "[$(date +'%Y-%m-%d %H:%M:%S')] Completed." >&2
 }
 
+# export JAVA_HOME=$JAVA_HOME_17
+#
 # To start local (on Mac) NXRM2 or NXRM3 server
 # TODO: May need to reset 'admin' user, and also use below query (after modifying for H2/PostgreSQL/OrientDB)
 #  UPDATE repository_blobstore SET attributes = {} where type = 'S3';
@@ -176,7 +195,7 @@ function nxrmStart() {
     #local _java_opts=${@:2}
     _base_dir="$(realpath "${_base_dir}")"
 
-    _java_opts="${_java_opts} -XX:+PrintGCDetails -XX:+PrintGCDateStamps -XX:+PrintGCCause -XX:+PrintClassHistogramAfterFullGC -XX:+UseGCLogFileRotation -XX:NumberOfGCLogFiles=10 -XX:GCLogFileSize=100M -Xloggc:/tmp/rm-gc_%p_%t.log"
+    #_java_opts="${_java_opts} -XX:+PrintGCDetails -XX:+PrintGCDateStamps -XX:+PrintGCCause -XX:+PrintClassHistogramAfterFullGC -XX:+UseGCLogFileRotation -XX:NumberOfGCLogFiles=10 -XX:GCLogFileSize=100M -Xloggc:/tmp/rm-gc_%p_%t.log"
     if [ -n "${_CUSTOM_DNS}" ]; then
         _java_opts="${_java_opts} -Dsun.net.spi.nameservice.nameservers=${_CUSTOM_DNS} -Dsun.net.spi.nameservice.provider.1=dns,sun"
     fi
@@ -230,30 +249,34 @@ function nxrmStart() {
     # For java options, latter values are used, so appending
     ulimit -n 65536
     local _cmd="INSTALL4J_ADD_VM_PARAMS=\"-XX:-MaxFDLimit ${INSTALL4J_ADD_VM_PARAMS} ${_java_opts}\" ${_nexus_file} ${_mode}"
-    echo "${_cmd}"; sleep 3
+    _java_home "${_nexus_ver}"
+    echo "${_cmd}"; sleep 2
     eval "${_cmd}"
     # ulimit / Too many open files: https://help.sonatype.com/repomanager3/installation/system-requirements#SystemRequirements-MacOSX
 }
 
-#_NO_DB_CREATE
+#_RECREATE_DB
 function setDbConn() {
-    local _dbname="${1}"
+    local _dbname="${1:-"${DATABASE_NAME}"}"
     local _isIQ="${2}"
     local _baseDir="${3:-"."}"
-    local _dbschema="${4:-"public"}"
-    local _dbusr="nexus"
-    local _dbpwd="nexus123"
+
+    local _dbusr="${DATABASE_USERNAME}"
+    local _dbpwd="${DATABASE_PASSWORD}"
+    local _dbhost="${DATABASE_HOSTNAME}"
+    local _dbport="${DATABASE_PORT}"
+    local _dbschema="${DATABASE_SCHEMA}"    # for Nexus3
 
     if [ -z "${_dbname%/}" ] || [ -d "${_dbname%/}" ]; then
-        echo "Not doing anything as _dbname is empty or directory" >&2
+        echo "setDbConn: Not doing anything as _dbname is empty or directory" >&2
         return 0
     fi
 
     # if my special script for PostgreSQL exists, create DB user and database
-    if [[ ! "${_NO_DB_CREATE}" =~ ^[yY] ]] && [ -s "$HOME/IdeaProjects/samples/bash/utils_db.sh" ]; then
+    if [ -s "$HOME/IdeaProjects/samples/bash/utils_db.sh" ]; then
         source $HOME/IdeaProjects/samples/bash/utils.sh
         source $HOME/IdeaProjects/samples/bash/utils_db.sh
-        _postgresql_create_dbuser "${_dbusr}" "${_dbpwd}" "${_dbname}" "${_dbschema}"
+        _RECREATE_DB=${_RECREATE_DB} _postgresql_create_dbuser "${_dbusr}" "${_dbpwd}" "${_dbname}" "${_dbschema}"
     fi
 
     local _work_dir="$(find ${_baseDir%/} -mindepth 1 -maxdepth 2 -type d -path '*/sonatype-work/*' -name 'nexus3' | sort | tail -n1)"
@@ -271,7 +294,7 @@ function setDbConn() {
 jdbcUrl=jdbc\:postgresql\://$(hostname -f)\:5432/${_dbname}
 username=${_dbusr}
 password=${_dbpwd}
-schema=${_schema:-"public"}
+schema=${_dbschema:-"public"}
 maximumPoolSize=40
 advanced=maxLifetime\=600000
 EOF
@@ -279,27 +302,32 @@ EOF
             cat ${_work_dir%/}/etc/fabric/nexus-store.properties | grep -v password
             return 0
         fi
-    fi
-
-    local _java_opts="-Dnexus.datastore.enabled=true -Dnexus.datastore.nexus.jdbcUrl=\"jdbc:postgresql://$(hostname -f):5432/${_dbname}\" -Dnexus.datastore.nexus.username=\"${_dbusr}\" -Dnexus.datastore.nexus.password=\"${_dbpwd}\" -Dnexus.datastore.nexus.schema=${_dbschema} -Dnexus.datastore.nexus.advanced=maxLifetime=600000 -Dnexus.datastore.nexus.maximumPoolSize=10"
-    if [[ "${_isIQ}" =~ ^[yY] ]]; then
-        _java_opts="-Ddw.database.type=postgresql -Ddw.database.hostname=$(hostname -f) -Ddw.database.port=5432 -Ddw.database.name=${_dbname%/} -Ddw.database.username=${_dbusr} -Ddw.database.password=${_dbpwd} ${_java_opts}"
-    # TODO: Below was checking support zip
-    #elif find . -maxdepth 5 -type f -name nexus-store.properties | grep nexus-store.properties; then
-    #    echo "Found nexus-store.properties. Not setting Java options" >&2
-    #    _java_opts=""
-    fi
-    if echo "${JAVA_TOOL_OPTIONS}" | grep -E "D(dw\.database\.type|nexus\.datastore\.enabled)="; then
-        echo "Found JAVA_TOOL_OPTIONS has DB related options. Not setting Java options" >&2; sleep 5
-        _java_opts=""
-    fi
-    if [ -n "${_java_opts}" ]; then
-        if [ -n "${JAVA_TOOL_OPTIONS}" ]; then
-            export JAVA_TOOL_OPTIONS="${JAVA_TOOL_OPTIONS} ${_java_opts}"
-        else
-            export JAVA_TOOL_OPTIONS="${_java_opts}"
+    elif [[ "${_isIQ}" =~ ^[yY] ]]; then
+        local _config_yml="$(find ${_baseDir%/} -mindepth 1 -maxdepth 2 -type f -name 'config.yml' | sort | head -n1)"
+        if [ -s "${_config_yml}" ]; then
+            cat <<EOF > ${_config_yml}
+$(sed -n '/^database:/q;p' ${_config_yml})
+database:
+  type: postgresql
+  hostname: ${_dbhost:-"localhost"}
+  port: ${_dbport:-"5432"}
+  name: ${_dbname}
+  username: ${_dbusr}
+  password: ${_dbpwd}
+EOF
+        fi
+        if [ -s "${_config_yml}" ]; then
+            if grep 'database:' -A5 "${_config_yml}" | grep -v password; then
+                return 0
+            fi
         fi
     fi
+
+    echo "ERROR: failed to update the config file for database config." >&2
+    return 1
+    # If no config file is set, can use JAVA_TOOL_OPTIONS, but not doing it for now
+    #local _java_opts="-Dnexus.datastore.enabled=true -Dnexus.datastore.nexus.jdbcUrl=\"jdbc:postgresql://$(hostname -f):5432/${_dbname}\" -Dnexus.datastore.nexus.username=\"${_dbusr}\" -Dnexus.datastore.nexus.password=\"${_dbpwd}\" -Dnexus.datastore.nexus.schema=${_dbschema} -Dnexus.datastore.nexus.advanced=maxLifetime=600000 -Dnexus.datastore.nexus.maximumPoolSize=10"
+    #_java_opts="-Ddw.database.type=postgresql -Ddw.database.hostname=$(hostname -f) -Ddw.database.port=5432 -Ddw.database.name=${_dbname%/} -Ddw.database.username=${_dbusr} -Ddw.database.password=${_dbpwd} ${_java_opts}"
 }
 
 
@@ -316,7 +344,7 @@ function _updateNexusProps() {
     # NOTE: this would not work if elasticsearch directory is empty
     #       or if upgraded from older than 3.39 due to https://sonatype.atlassian.net/browse/NEXUS-31285
     grep -qE '^#?nexus.elasticsearch.autoRebuild' "${_cfg_file}" || echo "nexus.elasticsearch.autoRebuild=false" >> "${_cfg_file}"
-    grep -qE '^#?nexus.assetBlobCleanupTask.blobCreatedDelayMinute' "${_cfg_file}" || echo "nexus.assetBlobCleanupTask.blobCreatedDelayMinute=1" >> "${_cfg_file}"
+    grep -qE '^#?nexus.assetBlobCleanupTask.blobCreatedDelayMinute' "${_cfg_file}" || echo "nexus.assetBlobCleanupTask.blobCreatedDelayMinute=0" >> "${_cfg_file}"
 
     # ${nexus.h2.httpListenerPort:-8082} jdbc:h2:file:./nexus (no username)
     grep -qE '^#?nexus.h2.httpListenerEnabled' "${_cfg_file}" || echo "nexus.h2.httpListenerEnabled=true" >> "${_cfg_file}"
@@ -372,21 +400,31 @@ function nxrm3Install() {
 
 # For new installation, creating local dir for /nexus-data
 #_NEXUS_DATA_LOCAL="/var/tmp/share/sonatype/nxrm3-data-test";
+
+# HTTPS/SSL
 #mkdir -v -p "${_NEXUS_DATA_LOCAL}/etc/ssl";
 # NOTE: copy jetty-https.xml and keystore.jks into above directory
 #       -Dapplication-port-ssl=8443 does not work
 #chown -R 200:200 "${_NEXUS_DATA_LOCAL}";
 #docker run --init -d -p 18081:8081 -p 18443:8443 --name=nxrm3dockerWithHTTPS --tmpfs /tmp:noexec -e INSTALL4J_ADD_VM_PARAMS="-Djava.util.prefs.userRoot=/nexus-data -Dssl.etc=\${karaf.data}/etc/ssl -Dnexus-args=\${jetty.etc}/jetty.xml,\${jetty.etc}/jetty-https.xml,\${jetty.etc}/jetty-requestlog.xml" -v /var/tmp/share:/var/tmp/share -v ${_NEXUS_DATA_LOCAL}:/nexus-data dh1.standalone.localdomain:5000/sonatype/nexus3:latest
-# export INSTALL4J_ADD_VM_PARAMS="-Djava.util.prefs.userRoot=/nexus-data -XX:ActiveProcessorCount=2 -Xms2g -Xmx2g -XX:MaxDirectMemorySize=2g -XX:+PrintGC -XX:+PrintGCDateStamps -Dnexus.licenseFile=/var/tmp/share/sonatype/sonatype-license.lic"
-# export INSTALL4J_ADD_VM_PARAMS="-Djava.util.prefs.userRoot=/nexus-data -XX:ActiveProcessorCount=2 -Xms2g -Xmx2g -XX:MaxDirectMemorySize=2g -Dnexus.licenseFile=/var/tmp/share/sonatype/sonatype-license.lic -Dnexus.datastore.enabled=true -Dnexus.datastore.nexus.jdbcUrl=jdbc\:postgresql\://localhost/nxrm?ssl=true&sslmode=require -Dnexus.datastore.nexus.username=nxrm -Dnexus.datastore.nexus.password=nxrm123 -Dnexus.datastore.nexus.maximumPoolSize=10 -Dnexus.datastore.nexus.advanced=maxLifetime=600000"
+
+# Sample JVM options 1
+#export INSTALL4J_ADD_VM_PARAMS="-Djava.util.prefs.userRoot=/nexus-data -XX:ActiveProcessorCount=2 -Xms2g -Xmx2g -XX:MaxDirectMemorySize=2g -XX:+PrintGC -XX:+PrintGCDateStamps -Dnexus.licenseFile=/var/tmp/share/sonatype/sonatype-license.lic -Dnexus.security.randompassword=false"
+# Sample JVM options 2: PostgreSQL with root.logger
+#export INSTALL4J_ADD_VM_PARAMS="${INSTALL4J_ADD_VM_PARAMS} -Droot.level=DEBUG -Dnexus.datastore.enabled=true -Dnexus.datastore.nexus.jdbcUrl=jdbc:postgresql://$(ipconfig getifaddr $(route -n get default | awk '$1=="interface:" { print $2 }') | head -n1):5432/nxrm -Dnexus.datastore.nexus.username=nexus -Dnexus.datastore.nexus.password=nexus123 -Dnexus.datastore.nexus.maximumPoolSize=10 -Dnexus.datastore.nexus.advanced=maxLifetime=600000"
+# Sample JVM options 3: H2
+#export INSTALL4J_ADD_VM_PARAMS="${INSTALL4J_ADD_VM_PARAMS} -Dnexus.datastore.enabled=true -Dnexus.h2.httpListenerEnabled=true"
 alias rmDocker='nxrmDocker'
 function nxrmDocker() {
-    local _name="${1:-"nxrm3"}"
-    local _tag="${2:-"latest"}"
-    local _ports="${3:-"8081:8081 15000:15000"}"
+    local _name="${1}"
+    local _tag="${2:-"latest"}" # 3.45.1 (no minor version), 3.70.1-java17-ubi
+    local _ports="${3:-"8081:8081 8443:8443 8082:8082 15000:15000"}"
     local _extra_opts="${4}"    # this is docker options not INSTALL4J_ADD_VM_PARAMS. eg --platform=linux/amd64
+
     local _work_dir="${_WORK_DIR:-"/var/tmp/share"}"
+    local _container_share_dir="/var/tmp/share"
     local _docker_host="${_DOCKER_HOST}"  #:-"dh1.standalone.localdomain:5000"
+    [ -z "${_name}" ] && _name="nxrm3-${_tag}"
 
     local _nexus_data="${_work_dir%/}/sonatype/${_name}-data"
     if [ ! -d "${_nexus_data%/}" ]; then
@@ -394,16 +432,38 @@ function nxrmDocker() {
     fi
     local _p=""
     if [ -n "${_ports}" ]; then
+        local _first_one_checked=false
         for _p_p in ${_ports}; do
-            _p="-p ${_p_p} ${_p% }"
+            if [[ "${_p_p}" =~ ^([0-9]+):([0-9]+)$ ]]; then
+                if ! ${_first_one_checked} && curl -m1 -sIf -k "http://127.0.0.1:${BASH_REMATCH[1]}" &>/dev/null; then
+                    local _new_port=$(( ${BASH_REMATCH[1]} + 10000 ))
+                    echo "WARN: Port ${BASH_REMATCH[1]} is already in use. Using ${_new_port}:${BASH_REMATCH[2]}"; sleep 2
+                    _p="-p ${_new_port}:${BASH_REMATCH[2]} ${_p% }"
+                else
+                    _p="-p ${_p_p} ${_p% }"
+                fi
+                _first_one_checked=true
+            fi
         done
     fi
+
+    local _my_params="-Xms2703m -Xmx2703m -Djava.util.prefs.userRoot=/tmp/javaprefs" # no need to be /nexus-data
+    _my_params="${_my_params} -Dnexus.security.randompassword=false -Dnexus.onboarding.enabled=false -Dnexus.script.allowCreation=true -Dnexus.assetBlobCleanupTask.blobCreatedDelayMinute=0"
+    local _license="$(ls -1t ${_work_dir%/}/sonatype/*.lic 2>/dev/null | head -n1)"
+    if [ -s "${_license}" ]; then
+        local _license_filename="$(basename "${_license}")"
+        _my_params="${_my_params} -Dnexus.licenseFile=${_container_share_dir%/}/sonatype/${_license_filename}"
+    fi
+    [ -n "${INSTALL4J_ADD_VM_PARAMS}" ] && _my_params="${_my_params} ${INSTALL4J_ADD_VM_PARAMS}"
+
     local _opts="--name=${_name}"
-    #[ -z "${INSTALL4J_ADD_VM_PARAMS}" ] && INSTALL4J_ADD_VM_PARAMS="-Djava.util.prefs.userRoot=/nexus-data -Djdk.lang.Process.launchMechanism=vfork"
-    [ -n "${INSTALL4J_ADD_VM_PARAMS}" ] && _opts="${_opts} -e INSTALL4J_ADD_VM_PARAMS=\"${INSTALL4J_ADD_VM_PARAMS}\""
-    [ -d "${_work_dir%/}" ] && _opts="${_opts} -v ${_work_dir%/}:/var/tmp/share:z"  # :z or :Z for SELinux https://docs.docker.com/storage/bind-mounts/#configure-the-selinux-label
-    [ -d "${_nexus_data%/}" ] && _opts="${_opts} -v ${_nexus_data%/}:/nexus-data"
+    _opts="${_opts} -e LANG=C.UTF-8 -e LC_ALL=C.UTF-8"  # NEXUS-43790
+    _opts="${_opts} -e INSTALL4J_ADD_VM_PARAMS=\"${_my_params}\""
+    # :z or :Z for SELinux https://docs.docker.com/storage/bind-mounts/#configure-the-selinux-label
+    [ -d "${_work_dir%/}" ] && _opts="${_opts} -v ${_work_dir%/}:${_container_share_dir%/}:z"
+    [ -d "${_nexus_data%/}" ] && _opts="${_opts} -v ${_nexus_data%/}:/nexus-data:z"
     [ -n "${_extra_opts}" ] && _opts="${_opts} ${_extra_opts}"  # Should be last to overwrite
+
     [ -n "${_docker_host}" ] && _docker_host="${_docker_host%/}/"
     local _cmd="docker run --init -d ${_p} ${_opts} ${_docker_host%/}sonatype/nexus3:${_tag}"
     echo "${_cmd}"
@@ -419,35 +479,37 @@ function nxrmDocker() {
 function iqStart() {
     local _base_dir="${1:-"."}"
     local _java_opts="${2-"-agentlib:jdwp=transport=dt_socket,server=y,address=5006,suspend=${_SUSPEND:-"n"}"}"
+    local _h2_jar="${3:-"$HOME/IdeaProjects/libs/h2-1.4.196.jar"}"
+    local _loader_jar="${4:-"$HOME/IdeaProjects/product-support-nexus-tools/nexustools/src/nexustools/booter/support-zip-loader-1.178-SNAPSHOT.jar"}"
     #local _java_opts=${@:2}
 
-    _base_dir="$(realpath ${_base_dir%/})"
-    local _jar_file="$(find "${_base_dir%/}" -maxdepth 2 -type f -name 'nexus-iq-server*.jar' 2>/dev/null | sort | tail -n1)"
+    local _jar_file="$(find -L "${_base_dir%/}" -maxdepth 2 -type f -name 'nexus-iq-server*.jar' 2>/dev/null | sort | tail -n1)"
     [ -z "${_jar_file}" ] && return 11
-    local _cfg_file="$(find "${_base_dir%/}" -maxdepth 2 -type f -name 'config.yml' 2>/dev/null | sort | tail -n1)"
-    [ -z "${_cfg_file}" ] && return 12
-    local _work_dir="$(sed -n -E 's/sonatypeWork[[:space:]]*:[[:space:]]*(.+)/\1/p' "${_cfg_file}")"
-    local _license="$(ls -1t /var/tmp/share/sonatype/*.lic 2>/dev/null | head -n1)"
-    [ -z "${_license}" ] && [ -s "${HOME%/}/.nexus_executable_cache/nexus.lic" ] && _license="${HOME%/}/.nexus_executable_cache/nexus.lic"
-    [ -s "${_license}" ] && _java_opts="${_java_opts} -Ddw.licenseFile=${_license}"
-    _java_opts="${_java_opts} -XX:+PrintGCDetails -XX:+PrintGCDateStamps -XX:+PrintGCCause -XX:+PrintClassHistogramAfterFullGC -XX:+UseGCLogFileRotation -XX:NumberOfGCLogFiles=10 -XX:GCLogFileSize=100M -Xloggc:/tmp/iq-gc_%p_%t.log"
+    local _cfg_file="$(find -L "${_base_dir%/}" -maxdepth 2 -type f -name 'spt-boot.yml' 2>/dev/null | sort | tail -n1)"
+    if [ -z "${_cfg_file}" ]; then
+        _cfg_file="$(find -L "${_base_dir%/}" -maxdepth 2 -type f -name 'config.yml' 2>/dev/null | sort | tail -n1)"
+        [ -z "${_cfg_file}" ] && return 12
+        local _work_dir="$(sed -n -E 's/sonatypeWork[[:space:]]*:[[:space:]]*(.+)/\1/p' "${_cfg_file}")"
+        local _license="$(ls -1t /var/tmp/share/sonatype/*.lic 2>/dev/null | head -n1)"
+        [ -z "${_license}" ] && [ -s "${HOME%/}/.nexus_executable_cache/nexus.lic" ] && _license="${HOME%/}/.nexus_executable_cache/nexus.lic"
+        [ -s "${_license}" ] && _java_opts="${_java_opts} -Ddw.licenseFile=${_license}"
+        #_java_opts="${_java_opts} -XX:+PrintGCDetails -XX:+PrintGCDateStamps -XX:+PrintGCCause -XX:+PrintClassHistogramAfterFullGC -XX:+UseGCLogFileRotation -XX:NumberOfGCLogFiles=10 -XX:GCLogFileSize=100M -Xloggc:/tmp/iq-gc_%p_%t.log"
 
-    # TODO: From v138, most of configs need to use API: https://help.sonatype.com/iqserver/automating/rest-apis/configuration-rest-api---v2
-    # 'com.sonatype.insight.brain.migration.SimpleConfigurationMigrator - hdsUrl, enableDefaultPasswordWarning is now configured using the REST API. The configuration in the config.yml or via system properties is obsolete.'
-    if [ ! -s "${_cfg_file}.orig" ]; then
-        cp -v -p "${_cfg_file}" "${_cfg_file}.orig"
-    fi
-    grep -qE '^hdsUrl:' "${_cfg_file}" || echo -e "hdsUrl: https://clm-staging.sonatype.com/\n$(cat "${_cfg_file}")" > "${_cfg_file}"
-    grep -qE '^enableDefaultPasswordWarning:' "${_cfg_file}" || echo -e "enableDefaultPasswordWarning: false\n$(cat "${_cfg_file}")" > "${_cfg_file}"
-    grep -qE '^baseUrl:' "${_cfg_file}" || echo -e "baseUrl: http://$(hostname -f):8070/\n$(cat "${_cfg_file}")" > "${_cfg_file}"
+        # TODO: From v138, most of configs need to use API: https://help.sonatype.com/iqserver/automating/rest-apis/configuration-rest-api---v2
+        # 'com.sonatype.insight.brain.migration.SimpleConfigurationMigrator - hdsUrl, enableDefaultPasswordWarning is now configured using the REST API. The configuration in the config.yml or via system properties is obsolete.'
+        if [ ! -s "${_cfg_file}.orig" ]; then
+            cp -v -p "${_cfg_file}" "${_cfg_file}.orig"
+        fi
+        grep -qE '^hdsUrl:' "${_cfg_file}" || echo -e "hdsUrl: https://clm-staging.sonatype.com/\n$(cat "${_cfg_file}")" > "${_cfg_file}"
+        grep -qE '^enableDefaultPasswordWarning:' "${_cfg_file}" || echo -e "enableDefaultPasswordWarning: false\n$(cat "${_cfg_file}")" > "${_cfg_file}"
+        grep -qE '^baseUrl:' "${_cfg_file}" || echo -e "baseUrl: http://$(hostname -f):8070/\n$(cat "${_cfg_file}")" > "${_cfg_file}"
 
-    grep -qE '^\s*port: 8443$' "${_cfg_file}" && sed -i'' 's/port: 8443/port: 8470/g' "${_cfg_file}"
-    grep -qE '^\s*threshold:\s*INFO$' "${_cfg_file}" && sed -i'' 's/threshold: INFO/threshold: ALL/g' "${_cfg_file}"
-    grep -qE '^\s*level:\s*(DEBUG|TRACE)$' "${_cfg_file}" || sed -i'' -E 's/level: .+/level: DEBUG/g' "${_cfg_file}"
-    cd "${_base_dir}"
-    if ! grep -qE '^\s+"?com.sonatype.insight.policy.violation' "${_cfg_file}"; then
-        # Mac's sed doesn't work with '/a'
-        echo "$(sed '/^  loggers:/q' "${_cfg_file}")
+        grep -qE '^\s*port: 8443$' "${_cfg_file}" && sed -i'.tmp' 's/port: 8443/port: 8470/g' "${_cfg_file}"
+        grep -qE '^\s*threshold:\s*INFO$' "${_cfg_file}" && sed -i'.tmp' 's/threshold: INFO/threshold: ALL/g' "${_cfg_file}"
+        grep -qE '^\s*level:\s*(DEBUG|TRACE)$' "${_cfg_file}" || sed -i'.tmp' -E 's/level: .+/level: DEBUG/g' "${_cfg_file}"
+        if ! grep -qE '^\s+"?com.sonatype.insight.policy.violation' "${_cfg_file}"; then
+            # NOTE: indents matter for below lines. Mac's sed doesn't work with '/a'
+            echo "$(sed '/^  loggers:/q' "${_cfg_file}")
     com.sonatype.insight.policy.violation:
       appenders:
       - type: file
@@ -455,12 +517,20 @@ function iqStart() {
         archivedLogFilenamePattern: ./log/policy-violation-%d.log.gz
         archivedFileCount: 5
 $(sed -n "/^  loggers:/,\$p" ${_cfg_file} | grep -v '^  loggers:')" > "${_cfg_file}"
+        fi
+        [ -f "${_cfg_file}.tmp" ] && rm -v "${_cfg_file}.tmp"
     fi
 
+    [ "${_base_dir}" != "." ] && cd "${_base_dir}"
     if [[ "${_java_opts}" =~ agentlib:jdwp ]] && [[ "${JAVA_TOOL_OPTIONS}" =~ agentlib:jdwp ]]; then
         echo "Unsetting JAVA_TOOL_OPTIONS = ${JAVA_TOOL_OPTIONS}"
         unset JAVA_TOOL_OPTIONS
     fi
+
+    _java_home "${_jar_file}"
+    local _java="java"
+    [ -n "${JAVA_HOME}" ] && _java="${JAVA_HOME%/}/bin/java"
+
     if [ -n "${_CUSTOM_DNS}" ]; then
         # TODO: it stopped working with 127.0.0.1
         _java_opts="${_java_opts} -Dsun.net.spi.nameservice.nameservers=${_CUSTOM_DNS} -Dsun.net.spi.nameservice.provider.1=dns,sun"
@@ -489,15 +559,19 @@ $(sed -n "/^  loggers:/,\$p" ${_cfg_file} | grep -v '^  loggers:')" > "${_cfg_fi
         fi
 
         echo "*** reset-admin *** "; sleep 3;
-        java -jar ${_jar_file} reset-admin ${_cfg_file} || return $?
+        ${_java} -jar ${_jar_file} reset-admin ${_cfg_file} || return $?
 
         echo "*** Updating DB with '${_console}' ***"; sleep 3;
         _iqStartSQLs | eval "${_console}" || return $?
     fi
-    local _cmd="java ${_java_opts} -jar \"${_jar_file}\" server \"${_cfg_file}\" 2>/tmp/iq-server.err"
+
+    local _cmd="${_java} ${_java_opts} -jar \"${_jar_file}\" server \"${_cfg_file}\""
+    if [[ "${_H2_WEB}" =~ [yY] ]] && ! grep -q '^database:' ${_cfg_file} && [ -s "${_h2_jar}" ] && [ -s "${_loader_jar}" ]; then
+        _cmd="${_java} ${_java_opts} -cp ${_jar_file}:${_h2_jar}:${_loader_jar} -Dclm.disableJreCheck=true com.sonatype.insight.brain.supportloader.SupportLoader --h2-only --config-iq ${_cfg_file}" #--supportzip $(dirname "${_cfg_file}")
+    fi
     echo "${_cmd}"; sleep 2
-    eval "${_cmd}"
-    cd -
+    eval "${_cmd} 2>/tmp/iq-server.err" || echo "May need 'export JAVA_HOME=$JAVA_HOME_17'"
+    [ "${_base_dir}" != "." ] && cd -
 }
 function _iqStartSQLs() {
 #DELETE FROM insight_brain_ods.ldap_usermapping;
@@ -511,23 +585,9 @@ UPDATE insight_brain_ods.mail_configuration SET hostname = hostname || '.sptboot
 DELETE FROM insight_brain_ods.proxy_server_configuration;
 INSERT INTO insight_brain_ods.proxy_server_configuration (proxy_server_configuration_id, hostname, port, exclude_hosts) VALUES ('proxy-server-configuration', 'non-existing-hostname', 8800, '*.sonatype.com');
 INSERT INTO insight_brain_ods.system_configuration_property (system_configuration_property_id, name, value) VALUES (md5(random()::text), 'internalFirewallOnboardingEnabled', false) on conflict do nothing;
+UPDATE insight_brain_ods.source_control SET token = 'dRSAUHA92JkHPb7295V8U/OPBHVh8dDrxs0kv9nMz7JZmR8vX+JXbplxHs+rB+lQv+6QvpU2XCnca//TS1ZNOg==' WHERE token IS NOT NULL AND token <> '';
 EOF
-}
-
-function _iqConfigAPI() {
-    local _d="$1"
-    local _iq_url="$2"
-    _iq_url="$(_get_iq_url "${_iq_url}")" || return $?
-    local _cmd="curl -sSf -u \"admin:admin123\" \"${_iq_url%/}/api/v2/config"
-    if [[ "${_d}" =~ ^property= ]]; then
-        _cmd="${_cmd}?${_d}\""
-    elif [ -n "${_d}" ]; then
-        _cmd="${_cmd}\" -H \"Content-Type: application/json\" -X PUT -d '${_d}'"
-    else
-        _cmd="${_cmd}\""
-    fi
-    echo "${_cmd}"
-    eval "${_cmd}" || return $?
+# the last query for 'system_configuration_property' is to avoid "Unable to decrypt SourceControl token"
 }
 
 # NOTE: Below will overwrite config.yml, so saving and restoring
@@ -541,54 +601,61 @@ function iqInstall() {
 
 #iqDocker "nxiq-test" "" "8170" "8171" "8544" #"--read-only -v /tmp/nxiq-test:/tmp"
 function iqDocker() {
-    local _name="${1:-"nxiq"}"
+    local _name="${1}"
     local _tag="${2:-"latest"}"
-    local _port="${3:-"8070"}"
-    local _port2="${4:-"8071"}"
-    local _port_ssl="${5:-"8444"}"
-    local _extra_opts="${6}"    # --platform=linux/amd64
-    local _license="${7}"
-    local _work_dir="${_WORK_DIR:-"/var/tmp/share"}"
-    local _docker_host="${_DOCKER_HOST}"  #:-"dh1.standalone.localdomain:5000"
+    local _ports="${3:-"8070:8070 8071:8071 8444:8444"}"
+    local _extra_opts="${4}"    # --platform=linux/amd64
 
+    local _work_dir="${_WORK_DIR:-"/var/tmp/share"}"
+    local _container_share_dir="/var/tmp/share"
+    local _docker_host="${_DOCKER_HOST}"  #:-"dh1.standalone.localdomain:5000"
+    [ -z "${_name}" ] && _name="nxiq-${_tag}"
     local _nexus_data="${_work_dir%/}/sonatype/${_name}-data"
-    [ ! -d "${_nexus_data%/}" ] && mkdir -p -m 777 "${_nexus_data%/}"
     [ ! -d "${_nexus_data%/}/etc" ] && mkdir -p -m 777 "${_nexus_data%/}/etc"
     [ ! -d "${_nexus_data%/}/log" ] && mkdir -p -m 777 "${_nexus_data%/}/log"
+    local _p=""
+    if [ -n "${_ports}" ]; then
+        local _first_one_checked=false
+        for _p_p in ${_ports}; do
+            if [[ "${_p_p}" =~ ^([0-9]+):([0-9]+)$ ]]; then
+                #_wait_url "http://127.0.0.1:${BASH_REMATCH[1]}" "1" "0"
+                if ! ${_first_one_checked} && curl -m1 -sIf -k "http://127.0.0.1:${BASH_REMATCH[1]}" &>/dev/null; then
+                    local _new_port=$(( ${BASH_REMATCH[1]} + 10000 ))
+                    echo "WARN: Port ${BASH_REMATCH[1]} is already in use. Using ${_new_port}:${BASH_REMATCH[2]}"; sleep 2
+                    _p="-p ${_new_port}:${BASH_REMATCH[2]} ${_p% }"
+                else
+                    _p="-p ${_p_p} ${_p% }"
+                fi
+                _first_one_checked=true
+            fi
+        done
+    fi
     local _opts="--name=${_name}"
     local _java_opts="" #"-Ddw.dbCacheSizePercent=50 -Ddw.needsAcknowledgementOfInitialDashboardFilter=true"
     # NOTE: symlink of *.lic does not work with -v
-    [ -z "${_license}" ] && [ -d ${_work_dir%/}/sonatype ] && _license="$(ls -1t /var/tmp/share/sonatype/*.lic 2>/dev/null | head -n1)"
-    [ -s "${_license}" ] && _java_opts="${_java_opts} -Ddw.licenseFile=${_license}"
+    local _license="$(ls -1t ${_work_dir%/}/sonatype/*.lic 2>/dev/null | head -n1)"
+    if [ -s "${_license}" ]; then
+        local _license_filename="$(basename "${_license}")"
+        _java_opts="${_java_opts} -Ddw.licenseFile=${_container_share_dir%/}/sonatype/${_license_filename}"
+    fi
     # To use PostgreSQL
     #-e JAVA_OPTS="-Ddw.database.type=postgresql -Ddw.database.hostname=db-server-name.domain.net"
     [ -n "${JAVA_OPTS}" ] && _java_opts="${_java_opts} ${JAVA_OPTS}"
     [ -n "${_java_opts}" ] && _opts="${_opts} -e JAVA_OPTS=\"${_java_opts}\""
-    [ -d "${_work_dir%/}" ] && _opts="${_opts} -v ${_work_dir%/}:/var/tmp/share:z"  # :z or :Z for SELinux https://docs.docker.com/storage/bind-mounts/#configure-the-selinux-label
+    [ -d "${_work_dir%/}" ] && _opts="${_opts} -v ${_work_dir%/}:${_container_share_dir%/}:z"  # :z or :Z for SELinux https://docs.docker.com/storage/bind-mounts/#configure-the-selinux-label
     [ -d "${_nexus_data%/}" ] && _opts="${_opts} -v ${_nexus_data%/}:/sonatype-work"
     [ -s "${_nexus_data%/}/etc/config.yml" ] && _opts="${_opts} -v ${_nexus_data%/}/etc:/etc/nexus-iq-server"
     [ -d "${_nexus_data%/}/log" ] && _opts="${_opts} -v ${_nexus_data%/}/log:/var/log/nexus-iq-server"
     [ -d "${_nexus_data%/}/log" ] && _opts="${_opts} -v ${_nexus_data%/}/log:/opt/sonatype/nexus-iq-server/log" # due to audit.log => fixed from v104
     [ -n "${_extra_opts}" ] && _opts="${_opts} ${_extra_opts}"  # Should be last to overwrite
     [ -n "${_docker_host}" ] && _docker_host="${_docker_host%/}/"
-    local _cmd="docker run -d -p ${_port}:8070 -p ${_port2}:8071 -p ${_port_ssl}:8444 ${_opts} ${_docker_host%/}sonatype/nexus-iq-server:${_tag}"  # --init
+    local _cmd="docker run --init -d ${_p} ${_opts} ${_docker_host%/}sonatype/nexus-iq-server:${_tag}"
     echo "${_cmd}"
     eval "${_cmd}"
-    echo "NOTE: May need to repalce /opt/sonatype/nexus-iq-server/start.sh to add trap SIGTERM (used from next restart though)"
-    # Not doing at this moment as newer version has the fix.
-    if false && docker cp ${_name}:/opt/sonatype/nexus-iq-server/start.sh - | grep -qwa TERM; then
-        local _tmpfile=$(mktemp)
-        cat << EOF > ${_tmpfile}
-_term() {
-  echo "Received signal: SIGTERM"
-  kill -TERM "\$(cat /sonatype-work/lock | cut -d"@" -f1)"
-  sleep 10
-}
-trap _term SIGTERM
-/usr/bin/java ${JAVA_OPTS} -jar nexus-iq-server-*.jar server /etc/nexus-iq-server/config.yml &
-wait
-EOF
-        #docker cp ${_tmpfile} ${_name}:/opt/sonatype/nexus-iq-server/start.sh
+    if [ -s "$HOME/IdeaProjects/samples/bash/setup_nexus_iq.sh" ]; then
+        echo "Waiting for IQ port to update configs ..."
+        source "$HOME/IdeaProjects/samples/bash/setup_nexus_iq.sh" || return $?
+        f_config_update
     fi
 }
 
@@ -751,8 +818,9 @@ function mvn-get-file() {
     elif [[ "${_gav}" =~ ^" "*([^: ]+)" "*:" "*([^: ]+)" "*:" "*([^: ]+)" "*:" "*([^: ]+)" "*$ ]]; then
         local _g="${BASH_REMATCH[1]}"
         local _a="${BASH_REMATCH[2]}"
+        local _e="${BASH_REMATCH[3]}"
         local _v="${BASH_REMATCH[4]}"
-        _path="$(echo "${_g}" | sed "s@\.@/@g")/${_a}/${_v}/${_a}-${_v}.jar"
+        _path="$(echo "${_g}" | sed "s@\.@/@g")/${_a}/${_v}/${_a}-${_v}.${_e}"
     fi
     [ -z "${_path}" ] && return 11
     curl -v -O -J -L -f -u ${_user}:${_pwd} -k "${_repo_url%/}/${_path#/}" || return $?

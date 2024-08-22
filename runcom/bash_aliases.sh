@@ -111,9 +111,7 @@ alias b64decode='python3 -c "import sys, base64; b=sys.argv[1]; b += \"=\" * ((4
 alias htmlencode="python3 -c \"import sys,html;print(html.escape(sys.stdin.read()))\""
 alias htmldecode="python3 -c \"import sys,html;print(html.unescape(sys.stdin.read()))\""
 alias utc2int='python3 -c "import sys,time,dateutil.parser;from datetime import timezone;print(int(dateutil.parser.parse(sys.argv[1]).replace(tzinfo=timezone.utc).timestamp()))"' # doesn't work with yy/mm/dd (2 digits year)
-# Python is strange. Behaves differently #.astimezone(zoneinfo.ZoneInfo(\"UTC\"))
-alias int2utc='python3 -c "import sys,datetime;print(datetime.datetime.utcfromtimestamp(int(sys.argv[1][0:10])).isoformat()+\" UTC\")"'
-#alias int2utc='python3 -c "import sys,datetime;print(datetime.datetime.utcfromtimestamp(int(sys.argv[1][0:10])).strftime(\"%Y-%m-%dT%H:%M:%S\")+\".\"+sys.argv[1][10:13]+\"Z\")"'#alias int2utc='python -c "import sys,time;print(time.asctime(time.gmtime(int(sys.argv[1])))+\" UTC\")"'
+alias int2utc='python3 -c "import sys,datetime;print(datetime.datetime.fromtimestamp(int(sys.argv[1][0:10]), tz=datetime.timezone.utc).isoformat())"'
 alias dec2hex='printf "%x\n"'
 alias hex2dec='printf "%d\n"'
 #alias python_i_with_pandas='python -i <(echo "import sys,json;import pandas as pd;f=open(sys.argv[1]);jd=json.load(f);df=pd.DataFrame(jd);")'   # Start python interactive after loading json object in 'df' (pandas dataframe)
@@ -158,6 +156,18 @@ alias tabby_start='TABBY_DISABLE_USAGE_COLLECTION=1 tabby serve --device metal -
 ### Docker/K8s/VM related
 #alias rdocker="DOCKER_HOST='tcp://dh1:2375' docker"
 alias rdocker="ssh dh1 docker"
+#dhTags "alpine" "library"
+function dhTags() { # docker list tags
+    local _image="${1}"
+    local _namespace="${2}"
+    local _size="${3:-"10"}"
+    if [ -n "${_namespace}" ]; then
+        _image="namespaces/${_namespace%/}/repositories/${_image%/}"
+    else
+        _image="repositories/${_image%/}"
+    fi
+    curl -L -sSf "https://registry.hub.docker.com/v2/${_image%/}/tags?page_size=${_size}" | pjt
+}
 alias podmand="podman --log-level debug" && alias podman_login="podman --log-level debug login --tls-verify=false" && alias podman_pull="podman --log-level debug pull --tls-verify=false" && alias podman_push="podman --log-level debug push --tls-verify=false"
 alias podman_delete_all='podman system prune --all'    # --force && podman rmi --all
 #type microk8s &>/dev/null && alias kubectl="microk8s kubectl"
@@ -734,10 +744,11 @@ function ncWeb() {
     done
 }
 
+# When this method is changed, update golang/README.md
 function goBuild() {
     local _goFile="$1"
     local _name="$2"
-    local _destDir="${4:-"$HOME/IdeaProjects/samples/misc"}"
+    local _destDir="${3:-"$HOME/IdeaProjects/samples/misc"}"
     [ -z "${_name}" ] && _name="$(basename "${_goFile}" ".go" | tr '[:upper:]' '[:lower:]')"
     if [ -d /opt/homebrew/opt/go/libexec ]; then
         export GOROOT=/opt/homebrew/opt/go/libexec
@@ -935,7 +946,16 @@ function set_classpath() {
 function update_cacerts() {
     local _pem="$1"
     local _alias="$2"
-    local _truststore="${3:-"${JAVA_HOME%/}/jre/lib/security/cacerts"}"
+    local _truststore="${3}"
+    if [ -z "${_truststore}" ]; then
+        if [ -f "${JAVA_HOME%/}/jre/lib/security/cacerts" ]; then
+            _truststore="${JAVA_HOME%/}/jre/lib/security/cacerts"
+        elif [ -f "${JAVA_HOME%/}/lib/security/cacerts" ]; then
+            _truststore="${JAVA_HOME%/}/lib/security/cacerts"
+        else
+            return 2
+        fi
+    fi
     [ -z "${JAVA_HOME}" ] && return 1
     [ ! -f "${_pem}" ] && return 3
     [ -z "${_alias}" ] && _alias="$(basename "${_pem%%.*}")"
