@@ -116,7 +116,7 @@ function f_check_system() {
     (netstat -s || cat /proc/net/dev) &> ${_work_dir%/}/netstat_s.out
 
     # Misc.
-    #sysctl kernel.pid_max fs.file-max fs.file-nr kernel.threads-max vm.overcommit_memory vm.overcommit_ratio vm.max_map_count # file-max is OS limit (Too many open files)
+    #sysctl kernel.pid_max fs.file-max fs.file-nr kernel.threads-max vm.overcommit_memory vm.overcommit_ratio vm.swappiness vm.max_map_count # file-max is OS limit (Too many open files)
     # $JAVA_HOME/bin/java -XX:+PrintFlagsFinal -version | grep -w ThreadStackSize
     sysctl -a &> ${_work_dir%/}/sysctl.out
     sysctl -a | grep fips &> ${_work_dir%/}/sysctl_rhel_fips.out

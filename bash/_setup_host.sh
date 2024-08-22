@@ -2187,23 +2187,28 @@ Then, '3 hour expiration for all Atlassian host products'"
 }
 
 function f_s3compatible() {
+    # https://gist.github.com/ataylor284/7b15c276441906d16d43f58cf8e3ea94?permalink_comment_id=2986850
+    # https://dev.to/arifszn/minio-mock-s3-in-local-development-4ke6
+    # https://help.sonatype.com/en/configuring-blob-stores.html for policy
     local _port="${1:-"9000"}"
-    docker run -t -d -p ${_port}:9000 -p $((${_port} + 1)):9001 --name minio  minio/minio server /data --console-address ":9001" || return $?
-    echo "Use reverse proxy for HTTPS. For example:"
-    cat << EOF
-frontend frontend_p9443
-  bind *:9443 ssl crt /var/tmp/share/cert/standalone.localdomain.certs.pem alpn h2,http/1.1
-  reqadd X-Forwarded-Proto:\ https
-  default_backend backend_p${_port}
+    local _data="${2:-"$HOME/minio_data"}"
+    local _tag="${3-"RELEASE.2024-08-03T04-33-23Z"}"
 
-backend backend_p${_port}
-  balance first
-  hash-type consistent
-  option forwardfor
-  http-request set-header X-Forwarded-Port %[dst_port]
-  option tcp-check
-  server local_docker_${_port} localhost:${_port} check inter 5s init-addr none
-EOF
+    if [ ! -d "${_data%/}" ]; then
+        mkdir -v -p "${_data%/}" || return $?
+    fi
+    local _web_port="$((${_port} + 90))"
+    docker run -t -d \
+     -p ${_port}:9000 \
+     -p ${_web_port}:${_web_port} \
+     --name minio \
+     -v $HOME/minio_data:/data:z \
+     -e "MINIO_ROOT_USER=admin" \
+     -e "MINIO_ROOT_PASSWORD=admin123" \
+     minio/minio:${_tag} server /data --console-address ":${_web_port}"
+    _info "API: http://127.0.0.1:${_port}/"
+    _info "Web: http://127.0.0.1:${_web_port}/"
+    _info "Create bucket, create a user, create an access key, export AWS_ENDPOINT_URL=http://127.0.0.1:${_port}"
 }
 
 function f_tabby() {

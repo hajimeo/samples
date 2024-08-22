@@ -382,14 +382,13 @@ function _split_log() {
         fi
     fi
 }
-function e_app_logs() {
+function e_app_log() {
     local _log_path="$1"
     if [ -z "${_log_path}" ]; then
         _log_path="$(find . -maxdepth 3 -type f -print | grep -m1 -E "/(${_NXRM_LOG}|${_NXIQ_LOG}|server.log)$")"
     fi
     [ ! -s "${_log_path}" ] && return 1
 
-    local _log_glob="$(basename ${_log_path} | sed 's/.\///')"
     _split_log "${_log_path}"
     local _since_last_restart="$(ls -1r _split_logs/* 2>/dev/null | head -n1)"
     local _excludes="(WARN .+ high disk watermark|This is NOT an error|Attempt to access soft-deleted blob .+nexus-repository-docker|CacheInfo missing for)"
@@ -397,7 +396,9 @@ function e_app_logs() {
         f_topErrors "${_since_last_restart}" "" "" "${_excludes}" >${_FILTERED_DATA_DIR%/}/f_topErrors.out
     elif _size_check "${_log_path}"; then
         # TODO: this one is slow
-        _TOP_ERROR_MAX_N=10000 f_topErrors "${_log_glob:-"${_LOG_GLOB}"}" "" "" "${_excludes}" >${_FILTERED_DATA_DIR%/}/f_topErrors.out
+        _TOP_ERROR_MAX_N=10000 f_topErrors "${_log_path}" "" "" "${_excludes}" >${_FILTERED_DATA_DIR%/}/f_topErrors.out
+    else
+        _LOG "WARN" "Not doing f_topErrors for '${_log_path}' as the size is larger than _LOG_THRESHOLD_BYTES:${_LOG_THRESHOLD_BYTES}"
     fi
 }
 function e_requests() {
@@ -411,7 +412,7 @@ function e_requests() {
     fi
 }
 function e_threads() {
-    _NOT_SPLIT_BY_DATE=Y _THREAD_SAVE_DIR="_threads" f_threads &>${_FILTERED_DATA_DIR%/}/f_threads.out
+    f_threads "" "" "" "_threads" "Y" &>${_FILTERED_DATA_DIR%/}/f_threads.out
 }
 function e_configs() {
     _extract_configs >${_FILTERED_DATA_DIR%/}/extracted_configs.md
@@ -481,8 +482,8 @@ function t_basic() {
 }
 function t_system() {
     _basic_check "" "${_FILTERED_DATA_DIR%/}/extracted_configs.md" || return
-    _test_template "$(_rg 'AvailableProcessors.?: *[1-3]\b' ${_FILTERED_DATA_DIR%/}/extracted_configs.md)" "WARN" "AvailableProcessors might be too low (-XX:ActiveProcessorCount=N ?)"
-    _test_template "$(_rg 'TotalPhysicalMemorySize.?: *(.+ MB|[1-7]\.\d+ GB)' ${_FILTERED_DATA_DIR%/}/extracted_configs.md)" "WARN" "TotalPhysicalMemorySize might be too low"
+    _test_template "$(_rg 'AvailableProcessors.?: *[1-3]\b' ${_FILTERED_DATA_DIR%/}/extracted_configs.md)" "WARN" "AvailableProcessors (CPU) might be too low (-XX:ActiveProcessorCount=N ?)" "https://bugs.java.com/bugdatabase/view_bug?bug_id=8140793"
+    _test_template "$(_rg 'TotalPhysicalMemorySize.?: *(.+ MB|[1-7]\.\d+ GB)' ${_FILTERED_DATA_DIR%/}/extracted_configs.md)" "WARN" "TotalPhysicalMemorySize (RAM) might be too low"
     # TODO: compare TotalPhysicalMemorySize and CommittedVirtualMemorySize
     _test_template "$(rg 'MaxFileDescriptorCount.?: *\d{4}\b' ${_FILTERED_DATA_DIR%/}/extracted_configs.md)" "WARN" "MaxFileDescriptorCount might be too low"
     _test_template "$(rg 'SystemLoadAverage.?: *([4-9]\.|\d\d+)' ${_FILTERED_DATA_DIR%/}/extracted_configs.md)" "WARN" "SystemLoadAverage might be too high (check number of CPUs)"
@@ -494,6 +495,7 @@ function t_system() {
     _test_template "$(rg 'maxMemory.?: *(.+ MB|[1-3]\.\d+ GB)' ${_FILTERED_DATA_DIR%/}/extracted_configs.md)" "WARN" "maxMemory (heap|Xmx) might be too low (if docker/pod: NEXUS-35218)"
     _test_template "$(rg -g jmx.json -g wrapper.conf -q -- '-XX:\+UseG1GC' || rg -g jmx.json -- '-Xmx')" "WARN" "No '-XX:+UseG1GC' for below Xmx (only for Java 8)" "Also consider using -XX:+ExplicitGCInvokesConcurrent"
     _test_template "$(rg -g jmx.json 'UseCGroupMemoryLimitForHeap')" "WARN" "UseCGroupMemoryLimitForHeap is specified (not required from 8v191)"
+    _test_template "$(rg -g jmx.json 'MaxMetaspaceSize')" "WARN" "MaxMetaspaceSize is specified"
     _test_template "$(rg -g jmx.json -- '-Djavax\.net\.ssl..+=')" "WARN" "javax.net.ssl.xxxx is used in jmx.json: java.lang:type=Runtime,InputArguments"
     _test_template "$(rg -g jmx.json -m1 '1\.8\.0.(29[2-9]|30[01])\b')" "WARN" "Java version might be 1.8.0_292, which has critical bug: https://bugs.java.com/bugdatabase/view_bug?bug_id=JDK-8266929 (JDK-8266261)" "java.security.NoSuchAlgorithmException: unrecognized algorithm name: PBEWithSHA1AndDESede"
 

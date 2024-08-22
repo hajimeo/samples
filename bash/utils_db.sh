@@ -61,7 +61,7 @@ function _huge_page() {
 
 function _postgresql_configure() {
     # @see: https://wiki.postgresql.org/wiki/Tuning_Your_PostgreSQL_Server
-    local __doc__="Update postgresql.conf and pg_hba.conf. Need to run from the PostgreSQL server (localhost)"
+    local __doc__="Update postgresql.conf. Need to run from the PostgreSQL server (localhost)"
     local _verbose_logging="${1}"   # If Y, adds more logging configs which would work with pgbadger.
     local _wal_archive_dir="${2}"   # Automatically decided if empty
     local _postgresql_conf="${3}"   # Automatically detected if empty. "/var/lib/pgsql/data" or "/etc/postgresql/10/main" or /var/lib/pgsql/12/data/
@@ -108,13 +108,6 @@ function _postgresql_configure() {
     _upsert ${_postgresql_conf} "listen_addresses" "'*'" "#listen_addresses"
     [ -d /var/log/postgresql ] || mkdir -p -m 777 /var/log/postgresql
     [ -d /var/log/postgresql ] && _upsert ${_postgresql_conf} "log_directory" "'/var/log/postgresql' " "#log_directory"
-    #_upsert ${_postgresql_conf} "ssl" "on" "#ssl"
-    # NOTE: key file permission needs to be 0600
-    #_upsert ${_postgresql_conf} "ssl_key_file" "'/var/lib/pgsql/12/standalone.localdomain.key'" "#ssl_key_file"
-    #_upsert ${_postgresql_conf} "ssl_cert_file" "'/var/lib/pgsql/12/standalone.localdomain.crt'" "#ssl_cert_file"
-    #_upsert ${_postgresql_conf} "ssl_ca_file" "'/var/tmp/share/cert/rootCA_standalone.crt'" "#ssl_ca_file"
-    #   SELECT setting FROM pg_settings WHERE name like '%hba%';
-    # pg_hba.conf: hostssl sonatype sonatype 0.0.0.0/0 md5
 
     if [ -z "${_wal_archive_dir}" ]; then
         _wal_archive_dir="${_WORK_DIR%/}/backups/`hostname -s`_wal"
@@ -186,20 +179,48 @@ function _postgresql_configure() {
     # SELECT pg_reload_conf();
     # SELECT * FROM pg_settings WHERE name like 'auto_explain%';
 
-    # SSL / client certificate authentication https://smallstep.com/hello-mtls/doc/combined/postgresql/psql
-    #_upsert ${_postgresql_conf} "ssl" "on" "#ssl"
-    #_upsert ${_postgresql_conf} "ssl_ca_file" "/var/tmp/share/cert/rootCA.pem" "#ssl_ca_file"
-    #_upsert ${_postgresql_conf} "ssl_cert_file" "/var/tmp/share/cert/standalone.localdomain.crt" "#ssl_cert_file"
-    #_upsert ${_postgresql_conf} "ssl_key_file" "/var/tmp/share/cert/standalone.localdomain_postgres.key" "#ssl_key_file"
-    # NOTE: .key file needs to be owned by postgres
-    # NOTE: modify pg_hba.conf: hostssl nxrm3ha1 all 0.0.0.0/0 md5 clientcert=1
-    # NOTE: also it seems restart is required
-    # TEST: echo | openssl s_client -starttls postgres -connect localhost:5432 -state #-debug
-
     diff -wu ${__TMP%/}/postgresql.conf.orig ${_postgresql_conf}
     if ${_restart} || ! ${_psql_as_admin} -d template1 -c "SELECT pg_reload_conf();"; then
         _log "INFO" "Updated postgresql config. Please restart or reload the service."
     fi
+}
+
+function _postresql_configure_ssl() {
+    local _cert_dir="$1"
+    local _postgresql_conf="${2}"
+    local _dbadmin="${3}"
+    local _port="${4:-"5432"}"      # just for deciding the username. Optional.
+    _dbadmin="$(_get_dbadmin_user "${_dbadmin}" "${_port}")"
+    local _psql_as_admin="$(_get_psql_as_admin "${_dbadmin}")"
+    if [ ! -f "${_postgresql_conf}" ]; then
+        _postgresql_conf="$(${_psql_as_admin} -tAc 'SHOW config_file')" || return $?
+    fi
+    if [ -z "${_postgresql_conf}" ] || [ ! -s "${_postgresql_conf}" ]; then
+        _log "ERROR" "No postgresql config file specified."
+        return 1
+    fi
+    if [ ! -d "${_cert_dir}" ]; then
+        mkdir -p "${_cert_dir}" || return $?
+    fi
+    _cert_dir="$(readlink -f "${_cert_dir}")"
+    if [ ! -s "${_cert_dir%/}/server.key" ]; then
+        # https://www.cherryservers.com/blog/how-to-configure-ssl-on-postgresql
+        openssl genrsa -passout "pass:admin123" -out ${_cert_dir%/}/server.key 2048 || return $?
+        openssl rsa -in ${_cert_dir%/}/server.key -passin "pass:admin123" -out ${_cert_dir%/}/server.key || return $?
+        # NOTE: .key file may need to be owned by postgres and key file permission needs to be 0400 or 0600
+        chmod 400 ${_cert_dir%/}/server.key
+        openssl req -x509 -new -key ${_cert_dir%/}/server.key -days 3650 -out ${_cert_dir%/}/server.crt -subj "/CN=$(hostname -f)" || return $?
+        #cp -f -v server.crt root.crt
+    fi
+    # SSL / client certificate authentication https://smallstep.com/hello-mtls/doc/combined/postgresql/psql
+    _upsert ${_postgresql_conf} "ssl" "on" "#ssl"
+    _upsert ${_postgresql_conf} "ssl_key_file" "'$(readlink -f "${_cert_dir%/}/server.key")'" "#ssl_key_file"
+    _upsert ${_postgresql_conf} "ssl_cert_file" "'$(readlink -f "${_cert_dir%/}/server.crt")'" "#ssl_cert_file"
+    _upsert ${_postgresql_conf} "ssl_ca_file" "'$(readlink -f "${_cert_dir%/}/server.crt")'" "#ssl_ca_file"
+    # NOTE: (Optional) modify pg_hba.conf (SELECT setting FROM pg_settings WHERE name like '%pg_hba%';)
+    #   hostssl all nexus 0.0.0.0/0 md5 clientcert=1
+    # NOTE: also it seems restart is required
+    # To test: echo | openssl s_client -starttls postgres -connect localhost:5432 -state #-debug
 }
 
 function _postgresql_create_dbuser() {
@@ -358,7 +379,8 @@ function _psql_restore() {
     local _dbport="${8:-"${_DBPORT:-"5432"}"}"
     local _db_del_cascade="${9:-"${_DB_DEL_CASCADE}"}"
     # NOTE: pg_restore has useful options: --jobs=2 --no-owner --verbose #--clean --data-only, but does not support SQL file
-    #PGPASSWORD="${_dbpwd}" pg_restore -h ${_dbhost} -U ${_dbusr} -d ${_dbname} --jobs=2 --no-owner --verbose ${_dump_filepath}
+    # NOTE: Do not use superuser to restore, specify -U ${_dbusr} instead.
+    #PGPASSWORD="${_dbpwd}" pg_restore -U ${_dbusr} -d ${_dbname} --jobs=3 --no-owner --disable-triggers --superuser $USER --verbose ${_dump_filepath}
     _postgresql_create_role_and_db "${_dbusr}" "${_dbpwd}" "${_dbname}" "${_schema}"
     local _cmd=""
     if [[ "${_dump_filepath}" =~ \.gz$ ]]; then

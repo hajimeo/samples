@@ -187,15 +187,17 @@ function f_install_nexus3() {
     fi
 
     if [ -n "${_dbname}" ]; then
-        if [ -z "${_dbhost}" ]; then
-            _log "INFO" "Creating database with \"${_dbusr}\" \"********\" \"${_dbname}\" \"${_schema}\" in localhost:5432"
-            if ! _RECREATE_DB=${_RECREATE_DB} _postgresql_create_dbuser "${_dbusr}" "${_dbpwd}" "${_dbname}" "${_schema}"; then
-                _log "WARN" "Failed to create ${_dbusr} or ${_dbname}" || return $?
+        _upsert "${_prop}" "nexus.datastore.enabled" "true" || return $?
+        if [[ "${_dbname}" =~ [hH]2 ]]; then
+            _log "INFO" "Using H2 database"
+        else
+            if [ -z "${_dbhost}" ]; then
+                _log "INFO" "Creating database with \"${_dbusr}\" \"********\" \"${_dbname}\" \"${_schema}\" in localhost:5432"
+                if ! _RECREATE_DB=${_RECREATE_DB} _postgresql_create_dbuser "${_dbusr}" "${_dbpwd}" "${_dbname}" "${_schema}"; then
+                    _log "WARN" "Failed to create ${_dbusr} or ${_dbname}" || return $?
+                fi
+                _dbhost="$(hostname -f):5432"
             fi
-            _dbhost="$(hostname -f):5432"
-        fi
-        grep -q "^nexus.datastore.enabled" "${_prop}" 2>/dev/null || echo "nexus.datastore.enabled=true" >> "${_prop}" || return $?
-        if [[ ! "${_dbname}" =~ [hH]2 ]]; then
             cat << EOF > "${_dirpath%/}/sonatype-work/nexus3/etc/fabric/nexus-store.properties"
 jdbcUrl=jdbc\:postgresql\://${_dbhost//:/\\:}/${_dbname}
 username=${_dbusr}
@@ -207,10 +209,14 @@ EOF
         fi
     fi
 
+    if type f_setup_https &>/dev/null; then
+        local _ssl_port="$(_find_port "8443")"
+        f_setup_https "" "${_ssl_port}"
+    fi
+
     cd "${_dirpath%/}" || return $?
     echo "To start: ./nexus-${_ver}/bin/nexus run"
     type nxrmStart &>/dev/null && echo "      Or: nxrmStart"
-    type f_setup_https &>/dev/null && echo "      Before starting, ssl: f_setup_https <port>"
     if [ "${_port}" != "8081" ]; then
         echo "May need to execute 'export _NEXUS_URL=\"http://localhost:${_port}/\"'"
     fi
@@ -1103,6 +1109,7 @@ function f_setup_raw() {
     # Quicker way: NOTE --limit-rate=4k can be a handy option to test:
     #   time curl -D- -u 'admin:admin123' -T <(echo 'test') "${_NEXUS_URL%/}/repository/raw-hosted/test/test.txt"
     # Creating a dummy 1K file (not real 1K file): _TMP="/tmp"
+    #dd if=/dev/zero of=./test_large.img bs=1 count=0 seek=$((1024*1024*1024))
     dd if=/dev/zero of=${_TMP%/}/test_1k.img bs=1 count=0 seek=1024 && \
     _ASYNC_CURL="Y" f_upload_asset "${_prefix}-hosted" -F raw.directory=test -F raw.asset1=@${_TMP%/}/test_1k.img -F raw.asset1.filename=test_1k.img
     #   time curl -D- -u 'admin:admin123' -T ${_TMP%/}/test_1k.img "${_NEXUS_URL%/}/repository/raw-hosted/test/test_1k.img"

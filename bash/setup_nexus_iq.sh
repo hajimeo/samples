@@ -31,8 +31,8 @@ DOWNLOADS:
     curl ${_DL_URL%/}/bash/${_filename} -o ${_WORK_DIR%/}/sonatype/${_filename}
 
 REQUIREMENTS / DEPENDENCIES:
-    If Mac, 'gsed' and 'ggrep' are required.
-    brew install gnu-sed grep
+    If Mac, 'gsed' and 'ggrep' are required (brew install gnu-sed grep)
+    Also, currently requires 'python'
 
 COMMAND OPTIONS:
     -A
@@ -80,9 +80,9 @@ alias _curl="curl -sSf -u '${_ADMIN_USER}:${_ADMIN_PWD}'"
 
 
 
-# To upgrade (from ${_dirname}/): mv -f -v ./config.yml{,.tmp} && tar -xvf $HOME/.nexus_executable_cache/nexus-iq-server-1.176.0-01-bundle.tar.gz && cp -p -v ./config.yml{.tmp,}
+# To upgrade (from ${_dirname}/): mv -f -v ./config.yml{,.tmp} && tar -xvf $HOME/.nexus_executable_cache/nexus-iq-server-1.179.0-04-bundle.tar.gz && cp -p -v ./config.yml{.tmp,}
 function f_install_iq() {
-    local __doc__="Install specific IQ version"
+    local __doc__="Install specific IQ version (to recreate sonatype-work and DB, _RECREATE_ALL=Y)"
     local _ver="${1}"     # 'latest'
     local _dbname="${2}"
     local _dbusr="${3:-"nexus"}"     # Specifying default as do not want to create many users/roles
@@ -116,6 +116,14 @@ function f_install_iq() {
         [ -n "${_dbname}" ] && _dirpath="${_dirpath}_${_dbname}"
         [ "${_port}" != "8070" ] && _dirpath="${_dirpath}_${_port}"
     fi
+    if [[ "${_RECREATE_ALL}" =~ [yY] ]]; then
+        if [ -d "${_dirpath%/}" ]; then
+            _log "WARN" "As _RECREATE_ALL=${_RECREATE_ALL}, removing ${_dirpath%/}"; sleep 3
+            rm -v -rf "${_dirpath%/}" || return $?
+        fi
+        _RECREATE_DB="Y"
+    fi
+
     _prepare_install "${_dirpath}" "https://download.sonatype.com/clm/server/nexus-iq-server-${_ver}-bundle.tar.gz" "${r_NEXUS_LICENSE_FILE}" || return $?
     local _license_path="${_LICENSE_PATH}"
 
@@ -145,7 +153,7 @@ database:
   username: ${_dbusr}
   password: ${_dbpwd}
 EOF
-        if ! _postgresql_create_dbuser "${_dbusr}" "${_dbpwd}" "${_dbname}"; then
+        if ! _RECREATE_DB=${_RECREATE_DB} _postgresql_create_dbuser "${_dbusr}" "${_dbpwd}" "${_dbname}"; then
             _log "WARN" "Failed to create ${_dbusr} or ${_dbname}"
         fi
     fi
@@ -223,19 +231,6 @@ function f_api_create_app() {
     _curl "${_IQ_URL%/}/api/v2/applications" -H "Content-Type: application/json" -d '{"publicId":"'${_app_pub_id}'","name": "'${_app_pub_id}'","organizationId": "'${_org_int_id}'"}'
 }
 
-function f_api_eval_gav() {
-    local __doc__="/api/v2/evaluation/applications/\${_app_int_id} with Maven GAV"
-    local _gav="${1}"
-    local _app_pub_id="${2:-"sandbox-application"}"
-    [[ "${_gav}" =~ ^" "*([^: ]+)" "*:" "*([^: ]+)" "*:" "*([^: ]+)" "*$ ]] || return 11
-    local _g="${BASH_REMATCH[1]}"
-    local _a="${BASH_REMATCH[2]}"
-    local _v="${BASH_REMATCH[3]}"
-    local _app_int_id="$(f_api_appIntId "${_app_pub_id}")" || return $?
-
-    _curl "${_IQ_URL%/}/api/v2/evaluation/applications/${_app_int_id}" -H "Content-Type: application/json" -d '{"components": [{"hash": null,"componentIdentifier": {"format": "maven","coordinates": {"artifactId": "'${_a}'","groupId": "'${_g}'","version": "'${_v}'","extension":"jar"}}}]}'
-}
-
 function f_api_role_mapping() {
     local __doc__="map an external user/group to IQ organisation/application and role"
     local _role_name="$1"
@@ -269,6 +264,19 @@ for r in a['memberMappings']:
     if '${_role_int_id}' == r['roleId']:
         print(json.dumps(r['members'], indent=2))
         break"
+}
+
+function f_api_eval_gav() {
+    local __doc__="/api/v2/evaluation/applications/\${_app_int_id} with Maven GAV"
+    local _gav="${1}"
+    local _app_pub_id="${2:-"sandbox-application"}"
+    [[ "${_gav}" =~ ^" "*([^: ]+)" "*:" "*([^: ]+)" "*:" "*([^: ]+)" "*$ ]] || return 11
+    local _g="${BASH_REMATCH[1]}"
+    local _a="${BASH_REMATCH[2]}"
+    local _v="${BASH_REMATCH[3]}"
+    local _app_int_id="$(f_api_appIntId "${_app_pub_id}")" || return $?
+
+    _curl "${_IQ_URL%/}/api/v2/evaluation/applications/${_app_int_id}" -H "Content-Type: application/json" -d '{"components": [{"hash": null,"componentIdentifier": {"format": "maven","coordinates": {"artifactId": "'${_a}'","groupId": "'${_g}'","version": "'${_v}'","extension":"jar"}}}]}'
 }
 
 

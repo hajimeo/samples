@@ -1130,7 +1130,7 @@ function f_threads() {
                 _LOG "WARN" "./f_thread_${_filename%.*}.out exists, so not executing f_threads ..."
                 continue
             fi
-            _LOG "INFO" "Saving outputs into f_thread_${_filename%.*}.out ..."
+            _LOG "INFO" "Saving outputs into f_thread_${_filename%.*}.out (and ${_save_dir%/}/${_filename%.*}) ..."
             f_threads "${_f}" "${_split_search}" "${_running_thread_search_re}" "${_save_dir%/}/${_filename%.*}" "Y" > ./f_thread_${_filename%.*}.out
             _LOG "INFO" "f_thread_${_filename%.*}.out $(_elapsed)"
         done
@@ -1143,7 +1143,7 @@ function f_threads() {
 
     _elapsed &>/dev/null
     f_splitByRegex "${_file}" "${_split_search}" "${_save_dir%/}" ""
-    _LOG "INFO" "f_splitByRegex $(_elapsed)"
+    _LOG "INFO" "f_splitByRegex with \"${_file}\" \"${_split_search}\" \"${_save_dir%/}\" $(_elapsed)"
 
     echo "## Listening ports (acceptor)"
     # Sometimes this can be a hostname
@@ -1761,7 +1761,7 @@ function f_splitByRegex() {
         if [[ "${_file}" =~ request.*log ]]; then
             _line_regex="${_DATE_FMT_REQ}:\d\d"
         fi
-        [ -z "${_SPLIT_BY_REGEX_SORT}" ] && _sort="Y"
+        [ -z "${_sort}" ] && _sort="Y"
     fi
 
     #_file="$(echo ${_file} | _sed 's/.\///')"
@@ -1783,7 +1783,7 @@ function f_splitByRegex() {
 
     if [[ "${_sort}" =~ ^(y|Y) ]]; then
         # somehow this magically works with request.log date:hour
-        rg "${_line_regex}" --search-zip --no-filename -n -o "${_file}" | sort -u -t":" -k2
+        rg "${_line_regex}" --search-zip --no-filename -n -o "${_file}" | sed 's/:/\./2' | sort -u -t":" -k2
     else
         rg "${_line_regex}" --search-zip --no-filename -n -o "${_file}"
     fi > /tmp/${FUNCNAME[0]}_$$.out
@@ -1816,7 +1816,13 @@ function f_splitByRegex() {
 function f_splitPerHour() {
     local _file="$1"
     local _dest_dir="${2:-"_hourly_logs"}"
-    f_splitByRegex "${_file}" "^${_DATE_FORMAT}.\d\d" "${_dest_dir}"
+    _SPLIT_BY_REGEX_SORT="Y" f_splitByRegex "${_file}" "^${_DATE_FORMAT}.\d\d" "${_dest_dir}"
+}
+function f_splitPerHourReq() {
+    local _file="$1"
+    local _dest_dir="${2:-"_hourly_logs_req"}"
+    # Can't use _SPLIT_BY_REGEX_SORT="Y" when regex contains un-sortable values such as "dd/MMM/yyyy"
+    _SPLIT_BY_REGEX_SORT="Y" f_splitByRegex "${_file}" "${_DATE_FMT_REQ}:\d\d" "${_dest_dir}"
 }
 #f_extractFromLog .nexus-2024-07-08.log.gz "^2024-07-08 19:45:[23]" "^2024-07-08 19:46:4" | tee nexus-2024-07-08_1945to1946.out
 function f_extractFromLog() {
@@ -2131,6 +2137,13 @@ function _tac() {
 function _uniq() {
     local _cmd="uniq"; which guniq &>/dev/null && _cmd="guniq"
     ${_cmd} "$@"
+}
+function _gunzip() {
+    if type unpigz &>/dev/null; then
+        unpigz "$@"
+    else
+        gunzip "$@"
+    fi
 }
 
 function _LOG() {
