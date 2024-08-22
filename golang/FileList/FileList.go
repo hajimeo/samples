@@ -1159,34 +1159,6 @@ func getDirs(basedir string, prefix string) []string {
 	return dirs
 }
 
-// get *all* directories under basedir and which name starts with prefix
-func walkDirs(basedir string, prefix string) []string {
-	var dirs []string
-	basedir = strings.TrimSuffix(basedir, string(filepath.Separator))
-	initDeps := strings.Count(basedir, string(os.PathSeparator))
-	depth := initDeps + *_DIR_DEPTH
-	err := filepath.Walk(basedir, func(path string, f os.FileInfo, err error) error {
-		if err != nil {
-			println("Walk for " + basedir + " and " + path + " failed.")
-			panic(err.Error())
-		}
-		if f.IsDir() {
-			if strings.Count(path, string(os.PathSeparator)) <= depth &&
-				len(prefix) == 0 || strings.HasPrefix(f.Name(), prefix) {
-				_log("DEBUG", fmt.Sprintf("getDirs appending path=%s", path))
-				dirs = append(dirs, path)
-			}
-		}
-		return nil
-	})
-	if err != nil {
-		println("Walk for " + basedir + " failed.")
-		panic(err.Error())
-	}
-	sort.Strings(dirs)
-	return dirs
-}
-
 func myHashCode(s string) int32 {
 	h := int32(0)
 	for _, c := range s {
