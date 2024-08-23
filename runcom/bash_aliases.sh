@@ -901,26 +901,42 @@ if [ -s $HOME/IdeaProjects/work/bash/nexus_aliases.sh ]; then
     source $HOME/IdeaProjects/work/bash/nexus_aliases.sh
 fi
 function pubS() {
-    [ $HOME/IdeaProjects/work/bash/install_sonatype.sh -nt /tmp/pubS.last ] && scp -C $HOME/IdeaProjects/work/bash/install_sonatype.sh dh1:/var/tmp/share/sonatype/ && cp -v -f $HOME/IdeaProjects/work/bash/install_sonatype.sh $HOME/share/sonatype/
-    [ $HOME/IdeaProjects/samples/bash/setup_standalone.sh -nt /tmp/pubS.last ] && scp -C $HOME/IdeaProjects/samples/bash/setup_standalone.sh dh1:/usr/local/bin/
-    [ $HOME/IdeaProjects/samples/runcom/nexus_alias.sh -nt /tmp/pubS.last ] && scp -C $HOME/IdeaProjects/samples/runcom/nexus_alias.sh dh1:/var/tmp/share/sonatype/
-    [ $HOME/IdeaProjects/samples/bash/utils.sh -nt /tmp/pubS.last ] && scp -C $HOME/IdeaProjects/samples/bash/utils.sh dh1:/var/tmp/share/ && cp -v -f $HOME/IdeaProjects/samples/bash/utils.sh $HOME/share/sonatype/
-    [ $HOME/IdeaProjects/samples/bash/utils_db.sh -nt /tmp/pubS.last ] && scp -C $HOME/IdeaProjects/samples/bash/utils_db.sh dh1:/var/tmp/share/ && cp -v -f $HOME/IdeaProjects/samples/bash/utils_db.sh $HOME/share/sonatype/
-    [ $HOME/IdeaProjects/samples/bash/utils_container.sh -nt /tmp/pubS.last ] && scp -C $HOME/IdeaProjects/samples/bash/utils_container.sh dh1:/var/tmp/share/ && cp -v -f $HOME/IdeaProjects/samples/bash/utils_container.sh $HOME/share/sonatype/
-    [ $HOME/IdeaProjects/samples/bash/_setup_host.sh -nt /tmp/pubS.last ] && scp -C $HOME/IdeaProjects/samples/bash/_setup_host.sh dh1:/var/tmp/share/
-    [ $HOME/IdeaProjects/samples/bash/setup_nexus3_repos.sh -nt /tmp/pubS.last ] && scp -C $HOME/IdeaProjects/samples/bash/setup_nexus3_repos.sh dh1:/var/tmp/share/sonatype/ && cp -v -f $HOME/IdeaProjects/samples/bash/setup_nexus3_repos.sh $HOME/share/sonatype/ && cp -v -f $HOME/IdeaProjects/samples/bash/setup_nexus3_repos.sh $HOME/IdeaProjects/nexus-toolbox/scripts/
+    local _backup_server="${1:-"dh1"}"
+    if ! ping -c1 -t1 ${_backup_server}>/dev/null; then
+        echo "Can't reach ${_backup_server}" >&2
+    else
+        [ $HOME/IdeaProjects/work/bash/install_nexus.sh -nt /tmp/pubS.last ] && scp -C $HOME/IdeaProjects/work/bash/install_nexus.sh ${_backup_server}:/var/tmp/share/sonatype/ && cp -v -f $HOME/IdeaProjects/work/bash/install_nexus.sh $HOME/share/sonatype/
+        [ $HOME/IdeaProjects/work/bash/install_sonatype.sh -nt /tmp/pubS.last ] && scp -C $HOME/IdeaProjects/work/bash/install_sonatype.sh ${_backup_server}:/var/tmp/share/sonatype/ && cp -v -f $HOME/IdeaProjects/work/bash/install_sonatype.sh $HOME/share/sonatype/
+        [ $HOME/IdeaProjects/samples/bash/setup_standalone.sh -nt /tmp/pubS.last ] && scp -C $HOME/IdeaProjects/samples/bash/setup_standalone.sh ${_backup_server}:/usr/local/bin/
+        [ $HOME/IdeaProjects/samples/runcom/nexus_alias.sh -nt /tmp/pubS.last ] && scp -C $HOME/IdeaProjects/samples/runcom/nexus_alias.sh ${_backup_server}:/var/tmp/share/sonatype/
+        [ $HOME/IdeaProjects/samples/bash/utils.sh -nt /tmp/pubS.last ] && scp -C $HOME/IdeaProjects/samples/bash/utils.sh ${_backup_server}:/var/tmp/share/ && cp -v -f $HOME/IdeaProjects/samples/bash/utils.sh $HOME/share/sonatype/
+        [ $HOME/IdeaProjects/samples/bash/utils_db.sh -nt /tmp/pubS.last ] && scp -C $HOME/IdeaProjects/samples/bash/utils_db.sh ${_backup_server}:/var/tmp/share/ && cp -v -f $HOME/IdeaProjects/samples/bash/utils_db.sh $HOME/share/sonatype/
+        [ $HOME/IdeaProjects/samples/bash/utils_container.sh -nt /tmp/pubS.last ] && scp -C $HOME/IdeaProjects/samples/bash/utils_container.sh ${_backup_server}:/var/tmp/share/ && cp -v -f $HOME/IdeaProjects/samples/bash/utils_container.sh $HOME/share/sonatype/
+        [ $HOME/IdeaProjects/samples/bash/_setup_host.sh -nt /tmp/pubS.last ] && scp -C $HOME/IdeaProjects/samples/bash/_setup_host.sh ${_backup_server}:/var/tmp/share/
+        [ $HOME/IdeaProjects/samples/bash/setup_nexus3_repos.sh -nt /tmp/pubS.last ] && scp -C $HOME/IdeaProjects/samples/bash/setup_nexus3_repos.sh ${_backup_server}:/var/tmp/share/sonatype/ && cp -v -f $HOME/IdeaProjects/samples/bash/setup_nexus3_repos.sh $HOME/share/sonatype/ && cp -v -f $HOME/IdeaProjects/samples/bash/setup_nexus3_repos.sh $HOME/IdeaProjects/nexus-toolbox/scripts/
+        [ $HOME/IdeaProjects/samples/bash/patch_java.sh -nt /tmp/pubS.last ] && scp -C $HOME/IdeaProjects/samples/bash/patch_java.sh ${_backup_server}:/var/tmp/share/java/
+        [ $HOME/IdeaProjects/samples/misc/orient-console.jar -nt /tmp/pubS.last ] && scp $HOME/IdeaProjects/samples/misc/orient-console.jar ${_backup_server}:/var/tmp/share/java/
+        [ $HOME/IdeaProjects/samples/misc/h2-console.jar -nt /tmp/pubS.last ] && scp $HOME/IdeaProjects/samples/misc/h2-console.jar ${_backup_server}:/var/tmp/share/java/
+        [ $HOME/IdeaProjects/samples/misc/filelist_Linux_x86_64 -nt /tmp/pubS.last ] && scp $HOME/IdeaProjects/samples/misc/filelist_Linux_x86_64 ${_backup_server}:/var/tmp/share/bin/
+    fi
+    # If no directories, would like to see errors
     [ $HOME/IdeaProjects/work/bash/log_tests_nxrm.sh -nt /tmp/pubS.last ] && cp -v -f $HOME/IdeaProjects/work/bash/log_tests_nxrm.sh $HOME/IdeaProjects/nexus-toolbox/scripts/log_check_scripts/
-    [ $HOME/IdeaProjects/samples/bash/patch_java.sh -nt /tmp/pubS.last ] && scp -C $HOME/IdeaProjects/samples/bash/patch_java.sh dh1:/var/tmp/share/java/
     [ $HOME/IdeaProjects/samples/bash/monitoring/nrm3-threaddumps.sh -nt /tmp/pubS.last ] && cp -v -f $HOME/IdeaProjects/samples/bash/monitoring/*.sh $HOME/IdeaProjects/nexus-monitoring/scripts/
     #cp -v -f $HOME/IdeaProjects/work/nexus-groovy/src2/TrustStoreConverter.groovy $HOME/IdeaProjects/nexus-toolbox/scripts/
     [ $HOME/IdeaProjects/samples/java/asset-dupe-checker/src/main/java/AssetDupeCheckV2.java -nt /tmp/pubS.last ] && cp -v -f $HOME/IdeaProjects/samples/java/asset-dupe-checker/src/main/java/AssetDupeCheckV2.java $HOME/IdeaProjects/nexus-toolbox/asset-dupe-checker/src/main/java/ && cp -v -f $HOME/IdeaProjects/samples/misc/asset-dupe-checker-v2.jar $HOME/IdeaProjects/nexus-toolbox/asset-dupe-checker/
-    [ $HOME/IdeaProjects/samples/misc/orient-console.jar -nt /tmp/pubS.last ] && scp $HOME/IdeaProjects/samples/misc/orient-console.jar dh1:/var/tmp/share/java/
-    [ $HOME/IdeaProjects/samples/misc/h2-console.jar -nt /tmp/pubS.last ] && scp $HOME/IdeaProjects/samples/misc/h2-console.jar dh1:/var/tmp/share/java/
-    [ $HOME/IdeaProjects/samples/misc/filelist_Linux_x86_64 -nt /tmp/pubS.last ] && scp $HOME/IdeaProjects/samples/misc/filelist_Linux_x86_64 dh1:/var/tmp/share/bin/
+
     if [ -d "$HOME/IdeaProjects/nexus-monitoring/resources" ] && [ $HOME/IdeaProjects/samples/misc/h2-console.jar -nt /tmp/pubS.last ]; then
         cp -v -f $HOME/IdeaProjects/samples/misc/*-console*.jar $HOME/IdeaProjects/nexus-monitoring/resources/
         cp -v -f $HOME/IdeaProjects/samples/misc/filelist_* $HOME/IdeaProjects/nexus-monitoring/resources/
     fi
+
+    if ! ping -c1 -t1 oldmac >/dev/null; then
+        rsync -Pza --delete $HOME/IdeaProjects/samples/ hosako@oldmac:/Users/hosako/IdeaProjects/samples/ #-n
+        rsync -Pza --delete hosako@oldmac:/Users/hosako/IdeaProjects/samples/ $HOME/IdeaProjects/samples/ -n
+        rsync -Pza --delete $HOME/IdeaProjects/work/ hosako@oldmac:/Users/hosako/IdeaProjects/work/ #-n
+        rsync -Pza --delete hosako@oldmac:/Users/hosako/IdeaProjects/work/ $HOME/IdeaProjects/work/ -n
+    fi
+
     sync_nexus_binaries &>/dev/null &
     date | tee /tmp/pubS.last
 }
