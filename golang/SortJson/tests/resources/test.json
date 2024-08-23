@@ -1,0 +1,25 @@
+{
+    "continuationToken": null,
+    "items": [
+        {
+            "currentState": "WAITING",
+            "id": "7a10b063-1658-42a1-ae72-91a6559a994e",
+            "lastRun": null,
+            "lastRunResult": null,
+            "message": null,
+            "name": "Cleanup unused nuget blobs from nexus",
+            "nextRun": "2024-08-15T00:00:00.000+00:00",
+            "type": "assetBlob.cleanup"
+        },
+        {
+            "currentState": "WAITING",
+            "id": "4ca87632-9baa-44eb-bd1b-2882f3f93f2d",
+            "lastRun": null,
+            "lastRunResult": null,
+            "message": null,
+            "name": "Cleanup unused maven2 blobs from nexus",
+            "nextRun": "2024-08-15T00:00:00.000+00:00",
+            "type": "assetBlob.cleanup"
+        }
+    ]
+}

@@ -21,6 +21,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"github.com/hajimeo/samples/golang/helpers"
 	"io"
 	"os"
 	"reflect"
@@ -32,6 +33,8 @@ import (
 // This key is not used recursively and just print the value of this key.
 var JSON_SEARCH_KEY = helpers.GetEnv("JSON_SEARCH_KEY", "")
 var OUTPUT_DELIMITER = helpers.GetEnv("OUTPUT_DELIMITER", ",")
+var NULL_VALUE = helpers.GetEnv("NULL_VALUE", "<null>")
+var LINE_BREAK = helpers.GetEnv("LINE_BREAK", "\n")
 var bracesRg = regexp.MustCompile(`[\[\](){}]`)
 
 func sortByKeys(bytes []byte) ([]byte, error) {
@@ -69,18 +72,18 @@ func printJsonValuesByKeys(jsonObj interface{}, keys []string) {
 			if ok {
 				// if dict and only one key, print and exit
 				if len(keys) == 1 {
-					pritnValue(value, false)
+					printValue(value, false)
 					return
 				}
 				// if dict and more than one key, continue to find the key
 				printJsonValuesByKeys(value, keys[1:])
 			}
 		} else {
-			// Assuming only the end of keys can be slice/list
+			// Assuming only the end of keys can be a slice/list
 			for i, key := range tmpKeys {
 				value, ok := maybeMap[key]
 				if ok {
-					pritnValue(value, len(tmpKeys) > (i+1))
+					printValue(value, len(tmpKeys) > (i+1))
 				}
 			}
 		}
@@ -89,10 +92,13 @@ func printJsonValuesByKeys(jsonObj interface{}, keys []string) {
 	}
 }
 
-func pritnValue(value interface{}, needDelimiter bool) {
-	//fmt.Printf("DEBUG: %v\n", reflect.TypeOf(value).Kind())
-	if helpers.IsNumeric(value) {
-		fmt.Printf("%s", value)
+func printValue(value interface{}, needDelimiter bool) {
+	//fmt.Printf("DEBUG: %v\n", value)
+	//fmt.Printf("DEBUG: kind = %v\n", reflect.TypeOf(value).Kind())	// if nil, this causes SIGSEGV
+	if value == nil {
+		fmt.Printf("%s", NULL_VALUE)
+	} else if helpers.IsNumeric(value) {
+		fmt.Printf("%s", value.(string))
 	} else {
 		if reflect.TypeOf(value).Kind() != reflect.String {
 			outBytes, _ := json.Marshal(value)
@@ -104,7 +110,7 @@ func pritnValue(value interface{}, needDelimiter bool) {
 	if needDelimiter {
 		fmt.Printf("%s", OUTPUT_DELIMITER)
 	} else {
-		fmt.Printf("\n") // TODO: this is not good if Windows
+		fmt.Printf(LINE_BREAK) // TODO: this is not good if Windows
 	}
 }
 
@@ -197,7 +203,7 @@ func main() {
 		}
 		defer f.Close()
 
-		_, err2 := f.WriteString(jsonSortedPP + "\n")
+		_, err2 := f.WriteString(jsonSortedPP + LINE_BREAK)
 		if err2 != nil {
 			fmt.Println(err2)
 		}
