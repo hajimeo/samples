@@ -931,10 +931,10 @@ function pubS() {
     fi
 
     if ! ping -c1 -t1 oldmac >/dev/null; then
-        rsync -Pza --delete $HOME/IdeaProjects/samples/ hosako@oldmac:/Users/hosako/IdeaProjects/samples/ #-n
-        rsync -Pza --delete hosako@oldmac:/Users/hosako/IdeaProjects/samples/ $HOME/IdeaProjects/samples/ -n
-        rsync -Pza --delete $HOME/IdeaProjects/work/ hosako@oldmac:/Users/hosako/IdeaProjects/work/ #-n
-        rsync -Pza --delete hosako@oldmac:/Users/hosako/IdeaProjects/work/ $HOME/IdeaProjects/work/ -n
+        rsync -Pza --delete --modify-window=1 $HOME/IdeaProjects/samples/ hosako@oldmac:/Users/hosako/IdeaProjects/samples/ #-n
+        rsync -Pza --delete --modify-window=1 --exclude '.git' hosako@oldmac:/Users/hosako/IdeaProjects/samples/ $HOME/IdeaProjects/samples/ -n
+        rsync -Pza --delete --modify-window=1 $HOME/IdeaProjects/work/ hosako@oldmac:/Users/hosako/IdeaProjects/work/ #-n
+        rsync -Pza --delete --modify-window=1 --exclude '.git' hosako@oldmac:/Users/hosako/IdeaProjects/work/ $HOME/IdeaProjects/work/ -n
     fi
 
     sync_nexus_binaries &>/dev/null &
