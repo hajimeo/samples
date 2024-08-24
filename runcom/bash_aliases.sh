@@ -767,7 +767,6 @@ function goBuild() {
 function backupC() {
     local _src="${1:-"/Volumes/Samsung_T5/hajime/cases"}"
     local _ext_backup="${2:-"/Volumes/Samsung_T5/hajime/backups"}"
-
     local _find="find"
     type gfind &>/dev/null && _find="gfind"
 
@@ -795,6 +794,20 @@ function backupC() {
     if [ -s "$HOME/IdeaProjects/m2_settings.xml" ] && [ -d "$HOME/backup" ]; then
         cp -v -f $HOME/IdeaProjects/m2_settings.xml $HOME/backup/IdeaProjects_m2_settings.xml || return $?
     fi
+
+    if ! ping -c1 -t1 oldmac >/dev/null; then
+        echo "# Old Mac is not reachable. Skipping rsync." >&2
+    else
+        # may need to add more --exclude
+        rsync -Pzau --delete --modify-window=1 $HOME/IdeaProjects/samples/ hosako@oldmac:/Users/hosako/IdeaProjects/samples/ #-n
+        rsync -Pzau --delete --modify-window=1 --exclude '.idea' hosako@oldmac:/Users/hosako/IdeaProjects/samples/ $HOME/IdeaProjects/samples/ -n
+        rsync -Pzau --delete --modify-window=1 $HOME/IdeaProjects/work/ hosako@oldmac:/Users/hosako/IdeaProjects/work/ #-n
+        rsync -Pzau --delete --modify-window=1 --exclude '.idea' hosako@oldmac:/Users/hosako/IdeaProjects/work/ $HOME/IdeaProjects/work/ -n
+    fi
+
+    echo ""
+    echo "#### Cleaning up old temp/test data ####" >&2
+    echo ""
     if [ -d "$HOME/Documents/tests" ]; then
         # Blow is bad because extracted files may have old dates
         #${_find} "$HOME/Documents/tests" -type f -mtime +120 -delete 2>/dev/null
@@ -805,7 +818,6 @@ function backupC() {
      fi
 
     [ ! -d "${_src}" ] && return 11
-
     ## Special: support_tmp directory or .tmp or .out file wouldn't need to backup (not using atime as directory doesn't work)
     # NOTE: xargs may not work with very long file name 'mv: rename {} to /Users/hosako/.Trash/{}: No such file or directory', so not using.
     _src="$(realpath "${_src}")"    # because find -L ... -delete does not work
@@ -928,13 +940,6 @@ function pubS() {
     if [ -d "$HOME/IdeaProjects/nexus-monitoring/resources" ] && [ $HOME/IdeaProjects/samples/misc/h2-console.jar -nt /tmp/pubS.last ]; then
         cp -v -f $HOME/IdeaProjects/samples/misc/*-console*.jar $HOME/IdeaProjects/nexus-monitoring/resources/
         cp -v -f $HOME/IdeaProjects/samples/misc/filelist_* $HOME/IdeaProjects/nexus-monitoring/resources/
-    fi
-
-    if ! ping -c1 -t1 oldmac >/dev/null; then
-        rsync -Pza --delete --modify-window=1 $HOME/IdeaProjects/samples/ hosako@oldmac:/Users/hosako/IdeaProjects/samples/ #-n
-        rsync -Pza --delete --modify-window=1 --exclude '.git' hosako@oldmac:/Users/hosako/IdeaProjects/samples/ $HOME/IdeaProjects/samples/ -n
-        rsync -Pza --delete --modify-window=1 $HOME/IdeaProjects/work/ hosako@oldmac:/Users/hosako/IdeaProjects/work/ #-n
-        rsync -Pza --delete --modify-window=1 --exclude '.git' hosako@oldmac:/Users/hosako/IdeaProjects/work/ $HOME/IdeaProjects/work/ -n
     fi
 
     sync_nexus_binaries &>/dev/null &
