@@ -367,15 +367,8 @@ function _grep() {
 }
 
 function _sortjson() {
-    # because `python` can be an alias
-    if python --version &>/dev/null; then
-        if [[ "${JSON_NO_SORT}" =~ ^(y|Y) ]]; then
-            python -c "import sys,json;print(json.dumps(json.load(sys.stdin), indent=4))"
-        elif [ -n "${JSON_SEARCH_KEY}" ]; then
-            python -c 'import sys,json;a=json.loads(sys.stdin.read());print(a["'${JSON_SEARCH_KEY}'"])'
-        else
-            python -c "import sys,json;print(json.dumps(json.load(sys.stdin), indent=4, sort_keys=True))"
-        fi
+    if type sortjson &>/dev/null; then
+        sortjson
     else
         if [ ! -e /tmp/sortjson ]; then
             curl -sSf -o /tmp/sortjson -L "https://github.com/hajimeo/samples/raw/master/misc/sortjson_$(uname)_$(uname -m)" && chmod a+x /tmp/sortjson
