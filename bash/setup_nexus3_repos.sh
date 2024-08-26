@@ -209,7 +209,7 @@ EOF
         fi
     fi
 
-    if type f_setup_https &>/dev/null; then
+    if [[ ! "${_NO_HTTPS}" =~ [yY] ]]; then
         local _ssl_port="$(_find_port "8443")"
         f_setup_https "" "${_ssl_port}"
     fi
@@ -223,7 +223,7 @@ EOF
     if [[ "${_ver}" =~ ^3\.(7[1-9]\.|[89][0-9]\.|[1-9][0-9][0-9]).+ ]]; then
         if [ -d "${JAVA_HOME_17}" ]; then
             export JAVA_HOME="${JAVA_HOME_17}"
-            echo "      export JAVA_HOME=\"${JAVA_HOME_17}\""
+            echo "      export-ed JAVA_HOME=\"${JAVA_HOME_17}\""
         else
             echo "      Make sure JAVA_HOME is set to Java 17"
         fi
