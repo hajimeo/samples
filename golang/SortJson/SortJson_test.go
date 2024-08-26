@@ -37,6 +37,7 @@ func TestPrintJsonValuesByKeys_SingleKey(t *testing.T) {
 }
 
 func TestPrintJsonValuesByKeys_NestedKey(t *testing.T) {
+	//os.Setenv("STRING_QUOTE", "\"")
 	jsonBytes, _ := os.ReadFile("./tests/resources/test.json")
 	var jsonObj interface{}
 	json.Unmarshal(jsonBytes, &jsonObj)
@@ -45,6 +46,7 @@ func TestPrintJsonValuesByKeys_NestedKey(t *testing.T) {
 	// Check output if necessary
 	//assert.Contains(t, output, "Cleanup unused nuget blobs from nexus")
 	//t.Logf("%s", output)
+	//os.Unsetenv("STRING_QUOTE")
 }
 
 func TestStr2Slice_ValidString(t *testing.T) {

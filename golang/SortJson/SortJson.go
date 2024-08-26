@@ -35,6 +35,7 @@ var JSON_SEARCH_KEY = helpers.GetEnv("JSON_SEARCH_KEY", "")
 var OUTPUT_DELIMITER = helpers.GetEnv("OUTPUT_DELIMITER", ",")
 var NULL_VALUE = helpers.GetEnv("NULL_VALUE", "<null>")
 var LINE_BREAK = helpers.GetEnv("LINE_BREAK", "\n")
+var STRING_QUOTE = helpers.GetEnv("STRING_QUOTE", "")
 var bracesRg = regexp.MustCompile(`[\[\](){}]`)
 
 func sortByKeys(bytes []byte) ([]byte, error) {
@@ -104,7 +105,7 @@ func printValue(value interface{}, needDelimiter bool) {
 			outBytes, _ := json.Marshal(value)
 			fmt.Printf("%s", outBytes)
 		} else {
-			fmt.Printf("\"%s\"", value)
+			fmt.Printf("%s%s%s", STRING_QUOTE, value, STRING_QUOTE)
 		}
 	}
 	if needDelimiter {
