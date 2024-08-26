@@ -202,7 +202,14 @@ func _setGlobals() {
 	} else if _BS_TYPE != nil && *_BS_TYPE == "A" {
 		_log("TODO", " Do something ")
 	} else {
-		_CONTENT_PATH = basedir + prefix + "content"
+		// TODO: not perfect
+		if !strings.Contains(basedir, "content") {
+			_CONTENT_PATH = basedir + "content"
+		} else if strings.HasSuffix(basedir, string(filepath.Separator)+"content") || strings.HasSuffix(basedir, string(filepath.Separator)+"content"+string(filepath.Separator)) {
+			_CONTENT_PATH = basedir
+		} else {
+			_log("ERROR", "Could not decide the 'content' path.")
+		}
 	}
 	_log("DEBUG", "_CONTENT_PATH = "+_CONTENT_PATH)
 
@@ -1207,7 +1214,7 @@ func openInOrFIle(path string) *os.File {
 	return f
 }
 
-func printDeadBlobsFromIdFile(blobIdsFile string, conc int, s3Client *s3.Client) {
+func printDeadBlobsFromIdFile(blobIdsFile string, conc int, s3Client interface{}) {
 	f := openInOrFIle(blobIdsFile)
 	defer f.Close()
 	var wg sync.WaitGroup
@@ -1219,7 +1226,7 @@ func printDeadBlobsFromIdFile(blobIdsFile string, conc int, s3Client *s3.Client)
 
 		guard <- struct{}{}
 		wg.Add(1)
-		go func(line string, s3Client *s3.Client) {
+		go func(line string, s3Client interface{}) {
 			defer wg.Done()
 			// TODO: Havn't decided how to retrieve the asset_id
 			printDeadBlob(0, line, s3Client)
@@ -1229,7 +1236,7 @@ func printDeadBlobsFromIdFile(blobIdsFile string, conc int, s3Client *s3.Client)
 	wg.Wait()
 }
 
-func printDeadBlobsFromDb(dbConStr string, conc int, s3Client *s3.Client) {
+func printDeadBlobsFromDb(dbConStr string, conc int, client interface{}) {
 	db := openDb(dbConStr)
 	if db == nil {
 		panic("Cannot open the database.") // Can't output _DB_CON_STR as it may include password
@@ -1282,16 +1289,16 @@ func printDeadBlobsFromDb(dbConStr string, conc int, s3Client *s3.Client) {
 
 		guard <- struct{}{}
 		wg.Add(1)
-		go func(vals []interface{}, s3Client *s3.Client) {
+		go func(vals []interface{}, client interface{}) {
 			defer wg.Done()
-			printDeadBlob(vals[0].(int64), vals[1].(string), s3Client)
+			printDeadBlob(vals[0].(int64), vals[1].(string), client)
 			<-guard
-		}(vals, s3Client)
+		}(vals, client)
 	}
 	wg.Wait()
 }
 
-func printDeadBlob(assetId int64, blobRef string, s3Client *s3.Client) {
+func printDeadBlob(assetId int64, blobRef string, s3Client interface{}) {
 	blobId := extractBlobIdFromString(blobRef)
 	if len(blobId) == 0 {
 		_log("DEBUG", fmt.Sprintf("printDeadBlobsFromDb, skipping %v", blobRef))
@@ -1364,7 +1371,7 @@ func printOrphanedBlobsFromIdFile(blobIdsFile string, dbConStr string, conc int)
 	}
 }
 
-func listObjectsS3(dir string, db *sql.DB, client *s3.Client) int64 {
+func listObjectsS3(dir string, db *sql.DB, client interface{}) int64 {
 	var subTtl int64
 	input := &s3.ListObjectsV2Input{
 		Bucket:     _BASEDIR,
@@ -1378,7 +1385,7 @@ func listObjectsS3(dir string, db *sql.DB, client *s3.Client) int64 {
 	//}
 
 	for {
-		resp, err := client.ListObjectsV2(context.TODO(), input)
+		resp, err := (client.(*s3.Client)).ListObjectsV2(context.TODO(), input)
 		if err != nil {
 			println("Got error retrieving list of objects:")
 			panic(err.Error())
@@ -1397,7 +1404,7 @@ func listObjectsS3(dir string, db *sql.DB, client *s3.Client) int64 {
 					printLineS3(item, client, db)
 					<-guardTags   // **
 					wgTags.Done() // *
-				}(client, item, db)
+				}(client.(*s3.Client), item, db)
 			}
 
 			if *_TOP_N > 0 && *_TOP_N <= _PRINTED_N {
@@ -1451,7 +1458,7 @@ func listObjectsFile(dir string, db *sql.DB) int64 {
 	return subTtl
 }
 
-func listObjects(dir string, client *s3.Client) {
+func listObjects(dir string, client interface{}) {
 	startMs := time.Now().UnixMilli()
 	var subTtl int64
 	// As this method is used in the goroutine, open own DB and close
@@ -1474,6 +1481,7 @@ func printObjectByBlobId(blobId string, db *sql.DB, client interface{}) {
 		return
 	}
 	path := _CONTENT_PATH + string(filepath.Separator) + genBlobPath(blobId) + _PROP_EXT
+	_log("DEBUG", path)
 	switch client.(type) {
 	// TODO: add Azure
 	case *s3.Client:
@@ -1530,7 +1538,7 @@ func main() {
 		os.Exit(1)
 	}
 
-	var client *s3.Client
+	var client interface{}
 	if _BS_TYPE != nil && *_BS_TYPE == "S" {
 		cfg, err := config.LoadDefaultConfig(context.TODO())
 		if _DEBUG2 != nil && *_DEBUG2 {
@@ -1575,7 +1583,7 @@ func main() {
 	_log("INFO", fmt.Sprintf("Retriving sub directories under %s", *_BASEDIR))
 	var subDirs []string
 	if _BS_TYPE != nil && *_BS_TYPE == "S" {
-		subDirs = getDirsS3(client)
+		subDirs = getDirsS3(client.(*s3.Client))
 	} else {
 		subDirs = getDirs(*_BASEDIR, *_PREFIX)
 	}
@@ -1622,7 +1630,7 @@ func main() {
 		for _, chunk := range chunks {
 			guard <- struct{}{}
 			wg.Add(1)
-			go func(blobIds []string, client *s3.Client) {
+			go func(blobIds []string, client interface{}) {
 				defer wg.Done()
 				var db *sql.DB
 				if len(*_DB_CON_STR) > 0 {
@@ -1644,7 +1652,7 @@ func main() {
 			_log("DEBUG", s+" starting ...")
 			guard <- struct{}{}
 			wg.Add(1)
-			go func(subdir string, client *s3.Client) {
+			go func(subdir string, client interface{}) {
 				defer wg.Done()
 				listObjects(subdir, client)
 				<-guard
