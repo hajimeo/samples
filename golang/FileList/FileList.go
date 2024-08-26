@@ -221,7 +221,7 @@ func _setGlobals() {
 	}
 
 	if len(*_DB_CON_STR) > 0 {
-		// If DB connection is provided but the source is not specified, using BlobStore as the source of the trueth (will work like DeadBlobsFInder)
+		// If DB connection is provided but the source is not specified, using BlobStore as the source of the truth (will work like DeadBlobsFInder)
 		if len(*_TRUTH) == 0 {
 			*_TRUTH = "BS"
 		}
@@ -594,7 +594,7 @@ func printLineFile(path string, fInfo os.FileInfo, db *sql.DB) {
 	_println(output)
 }
 
-func genOutput(path string, modTime time.Time, size int64, blobSize int64, db *sql.DB, client *s3.Client) string {
+func genOutput(path string, modTime time.Time, size int64, blobSize int64, db *sql.DB, client interface{}) string {
 	atomic.AddInt64(&_CHECKED_N, 1)
 
 	modTimeTs := modTime.Unix()
@@ -623,7 +623,7 @@ func genOutput(path string, modTime time.Time, size int64, blobSize int64, db *s
 }
 
 // To handle a bit complicated conditions
-func _printLineExtra(output string, path string, modTimeTs int64, db *sql.DB, client *s3.Client) string {
+func _printLineExtra(output string, path string, modTimeTs int64, db *sql.DB, client interface{}) string {
 	if _START_TIME_ts > 0 && modTimeTs > _START_TIME_ts {
 		_log("INFO", "path:"+path+" is recently modified, so skipping ("+strconv.FormatInt(modTimeTs, 10)+" > "+strconv.FormatInt(_START_TIME_ts, 10)+")")
 		return ""
