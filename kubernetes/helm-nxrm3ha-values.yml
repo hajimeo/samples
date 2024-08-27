@@ -5,6 +5,7 @@
 #   Can't (or need to be careful) use special characters such as double-quotes and dollar mark.
 
 #$ export HELM_NAME="sonatype-helm" NAME_SPACE="nexusrepo" RELEASE_NAME="nxrm3ha" ADMIN_PWD="admin123" LICENSE_B64="$(base64 -i $HOME/share/sonatype/sonatype-license.lic)" DB_SERVER="192.168.4.31";export NFS_SERVER="192.168.4.31" SHARE_DIR="/var/tmp/share/sonatype/${RELEASE_NAME}-nfs"
+# NOTE: to decode: kubectl get secrets nexus-repo-license.lic -n nexusrepo -o jsonpath="{.data.nexus-repo-license\.lic}" | base64 -d >/tmp/my-test2.lic
 
 # Most likely only once
 #$ #kubectl create namespace ${NAME_SPACE}
@@ -74,7 +75,7 @@ statefulset:
     env:
       nexusDBName: nxrm3helmha
       nexusDBPort: 5432
-      install4jAddVmParams: '-Xms1024m -Xmx2703m -Dnexus.scripts.allowCreation=true -Dcom.sun.management.jmxremote=true -Dcom.sun.management.jmxremote.port=9000 -Dcom.sun.management.jmxremote.rmi.port=9000 -Dcom.sun.management.jmxremote.authenticate=false -Dcom.sun.management.jmxremote.ssl=false -Dcom.sun.management.jmxremote.local.only=true -Djava.rmi.server.hostname=127.0.0.1'
+      install4jAddVmParams: '-Xms1024m -Xmx2703m -Dcom.redhat.fips=false -Dnexus.scripts.allowCreation=true -Dcom.sun.management.jmxremote=true -Dcom.sun.management.jmxremote.port=9000 -Dcom.sun.management.jmxremote.rmi.port=9000 -Dcom.sun.management.jmxremote.authenticate=false -Dcom.sun.management.jmxremote.ssl=false -Dcom.sun.management.jmxremote.local.only=true -Djava.rmi.server.hostname=127.0.0.1'
       jdbcUrlParams: null # Must start with a '?' e.g. '?foo=bar&baz=foo'
   livenessProbe:
     failureThreshold: 6

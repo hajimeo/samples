@@ -170,6 +170,7 @@ spec:
               #  -Dnexus-args=/opt/sonatype/nexus/etc/jetty/jetty.xml,/opt/sonatype/nexus/etc/jetty/jetty-http.xml,/nexus-data/etc/ssl/jetty-https.xml,/opt/sonatype/nexus/etc/jetty/jetty-requestlog.xml \
               # kubectl port-forward -n sonatype deployment/nxrm3pg-deployment 9000:9000
               value: '-XX:ActiveProcessorCount=1 -Xms2g -Xmx3g \
+                -Dcom.redhat.fips=false \
                 -Dfile.encoding=UTF-8 -Dsun.jnu.encoding=UTF-8 \
                 -Dcom.sun.management.jmxremote=true -Dcom.sun.management.jmxremote.port=9000 -Dcom.sun.management.jmxremote.rmi.port=9000 -Dcom.sun.management.jmxremote.authenticate=false -Dcom.sun.management.jmxremote.ssl=false -Dcom.sun.management.jmxremote.local.only=true -Djava.rmi.server.hostname=127.0.0.1 \
                 -Djava.util.prefs.userRoot=/nexus-data/javaprefs \
