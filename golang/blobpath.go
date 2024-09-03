@@ -41,10 +41,11 @@ USAGE EXAMPLE:
     /nexus-data/blobs/default/content/vol-31/chap-32/83e59741-f05d-4915-a1ba-7fc789be34b1.properties
 ADVANCED:
     # NOTE: using xxxxxx@ as blobStore ID/name is not 100% accurate
-	rg 'blobRef=([^@]+)@[^:]+:([^, ]+)' -o -r 'blobpath "$2" "" "$1@content"' deadBlobResult-20230120-160737.json > ./eval.sh
-	bash -v ./eval.sh > actual_paths.out
-    #rg -o '^.+@' actual_paths.out | sort | uniq -c
-	sed -i.bak 's;^default@;/opt/sonatype/sonatype-work/blobs/default/;g' ./actual_paths.out`)
+	rg -s '\bblob_?[rR]ef[:=]([^@]+)@.*(([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})),' -o -r 'blobpath "$2" ".properties" "$1@content"' deadBlobResult-20*.json > ./eval.sh
+	bash -v ./eval.sh > ./paths.tmp
+    #rg -o '^.+@' ./paths.tmp | sort | uniq -c
+	sed 's;^default@;/opt/sonatype/sonatype-work/blobs/default/;g' ./paths.tmp > final_paths.out
+	sed -e 's;Maven@;maven/;g' -e 's;npm-blobstore@;npm/;g' ./paths.tmp > final_paths.out`)
 }
 
 func myHashCode(s string) int32 {
