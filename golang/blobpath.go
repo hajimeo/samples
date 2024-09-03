@@ -46,7 +46,7 @@ NOTE: using xxxxxx@ as blobStore ID/name is not 100% accurate
 	bash -v ./eval.sh > ./paths.tmp
     #rg -o '^.+@' ./paths.tmp | sort | uniq -c
 	sed 's;^default@;/opt/sonatype/sonatype-work/blobs/default/;g' ./paths.tmp > final_paths.out
-	sed -e 's;Maven@;maven/;g' -e 's;npm-blobstore@;npm/;g' ./paths.tmp > final_paths.out`)
+	sed -e 's;^Maven@;maven/;g' -e 's;^npm-blobstore@;npm/;g' ./paths.tmp > final_paths.out`)
 }
 
 func myHashCode(s string) int32 {
