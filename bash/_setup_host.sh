@@ -600,6 +600,10 @@ function f_apache_proxy() {
     # NOTE: To configure java to use proxy (https://docs.oracle.com/javase/6/docs/technotes/guides/net/proxies.html)
     # -Dhttp.proxyHost=192.168.1.31 -Dhttp.proxyPort=28080 -Dhttp.proxyUser=proxyuser -Dhttp.proxyPassword=proxypwd
 
+    # To troubleshoot
+    #   apache2ctl configtest
+    #   apache2ctl -M | grep authz   # should see _core
+
     # TODO: 777...
     [ ! -d "${_proxy_dir}" ] && mkdir -p -m 777 "${_proxy_dir}"
     #[ ! -d "${_cache_dir}" ] && mkdir -p -m 777 "${_cache_dir}"
