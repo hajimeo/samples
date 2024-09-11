@@ -905,7 +905,7 @@ function f_count_lines() {
     fi
 }
 
-#f_hexTids_from_topH "top_0*"
+#f_hexTids_from_topH "top_netstat/top_0*"
 function f_hexTids_from_topH() {
     # grep top output and return PID (currently over 90% CUP one) for the user, then use printf to convert to hex
     local _file="${1}"  # file path or glob for rg
@@ -1074,7 +1074,7 @@ function f_threads() {
     local _file="$1"    # Or dir contains thread_xxxx.txt files
     local _split_search="${2}"  # "^\".+" or if NXRM2, "^[a-zA-Z].+"
     local _running_thread_search_re="${3-"\.sonatype\."}"
-    local _save_dir="${4-"${_THREAD_SAVE_DIR}"}"
+    local _save_dir="${4}"
     local _not_split_by_date="${5:-${_NOT_SPLIT_BY_DATE}}"
 
     local _thread_file_glob="${_THREAD_FILE_GLOB:-"thread*.txt*"}"
@@ -1179,22 +1179,22 @@ function f_threads() {
     #awk 'FNR == 2' ${_save_dir%/}/*.out | sort | uniq -c | sort -r | head -n 20
     #echo " "
 
-    echo "## Counting 'waiting to lock|waiting on|waiting to lock' etc. basically hung processes (excluding smaller than 1k threads, 'parking to wait for' and 'None', and top 20)"
-    rg '^\s+\- [^<]' --no-filename `find ${_save_dir%/} -type f -size +1k` | rg -v '(- locked|- None|parking to wait for)' | sort | uniq -c | sort -nr | tee ${_tmp_dir%/}/f_threads_$$_waiting_counts.out | head -n 20
+    echo "## Counting 'waiting to lock|waiting on|waiting to lock' etc. basically hung processes (excluding smaller than 2k size threads, 'parking to wait for' and 'None', and top 20)"
+    rg '^\s+\- [^<]' --no-filename `find ${_save_dir%/} -type f -size +2k` | rg -v '(- locked|- None|parking to wait for)' | sort | uniq -c | sort -nr | tee ${_tmp_dir%/}/f_threads_$$_waiting_counts.out | head -n 20
     echo " "
 
-    echo "## Checking 'parking to wait for' qtp threads, because it may indicate the pool exhaustion issue (eg:NEXUS-17896 / NEXUS-10372) (excluding smaller than 1k threads)"
-    #rg '\bparking to wait for\b' -l `find ${_save_dir%/} -type f -size +1k -name 'qtp*.out'` | wc -l
-    rg '\bparking to wait for\s+<([^>]+)>.+\(([^\)]+)\)' -o -r '$1 $2' --no-filename `find ${_save_dir%/} -type f -size +1k -name 'qtp*.out'` | sort | uniq -c | sort -nr | head -n10
+    echo "## Checking 'parking to wait for' qtp threads, because it may indicate the pool exhaustion issue (eg:NEXUS-17896 / NEXUS-10372) (excluding smaller than 2k size threads)"
+    #rg '\bparking to wait for\b' -l `find ${_save_dir%/} -type f -size +2k -name 'qtp*.out'` | wc -l
+    rg '\bparking to wait for\s+<([^>]+)>.+\(([^\)]+)\)' -o -r '$1 $2' --no-filename `find ${_save_dir%/} -type f -size +2k \( -name 'qtp*.out' -o -name 'dw-*.out' \)` | sort | uniq -c | sort -nr | head -n10
     # NOTE: probably java.util.concurrent.SynchronousQueue can be ignored
     echo " "
 
     # At least more than 5 waiting:
     local _most_waiting="$(rg -m 1 '^\s*([5-9]|\d\d+)\s+.+(0x[0-9a-f]+)' -o -r '$2' ${_tmp_dir%/}/f_threads_$$_waiting_counts.out)"
     if [ -n "${_most_waiting}" ]; then
-        echo "## Finding thread(s) locked '${_most_waiting}' (excluding smaller than 1k threads)"
+        echo "## Finding thread(s) locked '${_most_waiting}' (excluding smaller than 2k size threads)"
         # I was doing 'rg ... `find ...` | xargs', but when find is empty, rg checks everything, so below is not efficient but safer
-        find ${_save_dir%/} -type f -size +1k -name '*.out' -print | while read -r _f; do
+        find ${_save_dir%/} -type f -size +2k -name '*.out' -print | while read -r _f; do
             if rg -q "locked.+${_most_waiting}" -l "${_f}"; then
                 rg -H '(java.lang.Thread.State:| state=)' "${_f}"
             fi
@@ -1215,8 +1215,8 @@ function f_threads() {
     echo " "
 
     if [ -n "${_running_thread_search_re}" ]; then
-        echo "## Finding *probably* running threads containing '${_running_thread_search_re}', size +4k"
-        find ${_save_dir%/} -size +4k -iname '*run*' -exec rg -H -m5 "${_running_thread_search_re}[^$]+$" {} \;
+        echo "## Finding running threads with size is over 4k and containing '${_running_thread_search_re}'"
+        find ${_save_dir%/} -size +4k -iname '*run*' -exec rg -H -m1 "${_running_thread_search_re}[^$]+$" {} \;
         echo " "
 
         echo "## Finding popular methods from *probably* running threads containing '${_running_thread_search_re}'"
@@ -1260,24 +1260,28 @@ function f_analyse_multiple_dumps() {
     rg -A10 '^### Counting thread states' ./f_thread_*.out
     echo " "
 
-    echo "## Multiple *RUN*ning and no-change (same hash) threads which contain '${_running_thread_search_re}' and over 1KB"
+    echo "## Multiple *RUN*ning and no-change (same hash) threads which contain '${_running_thread_search_re}' and over 2KB"
     _elapsed &>/dev/null
-    _long_running "${_individual_thread_dir%/}" "${_running_thread_search_re}" "" "1k"
+    _long_running "${_individual_thread_dir%/}" "${_running_thread_search_re}" "" "2k"
     _LOG "INFO" "_long_running $(_elapsed)"
     echo 'NOTE: rg -A7 -m1 "RUNNABLE" -g <filename>'
     echo " "
-    echo "## Multiple BLOCKED and no-change (same hash) threads which contain '${_running_thread_search_re}' and over 1KB"
-    _long_blocked "${_individual_thread_dir%/}" "${_running_thread_search_re}"
+    echo "## Multiple BLOCKED and no-change (same hash) threads which contain '${_running_thread_search_re}' and over 2KB"
+    _long_blocked "${_individual_thread_dir%/}" "${_running_thread_search_re}" "" "2k"
     _LOG "INFO" "_long_blocked $(_elapsed)"
     echo " "
-    echo "## Potential network slowness \"ConditionObject\.await .+ ${_running_thread_search_re}\""
+    echo "## Potential network slowness \"ConditionObject\.await .+ ${_running_thread_search_re}\" threads"
     _many_wait "${_individual_thread_dir%/}" "${_running_thread_search_re}"
     _LOG "INFO" "_many_wait $(_elapsed)"
     echo " "
 
     # not easy to check size so using _running_thread_search_re
-    echo "## Long Running (more than ${_times} times) threads which contain '${_running_thread_search_re}' (size can be diff)"
-    rg -l "${_running_thread_search_re}" -g '*run*.out' -g '*RUN*.out' ${_individual_thread_dir%/}/ | while read -r _f; do echo "$(basename ${_f}) ($(du -k ${_f} | cut -f1) block)"; done | sort | uniq -c | rg "^\s+([${_times}-9]|\d\d+)\s+.+" -o | sort -nr
+    echo "## Long Running (more than ${_times} times) threads which contain '${_running_thread_search_re}' (size +2k but can be diff)"
+    find ${_individual_thread_dir%/} -type f -size +2k -iname '*run*.out' -print | while read -r _f; do
+        if rg -q "${_running_thread_search_re}" ${_f}; then
+            echo "$(basename ${_f})"
+        fi
+    done | sort | uniq -c | rg "^\s+([${_times}-9]|\d\d+)\s+.+" -o | sort -nr
     #| rg -v "(ParallelGC|G1 Concurrent Refinement|Parallel Marking Threads|GC Thread|VM Thread)"
     echo " "
 
@@ -1293,7 +1297,10 @@ function f_analyse_multiple_dumps() {
     done | sort -t":" -k1,1 -k2,2r
     echo " "
 
-    echo "### May also want to use f_splitTopNetstat() and f_hexTids_from_topH() and f_check_netstat()"
+    echo "### May also want to use:
+     f_splitTopNetstat \"./tops_netstats.txt\"
+     f_hexTids_from_topH \"top_netstat/top_0*\"
+     f_check_netstat \"top_netstat/netstat_0*\""
     echo " "
 }
 function _thread_state_sum() {
@@ -1348,7 +1355,7 @@ function _threads_extra_check() {
     if [ ! -f "${_file}" ]; then
         _file="--no-filename -g \"${_file}\""
     fi
-    rg '(DefaultTimelineIndexer|content_digest|findAssetByContentDigest|touchItemLastRequested|preClose0|sun\.security\.util\.MemoryCache|java\.lang\.Class\.forName|CachingDateFormatter|metrics\.health\.HealthCheck\.execute|WeakHashMap|userId\.toLowerCase|MessageDigest|UploadManagerImpl\.startUpload|UploadManagerImpl\.blobsByName|maybeTrimRepositories|getQuarantinedVersions|nonCatalogedVersions|getProxyDownloadNumbers|RepositoryManagerImpl.retrieveConfigurationByName|\.StorageFacetManagerImpl\.|OTransactionRealAbstract\.isIndexKeyMayDependOnRid|AptFacetImpl.put|componentMetadata|ensureGetUpload|OrientCommonQueryDataService|getWaivedFixed|AbstractOperationalSqlDAO\.getAll|NewestRiskService)' ${_file} | sort | uniq -c > /tmp/$FUNCNAME_$$.out || return $?
+    rg '(DefaultTimelineIndexer|content_digest|findAssetByContentDigest|touchItemLastRequested|preClose0|sun\.security\.util\.MemoryCache|java\.lang\.Class\.forName|CachingDateFormatter|metrics\.health\.HealthCheck\.execute|WeakHashMap|userId\.toLowerCase|MessageDigest|UploadManagerImpl\.startUpload|UploadManagerImpl\.blobsByName|maybeTrimRepositories|getQuarantinedVersions|nonCatalogedVersions|getProxyDownloadNumbers|RepositoryManagerImpl.retrieveConfigurationByName|\.StorageFacetManagerImpl\.|OTransactionRealAbstract\.isIndexKeyMayDependOnRid|AptFacetImpl.put|componentMetadata|ensureGetUpload|OrientCommonQueryDataService|getWaivedFixed|AbstractOperationalSqlDAO\.getAll|NewestRiskService|acquireLock)' ${_file} | sort | uniq -c > /tmp/$FUNCNAME_$$.out || return $?
     if [ -s /tmp/$FUNCNAME_$$.out ]; then
         echo "## Counting:"
         echo "##    'DefaultTimelineIndexer' for NXRM2 System Feeds: timeline-plugin,"
@@ -1378,6 +1385,7 @@ function _threads_extra_check() {
         echo "##    'getWaivedFixed' CLM-29328"
         echo "##    'AbstractOperationalSqlDAO.getAll' CLM-29339"
         echo "##    'NewestRiskService' dashboard/policy/newestRisks"
+        echo "##    'acquireLock' SELECT * FROM insight_brain_ods.lock WHERE lock_id = \$1 FOR UPDATE"
         cat /tmp/$FUNCNAME_$$.out
         echo " "
     fi
