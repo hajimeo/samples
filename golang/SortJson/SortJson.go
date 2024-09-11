@@ -31,12 +31,14 @@ import (
 )
 
 // This key is not used recursively and just print the value of this key.
-var JSON_SEARCH_KEY = helpers.GetEnv("JSON_SEARCH_KEY", "")
-var OUTPUT_DELIMITER = helpers.GetEnv("OUTPUT_DELIMITER", ",")
-var NULL_VALUE = helpers.GetEnv("NULL_VALUE", "<null>")
-var LINE_BREAK = helpers.GetEnv("LINE_BREAK", "\n")
-var STRING_QUOTE = helpers.GetEnv("STRING_QUOTE", "")
-var bracesRg = regexp.MustCompile(`[\[\](){}]`)
+var JSON_SEARCH_KEY = ""
+var OUTPUT_DELIMITER = ","
+var NULL_VALUE = "<null>"
+var LINE_BREAK = "\n"
+var STRING_QUOTE = ""
+var JSON_NO_SORT = ""
+var SaveToPointer *os.File
+var BracesRg = regexp.MustCompile(`[\[\](){}]`)
 
 func sortByKeys(bytes []byte) ([]byte, error) {
 	var ifc interface{}
@@ -46,21 +48,23 @@ func sortByKeys(bytes []byte) ([]byte, error) {
 	}
 	if len(JSON_SEARCH_KEY) > 0 {
 		keys := strings.Split(JSON_SEARCH_KEY, ".")
+		//fmt.Printf("DEBUG: keys = %v\n", keys)
 		printJsonValuesByKeys(ifc, keys)
+		return nil, nil
 	}
 	return json.Marshal(ifc)
 }
 
-func printJsonValuesByKeys(jsonObj interface{}, keys []string) {
-	//fmt.Printf("DEBUG: %v\n", keys)
-	maybeKey := keys[0]
+func printJsonValuesByKeys(jsonObj interface{}, searchKeys []string) {
+	//fmt.Printf("DEBUG: searchKeys = %v\n", searchKeys)
+	maybeKey := searchKeys[0]
 	// if slice (list/array), loop to find the key
 	if reflect.TypeOf(jsonObj).Kind() == reflect.Slice {
 		for _, obj := range jsonObj.([]interface{}) {
 			// Not accepting nested lists, so assuming it's a dict (ignoring if not dict)
 			maybeMap, isDict := obj.(map[string]interface{})
 			if isDict {
-				printJsonValuesByKeys(maybeMap, keys)
+				printJsonValuesByKeys(maybeMap, searchKeys)
 			}
 		}
 		return
@@ -72,15 +76,15 @@ func printJsonValuesByKeys(jsonObj interface{}, keys []string) {
 			value, ok := maybeMap[tmpKeys[0]]
 			if ok {
 				// if dict and only one key, print and exit
-				if len(keys) == 1 {
+				if len(searchKeys) == 1 {
 					printValue(value, false)
 					return
 				}
 				// if dict and more than one key, continue to find the key
-				printJsonValuesByKeys(value, keys[1:])
+				printJsonValuesByKeys(value, searchKeys[1:])
 			}
 		} else {
-			// Assuming only the end of keys can be a slice/list
+			// Assuming only the end of searchKeys can be a slice/list
 			for i, key := range tmpKeys {
 				value, ok := maybeMap[key]
 				if ok {
@@ -93,25 +97,36 @@ func printJsonValuesByKeys(jsonObj interface{}, keys []string) {
 	}
 }
 
+func printfOrSave(line string) (n int, err error) {
+	// At this moment, excluding empty line
+	if len(line) == 0 {
+		return
+	}
+	if SaveToPointer != nil {
+		return fmt.Fprint(SaveToPointer, line)
+	}
+	return fmt.Printf(line)
+}
+
 func printValue(value interface{}, needDelimiter bool) {
 	//fmt.Printf("DEBUG: %v\n", value)
 	//fmt.Printf("DEBUG: kind = %v\n", reflect.TypeOf(value).Kind())	// if nil, this causes SIGSEGV
 	if value == nil {
-		fmt.Printf("%s", NULL_VALUE)
+		printfOrSave(fmt.Sprintf("%s", NULL_VALUE))
 	} else if helpers.IsNumeric(value) {
-		fmt.Printf("%s", value.(string))
+		printfOrSave(fmt.Sprintf("%v", value))
 	} else {
 		if reflect.TypeOf(value).Kind() != reflect.String {
 			outBytes, _ := json.Marshal(value)
-			fmt.Printf("%s", outBytes)
+			printfOrSave(fmt.Sprintf("%s", outBytes))
 		} else {
-			fmt.Printf("%s%s%s", STRING_QUOTE, value, STRING_QUOTE)
+			printfOrSave(fmt.Sprintf("%s%s%s", STRING_QUOTE, value, STRING_QUOTE))
 		}
 	}
 	if needDelimiter {
-		fmt.Printf("%s", OUTPUT_DELIMITER)
+		printfOrSave(fmt.Sprintf("%s", OUTPUT_DELIMITER))
 	} else {
-		fmt.Printf(LINE_BREAK) // TODO: this is not good if Windows
+		printfOrSave(fmt.Sprintf(LINE_BREAK))
 	}
 }
 
@@ -119,7 +134,7 @@ func printValue(value interface{}, needDelimiter bool) {
 Convert [aaaa,bbb] to slice (list)
 */
 func str2slice(listLikeStr string) []string {
-	return strings.Split(bracesRg.ReplaceAllString(listLikeStr, ""), ",")
+	return strings.Split(BracesRg.ReplaceAllString(listLikeStr, ""), ",")
 	/*
 		var result []string
 		err := json.Unmarshal([]byte(listLikeStr), &result)
@@ -131,6 +146,9 @@ func str2slice(listLikeStr string) []string {
 }
 
 func prettyBytes(strB []byte) (string, error) {
+	if len(strB) == 0 {
+		return "", nil
+	}
 	var prettyJSON bytes.Buffer
 	if err := json.Indent(&prettyJSON, strB, "", "    "); err != nil {
 		return "", err
@@ -166,7 +184,18 @@ func readWithTimeout(r io.Reader, timeout time.Duration) ([]byte, error) {
 	}
 }
 
+func setGlobals() {
+	JSON_SEARCH_KEY = helpers.GetEnv("JSON_SEARCH_KEY", JSON_SEARCH_KEY)
+	JSON_NO_SORT = helpers.GetEnv("JSON_NO_SORT", JSON_NO_SORT)
+	OUTPUT_DELIMITER = helpers.GetEnv("OUTPUT_DELIMITER", OUTPUT_DELIMITER)
+	NULL_VALUE = helpers.GetEnv("NULL_VALUE", NULL_VALUE)
+	LINE_BREAK = helpers.GetEnv("LINE_BREAK", LINE_BREAK)
+	STRING_QUOTE = helpers.GetEnv("STRING_QUOTE", STRING_QUOTE)
+}
+
 func main() {
+	setGlobals()
+
 	inFile := ""
 	var jsonBytes []byte
 	if len(os.Args) > 1 {
@@ -179,8 +208,16 @@ func main() {
 	if len(os.Args) > 2 {
 		outFile = os.Args[2]
 	}
+	if len(outFile) > 0 {
+		var err error
+		SaveToPointer, err = os.Create(outFile)
+		if err != nil {
+			fmt.Println(err)
+			return
+		}
+		defer SaveToPointer.Close()
+	}
 
-	var JSON_NO_SORT = os.Getenv("JSON_NO_SORT")
 	if len(JSON_NO_SORT) == 0 || (JSON_NO_SORT != "Y" && JSON_NO_SORT != "y") {
 		jsonSorted, err := sortByKeys(jsonBytes)
 		if err != nil {
@@ -196,23 +233,17 @@ func main() {
 		return
 	}
 
-	if len(outFile) > 0 {
-		f, err := os.Create(outFile)
-		if err != nil {
-			fmt.Println(err)
-			return
-		}
-		defer f.Close()
-
-		_, err2 := f.WriteString(jsonSortedPP + LINE_BREAK)
+	if len(outFile) > 0 && len(jsonSortedPP) > 0 {
+		_, err2 := SaveToPointer.WriteString(jsonSortedPP + LINE_BREAK)
 		if err2 != nil {
 			fmt.Println(err2)
 		}
 		return
 	}
-	// If specific keys are requested, no pretty printed JSON
-	if len(JSON_SEARCH_KEY) == 0 {
+
+	// If specific search keys (JSON_SEARCH_KEY) are requested, jsonSortedPP should be empty
+	if len(jsonSortedPP) > 0 {
 		fmt.Println(jsonSortedPP)
-		return
 	}
+	return
 }

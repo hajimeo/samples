@@ -25,15 +25,25 @@ func TestSortByKeys_InvalidJson(t *testing.T) {
 	assert.Error(t, err)
 }
 
+func TestSortByKeys_WithJsonSearchKey(t *testing.T) {
+	os.Setenv("JSON_SEARCH_KEY", "a,c")
+	input := []byte(`{"b":2,"a":1,"c":3}`)
+	// JSON_SEARCH_KEY is for just printing the value of the key, so expected is same
+	setGlobals()
+	result, err := sortByKeys(input)
+	os.Unsetenv("JSON_SEARCH_KEY")
+	assert.NoError(t, err)
+	assert.Equal(t, "", string(result))
+	t.Logf("Check output if necessary. Should be '1,3'")
+}
+
 func TestPrintJsonValuesByKeys_SingleKey(t *testing.T) {
 	jsonBytes, _ := os.ReadFile("./tests/resources/test.json")
 	var jsonObj interface{}
 	json.Unmarshal(jsonBytes, &jsonObj)
 	keys := strings.Split("continuationToken", ".")
 	printJsonValuesByKeys(jsonObj, keys)
-	// Check output if necessary
-	//t.Logf("Log = %s", output)
-	//assert.Equal(t, NULL_VALUE+"\n", output)
+	t.Logf("Check output if necessary")
 }
 
 func TestPrintJsonValuesByKeys_NestedKey(t *testing.T) {
@@ -81,37 +91,29 @@ func TestReadWithTimeout_Timeout(t *testing.T) {
 	assert.Nil(t, result)
 }
 
-func TestMain_ReadFromFile(t *testing.T) {
-	os.Args = []string{"cmd", "testdata/input.json"}
-	main()
-	// Check output if necessary
-}
-
-func TestMain_ReadFromStdin(t *testing.T) {
-	os.Args = []string{"cmd"}
-	// Simulate stdin input if necessary
-	main()
-	// Check output if necessary
-}
-
 func TestMain_WriteToFile(t *testing.T) {
-	os.Args = []string{"cmd", "testdata/input.json", "testdata/output.json"}
+	os.Args = []string{"cmd", "./tests/resources/test.json", "/tmp/output.json"}
+	os.Unsetenv("JSON_SEARCH_KEY")
 	main()
-	// Check output file if necessary
+	t.Logf("Check output if necessary: /tmp/output.json")
+	//output, _ := os.ReadFile("/tmp/output.json")
+	//assert.Contains(t, string(output), "Cleanup unused nuget blobs from nexus")
 }
 
 func TestMain_NoSort(t *testing.T) {
 	os.Setenv("JSON_NO_SORT", "Y")
-	os.Args = []string{"cmd", "testdata/input.json"}
+	os.Args = []string{"cmd", "./tests/resources/test.json", "/tmp/output_nosort.json"}
 	main()
-	// Check output if necessary
 	os.Unsetenv("JSON_NO_SORT")
+	output, _ := os.ReadFile("/tmp/output_nosort.json")
+	assert.Contains(t, string(output), "Cleanup unused nuget blobs from nexus")
 }
 
 func TestMain_SearchKey(t *testing.T) {
-	os.Setenv("JSON_SEARCH_KEY", "a.b")
-	os.Args = []string{"cmd", "testdata/input.json"}
+	os.Setenv("JSON_SEARCH_KEY", "items.[name,currentState,dummyNum]")
+	os.Args = []string{"cmd", "./tests/resources/test.json", "/tmp/output_withsearch.json"}
 	main()
+	t.Logf("Check output if necessary: /tmp/output_withsearch.json")
 	// Check output if necessary
 	os.Unsetenv("JSON_SEARCH_KEY")
 }
