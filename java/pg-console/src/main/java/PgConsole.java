@@ -31,6 +31,7 @@ public class PgConsole {
     static private String outputFormat = "csv";    // or json
     static private Terminal terminal;
     static private String historyPath;
+    static private String ridName = "ctid";
     static private String dbUser = "";
     static private String dbPwd = "";
     private static Connection conn;
@@ -83,6 +84,7 @@ public class PgConsole {
         return columns;
     }
 
+    // TODO: utlise ctid::tid for paging if that will improve the performance
     private static int printRsAsJson(ResultSet rs) throws SQLException {
         terminal.writer().print("\n[");
         int rowCount = 0;
