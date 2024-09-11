@@ -4,3 +4,5 @@ github.com/hajimeo/samples/golang/helpers v0.0.0-20230902042819-47ddf185d5d8 h1:
 github.com/hajimeo/samples/golang/helpers v0.0.0-20230902042819-47ddf185d5d8/go.mod h1:EeD5flqMrnU7awZvxHHLh2cfy1OwFcC+GBDm9AdAW10=
 github.com/hajimeo/samples/golang/helpers v0.0.0-20230903020054-1d768bd9a4d6 h1:2W1Si8zb2N5p9HHMjJh6WdJSzI/A4omCKFiX+RgjXXY=
 github.com/hajimeo/samples/golang/helpers v0.0.0-20230903020054-1d768bd9a4d6/go.mod h1:EeD5flqMrnU7awZvxHHLh2cfy1OwFcC+GBDm9AdAW10=
+github.com/hajimeo/samples/golang/helpers v0.0.0-20240903082518-f5df4f6456dd h1:Db2S0rZ5ruWd3ybPGeysoXhN2y3eJCIgHL6L8rLGw/Q=
+github.com/hajimeo/samples/golang/helpers v0.0.0-20240903082518-f5df4f6456dd/go.mod h1:EeD5flqMrnU7awZvxHHLh2cfy1OwFcC+GBDm9AdAW10=

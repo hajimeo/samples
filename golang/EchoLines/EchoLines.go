@@ -58,8 +58,7 @@ Read one file and output only necessary lines.
 	q -O -d"|" -T "SELECT c1 as start_time, c2 as end_time, CAST(c3 as INT) as ms, c4 as key FROM ./durations.out WHERE ms > 10000"
 
 ## NXRM2 thread dumps (not perfect. still contains some junk lines):
-	export EXCL_REGEX="^jvm 1\s+\|\s+\d\d\d\d-\d\d-\d\d \d\d:\d\d:\d\d .+"
-	echolines "wrapper.log.2,wrapper.log.1,wrapper.log" "^jvm 1\s+\|\s+\d\d\d\d-\d\d-\d\d \d\d:\d\d:\d\d$" "(^\s+class space.+)" | sed 's/^jvm 1    | //' > threads.txt
+	EXCL_REGEX="^jvm 1\s+\|\s+\d\d\d\d-\d\d-\d\d \d\d:\d\d:\d\d.+" echolines "wrapper.log.2,wrapper.log.1,wrapper.log" "^jvm 1\s+\|\s+\d\d\d\d-\d\d-\d\d \d\d:\d\d:\d\d$" "(^\s+class space.+)" | sed 's/^jvm 1    | //' > threads.txt
 ## NXRM3 thread dumps:
 	HTML_REMOVE=Y echolines "./jvm.log" "^\d\d\d\d-\d\d-\d\d \d\d:\d\d:\d\d$" "(^\s+class space.+|^\s+Metaspace\s+.+)" "threads"
 	# If would like to split per thread:
@@ -553,7 +552,10 @@ func main() {
 	} else {
 		for _, path := range IN_FILES {
 			inFile, err := os.Open(path)
-			helpers.PanicIfErr(err)
+			if err != nil {
+				helpers.PrintErr(err)
+				continue
+			}
 			//defer inFile.Close()
 			processFile(inFile)
 			if inFile != nil {
