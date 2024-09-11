@@ -296,11 +296,11 @@ function test_DeadBlobsFind() {
         _log "INFO" "Picking random ${_how_many} blobs for dead blobs test ..."
         time find ${_working_dir%/}/blobs/${_bsName}/content -maxdepth 1 -type d -name 'vol-*' -print0 | xargs -0 -I @@ -P3 find @@ -name '*.properties' -mtime -1 -exec grep -l '^@Bucket.repo-name='${_repo_name}'$' {} \; | head -n${_ASSET_CREATE_NUM:-50} | sort -R | head -n${_how_many} >/tmp/dead_blobs_${_how_many}_samples.txt
 
-        if [ ! -s ./dead_blobs_${_how_many}_samples.txt ]; then
+        if [ ! -s /tmp/dead_blobs_${_how_many}_samples.txt ]; then
             _log "ERROR" "'${_working_dir%/}/blobs/${_bsName}/content/vol-*' does not contain enough properties file to test"
             [[ "${_EXIT_AT_FIRST_TEST_ERROR}" =~ ^[yY] ]] && return 1
         else
-            cat ./dead_blobs_${_how_many}_samples.txt | xargs -I{} mv {} {}.test || return $?
+            cat /tmp/dead_blobs_${_how_many}_samples.txt | xargs -I{} mv {} {}.test || return $?
             _log "INFO" "Finding dead blobs for ${_repo_name} (should be at least ${_how_many}) ..."
             local _file_list_ln="$(_exec "${_cmd} -db ${_working_dir%/}/etc/fabric/nexus-store.properties -src DB -repos ${_repo_name} -P -f .properties" "/tmp/${_tsv}_dead.tsv")"
             if [ ${_file_list_ln:-0} -le 1 ] || [ ${_how_many:-10} -gt ${_file_list_ln:-0} ]; then
