@@ -112,7 +112,7 @@ _RESP_FILE=""
 
 ### Nexus installation functions ##############################################################################
 # To install 1st/2nd instance: _NEXUS_ENABLE_HA=Y _NXRM3_INSTALL_PORT=8083 f_install_nexus3 "" "nxrmha"
-# To upgrade (from ${_dirpath}/): tar -xvf $HOME/.nexus_executable_cache/nexus-3.69.0-02-mac.tgz
+# To upgrade (from ${_dirpath}/): tar -xvf $HOME/.nexus_executable_cache/nexus-3.72.0-04-mac.tgz
 function f_install_nexus3() {
     local __doc__="Install specific NXRM3 version (to recreate sonatype-work and DB, _RECREATE_ALL=Y)"
     local _ver="${1:-"${r_NEXUS_VERSION}"}"     # 'latest' or '3.71.0-03-java17'
@@ -209,24 +209,27 @@ EOF
         fi
     fi
 
+    cd "${_dirpath%/}" || return $?
+
     if [[ ! "${_NO_HTTPS}" =~ [yY] ]]; then
         local _ssl_port="$(_find_port "8443")"
-        f_setup_https "" "${_ssl_port}"
+        _log "INFO" "Setting up HTTPS on port ${_ssl_port}"
+        f_setup_https "" "${_ssl_port}" || return $?
     fi
 
-    cd "${_dirpath%/}" || return $?
+    if [[ "${_ver}" =~ ^3\.(7[1-9]\.|[89][0-9]\.|[1-9][0-9][0-9]).+ ]]; then
+        if [ -d "${JAVA_HOME_17}" ]; then
+            export JAVA_HOME="${JAVA_HOME_17}"
+            _log "INFO" "Export-ed JAVA_HOME=\"${JAVA_HOME_17}\""
+        else
+            _log "WARN" "Make sure JAVA_HOME is set to Java 17"
+        fi
+    fi
+
     echo "To start: ./nexus-${_ver}/bin/nexus run"
     type nxrmStart &>/dev/null && echo "      Or: nxrmStart"
     if [ "${_port}" != "8081" ]; then
         echo "May need to execute 'export _NEXUS_URL=\"http://localhost:${_port}/\"'"
-    fi
-    if [[ "${_ver}" =~ ^3\.(7[1-9]\.|[89][0-9]\.|[1-9][0-9][0-9]).+ ]]; then
-        if [ -d "${JAVA_HOME_17}" ]; then
-            export JAVA_HOME="${JAVA_HOME_17}"
-            echo "      export-ed JAVA_HOME=\"${JAVA_HOME_17}\""
-        else
-            echo "      Make sure JAVA_HOME is set to Java 17"
-        fi
     fi
     _isYes "${_NEXUS_ENABLE_HA:-"${r_NEXUS_ENABLE_HA}"}" && echo "      Make sure ./sonatype-work/nexus3/blobs/default is shared"
 }
@@ -1237,9 +1240,9 @@ function f_create_s3_blobstore() {
     fi
     _log "DEBUG" "$(cat ${_TMP%/}/f_apiS_last.out)"
     if [[ ! "${_NO_REPO_CREATE}" =~ [yY] ]] && ! _is_repo_available "raw-s3-hosted"; then
-        _log "INFO" "Creating raw-s3-hosted ..."
         # Not sure why but the file created by `dd` doesn't work if strictContentTypeValidation is true
         _apiS '{"action":"coreui_Repository","method":"create","data":[{"attributes":{"storage":{"blobStoreName":"'${_bs_name}'","writePolicy":"ALLOW","strictContentTypeValidation":false'$(_get_extra_sto_opt)'},"cleanup":{"policyName":[]}},"name":"raw-s3-hosted","format":"","type":"","url":"","online":true,"recipe":"raw-hosted"}],"type":"rpc"}' || return $?
+        _log "INFO" "Created raw-s3-hosted"
     fi
     _log "INFO" "AWS CLI command examples (not AWS_REGION may matter):
 aws s3api get-bucket-acl --bucket ${_bucket}
@@ -1269,8 +1272,8 @@ function f_create_azure_blobstore() {
     fi
     _log "DEBUG" "$(cat ${_TMP%/}/f_api_last.out)"
     if [[ ! "${_NO_REPO_CREATE}" =~ [yY] ]] && ! _is_repo_available "raw-az-hosted"; then
-        _log "INFO" "Creating raw-az-hosted ..."
         _apiS '{"action":"coreui_Repository","method":"create","data":[{"attributes":{"storage":{"blobStoreName":"'${_bs_name}'","writePolicy":"ALLOW","strictContentTypeValidation":false'$(_get_extra_sto_opt)'},"cleanup":{"policyName":[]}},"name":"raw-az-hosted","format":"","type":"","url":"","online":true,"recipe":"raw-hosted"}],"type":"rpc"}' || return $?
+        _log "INFO" "Created raw-az-hosted"
     fi
     _log "TODO" "Azure CLI command examples"
 }
@@ -1285,8 +1288,8 @@ function f_create_group_blobstore() {
     # writeToFirst or roundRobin
     f_api '/service/rest/v1/blobstores/group' '{"name":"'${_bs_name}'","members":["'${_member_pfx}'1","'${_member_pfx}'2"],"fillPolicy":"roundRobin"}' || return $?
     if ! _is_repo_available "${_repo_name}"; then
-        _log "INFO" "Creating ${_repo_name} ..."
         _apiS '{"action":"coreui_Repository","method":"create","data":[{"attributes":{"storage":{"blobStoreName":"'${_bs_name}'","writePolicy":"ALLOW","strictContentTypeValidation":true'$(_get_extra_sto_opt)'},"cleanup":{"policyName":[]}},"name":"'${_repo_name}'","format":"","type":"","url":"","online":true,"recipe":"raw-hosted"}],"type":"rpc"}' || return $?
+        _log "INFO" "Created ${_repo_name}"
     fi
 }
 
@@ -2267,15 +2270,14 @@ function f_upload_dummies() {
     local _seq="seq ${_seq_start} ${_seq_end}"
     [[ "${_how_many}" =~ ^[0-9]+[[:space:]]+[0-9]+$ ]] && _seq="seq ${_how_many}"
     # -T<(echo "aaa") may not work with some old bash and somehow some of files become 0 byte, so creating a file
-    echo "test by f_upload_dummies at $(date +'%Y-%m-%d %H:%M:%S')" > ${_TMP%/}/${FUNCNAME[0]}_$$.txt || return $?
+    echo "test at $(date +'%Y-%m-%d %H:%M:%S')" > ${_TMP%/}/${FUNCNAME[0]}_$$.txt || return $?
     for i in $(eval "${_seq}"); do
       echo "${_file_prefix}${i}${_file_suffix}"
     done | xargs -I{} -P${_parallel} curl -sSf -u "${_usr}:${_pwd}" -w '%{http_code} {} (%{time_total}s)\n' -T ${_TMP%/}/${FUNCNAME[0]}_$$.txt -L -k "${_repo_path%/}/{}"
     # NOTE: xargs only stops if exit code is 255
 }
-
 function f_upload_dummies_raw() {
-    local __doc__="Upload text files into raw hosted repository"
+    local __doc__="Upload text files into raw hosted repository by using f_upload_dummies"
     local _repo_name="${1:-"raw-hosted"}"
     local _how_many="${2:-"10"}"
     local _parallel="${3:-"3"}"
@@ -2285,7 +2287,6 @@ function f_upload_dummies_raw() {
     local _pwd="${7:-"${_ADMIN_PWD}"}"
     f_upload_dummies "${_NEXUS_URL%/}/repository/${_repo_name}/dummies" "${_how_many}" "${_parallel}" "${_file_prefix}" "${_file_suffix}" "${_usr}" "${_pwd}"
 }
-
 function f_upload_dummies_raw_with_api() {
     local __doc__="Upload text files into raw hosted repository with Upload API"
     local _repo_name="${1:-"raw-hosted"}"
@@ -2293,7 +2294,7 @@ function f_upload_dummies_raw_with_api() {
     local _file_prefix="${3:-"test_"}"
     local _file_suffix="${4:-".txt"}"
     for i in `seq ${_SEQ_START:-1} $((${_SEQ_START:-1} + ${_how_many} - 1))`; do
-        echo "test by f_upload_dummies at $(date +'%Y-%m-%d %H:%M:%S')" > ${_TMP%/}/${FUNCNAME[0]}_$$.txt || return $?
+        echo "test by f_upload_dummies_raw_with_api at $(date +'%Y-%m-%d %H:%M:%S')" > ${_TMP%/}/${FUNCNAME[0]}_$$.txt || return $?
         f_upload_asset "${_repo_name}" -F raw.directory=/dummies -F raw.asset1=@${_TMP%/}/${FUNCNAME[0]}_$$.txt -F raw.asset1.filename=${_file_prefix}${i}${_file_suffix} || return $?
     done
 }
@@ -2302,7 +2303,7 @@ function _gen_dummy_jar() {
     local _filepath="${1:-"${_TMP%/}/dummy.jar"}"
     if [ ! -s "${_filepath}" ]; then
         if type jar &>/dev/null; then
-            echo "test by f_upload_dummies at $(date +'%Y-%m-%d %H:%M:%S')" > dummy.txt
+            echo "test at $(date +'%Y-%m-%d %H:%M:%S')" > dummy.txt
             jar -cvf ${_filepath} dummy.txt || return $?
         else
             curl -o "${_filepath}" "https://repo1.maven.org/maven2/org/sonatype/goodies/goodies-i18n/2.3.4/goodies-i18n-2.3.4.jar" || return $?
@@ -2354,14 +2355,33 @@ function f_deploy_maven() {
     eval "${_cmd} -Drepo.pwd=\"${_pwd}\""
 }
 
+# Example of uploading 100 versions 9 concurrency (total 900 + 10)
+: <<'EOF'
+# test first (if 400, might be due to Deployment policy)
+f_upload_dummies_maven "maven-hosted" "10" "3" "setup.nexus3.repos0" "dummy0"
+for g in {1..3}; do
+  for a in {1..3}; do
+    f_upload_dummies_maven "maven-hosted" "50" "1" "setup.nexus3.repos${g}" "dummy${a}" &
+  done
+done; wait
+
+# creating more than 1000 GA (1 version), with 10 concurrency
+for g in {1..101}; do
+  for a in {1..10}; do
+    f_upload_dummies_maven "maven-hosted" "1" "1" "setup.nexus3.repos${g}" "dummy${a}" &
+  done; wait
+done
+EOF
 function f_upload_dummies_maven() {
     local __doc__="Upload dummy jar files into maven hosted repository"
     local _repo_name="${1:-"maven-releases"}"
-    local _how_many="${2:-"10"}"
+    local _how_many="${2:-"10"}"    # this is used for versions
     local _parallel="${3:-"3"}"
-    local _ver_sfx="${4:-"${_MVN_VER_SFX}"}"   # Can't use '-SNAPSHOT' as "Upload to snapshot repositories not supported"
-    local _usr="${5:-"${_ADMIN_USER}"}"
-    local _pwd="${6:-"${_ADMIN_PWD}"}"
+    local _g="${4:-"setup.nexus3.repos"}"
+    local _a="${5:-"dummy"}"
+    local _ver_sfx="${6:-"${_MVN_VER_SFX}"}"   # Can't use '-SNAPSHOT' as "Upload to snapshot repositories not supported"
+    local _usr="${7:-"${_ADMIN_USER}"}"
+    local _pwd="${8:-"${_ADMIN_PWD}"}"
 
     if ! _is_repo_available "${_repo_name}"; then
         local _ds_name="$(_get_datastore_name)"
@@ -2378,8 +2398,6 @@ function f_upload_dummies_maven() {
 
     _gen_dummy_jar "${_TMP%/}/dummy.jar" || return $?
 
-    local _g="setup.nexus3.repos"
-    local _a="dummy"
     # Does not work with Mac's bash...
     #export -f f_upload_asset
     for i in $(eval "${_seq}"); do
@@ -2388,16 +2406,17 @@ function f_upload_dummies_maven() {
     # NOTE: xargs only stops if exit code is 255
 }
 
-: <<'EOF'
 # Example of uploading 100 snapshots each with 27 concurrency (total 2700)
+: <<'EOF'
+# test first
+f_upload_dummies_maven_snapshot "maven-snapshots" 10 "com.example0" "my-app0" "0.0-SNAPSHOT"
 for g in {1..3}; do
   for a in {1..3}; do
     for v in {1..3}; do
       f_upload_dummies_maven_snapshot "maven-snapshots" 100 "com.example${g}" "my-app${a}" "${v}.0-SNAPSHOT" &
     done
   done
-done
-wait
+done; wait
 EOF
 function f_upload_dummies_maven_snapshot() {
     local __doc__="Upload dummy jar files into maven snapshot hosted repository. Requires 'mvn' command"
@@ -2439,23 +2458,56 @@ function f_upload_dummies_npm() {
     local _seq_start="${_SEQ_START:-1}"
     local _seq_end="$((${_seq_start} + ${_how_many} - 1))"
     local _seq="seq ${_seq_start} ${_seq_end}"
+    if [ ! -s "${_TMP%/}/policy-demo-2.0.0.tgz.tgz" ]; then
+        curl -sSf -o "${_TMP%/}/policy-demo-2.0.0.tgz.tgz" -L "https://registry.npmjs.org/@sonatype/policy-demo/-/policy-demo-2.0.0.tgz" || return $?
+    fi
     local _dummy_tzg_name="dummy-policy-demo"
-    if [ ! -s "${_TMP%/}/${_dummy_tzg_name}.tgz" ]; then
-        curl -sSf -o "${_TMP%/}/${_dummy_tzg_name}.tgz" -L "https://registry.npmjs.org/@sonatype/policy-demo/-/policy-demo-2.0.0.tgz" || return $?
-    fi
+    # TODO: replace with _update_npm_tgz()
     local _tmpdir="$(mktemp -d)"
-    tar -xf ${_TMP%/}/${_dummy_tzg_name}.tgz -C ${_tmpdir%/} || return $?
-    if [ -n "${_pkg_name}" ]; then
-        sed -i.tmp -E 's;"name": ".+";"name": "'${_pkg_name}'";' ${_tmpdir%/}/package/package.json
-    fi
-    # TODO: upload concurrently (not using _ASYNC_CURL="Y")
+    # TODO: upload concurrently with some limit (not only using _ASYNC_CURL="Y")
     for i in $(eval "${_seq}"); do
-        sed -i.tmp -E 's/"version": ".+"/"version": "9.'${i}'.0"/' ${_tmpdir%/}/package/package.json || return $?
-        rm -f ${_tmpdir%/}/package/package.json.tmp
-        tar -czf ${_TMP%/}/${_dummy_tzg_name}-9.${i}.0.tgz -C ${_tmpdir%/} package || return $?
+        _update_npm_tgz "${_TMP%/}/policy-demo-2.0.0.tgz.tgz" "${_dummy_tzg_name}" "9.${i}.0" || return $?
         f_upload_asset "${_repo_name}" -F "npm.asset=@${_TMP%/}/${_dummy_tzg_name}-9.${i}.0.tgz" || return $?
         rm -v -f ${_TMP%/}/${_dummy_tzg_name}-9.${i}.0.tgz
     done
+}
+function _update_npm_tgz() {
+    local _tgz="$1"
+    local _new_name="$2"
+    local _new_ver="$3"
+    local _no_tgz="$4"
+    local _tmpbase="${5:-"${_TMP%/}"}"
+    [ -z "${_tmpbase}" ] && _tmpbase="$(mktemp -d)"
+
+    if [[ "${_tgz}" =~ ([^/]+)-([0-9.]+).tgz ]]; then
+        local _tzg_name="${BASH_REMATCH[1]}"
+        local _tzg_ver="${BASH_REMATCH[2]}"
+    else
+        _log "ERROR" "Invalid tgz file name: ${_tgz}"
+        return 1
+    fi
+
+    local _tmpdir="${_tmpbase%/}/${_tzg_name}-${_tzg_ver}"
+    if [ -s "${_tmpdir%/}/package/package.json" ]; then
+        _log "DEBUG" "${_tmpdir%/}/package/package.json already exists"
+    else
+        mkdir -p ${_tmpdir%/} || return $?
+        tar -xf ${_tgz} -C ${_tmpdir%/} || return $?
+    fi
+    if [ -n "${_new_name}" ]; then
+        sed -i.tmp -E 's;"name": ".+";"name": "'${_new_name}'";' ${_tmpdir%/}/package/package.json || return $?
+        _tzg_name="${_new_name}"
+    fi
+    if [ -n "${_new_ver}" ]; then
+        sed -i.tmp -E 's/"version": ".+"/"version": "'${_new_ver}'"/' ${_tmpdir%/}/package/package.json || return $?
+        _tzg_ver="${_new_ver}"
+    fi
+    rm -f ${_tmpdir%/}/package/package.json.tmp
+    if [[ "${_no_tgz}" =~ [yY] ]]; then
+        _log "INFO" "Updated ${_tmpdir%/}/package/package.json"
+    else
+        tar -czf ./${_tzg_name}-${_tzg_ver}.tgz -C ${_tmpdir%/} package || return $?
+    fi
 }
 
 # Example command to create with 4 concurrency and 500 each (=2000)
@@ -2648,6 +2700,39 @@ function f_upload_dummies_yum() {
     else
         return 111
     fi
+}
+
+function f_upload_dummies_all_hosted() {
+    local __doc__="Get repositories with /v1/repositorySettings, and call f_upload_dummies_* for each"
+    f_api /service/rest/v1/repositorySettings | JSON_SEARCH_KEY="name,format,type" OUTPUT_DELIMITER=" " sortjson | grep -E ' hosted$' | while read -r _repo _format _type; do
+        _log "INFO" "Uploading dummy data to ${_repo} (${_format})"
+        case "${_format}" in
+            "maven2")
+                f_upload_dummies_maven "${_repo}"
+                ;;
+            "npm")
+                f_upload_dummies_npm "${_repo}"
+                ;;
+            "nuget")
+                f_upload_dummies_nuget "${_repo}"
+                ;;
+            "rubygems")
+                f_upload_dummies_rubygem "${_repo}"
+                ;;
+            "helm")
+                f_upload_dummies_helm "${_repo}"
+                ;;
+            "yum")
+                f_upload_dummies_yum "${_repo}"
+                ;;
+            "raw")
+                f_upload_dummies_raw "${_repo}"
+                ;;
+            *)
+                _log "WARN" "Not supported: ${_repo} (${_format})"
+                ;;
+        esac
+    done
 }
 
 
