@@ -57,6 +57,18 @@ statefulset:
     - name: nexus-blobs-volume
       persistentVolumeClaim:
         claimName: ${RELEASE_NAME}-blobs-nfs-pv-claim
+  initContainer:
+    args:
+      - -c
+      - >-
+        mkdir -p /nexus-data/etc/logback &&
+        mkdir -p /nexus-data/log/tasks &&
+        mkdir -p /nexus-data/log/audit &&
+        touch -a /nexus-data/log/tasks/allTasks.log &&
+        touch -a /nexus-data/log/audit/audit.log &&
+        touch -a /nexus-data/log/request.log &&
+        find /nexus-data -mindepth 0 -maxdepth 3 -type d -not -path "*/blobs/*" ! -user 200 | xargs -P3 -I{} -t chown 200:200 {}
+  #     Not expecting "blobs" directory under this location, so maxdepth 3 would be OK
   container:
     image:
       repository: sonatype/nexus3
