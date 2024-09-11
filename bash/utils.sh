@@ -452,14 +452,14 @@ function _wait_by_port() {
         local _tmp_pid="$(_pid_by_port "${_port}")"
         # Starting ...
         if [[ ! "${_is_stopping}" =~ ^(y|Y) ]]; then
-            [ -n "${_pid}" ] && [ ! -e /proc/${_pid} ] && return 1
+            [ -n "${_pid}" ] && ! ps -o pid= -p ${_pid} &>/dev/null && return 1
             if [ -n "${_tmp_pid}" ]; then
                 sleep 1 # just in case...
                 return 0
             fi
         # Stopping ...
         else
-            [ -n "${_pid}" ] && [ ! -e /proc/${_pid} ] && return 0
+            [ -n "${_pid}" ] && ! ps -o pid= -p ${_pid} &>/dev/null && return 0
             if [ -z "${_tmp_pid}" ]; then
                 sleep 1 # just in case...
                 return 0
@@ -478,12 +478,12 @@ function _wait() {
 
     [ -z "${_pid}" ] && return 1
     for i in `seq 1 ${_times}`; do
-        # TODO: this works with only Linux because of checking /proc
-        if [[ "${_is_stopping}" =~ ^(y|Y) ]] && [ ! -d /proc/${_pid} ]; then
+        # Using 'ps' as '/proc' works with only Linux
+        if [[ "${_is_stopping}" =~ ^(y|Y) ]] && ! ps -o pid= -p ${_pid} &>/dev/null; then
             sleep 1 # just in case...
             return 0
         fi
-        if [[ ! "${_is_stopping}" =~ ^(y|Y) ]] && [ -d /proc/${_pid} ]; then
+        if [[ ! "${_is_stopping}" =~ ^(y|Y) ]] && ps -o pid= -p ${_pid} &>/dev/null; then
             sleep 1 # just in case...
             return 0
         fi
