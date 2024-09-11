@@ -111,7 +111,7 @@ _RESP_FILE=""
 
 
 ### Nexus installation functions ##############################################################################
-# To install 1st/2nd instance: _NEXUS_ENABLE_HA=Y _NXRM3_INSTALL_PORT=8083 f_install_nexus3 "" "nxrmha"
+# To install HA instances (port is automatic): _NEXUS_ENABLE_HA=Y f_install_nexus3 "" "nxrmha"
 # To upgrade (from ${_dirpath}/): tar -xvf $HOME/.nexus_executable_cache/nexus-3.72.0-04-mac.tgz
 function f_install_nexus3() {
     local __doc__="Install specific NXRM3 version (to recreate sonatype-work and DB, _RECREATE_ALL=Y)"
@@ -124,6 +124,12 @@ function f_install_nexus3() {
     local _dirpath="${7-"${r_NEXUS_INSTALL_PATH:-"${_NXRM3_INSTALL_DIR}"}"}"    # If not specified, create a new dir under current dir
     local _download_dir="${8}"
     local _schema="${_DB_SCHEMA}"
+
+    if [ -z "${_dbname}" ] && _isYes "${_NEXUS_ENABLE_HA:-"${r_NEXUS_ENABLE_HA}"}"; then
+        _log "ERROR" "HA is requested but no DB name"
+        return 1
+    fi
+
     if [ -z "${_ver}" ] || [ "${_ver}" == "latest" ]; then
       _ver="$(curl -s -I https://github.com/sonatype/nexus-public/releases/latest | sed -n -E '/^location/ s/^location: http.+\/release-([0-9\.-]+).*$/\1/p')"
     fi
@@ -131,10 +137,7 @@ function f_install_nexus3() {
     if [ -z "${_port}" ]; then
         _port="$(_find_port "8081" "" "^8082$")"
         [ -z "${_port}" ] && return 1
-        _log "INFO" "Using port: ${_port}" >&2
-    fi
-    if [ -z "${_dbname}" ] && _isYes "${_NEXUS_ENABLE_HA:-"${r_NEXUS_ENABLE_HA}"}"; then
-        _dbname="testnxr3ha"
+        _log "INFO" "Using port: ${_port}"; sleep 1
     fi
     if [ -n "${_dbname}" ]; then
         if [[ "${_dbname}" =~ _ ]]; then
@@ -174,8 +177,9 @@ function f_install_nexus3() {
     _upsert "${_prop}" "application-port" "${_port}" || return $?
     _upsert "${_prop}" "nexus.licenseFile" "${_license_path}" || return $?
     if _isYes "${_NEXUS_ENABLE_HA:-"${r_NEXUS_ENABLE_HA}"}"; then
-        _log "INFO" "nexus.datastore.clustered.enabled=true"
+        _log "INFO" "For HA, 'nexus.datastore.clustered.enabled=true' and 'nexus.zero.downtime.enabled=true'"
         _upsert "${_prop}" "nexus.datastore.clustered.enabled" "true" || return $?
+        _upsert "${_prop}" "nexus.zero.downtime.enabled" "true" || return $?
     fi
     # optional
     _upsert "${_prop}" "nexus.security.randompassword" "false" || return $?
@@ -229,9 +233,9 @@ EOF
     echo "To start: ./nexus-${_ver}/bin/nexus run"
     type nxrmStart &>/dev/null && echo "      Or: nxrmStart"
     if [ "${_port}" != "8081" ]; then
-        echo "May need to execute 'export _NEXUS_URL=\"http://localhost:${_port}/\"'"
+        echo "      May need to execute 'export _NEXUS_URL=\"http://localhost:${_port}/\"'"
     fi
-    _isYes "${_NEXUS_ENABLE_HA:-"${r_NEXUS_ENABLE_HA}"}" && echo "      Make sure ./sonatype-work/nexus3/blobs/default is shared"
+    _isYes "${_NEXUS_ENABLE_HA:-"${r_NEXUS_ENABLE_HA}"}" && echo "      Make sure 'blobs' use full path or symlinked"
 }
 
 function f_uninstall_nexus3() {
@@ -2365,17 +2369,17 @@ for g in {1..3}; do
   done
 done; wait
 
-# creating more than 1000 GA (1 version), with 10 concurrency
+# creating 1010 GA with 10 version (101 * 10 * 10 = 10100) with 3x10 concurrency
 for g in {1..101}; do
   for a in {1..10}; do
-    f_upload_dummies_maven "maven-hosted" "1" "1" "setup.nexus3.repos${g}" "dummy${a}" &
+    f_upload_dummies_maven "maven-hosted" "10" "3" "setup.nexus3.repos${g}" "dummy${a}" &
   done; wait
 done
 EOF
 function f_upload_dummies_maven() {
     local __doc__="Upload dummy jar files into maven hosted repository"
     local _repo_name="${1:-"maven-releases"}"
-    local _how_many="${2:-"10"}"    # this is used for versions
+    local _how_many_vers="${2:-"10"}"    # this is used for versions
     local _parallel="${3:-"3"}"
     local _g="${4:-"setup.nexus3.repos"}"
     local _a="${5:-"dummy"}"
@@ -2392,9 +2396,9 @@ function f_upload_dummies_maven() {
 
     # _SEQ_START is for continuing
     local _seq_start="${_SEQ_START:-1}"
-    local _seq_end="$((${_seq_start} + ${_how_many} - 1))"
+    local _seq_end="$((${_seq_start} + ${_how_many_vers} - 1))"
     local _seq="seq ${_seq_start} ${_seq_end}"
-    [[ "${_how_many}" =~ ^[0-9]+[[:space:]]+[0-9]+$ ]] && _seq="seq ${_how_many}"
+    [[ "${_how_many_vers}" =~ ^[0-9]+[[:space:]]+[0-9]+$ ]] && _seq="seq ${_how_many_vers}"
 
     _gen_dummy_jar "${_TMP%/}/dummy.jar" || return $?
 
