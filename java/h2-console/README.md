@@ -30,7 +30,7 @@ echo "SQL SELECT statement" | java -jar ./h2-console.jar <DB file path> [<H2 opt
 # Pagenation for extreamly large result set
 echo "<*SIMPLE* SELECT statement which returns so many rows>" | java -Dpaging=10000 -jar h2-console.jar <DB file path> [<H2 options>]
 ```
-#### Export table(s)
+#### Export|Dump|Backup table(s)
 ```
 export yum_asset to .;
 export public.* to ./export_dir;
