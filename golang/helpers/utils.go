@@ -2,15 +2,44 @@ package helpers
 
 import (
 	"bufio"
+	"bytes"
 	"fmt"
+	"io"
 	"log"
 	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"time"
 )
 
 var DEBUG bool
+
+func CaptureStderr(f func()) string {
+	/* output := CaptureStderr(func() { PrintErr(err) }) */
+	old := os.Stderr
+	r, w, _ := os.Pipe() // read, write, error
+	os.Stderr = w        // redirect stderr to w
+	f()                  // call the function
+	w.Close()
+	os.Stderr = old
+	var buf bytes.Buffer
+	io.Copy(&buf, r) // copy the output from r to buf
+	return buf.String()
+}
+
+func CaptureStdout(f func()) string {
+	/* output := CaptureStdout(func() { PrintOut(line) }) */
+	old := os.Stdout
+	r, w, _ := os.Pipe() // read, write, error
+	os.Stdout = w        // redirect stderr to w
+	f()                  // call the function
+	w.Close()
+	os.Stdout = old
+	var buf bytes.Buffer
+	io.Copy(&buf, r) // copy the output from r to buf
+	return buf.String()
+}
 
 func Log(level string, message interface{}) {
 	if level != "DEBUG" || DEBUG {
@@ -27,11 +56,29 @@ func Elapsed(startTsMs int64, message string, thresholdMs int64) {
 	}
 }
 
+func PrintErr(err interface{}) {
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "%v\n", err)
+	}
+}
+
 func TruncateStr(s string, maxLength int) string {
 	if len(s) <= maxLength {
 		return s
 	}
 	return s[:maxLength]
+}
+
+func AppendSlash(dirPath string) string {
+	// If empty, not appending slash
+	if len(dirPath) == 0 {
+		return dirPath
+	}
+	return strings.TrimSuffix(dirPath, string(filepath.Separator)) + string(filepath.Separator)
+}
+
+func PathWithoutExt(path string) string {
+	return path[:len(path)-len(filepath.Ext(path))]
 }
 
 func DatetimeStrToInt(datetimeStr string) int64 {
@@ -113,7 +160,21 @@ func PanicIfErr(err error) {
 	}
 }
 
-func UniqueSlice[T any](a []T) (obj []any) {
+func Chunk(slice []string, chunkSize int) [][]string {
+	// Split a slice into chunks
+	var chunks [][]string
+	for i := 0; i < len(slice); i += chunkSize {
+		end := i + chunkSize
+		if end > len(slice) {
+			end = len(slice)
+		}
+		chunks = append(chunks, slice[i:end])
+	}
+	return chunks
+}
+
+func Distinct[T any](a []T) (obj []any) {
+	// Remove duplicates from a slice (or any object)
 	u := make(map[any]bool)
 	for _, val := range a {
 		if _, ok := u[val]; !ok {

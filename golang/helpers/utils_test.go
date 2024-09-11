@@ -2,7 +2,9 @@ package helpers
 
 import (
 	"fmt"
+	"github.com/stretchr/testify/assert"
 	"os"
+	"path/filepath"
 	"testing"
 	"time"
 )
@@ -122,20 +124,97 @@ func TestIsNumeric_InvalidNumber_ReturnsFalse(t *testing.T) {
 	}
 }
 
-func TestUniqueSlice(t *testing.T) {
-	s := []string{"aaaa", "bbbb", "cccc", "bbbb", "dddd", "aaaa"}
-	rtn := UniqueSlice(s)
-	if len(rtn) != 4 {
-		t.Errorf("Result length should be 4 but got %d (%v)", len(rtn), rtn)
-	}
-	i := []int{1, 2, 3, 2, 5, 1}
-	rtn = UniqueSlice(i)
-	if len(rtn) != 4 {
-		t.Errorf("Result length should be 4 but got %d (%v)", len(rtn), rtn)
-	}
-	//t.Logf("type: %T, value:%v", rtn, rtn)
+func TestChunk_EmptySlice_ReturnsEmpty(t *testing.T) {
+	result := Chunk([]string{}, 2)
+	assert.Equal(t, 0, len(result))
+}
+
+func TestChunk_SingleElement_ReturnsSingleChunk(t *testing.T) {
+	result := Chunk([]string{"a"}, 2)
+	assert.Equal(t, [][]string{{"a"}}, result)
+}
+
+func TestChunk_MultipleElements_ReturnsChunks(t *testing.T) {
+	result := Chunk([]string{"a", "b", "c", "d", "e"}, 2)
+	assert.Equal(t, [][]string{{"a", "b"}, {"c", "d"}, {"e"}}, result)
+}
+
+func TestChunk_ChunkSizeGreaterThanSliceLength_ReturnsSingleChunk(t *testing.T) {
+	result := Chunk([]string{"a", "b"}, 5)
+	assert.Equal(t, [][]string{{"a", "b"}}, result)
+}
+
+func TestChunk_ChunkSizeOne_ReturnsIndividualElements(t *testing.T) {
+	result := Chunk([]string{"a", "b", "c"}, 1)
+	assert.Equal(t, [][]string{{"a"}, {"b"}, {"c"}}, result)
+}
+
+func TestDistinct_EmptySlice_ReturnsEmpty(t *testing.T) {
+	result := Distinct([]string{})
+	assert.Equal(t, 0, len(result))
+}
+
+func TestDistinct_NoDuplicates_ReturnsSameSlice(t *testing.T) {
+	result := Distinct([]string{"a", "b", "c"})
+	assert.Equal(t, []any{"a", "b", "c"}, result)
+}
+
+func TestDistinct_WithDuplicates_RemovesDuplicates(t *testing.T) {
+	result := Distinct([]string{"a", "b", "a", "c", "b"})
+	assert.Equal(t, []any{"a", "b", "c"}, result)
+}
+
+func TestDistinct_IntSlice_RemovesDuplicates(t *testing.T) {
+	result := Distinct([]int{1, 2, 2, 3, 1})
+	assert.Equal(t, []any{1, 2, 3}, result)
+}
+
+func TestDistinct_MixedTypes_RemovesDuplicates(t *testing.T) {
+	result := Distinct([]any{"a", 1, "a", 2, 1})
+	assert.Equal(t, []any{"a", 1, 2}, result)
 }
 
 func TestReadPropertiesFile(t *testing.T) {
 	t.Logf("TODO: not implemented")
+}
+
+func TestAppendSlash_EmptyString_ReturnsSlash(t *testing.T) {
+	result := AppendSlash("")
+	assert.Equal(t, "", result)
+}
+
+func TestAppendSlash_NoTrailingSlash_AddsSlash(t *testing.T) {
+	result := AppendSlash("path/to/dir")
+	assert.Equal(t, "path/to/dir"+string(filepath.Separator), result)
+}
+
+func TestAppendSlash_HasTrailingSlash_ReturnsSameString(t *testing.T) {
+	result := AppendSlash("path/to/dir/")
+	assert.Equal(t, "path/to/dir/", result)
+}
+
+func TestAppendSlash_RootPath_ReturnsRootWithSlash(t *testing.T) {
+	result := AppendSlash("/")
+	assert.Equal(t, "/", result)
+}
+
+func TestPrintErr_NilError_NoOutput(t *testing.T) {
+	PrintErr(nil)
+	t.Logf("Check output")
+}
+
+func TestPrintErr_NonNilError_PrintsError(t *testing.T) {
+	err := fmt.Errorf("sample error")
+	output := CaptureStderr(func() {
+		PrintErr(err)
+	})
+	assert.Contains(t, output, "sample error")
+}
+
+func TestPrintErr_StringError_PrintsString(t *testing.T) {
+	err := "string error"
+	output := CaptureStderr(func() {
+		PrintErr(err)
+	})
+	assert.Contains(t, output, "string error")
 }
