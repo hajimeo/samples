@@ -73,3 +73,13 @@ spec:
                 port:
                   number: 8070
             pathType: Prefix
+    - host: nxiqha-admin-k8s.standalone.localdomain
+      http:
+        paths:
+          - path: /
+            backend:
+              service:
+                name: nxiqha-iq-server-admin-service
+                port:
+                  number: 8071
+            pathType: Prefix
