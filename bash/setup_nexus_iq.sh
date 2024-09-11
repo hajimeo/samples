@@ -284,20 +284,26 @@ function f_api_eval_gav() {
 ### Misc. setup functions
 function f_config_update() {
     local _baseUrl="${1:-"${_IQ_URL}"}"
-    if [ -n "${_IQ_URL%/}" ] && type _wait_url &>/dev/null; then
-        _wait_url "${_IQ_URL%/}"
+    local _no_wait="${2}"
+    if ! f_api_config '{"baseUrl":"'${_baseUrl%/}'/","forceBaseUrl":false}' &>/dev/null; then
+        if [ -z "${_no_wait}" ] && [ -n "${_IQ_URL%/}" ] && type _wait_url &>/dev/null; then
+            _wait_url "${_IQ_URL%/}"
+        fi
+        f_api_config '{"baseUrl":"'${_baseUrl%/}'/","forceBaseUrl":false}' || return $?
     fi
     f_api_config '{"hdsUrl":"https://clm-staging.sonatype.com/"}'
-    f_api_config '{"baseUrl":"'${_baseUrl%/}'/","forceBaseUrl":false}'
     f_api_config '{"enableDefaultPasswordWarning":false}'
+    f_api_config '{"sessionTimeout":120}'   # between 3 and 120
+    f_api_config "" "/features/internalFirewallOnboardingEnabled" "DELETE" &>/dev/null  # this one can return 400
     #curl -u "admin:admin123" "${_IQ_URL%/}/api/v2/config/features/internalFirewallOnboardingEnabled" -X DELETE #POST
-    f_api_config "" "/features/internalFirewallOnboardingEnabled" "DELETE"
 }
 
 function f_add_testuser() {
     local __doc__="Add/Create a test IQ user with test-role"
-    _apiS "/rest/user" '{"id":null,"username":"testuser","password":"testuser","firstName":"test","lastName":"user","email":"testuser@example.com"}'
-    _apiS "/rest/security/roles" '{"id":null,"name":"test-role","description":"test_role_desc","builtIn":false,"permissionCategories":[{"displayName":"Administrator","permissions":[{"id":"VIEW_ROLES","displayName":"View","description":"All Roles","allowed":false}]},{"displayName":"IQ","permissions":[{"id":"MANAGE_PROPRIETARY","displayName":"Edit","description":"Proprietary Components","allowed":false},{"id":"CLAIM_COMPONENT","displayName":"Claim","description":"Components","allowed":false},{"id":"WRITE","displayName":"Edit","description":"IQ Elements","allowed":false},{"id":"READ","displayName":"View","description":"IQ Elements","allowed":true},{"id":"EDIT_ACCESS_CONTROL","displayName":"Edit","description":"Access Control","allowed":false},{"id":"EVALUATE_APPLICATION","displayName":"Evaluate","description":"Applications","allowed":true},{"id":"EVALUATE_COMPONENT","displayName":"Evaluate","description":"Individual Components","allowed":true},{"id":"ADD_APPLICATION","displayName":"Add","description":"Applications","allowed":false},{"id":"MANAGE_AUTOMATIC_APPLICATION_CREATION","displayName":"Manage","description":"Automatic Application Creation","allowed":false},{"id":"MANAGE_AUTOMATIC_SCM_CONFIGURATION","displayName":"Manage","description":"Automatic Source Control Configuration","allowed":false}]},{"displayName":"Remediation","permissions":[{"id":"WAIVE_POLICY_VIOLATIONS","displayName":"Waive","description":"Policy Violations","allowed":true},{"id":"CHANGE_LICENSES","displayName":"Change","description":"Licenses","allowed":false},{"id":"CHANGE_SECURITY_VULNERABILITIES","displayName":"Change","description":"Security Vulnerabilities","allowed":false},{"id":"LEGAL_REVIEWER","displayName":"Review","description":"Legal obligations for components licenses","allowed":false}]}]}' || return $?
+    local _username="${1:-"testuser"}"
+    local _password="${2:-"${_username}123"}"
+    _apiS "/rest/user" '{"firstName":"'${_username}'","lastName":"test","email":"'${_username}'@example.com","username":"'${_username}'","password":"'${_password}'"}'
+    _apiS "/rest/security/roles" '{"name":"test-role","description":"test_role_desc","builtIn":false,"permissionCategories":[{"displayName":"Administrator","permissions":[{"id":"VIEW_ROLES","displayName":"View","description":"All Roles","allowed":false}]},{"displayName":"IQ","permissions":[{"id":"MANAGE_PROPRIETARY","displayName":"Edit","description":"Proprietary Components","allowed":false},{"id":"CLAIM_COMPONENT","displayName":"Claim","description":"Components","allowed":false},{"id":"WRITE","displayName":"Edit","description":"IQ Elements","allowed":false},{"id":"READ","displayName":"View","description":"IQ Elements","allowed":true},{"id":"EDIT_ACCESS_CONTROL","displayName":"Edit","description":"Access Control","allowed":false},{"id":"EVALUATE_APPLICATION","displayName":"Evaluate","description":"Applications","allowed":true},{"id":"EVALUATE_COMPONENT","displayName":"Evaluate","description":"Individual Components","allowed":true},{"id":"ADD_APPLICATION","displayName":"Add","description":"Applications","allowed":false},{"id":"MANAGE_AUTOMATIC_APPLICATION_CREATION","displayName":"Manage","description":"Automatic Application Creation","allowed":false},{"id":"MANAGE_AUTOMATIC_SCM_CONFIGURATION","displayName":"Manage","description":"Automatic Source Control Configuration","allowed":false}]},{"displayName":"Remediation","permissions":[{"id":"WAIVE_POLICY_VIOLATIONS","displayName":"Waive","description":"Policy Violations","allowed":true},{"id":"CHANGE_LICENSES","displayName":"Change","description":"Licenses","allowed":false},{"id":"CHANGE_SECURITY_VULNERABILITIES","displayName":"Change","description":"Security Vulnerabilities","allowed":false},{"id":"LEGAL_REVIEWER","displayName":"Review","description":"Legal obligations for components licenses","allowed":false}]}]}' || return $?
     f_api_role_mapping "test-role" "testuser" "Root Organization" "user"
 }
 
@@ -377,10 +383,15 @@ function f_setup_scm() {
     local _branch="${5:-"main"}"
     [ -z "${_org_name}" ] && _org_name="${_provider}_org"
 
+    #echo "Current SCM configuration:"
+    #_curl "${_IQ_URL%/}/api/v2/config/sourceControl" | python -m json.tool
+    #sleep 2
+
     # Automatic Source Control Configuration
     _apiS "/rest/config/automaticScmConfiguration" '{"enabled":true}' "PUT" &>/dev/null
     local _org_int_id
     if [ -n "${_org_name}" ]; then
+        # Check if org exist, and if not, create
         _org_int_id="$(f_api_orgId "${_org_name}" "Y")"
         [ -n "${_org_int_id}" ] || return 11
         # If would like to enable automatic application
@@ -389,22 +400,24 @@ function f_setup_scm() {
         _org_name="Root Organization"
         _org_int_id="ROOT_ORGANIZATION_ID"
     fi
-    if [ -n "${_token}" ]; then
-        # https://help.sonatype.com/iqserver/automating/rest-apis/source-control-rest-api---v2
-        # NOTE: It seems the remediationPullRequestsEnabled is false for default
-        echo '"remediationPullRequestsEnabled":true,"statusChecksEnabled":true,"pullRequestCommentingEnabled":true,"sourceControlEvaluationsEnabled":true ...'
-        _curl "${_IQ_URL%/}/api/v2/sourceControl/organization/${_org_int_id}" -H "Content-Type: application/json" -d '{"token":"'${_token}'","provider":"'${_provider}'","baseBranch":"'${_branch}'","remediationPullRequestsEnabled":true,"statusChecksEnabled":true,"pullRequestCommentingEnabled":true,"sourceControlEvaluationsEnabled":true}' &> /tmp/${FUNCNAME[0]}_$$.tmp #|| return $?
-        # 400 SourceControl already exists for organization with id: ...
+    if [ -z "${_token}" ]; then
+        _log "WARN" "No token specified. Please specify _token or GITHUB_TOKEN."
+        return 1
+    fi
+    # https://help.sonatype.com/iqserver/automating/rest-apis/source-control-rest-api---v2
+    # NOTE: It seems the remediationPullRequestsEnabled is false for default
+    echo 'Setting "remediationPullRequestsEnabled":true,"statusChecksEnabled":true,"pullRequestCommentingEnabled":true,"sourceControlEvaluationsEnabled":true ...'
+    _curl "${_IQ_URL%/}/api/v2/sourceControl/organization/${_org_int_id}" -H "Content-Type: application/json" -d '{"token":"'${_token}'","provider":"'${_provider}'","baseBranch":"'${_branch}'","remediationPullRequestsEnabled":true,"statusChecksEnabled":true,"pullRequestCommentingEnabled":true,"sourceControlEvaluationsEnabled":true}' &> /tmp/${FUNCNAME[0]}_$$.tmp #|| return $?
+    # 400 SourceControl already exists for organization with id: ...
 
-        if [ "${_git_url}" ]; then
-            local _app_pub_id="$(basename "${_git_url}")"
-            f_api_create_app "${_app_pub_id}" "${_org_name}" &>/dev/null
-            local _app_int_id="$(f_api_appIntId "${_app_pub_id}" "${_org_name}")" || return $?
-            [ -n "${_app_int_id}" ] || return 12
-            _curl "${_IQ_URL%/}/api/v2/sourceControl/application/${_app_int_id}" -H "Content-Type: application/json" -d '{"remediationPullRequestsEnabled":true,"statusChecksEnabled":true,"pullRequestCommentingEnabled":true,"sourceControlEvaluationsEnabled":true,"baseBranch":"'${_branch}'","repositoryUrl":"'${_git_url}'"}' | python -m json.tool #|| return $?
-            # 400 SourceControl already exists for application with id: ...
-            echo "TODO: If application is manually created like this, may need to scan this repository with 'source' stage"
-        fi
+    if [ "${_git_url}" ]; then
+        local _app_pub_id="$(basename "${_git_url}")"
+        f_api_create_app "${_app_pub_id}" "${_org_name}" &>/dev/null
+        local _app_int_id="$(f_api_appIntId "${_app_pub_id}" "${_org_name}")" || return $?
+        [ -n "${_app_int_id}" ] || return 12
+        _curl "${_IQ_URL%/}/api/v2/sourceControl/application/${_app_int_id}" -H "Content-Type: application/json" -d '{"remediationPullRequestsEnabled":true,"statusChecksEnabled":true,"pullRequestCommentingEnabled":true,"sourceControlEvaluationsEnabled":true,"baseBranch":"'${_branch}'","repositoryUrl":"'${_git_url}'"}' | python -m json.tool #|| return $?
+        # 400 SourceControl already exists for application with id: ...
+        echo "TODO: If application is manually created like this, may need to scan this repository with 'source' stage"
     fi
 }
 
