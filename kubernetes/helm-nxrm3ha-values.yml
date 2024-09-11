@@ -71,7 +71,7 @@ statefulset:
   container:
     image:
       repository: sonatype/nexus3
-      tag: ${TAG:-latest}
+      #nexusTag: ${TAG:-latest}  # From 3.66.0, this is no longer required
     resources:
       # See help documentation, these are minimum system requirements
       requests:
