@@ -104,6 +104,7 @@ function f_check_system() {
     sar -uqrbd -p &> ${_work_dir%/}/sar_qrbd.out # if no -p, ls -l /dev/sd*
     #ioping -c 12 . # check latency on current dir 12 times.
     #ioping -RL /dev/sda1
+    #dstat
 
     # NFS related
     showmount -e `hostname` &> ${_work_dir%/}/nfs.out
@@ -114,6 +115,7 @@ function f_check_system() {
     # Network
     ifconfig 2>/dev/null || ip address &> ${_work_dir%/}/ifconfig.out
     (netstat -s || cat /proc/net/dev) &> ${_work_dir%/}/netstat_s.out
+    #nethogs (per process), iftop (per socket)
 
     # Misc.
     #sysctl kernel.pid_max fs.file-max fs.file-nr kernel.threads-max vm.overcommit_memory vm.overcommit_ratio vm.swappiness vm.max_map_count # file-max is OS limit (Too many open files)
