@@ -57,6 +57,7 @@ else
     _AUDIT_LOG="${_AUDIT_LOG:-"audit.log"}"
 fi
 : ${_LOG_THRESHOLD_BYTES:=134217728}    # 128MB, usually takes 7s
+: ${_LOG_THRESHOLD_LINES:=20000}        # Currently used to decide if it generates iostat csv file
 : ${_FILTERED_DATA_DIR:="./_filtered"}
 : ${_LOG_GLOB:="*.log"}
 : ${_SKIP_EXTRACT:=""}
@@ -489,18 +490,30 @@ function t_system() {
     _test_template "$(rg 'SystemLoadAverage.?: *([4-9]\.|\d\d+)' ${_FILTERED_DATA_DIR%/}/extracted_configs.md)" "WARN" "SystemLoadAverage might be too high (check number of CPUs)"
     local _xms="$(rg -i '\-Xms([a-zA-Z0-9]+)' -o -r '$1' -g jmx.json --no-filename | tail -n1)"
     local _xmx="$(rg -i '\-Xmx([a-zA-Z0-9]+)' -o -r '$1' -g jmx.json --no-filename | tail -n1)"
+    if [ -z "${_xmx}" ]; then
+        _head "WARN" "Xmx might not be set in jmx.json SystemProperties"
+    fi
     if [ "${_xms}" != "${_xmx}" ]; then
         _test_template "$(rg -i '\-Xm[sx]' -g jmx.json)" "WARN" "Xms (${_xms}) value might not be same as Xmx (${_xmx})"
     fi
-    _test_template "$(rg 'maxMemory.?: *(.+ MB|[1-3]\.\d+ GB)' ${_FILTERED_DATA_DIR%/}/extracted_configs.md)" "WARN" "maxMemory (heap|Xmx) might be too low (if docker/pod: NEXUS-35218)"
-    _test_template "$(rg -g jmx.json -g wrapper.conf -q -- '-XX:\+UseG1GC' || rg -g jmx.json -- '-Xmx')" "WARN" "No '-XX:+UseG1GC' for below Xmx (only for Java 8)" "Also consider using -XX:+ExplicitGCInvokesConcurrent"
+    local _maxMemory="$(rg '"maxMemory"\s*:\s*(\d+)' -g sysinfo.json --no-filename -o -r '$1' | sort | tail -n1)"
+    if [ ${_maxMemory:-0} -lt 3221225472 ]; then
+        _head "WARN" "maxMemory (heap|Xmx) might be too low (if docker/pod: NEXUS-35218)"
+    elif [ ${_maxMemory:-0} -gt 34359738368 ]; then
+        _head "WARN" "maxMemory (heap|Xmx) might be too large https://confluence.atlassian.com/jirakb/do-not-use-heap-sizes-between-32-gb-and-47-gb-in-jira-compressed-oops-1167745277.html"
+    fi
+    _test_template "$(rg -g jmx.json -q -- '-XX:\+UseG1GC' || rg -g jmx.json -- '-Xmx')" "WARN" "No '-XX:+UseG1GC' for below Xmx (only for Java 8)" "Also consider using -XX:+ExplicitGCInvokesConcurrent"
+    _test_template "$(rg -g jmx.json -q -- '-XX:MaxDirectMemorySize' || rg -g jmx.json -- '-Xmx')" "WARN" "No '-XX:MaxDirectMemorySize' (better set '-Djdk.nio.maxCachedBufferSize=262144' as well)"
     _test_template "$(rg -g jmx.json 'UseCGroupMemoryLimitForHeap')" "WARN" "UseCGroupMemoryLimitForHeap is specified (not required from 8v191)"
     _test_template "$(rg -g jmx.json 'MaxMetaspaceSize')" "WARN" "MaxMetaspaceSize is specified"
     _test_template "$(rg -g jmx.json -- '-Djavax\.net\.ssl..+=')" "WARN" "javax.net.ssl.xxxx is used in jmx.json: java.lang:type=Runtime,InputArguments"
+    _test_template "$(rg -g jmx.json 'add-exports=' | rg -v 'java.base/sun.security.\S+=ALL-UNNAMED')" "WARN" "add-exports=java.base/sun.security.\S+=ALL-UNNAMED might be missing in jmx.json (eg: NEXUS-44004)"   # TODO: this is wrong
     _test_template "$(rg -g jmx.json -m1 '1\.8\.0.(29[2-9]|30[01])\b')" "WARN" "Java version might be 1.8.0_292, which has critical bug: https://bugs.java.com/bugdatabase/view_bug?bug_id=JDK-8266929 (JDK-8266261)" "java.security.NoSuchAlgorithmException: unrecognized algorithm name: PBEWithSHA1AndDESede"
 
-    if ! _rg -g jmx.json -q 'x86_64'; then
-        _head "WARN" "No 'x86_64' found in jmx.json. Might be 32 bit Java or Windows, check the top of jvm.log)"
+    if ! _rg -g jmx.json -q -w 'x86_64'; then
+        if ! _rg -g jmx.json -q -w 'amd64'; then
+            _head "WARN" "No 'x86_64' or 'amd64' found in jmx.json. Might be 32 bit Java or Windows, check jvm.log or Arch in jmx.json"
+        fi
     fi
     if _rg -g sysinfo.json -q '(DOCKER_TYPE|"SONATYPE_INTERNAL_HOST_SYSTEM"\s*:\s*"Docker"|"container"\s*:\s*"oci")'; then
         _head "WARN" "Might be installed on DOCKER"
@@ -515,7 +528,7 @@ function t_pg_config() {
     [ ! -s "${_pg_cfg_glob}" ] && _pg_cfg_glob="-g ${_pg_cfg_glob}"
     #_test_template "$(rg --no-filename -i '^["]?max_connections'${_excl_regex}'(\d{1,2}|100)\b' ${_pg_cfg_glob})" "WARN" "max_connections might be too small"
     #TODO: _test_template "$(rg --no-filename -i '^["]?shared_buffers'${_excl_regex}'([1-4]\d{1,5}|\d{1,5}|[1-3]\d{1,3}kb|\d{1,6}kb|[1-3]\d{1,3}mb|\d{1,3}mb|[1-3]gb)\b' ${_pg_cfg_glob})" "WARN" "shared_buffers might be too small"
-    _test_template "$(rg --no-filename -i "^\s*['\"]?(max_connections|shared_buffers|work_mem|effective_cache_size)\b" ${_pg_cfg_glob})" "WARN" "Please review DB configs"
+    _test_template "$(rg --no-filename -i "^\s*['\"]?(max_connections|shared_buffers|work_mem|effective_cache_size|synchronous_standby_names)\b" ${_pg_cfg_glob})" "WARN" "Please review DB configs"
 }
 function t_mounts() {
     _basic_check "" "${_FILTERED_DATA_DIR%/}/system-filestores.json" || return
