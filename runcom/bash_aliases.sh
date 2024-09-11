@@ -90,7 +90,7 @@ function git_search() {
 alias pip='python -m pip'
 #virtualenv -p python3 $HOME/.pyvenv
 function pyvTest() {
-    local _dir="${1:-"pyvTest"}"
+    local _dir="${1:-".venv"}"
     if [ ! -d "${_dir%/}" ]; then
         python3 -m venv "${_dir%/}" || return $?
     fi
@@ -176,11 +176,11 @@ function kBash() {
     local _pod="${1}"
     local _ns="${2}"
     #kubectl get pods -n sonatype-ha -l name=nxiqha-iq-server -o jsonpath={.items[0].metadata.name} | head -n1
-    if [[ "${_pod}" =~ (iq|iqha|IQHA) ]]; then
+    if [[ "${_pod}" =~ ^(iq|iqha|IQHA) ]]; then
         _pod="$(kPods | grep -m1 'name=nxiqha-iq-server,pod-template-hash=' | awk '{print $2}')"
-    elif [[ "${_pod}" =~ (rmha|RMHA) ]]; then
+    elif [[ "${_pod}" =~ ^(rmha|RMHA) ]]; then
         _pod="$(kPods | grep -m1 'app.kubernetes.io/name=nxrm-ha' | awk '{print $2}')"
-    elif [[ "${_pod}" =~ (rm|RM) ]]; then
+    elif [[ "${_pod}" =~ ^(rm|RM) ]]; then
         _pod="$(kPods | grep -m1 'app=nxrm3pg,pod-template-hash=' | awk '{print $2}')"
     fi
     if [ -z "${_ns}" ]; then
@@ -241,11 +241,12 @@ alias jenkins='${JAVA_HOME_11%/}/bin/java -Djava.util.logging.config.file=$HOME/
 # http (but https fails) + reverse proxy server https://www.mock-server.com/mock_server/getting_started.html
 alias mockserver='java -jar $HOME/Apps/mockserver-netty.jar'  #curl -o $HOME/Apps/mockserver-netty.jar -L https://search.maven.org/remotecontent?filepath=org/mock-server/mockserver-netty/5.11.1/mockserver-netty-5.11.1-jar-with-dependencies.jar
 alias jkCli='java -jar $HOME/Apps/jenkins-cli.jar -s http://localhost:8080/ -auth admin:admin123' #curl -o $HOME/Apps/jenkins-cli.jar -L http://localhost:8080/jnlpJars/jenkins-cli.jar
-[ -f $HOME/share/java/orient-console.jar ] && alias orient-console="java -jar $HOME/share/java/orient-console.jar"
-[ -f $HOME/share/java/h2-console.jar ] && alias h2-console="java -jar $HOME/share/java/h2-console.jar"
-[ -f $HOME/share/java/h2-console_v200.jar ] && alias h2-console_v200="java -jar $HOME/share/java/h2-console_v200.jar"
-[ -f $HOME/share/java/pg-console.jar ] && alias pg-console="java -jar $HOME/share/java/pg-console.jar"
-[ -f $HOME/share/java/blobpath.jar ] && alias blobpathJ="java -jar $HOME/share/java/blobpath.jar"
+[ -f $HOME/IdeaProjects/samples/misc/orient-console.jar ] && alias orient-console="java -jar $HOME/IdeaProjects/samples/misc/orient-console.jar"
+[ -f $HOME/IdeaProjects/samples/misc/h2-console.jar ] && alias h2-console="java -jar $HOME/IdeaProjects/samples/misc/h2-console.jar"
+[ -f $HOME/IdeaProjects/samples/misc/h2-console_v200.jar ] && alias h2-console_v200="java -jar $HOME/IdeaProjects/samples/misc/h2-console_v200.jar"
+[ -f $HOME/IdeaProjects/samples/misc/h2-console_v224.jar ] && alias h2-console_v224="java -jar $HOME/IdeaProjects/samples/misc/h2-console_v224.jar"
+[ -f $HOME/IdeaProjects/samples/misc/pg-console.jar ] && alias pg-console="java -jar $HOME/IdeaProjects/samples/misc/pg-console.jar"
+#[ -f $HOME/IdeaProjects/samples/misc/blobpath.jar ] && alias blobpathJ="java -jar $HOME/IdeaProjects/samples/misc/blobpath.jar"
 # JAVA_HOME_11 is set in bash_profile.sh
 alias matJ11='/Applications/mat.app/Contents/MacOS/MemoryAnalyzer -vm ${JAVA_HOME_11%/}/bin'
 if [ -s $HOME/IdeaProjects/samples/bash/patch_java.sh ]; then
@@ -255,6 +256,7 @@ fi
 ## Chrome aliases for Mac (URL needs to be IP as hostname wouldn't be resolvable on remote)
 #alias shib-local='open -na "Google Chrome" --args --user-data-dir=$HOME/.chromep/local --proxy-server=socks5://localhost:28081'
 #alias shib-dh1='open -na "Google Chrome" --args --user-data-dir=$HOME/.chromep/dh1 --proxy-server=socks5://dh1:28081 http://192.168.1.31:4200/webuser/'
+alias chrome-work='open -na "Google Chrome" --args --user-data-dir=$HOME/.chromep/work'
 alias chrome-dh1='open -na "Google Chrome" --args --user-data-dir=$HOME/.chromep/dh1 --proxy-server=http://dh1:28080'
 alias k8s-dh1='open -na "Google Chrome" --args --user-data-dir=$HOME/.chromep/k8s-dh1 --proxy-server=socks5://dh1:38081'
 alias hblog='open -na "Google Chrome" --args --user-data-dir=$HOME/.chromep/hajigle https://www.blogger.com/blogger.g?blogID=9018688091574554712&pli=1#allposts'
@@ -739,7 +741,7 @@ function ncWeb() {
     local _http_status="${2:-"200 OK"}" # 400 Bad Request
     local _last_mod="$(type gdate &>/dev/null && gdate --rfc-2822 || date --rfc-2822)" || return $?
     while true; do
-        echo -e "HTTP/1.1 ${_http_status}\nDate: $(type gdate &>/dev/null && gdate --rfc-2822 || date --rfc-2822)\nServer: ncWeb\nLast-Modified: ${_last_mod}\nContent-Length: 0\n\n" | nc -v -v -n -l -p ${_port}
+        echo -e "HTTP/1.1 ${_http_status}\nDate: $(type gdate &>/dev/null && gdate --rfc-2822 || date --rfc-2822)\nServer: ncWeb\nLast-Modified: ${_last_mod}\nContent-Length: 0\n\n" | nc -v -v -n -l ${_port} || break    # can't remember why -p was used
         echo -e "\n"
     done
 }
@@ -791,8 +793,8 @@ function backupC() {
         # not copying symlink as I'm expecting symlinks would be from the "samples" repo
         rsync -cav --no-links "$HOME/.ssh/" "$HOME/backup/ssh" || return $?
     fi
-    if [ -s "$HOME/IdeaProjects/m2_settings.xml" ] && [ -d "$HOME/backup" ]; then
-        cp -v -f $HOME/IdeaProjects/m2_settings.xml $HOME/backup/IdeaProjects_m2_settings.xml || return $?
+    if [ -s "$HOME/IdeaProjects/m2_settings.xml" ] && [ -d "$HOME/backup/IdeaProjects" ]; then
+        cp -v -f $HOME/IdeaProjects/m2_settings*.xml $HOME/backup/IdeaProjects/ || return $?
     fi
 
     if ! ping -c1 -t1 oldmac >/dev/null; then
@@ -852,13 +854,19 @@ function backupC() {
     wait
 
     if [ "Darwin" = "$(uname)" ]; then
-        echo "#mdfind 'kMDItemFSSize > 209715200 && kMDItemContentModificationDate < \$time.now(-2419200)' | LC_ALL=C sort"   # -onlyin "${_src}"
-        mdfind 'kMDItemFSSize > 209715200 && kMDItemContentModificationDate < $time.now(-2419200)' | LC_ALL=C sort | rg -v -w 'cases_local' | while read -r _l;do ls -lh "${_l}"; done | sort -k5 -h | tail -n20
+        if type gdu &>/dev/null; then
+            gdu -Shx ${_src} | sort -h | tail -n40
+        else
+            echo "#mdfind 'kMDItemFSSize > 209715200 && kMDItemContentModificationDate < \$time.now(-2419200)' | LC_ALL=C sort" >&2   # -onlyin "${_src}"
+            mdfind 'kMDItemFSSize > 209715200 && kMDItemContentModificationDate < $time.now(-2419200)' | LC_ALL=C sort | rg -v -w 'cases_local' | while read -r _l;do ls -lh "${_l}"; done | sort -k5 -h | tail -n40
+        fi
+    else
+        du -Shx ${_src} | sort -h | tail -n40
     fi
     # Currently updatedb may not index external drive (maybe because exFat?)
     if type updatedb &>/dev/null; then
         #alias of 'updatedb' = sudo FILESYSTEMS="hfs ufs apfs exfat" /usr/libexec/locate.updatedb
-        echo "# executing updatedb (may ask sudo password)" # this means can't run in background...
+        echo "# executing updatedb (may ask sudo password)" >&2 # this means can't run in background...
         updatedb && ls -lh /var/db/locate.database
     fi
 }
@@ -990,4 +998,6 @@ function startCommonUtils() {
     pgStatus start
     #tabby_start
     slackS
+    chrome-work
+    open -na "Google Chrome"
 }

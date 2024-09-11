@@ -45,7 +45,7 @@ function _java_home() {
     fi
     if ${_is_java17}; then
         if [ -d "${JAVA_HOME_17}" ]; then
-            export JAVA_HOME="${JAVA_HOME_17}"
+            export JAVA_HOME="${JAVA_HOME_17}" #NEXUSTOOLS_JAVA_HOME="${JAVA_HOME_17}"
             echo "# export JAVA_HOME=\"${JAVA_HOME_17}\""
         else
             echo "# Make sure JAVA_HOME is set to Java 17"; sleep 3
@@ -111,6 +111,7 @@ function iqCli() {
     local _iq_url="${4:-${_IQ_URL}}"
     local _iq_cli_ver="${5:-${_IQ_CLI_VER}}"
     local _iq_cli_opt="${6:-${_IQ_CLI_OPT}}"    # -D fileIncludes="**/package-lock.json"
+    local _iq_cred="${7:-${_IQ_CRED:-"admin:admin123"}}"
 
     _iq_url="$(_get_iq_url "${_iq_url}")" || return $?
         if [ -z "${_iq_cli_ver}" ]; then
@@ -132,13 +133,13 @@ function iqCli() {
     #       Mac uses "TMPDIR" (and can't change), which is like java.io.tmpdir = /var/folders/ct/cc2rqp055svfq_cfsbvqpd1w0000gn/T/ + nexus-iq
     #       Newer IQ CLI removes scan-6947340794864341803.xml.gz (if no -k), so no point of changing the tmpdir...
     # -D includeSha256=true is for BFS
-    local _cmd="java -jar ${_iq_cli_jar} ${_iq_cli_opt} -s ${_iq_url} -a 'admin:admin123' -i ${_iq_app_id} -t ${_iq_stage} -D includeSha256=true -r ./iq_result_$$.json -k -X ${_path}"
+    local _cmd="java -jar ${_iq_cli_jar} ${_iq_cli_opt} -s ${_iq_url} -a \"${_iq_cred}\" -i ${_iq_app_id} -t ${_iq_stage} -D includeSha256=true -r ./iq_result_$$.json -k -X ${_path}"
     echo "[$(date +'%Y-%m-%d %H:%M:%S')] Executing: ${_cmd} | tee ./iq_cli_$$.out" >&2
     eval "${_cmd} | tee ./iq_cli_$$.out"
     echo "[$(date +'%Y-%m-%d %H:%M:%S')] Completed ($?)." >&2
     local _scanId="$(rg -m1 '"reportDataUrl"\s*:\s*".+/([0-9a-f]{32})/.*"' -o -r '$1' ./iq_result_$$.json)"
     if [ -n "${_scanId}" ]; then
-        _cmd="curl -sf -u admin:admin123 ${_iq_url%/}/api/v2/applications/${_iq_app_id}/reports/${_scanId}/raw | python -m json.tool > ./iq_raw_$$.json"
+        _cmd="curl -sf -u \"${_iq_cred}\" ${_iq_url%/}/api/v2/applications/${_iq_app_id}/reports/${_scanId}/raw | python -m json.tool > ./iq_raw_$$.json"
         echo "[$(date +'%Y-%m-%d %H:%M:%S')] Executing: ${_cmd}" >&2
         eval "${_cmd}"
     fi
@@ -190,7 +191,7 @@ function nxrmStart() {
     # -Xrunhprof:heap=sites,format=b,file=${_base_dir%/}/heap_sites_$$.hprof
     # only 'root.level' is changeable with _LOG_LEVEL
     # Debugger port for NXRM2 is 5004
-    local _java_opts=${2-"-Droot.level=${_LOG_LEVEL:-"INFO"} -Xrunjdwp:transport=dt_socket,server=y,address=5005,suspend=${_SUSPEND:-"n"}"}
+    local _java_opts=${2-"-Xrunjdwp:transport=dt_socket,server=y,address=5005,suspend=${_SUSPEND:-"n"}"}
     local _mode=${3} # if NXRM2, not 'run' but 'console'
     #local _java_opts=${@:2}
     _base_dir="$(realpath "${_base_dir}")"
@@ -198,6 +199,9 @@ function nxrmStart() {
     #_java_opts="${_java_opts} -XX:+PrintGCDetails -XX:+PrintGCDateStamps -XX:+PrintGCCause -XX:+PrintClassHistogramAfterFullGC -XX:+UseGCLogFileRotation -XX:NumberOfGCLogFiles=10 -XX:GCLogFileSize=100M -Xloggc:/tmp/rm-gc_%p_%t.log"
     if [ -n "${_CUSTOM_DNS}" ]; then
         _java_opts="${_java_opts} -Dsun.net.spi.nameservice.nameservers=${_CUSTOM_DNS} -Dsun.net.spi.nameservice.provider.1=dns,sun"
+    fi
+    if [ -n "${_LOG_LEVEL}" ]; then
+        _java_opts="${_java_opts} -Droot.level=${_LOG_LEVEL} "
     fi
 
     local _nexus_file="${_base_dir%/}/nexus/bin/nexus"
@@ -316,10 +320,8 @@ database:
   password: ${_dbpwd}
 EOF
         fi
-        if [ -s "${_config_yml}" ]; then
-            if grep 'database:' -A5 "${_config_yml}" | grep -v password; then
-                return 0
-            fi
+        if grep 'database:' -A5 ${_config_yml} | grep -v password; then
+            return 0
         fi
     fi
 
@@ -476,11 +478,12 @@ function nxrmDocker() {
 # To start local (on Mac) IQ server, do not forget to delete LDAP and populate HTTP proxy (and DNS), also reset admin.
 #   _CUSTOM_DNS="$(hostname -f)" iqStart
 # export JAVA_TOOL_OPTIONS="-javaagent:$HOME/IdeaProjects/samples/misc/delver.jar=$HOME/IdeaProjects/samples/misc/delver-conf.xml"
+# _H2_WEB=Y iqStart
 function iqStart() {
     local _base_dir="${1:-"."}"
     local _java_opts="${2-"-agentlib:jdwp=transport=dt_socket,server=y,address=5006,suspend=${_SUSPEND:-"n"}"}"
     local _h2_jar="${3:-"$HOME/IdeaProjects/libs/h2-1.4.196.jar"}"
-    local _loader_jar="${4:-"$HOME/IdeaProjects/product-support-nexus-tools/nexustools/src/nexustools/booter/support-zip-loader-1.178-SNAPSHOT.jar"}"
+    local _loader_jar="${4:-"$HOME/IdeaProjects/product-support-nexus-tools/nexustools/src/nexustools/booter/support-zip-loader-v2.jar"}"
     #local _java_opts=${@:2}
 
     local _jar_file="$(find -L "${_base_dir%/}" -maxdepth 2 -type f -name 'nexus-iq-server*.jar' 2>/dev/null | sort | tail -n1)"
@@ -567,7 +570,7 @@ $(sed -n "/^  loggers:/,\$p" ${_cfg_file} | grep -v '^  loggers:')" > "${_cfg_fi
 
     local _cmd="${_java} ${_java_opts} -jar \"${_jar_file}\" server \"${_cfg_file}\""
     if [[ "${_H2_WEB}" =~ [yY] ]] && ! grep -q '^database:' ${_cfg_file} && [ -s "${_h2_jar}" ] && [ -s "${_loader_jar}" ]; then
-        _cmd="${_java} ${_java_opts} -cp ${_jar_file}:${_h2_jar}:${_loader_jar} -Dclm.disableJreCheck=true com.sonatype.insight.brain.supportloader.SupportLoader --h2-only --config-iq ${_cfg_file}" #--supportzip $(dirname "${_cfg_file}")
+        _cmd="${_java} ${_java_opts} -cp ${_jar_file}:${_h2_jar}:${_loader_jar} com.sonatype.insight.brain.supportloader.StartIqWithH2 ${_cfg_file}"
     fi
     echo "${_cmd}"; sleep 2
     eval "${_cmd} 2>/tmp/iq-server.err" || echo "May need 'export JAVA_HOME=$JAVA_HOME_17'"
