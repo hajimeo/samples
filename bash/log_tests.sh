@@ -413,7 +413,7 @@ function e_requests() {
     fi
 }
 function e_threads() {
-    f_threads "" "" "" "_threads" "Y" &>${_FILTERED_DATA_DIR%/}/f_threads.out
+    f_threads "info/threads.txt" "" "" "_threads" "Y" &>${_FILTERED_DATA_DIR%/}/f_threads.out
 }
 function e_configs() {
     _extract_configs >${_FILTERED_DATA_DIR%/}/extracted_configs.md

@@ -1094,19 +1094,18 @@ function f_threads() {
         fi
     fi
 
-    if [ -z "${_save_dir}" ]; then
-        if [ -d "${_file}" ]; then
-            _save_dir="_threads"
-        else
+    if [ -z "${_save_dir%/}" ]; then
+        if [ -f "${_file}" ]; then
             local _filename=$(basename ${_file})
             _save_dir="_${_filename%%.*}"
         fi
+        [ -z "${_save_dir%/}" ] && _save_dir="./_threads"
     fi
 
     [ ! -d "${_save_dir%/}" ] && mkdir -p ${_save_dir%/}
     local _tmp_dir="$(mktemp -d)"
 
-    if [ ! -d "${_file}" ] && [[ ! "${_not_split_by_date}" =~ ^(y|Y) ]]; then
+    if [ -f "${_file}" ] && [[ ! "${_not_split_by_date}" =~ ^(y|Y) ]]; then
         local _how_many_threads=$(rg '^20\d\d-\d\d-\d\d \d\d:\d\d:\d\d' -c ${_file})
         echo "## Found ${_how_many_threads} threads from ${_file}"
         if [ 1 -lt ${_how_many_threads:-0} ]; then
@@ -1764,6 +1763,7 @@ function f_splitByRegex() {
     local _prefix="${4-"*None*"}"   # Can be an empty string
     local _out_ext="${5:-"out"}"
     local _sort="${6:-"${_SPLIT_BY_REGEX_SORT}"}"   # If regex-ing with some numeric value (eg: date/time), sort with -u is faster
+    #echo "${FUNCNAME[2]} > ${FUNCNAME[1]} $@" >> /tmp/DEBUG_${FUNCNAME[0]}_$$.tmp
     if [ -z "${_line_regex}" ]; then
         _line_regex="^${_DATE_FORMAT}.\d\d"
         if [[ "${_file}" =~ request.*log ]]; then
@@ -1775,11 +1775,11 @@ function f_splitByRegex() {
     #_file="$(echo ${_file} | _sed 's/.\///')"
     local _base_name="$(basename "${_file}")"
     [ "${_prefix}" == "*None*" ] && _prefix="${_base_name%%.*}_"
-    [ -z "${_save_to}" ] && _save_to="_split_${_prefix%_}"
+    [ -z "${_save_to%/}" ] && _save_to="_split_${_prefix%_}"
     [ ! -d "${_save_to%/}" ] && mkdir -p "${_save_to%/}"
     local _save_path_prefix="${_save_to%/}/${_prefix}"
     local _orig_ext="${_base_name##*.}"
-    local _tmp_file="/tmp/$(basename "${_file}" .${_orig_ext})"
+    local _tmp_file="/tmp/$(basename "${_file}" ".${_orig_ext}")_$$"
     if [ "${_orig_ext}" == 'gz' ]; then
         _gunzip -c "${_file}" > "${_tmp_file}" || return $?
         _file="${_tmp_file}"
@@ -1794,10 +1794,10 @@ function f_splitByRegex() {
         rg "${_line_regex}" --search-zip --no-filename -n -o "${_file}" | sed 's/:/\./2' | sort -u -t":" -k2
     else
         rg "${_line_regex}" --search-zip --no-filename -n -o "${_file}"
-    fi > /tmp/${FUNCNAME[0]}_$$.out
-    echo "END_OF_FILE:ZZZ" >> /tmp/${FUNCNAME[0]}_$$.out
+    fi > /tmp/${FUNCNAME[0]}_${FUNCNAME[1]}_$$.out
+    echo "END_OF_FILE:ZZZ" >> /tmp/${FUNCNAME[0]}_${FUNCNAME[1]}_$$.out
     # NOTE: scope of variable in BASH is strange. _prev_str can't be used outside of while loop.
-    cat /tmp/${FUNCNAME[0]}_$$.out | while read -r _t; do
+    cat /tmp/${FUNCNAME[0]}_${FUNCNAME[1]}_$$.out | while read -r _t; do
         if [[ "${_t}" =~ ^([0-9]+):(.+) ]]; then
             # Skip if this number is already processed
             if [ ${_prev_n} == ${BASH_REMATCH[1]} ]; then
