@@ -59,6 +59,12 @@ file-list-v2 -b "(blobstore)" -d "vol-" -pRxNot "BlobStore\.blob-name=.+/maven-m
 ```
 NOTE: `-pRxNot` is evaluated before `-pRx`
 
+#### Read the result File `-rF` which lines contain the blobIDs, and list the .properties contents with `-f` and `-P`
+```
+file-list-v2 -b "(blobstore)" -d "vol-" -rF ./previous_result_without_properties_content.tsv -f ".properties" -P
+```
+NOTE: The above picks the blobID-like strings automatically, so no need to remove unnecessary strings. If no `-f ".properties"`, the result lines include ".bytes".
+
 #### Use this tool to check the total count and size of all .bytes files
 ```
 file-list -b "(blobstore)" -d 'vol-' -f ".bytes" >/dev/null
