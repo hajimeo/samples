@@ -1,86 +1,81 @@
-# File List
-Demo script to list all files from a File type blob store with tab delimiter format (not csv).
+# File List V2
+- list files from specified location (File, S3, Azure, etc.)
+- Find missing blobs in database (Dead Blobs)
+- Find missing blobs in blob store (Orphaned Blobs)
+- Remove `deleted=true` lines from the specified files in a text file or while listing
 
-## DOWNLOAD and INSTALL:
+## Download and Install:
+Saving as `file-list-v2` as an example
 ```bash
-curl -o ./file-list -L https://github.com/hajimeo/samples/raw/master/misc/filelist_$(uname)_$(uname -m)
-chmod a+x ./file-list
+curl -o ./file-list-v2 -L https://github.com/hajimeo/samples/raw/master/misc/filelistv2_$(uname)_$(uname -m)
+chmod a+x ./file-list-v2
 ```
 
-## ARGUMENTS:
-Display help:
+## Display help:
 ```
-$ file-list --help
+$ file-list-v2 --help
 ```
+NOTE: The argument name starts with Capital letters are boolean.
 
 ## Usage Examples
-Optional: For accurate performance testing, may need to clear Linux file cache (as 'root'):
+NOTE: For more accurate performance testing, may want to clear the Linux file cache (as 'root' user)
 ```
 echo 3 > /proc/sys/vm/drop_caches
 ```
 
-### List all files under the ./sonatype-work/nexus3/blobs/default
+### List files under the Blob store content `-b`
 ```
-file-list -b ./sonatype-work/nexus3/blobs/default/content
-... (snip) ...
-"sonatype-work/nexus3/blobs/default/content/vol-43/chap-29/3488648f-d5f8-45f8-8314-10681fcaf0ce.properties","2021-09-17 08:35:03.907951265 +1000 AEST",352
-"sonatype-work/nexus3/blobs/default/metadata.properties","2021-09-17 08:34:00.625028548 +1000 AEST",73
+file-list-v2 -b "./sonatype-work/nexus3/blobs/default/content"
+file-list-v2 -b "file://sonatype-work/nexus3/blobs/default/content"
+file-list-v2 -b "s3://s3-test-bucket/s3-test-prefix/content"
+TODO: file-list-v2 -b "az://azure-test-container/azure-test-prefix/content"
+```
+#### List files under `-b` and the Directory names contains with `-d` (not regex) the concurrency 80, and save to a file with `-s`
+NOTE: recommend to set the concurrency less than (CPUs / 2) * 10, unless against very slow disk/network
+```
+file-list-v2 -b "(blobstore)" -d "vol-" -c 80 -s "/tmp/file-list_$(date +"%Y%m%d%H%M%S").tsv"
+```
+#### Same as the above but only files which File name contains `-f` (not regex), and including the Properties file content `-P` into the saving file
+```
+file-list-v2 -b "(blobstore)" -d "vol-" -f ".propperties" -P -c 80 -s "/tmp/file-list_$(date +"%Y%m%d%H%M%S").tsv"
+```
+#### With the Modified Date From `-mDF`
+```
+file-list-v2 -b "(blobstore)" -d "vol-" -f ".propperties" -P -mDF "$(date -d "1 day ago" +%Y-%m-%d)" -c 80 -s "/tmp/modified_since_yesterday.tsv"
+```
+#### Finding regulr expression matching .properties `-pRx "regex"`, also including the content `-P` in the saving file, but only the first 10 `-n 10`
+NOTE: Using `-pRx` automatically does same as `-f ".propperties"`. Also the content of the .properties file is sorted and one line to make the regex syntax simplar.
+```
+file-list-v2 -b "(blobstore)" -d 'vol-' -pRx "^deleted=true$" -P -n 10 -c 10 -s /tmp/all_soft_deleted.tsv
+```
+#### Finding .properties files which are for the repository 'docker-proxy' and soft deleted 
+```
+file-list-v2 -b "(blobstore)" -d "vol-" -pRx "@Bucket\.repo-name=docker-proxy,.+deleted=true" -P -c 80 -s ./docker-proxy_soft_deleted.tsv
+```
+NOTE: In the internal memory, the content of .properties file becomes same as `cat <blobId>.properties | sort | tr '\n' ','`, so that `@xxxxx` lines come before `deletedYyyyy` lines.
+#### List files which does NOT match with the regex `-pRxNot` but matches with `-pRx`
+```
+file-list-v2 -b "(blobstore)" -d "vol-" -pRxNot "BlobStore\.blob-name=.+/maven-metadata.xml.*" -pRx "@Bucket\.repo-name=maven-central,.+deleted=true" -P -c 80 -s ./maven-central_soft_deleteed_excluding_maven-metadata.tsv
+```
+NOTE: `-pRxNot` is evaluated before `-pRx`
 
-2021/12/31 14:23:09 INFO: Printed 185 items (size: 75910509) in ./sonatype-work/nexus3/blobs/default with prefix:
+#### Use this tool to check the total count and size of all .bytes files
 ```
+file-list -b "(blobstore)" -d 'vol-' -f ".bytes" >/dev/null
+... (in the end of the command it outputs the below) ...
+13:52:46.972949 INFO  Printed 136895 of 273790 files, size: 2423593014 bytes (elapsed:26s)
 ```
-file-list -b ./content -p 'vol-' -c 4 -s /tmp/file-list_$(date +"%Y%m%d%H%M%S").out
-```
+NOTE: the above means it checked 273790 and 136895 matched with ".bytes" and the total size of the matching files was 2423593014 bytes
 
-### Listing blob store items with .properties file contents (-P) with 10 concurrency (-c 10):
-```
-file-list -b ./content -p 'vol-' -c 10 -P -s /tmp/file-list_$(date +"%Y%m%d%H%M%S").out
-```
-#### Excluding .bytes files, so that .properties file only:
-NOTE: .bytes modified date is usually same as created date.
-```
-file-list -b ./content -p 'vol-' -c 10 -P -f ".properties" -s /tmp/file-list_$(date +"%Y%m%d%H%M%S").out
-```
 
-### Finding first 1 'deleted=true' (-fP "\<expression\>")
-```
-file-list -b ./content -p 'vol-' -c 10 -fP "deleted=true" -n 1 -s /tmp/file-list_$(date +"%Y%m%d%H%M%S").out
-```
+# TODO: The following usage examples are not rewritten yet
+### Find missing blobs in database (Dead Blobs)
+### Find missing blobs in blob store (Orphaned Blobs)
+### Remove `deleted=true` lines from the specified files in a text file or while listing
 
-### Check the total count and size of all .bytes files
-This would be useful to compare with the counters in the Blobstore page.
-```
-file-list -b ./content -p 'vol-' -f ".bytes" >/dev/null
-2021/12/31 14:24:15 INFO: Generating list with ./sonatype-work/nexus3/blobs/default ...
-... (snip) ...
-13:52:46.972949 INFO  Printed 136895 of 136895 (size:2423593014) in ./content and sub-dir starts with vol- (elapsed:26s)
-```
 
-### List all files which properties contain 'repo-name=docker-proxy' and 'deleted=true' 
-```
-file-list -b ./content -p "vol-" -c 10 -f ".properties" -P -R -fP "@Bucket.repo-name=docker-proxy,.+deleted=true" -s ./docker-proxy_soft_deleted.tsv
-```
-NOTE: the attributes in a .properties file are sorted in memory and concatenated with ",", so that the repo-name ends with ",". Also attributes start with "@" comes before "deleted=true" line.
 
-Then generate blobIDs with comma separated:
-```
-sed -n -E 's/.+([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})\..+/\1/p' ./docker-proxy_soft_deleted.tsv | tr '\n', ','
-```
-### List all files which does NOT contain 'maven-metadata.xml'
-```
-file-list -b ./content -p "vol-" -c 10 -f ".properties" -P -R -fPX "BlobStore\.blob-name=.+/maven-metadata.xml.*" -s ./all_excluding_maven-metadata.tsv
-```
-
-### List files which were modified since 1 day ago (-mF "YYYY-MM-DD")
-```
-file-list -b ./content -p "vol-" -c 10 -mF "$(date -d "1 day ago" +%Y-%m-%d)" -s ./$(date +"%Y%m%d%H%M%S").tsv
-```
-
-### Check files, which were soft-deleted since 1 day ago (-dF), including .properties file contents (-P -f ".properties")
-```
-file-list -b ./content -p vol- -c 10 -dF "$(date -d "1 day ago" +%Y-%m-%d)" -P -f ".properties" -s ./$(date +"%Y%m%d%H%M%S").tsv
-```
-
+---------------------------------------------------------------------------
 ### (**DANGEROUS**) Remove 'deleted=true' (-RDel and -dF "YYYY-MM-DD") from all or only for 'raw-hosted' repository for undeleting with Reconcile 
 NOTE: If using -RDel to remove "deleted=true", recommend to save the STDERR into a file (like above) in case of reverting.
 ```
@@ -98,17 +93,17 @@ sed -n -E 's/.+([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})\..
 ```
 export AWS_REGION=us-east-1 AWS_ACCESS_KEY_ID="xxxxxxxxxxx" AWS_SECRET_ACCESS_KEY="yyyyyyyyyyyyy" AWS_ENDPOINT_URL="http://127.0.0.1:9000"
 S3_BUCKET="apac-support-bucket" S3_PREFIX="$(hostname -s)_s3-test"
-file-list -RDel -dF "$(date -d "1 day ago" +%Y-%m-%d)" -bsType S -b "${S3_BUCKET}" -p "${S3_PREFIX}/content/vol-" -R -fP "@Bucket\.repo-name=raw-s3-hosted,.+deleted=true" -P -c 10 -s ./undelete_raw-s3-hosted.out -Dry
+file-list -RDel -dF "$(date -d "1 day ago" +%Y-%m-%d)" -bsType S -b "${S3_BUCKET}" -p "${S3_PREFIX}/content/vol-" -R -fP "@Bucket\.repo-name=raw-s3-hosted,.+deleted=true" -P -c 10 -s ./undelete_raw-s3-hosted.tsv -Dry
 ```
 Just get the list
 ```
 S3_BUCKET="apac-support-bucket" S3_PREFIX="$(hostname -s)_s3-test"
-file-list -bsType S -b "${S3_BUCKET}" -p "${S3_PREFIX}/content/vol-" -R -fP "@Bucket\.repo-name=raw-s3-hosted,.+deleted=true" -P -c 10 -s ./raw-s3-hosted_deleted.out
+file-list -bsType S -b "${S3_BUCKET}" -p "${S3_PREFIX}/content/vol-" -R -fP "@Bucket\.repo-name=raw-s3-hosted,.+deleted=true" -P -c 10 -s ./raw-s3-hosted_deleted.tsv
 ```
 
 ### Remove 'deleted=true' (-RDel) which @BlobStore.blob-name=/test/test_1k.img but only "raw-hosted" (-R -fP <regex>) , and outputs the contents of .properties (-P) to check, but *Dry Run* (-Dry)
 ```
-file-list -RDel -dF "$(date +%Y-%m-%d)" -b ./content -p "vol-" -R -fP "@BlobStore\.blob-name=/test/test_1k.img,.+@Bucket\.repo-name=raw-hosted,.+deleted=true" -P -c 10 -s ./undelete_raw-hosted.out
+file-list -RDel -dF "$(date +%Y-%m-%d)" -b ./content -p "vol-" -R -fP "@BlobStore\.blob-name=/test/test_1k.img,.+@Bucket\.repo-name=raw-hosted,.+deleted=true" -P -c 10 -s ./undelete_raw-hosted.tsv
 ```
 ### Check orphaned files by querying against PostgreSQL (-db "\<conn string or nexus-store.properties file path) with max 10 DB connections (-c 10), and using -P as it's faster because of generating better SQL query, and checking only *.properties files with -f (excluding .bytes files)
 ```
@@ -120,28 +115,38 @@ NOTE: the above outputs blobs with properties content, which are not in <format>
 
 ### Check orphaned files from the text file (-bF ./blobIds.txt), which contains Blob IDs, instead of walking blobs directory, against 'default' blob store (-bsName 'default')
 ```
-file-list -b ./content -p vol- -c 10 -db "host=localhost port=5432 user=nxrm3pg password=******** dbname=nxrm3pg" -bF ./blobIds.txt -bsName "default" -s ./orphaned_list.out 2>./orphaned_verify.log
+file-list -b ./content -p vol- -c 10 -db "host=localhost port=5432 user=nxrm3pg password=******** dbname=nxrm3pg" -bF ./blobIds.txt -bsName "default" -s ./orphaned_list.tsv 2>./orphaned_verify.log
 # If the file contains unnecessary lines (eg: .bytes), use '-bf -'
-cat ./blobIds.txt | grep -v '.bytes' | file-list -b ./content -p vol- -c 10 -db "host=localhost port=5432 user=nxrm3pg password=******** dbname=nxrm3pg" -bsName default -bF - -s ./orphaned.out
+cat ./blobIds.txt | grep -v '.bytes' | file-list -b ./content -p vol- -c 10 -db "host=localhost port=5432 user=nxrm3pg password=******** dbname=nxrm3pg" -bsName default -bF - -s ./orphaned.tsv
 ```
 Above /tmp/result.err contains the line `17:58:13.814063 WARN  blobId:81ab5a69-e099-44a1-af1a-7a406bc305e9 does not exist in database.`, or `INFO` if the blobId exists in the DB.
 
 ### Check dead files from the database (-src DB -db <connection>), which contains Blob IDs, against 'default' blob store (-bsName 'default')
 ```
 cd ./sonatype-work/nexus3/
-file-list -b ./blobs/default/content -p vol- -c 10 -src DB -db ./etc/fabric/nexus-store.properties -repos "raw-hosted" -X -s ./dead-list.out 2>./dead-list.log 
-file-list -b ./blobs/default/content -p vol- -c 10 -src DB -db "host=localhost port=5432 user=nxrm3pg dbname=nxrm3pg password=********" -bsName default -X -s ./dead-list.out 2>./dead-list.log 
+file-list -b ./blobs/default/content -p vol- -c 10 -src DB -db ./etc/fabric/nexus-store.properties -repos "raw-hosted" -X -s ./dead-list.tsv 2>./dead-list.log 
+file-list -b ./blobs/default/content -p vol- -c 10 -src DB -db "host=localhost port=5432 user=nxrm3pg dbname=nxrm3pg password=********" -bsName default -X -s ./dead-list.tsv 2>./dead-list.log 
 ```
 ```
-file-list -bsType S -b "apac-support-bucket" -p "filelist_test/content/vol-" -c 10 -src DB -db ./etc/fabric/nexus-store.properties -bsName "s3-test" -s ./dead-list_s3.out -X 2>./dead-list_s3.log 
+file-list -bsType S -b "apac-support-bucket" -p "filelist_test/content/vol-" -c 10 -src DB -db ./etc/fabric/nexus-store.properties -bsName "s3-test" -s ./dead-list_s3.tsv -X 2>./dead-list_s3.log 
 ```
 In above example, `filelist_test` is the S3 bucket prefix and `-X` is for debug (verbose) output.
 ### For OrientDB
 ```
 cd ./sonatype-work/nexus3/
-echo "select blob_ref from asset" | orient-console ./db/component/ | file-list -b ./blobs/default/content -p vol- -c 10 -src DB -bF "-" -bsName default -X -s ./dead-list_fromOrient.out 2>./dead-list_fromOrient.log
+echo "select blob_ref from asset" | orient-console ./db/component/ | file-list -b ./blobs/default/content -p vol- -c 10 -src DB -bF "-" -bsName default -X -s ./dead-list_fromOrient.tsv 2>./dead-list_fromOrient.log
 ```
-###  List specific .properties/.bytes files then delete with xargs + rm:
+---------------------------------------------------------------------------
+
+
+
+## Misc.
+#### Generate blobIDs with comma separated from the saved result file:
 ```
-file-list -b ./sonatype-work/nexus3/blobs/default/content -p "vol-" -c 4 -R -fP "@BlobStore\.blob-name=/@sonatype/policy-demo,.+@Bucket\.repo-name=npm-hosted," -H | cut -d '.' -f1 | xargs -I{} -t rm -v -f {}.{properties,bytes}
+sed -n -E 's/.+([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})\..+/\1/p' ./docker-proxy_soft_deleted.tsv | tr '\n', ','
 ```
+#### If File type blob store, re-use the saved file to delete the matching files with xargs + rm:
+```
+cat ./docker-proxy_soft_deleted.tsv | cut -d '.' -f1 | xargs -I{} -t rm -v -f {}.{properties,bytes}
+```
+Expecting the strings up to the first `.` is the full or relative path of the target files, then deleting both .properties and .bytes files.
