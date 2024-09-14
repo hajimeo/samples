@@ -30,12 +30,12 @@ file-list-v2 -b "file://sonatype-work/nexus3/blobs/default/content"
 file-list-v2 -b "s3://s3-test-bucket/s3-test-prefix/content"
 TODO: file-list-v2 -b "az://azure-test-container/azure-test-prefix/content"
 ```
-#### List files under `-b` and the Directory names contains with `-d` (not regex) the concurrency 80, and save to a file with `-s`
+#### List files under `-b` and the Directory names matches with `-d` the concurrency 80, and save to a file with `-s`
 NOTE: recommend to set the concurrency less than (CPUs / 2) * 10, unless against very slow disk/network
 ```
 file-list-v2 -b "(blobstore)" -d "vol-" -c 80 -s "/tmp/file-list_$(date +"%Y%m%d%H%M%S").tsv"
 ```
-#### Same as the above but only files which File name contains `-f` (not regex), and including the Properties file content `-P` into the saving file
+#### Same as the above but only files which File name matches with `-f`, and including the Properties file content `-P` into the saving file
 ```
 file-list-v2 -b "(blobstore)" -d "vol-" -f ".propperties" -P -c 80 -s "/tmp/file-list_$(date +"%Y%m%d%H%M%S").tsv"
 ```
