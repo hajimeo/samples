@@ -15,7 +15,7 @@ chmod a+x ./file-list-v2
 ```
 $ file-list-v2 --help
 ```
-NOTE: The argument name starts with Capital letters are boolean.
+NOTE: The arguments, which name starts with a Capital letter, are boolean type.
 
 ## Usage Examples
 NOTE: For more accurate performance testing, may want to clear the Linux file cache (as 'root' user)
