@@ -15,61 +15,54 @@ chmod a+x ./filelist2
 ```
 $ filelist2 --help
 ```
-NOTE: The arguments, which name starts with a Capital letter, are boolean type.
+NOTE: The arguments, which name starts with a Capital letter, are boolean type. `-X` and `-XX` for Debug.
 
 ## Usage Examples
-NOTE: For more accurate performance testing, may want to clear the Linux file cache (as 'root' user)
-```
-echo 3 > /proc/sys/vm/drop_caches
-```
 
-### List files under the Blob store content `-b`
+### List files under the Blob store content `-b "blob-store-uri"`
 ```
 filelist2 -b "./sonatype-work/nexus3/blobs/default/content"
 filelist2 -b "file://sonatype-work/nexus3/blobs/default/content"
 filelist2 -b "s3://s3-test-bucket/s3-test-prefix/content"
 TODO: filelist2 -b "az://azure-test-container/azure-test-prefix/content"
 ```
-#### List files under `-b` and the Directory names matches with `-d` the concurrency 80, and save to a file with `-s`
+#### List files which path matches with `-p "path-filter"` with the concurrency N `-c N`, and save to a file with `-s "save-to-file-path"`
 ```
-filelist2 -b "(blobstore)" -d "vol-" -c 80 -s "/tmp/file-list_$(date +"%Y%m%d%H%M%S").tsv"
+filelist2 -b "(blobstore)" -p "vol-" -c 80 -s "/tmp/file-list_$(date +"%Y%m%d%H%M%S").tsv"
 ```
 NOTE: The recommended concurrency is less than (CPUs / 2) * 10, unless against slow disk/network. 
-Also, the concurrency is all directories under `-b` (max depth 3), so even the "vol-NN" is less than 50, the concurrency higher than 50 would work.
+Also, the concurrency is based on the directories under `-b` (max depth 3), so even the "vol-NN" is less than 50, the concurrency higher than 50 would work.
 
-#### Same as the above but only files which File name matches with `-f`, and including the Properties file content `-P` into the saving file
+#### Same as the above but only files which File name matches with `-f "file-filter"`, and including the Properties file content `-P` into the saving file
 ```
-filelist2 -b "(blobstore)" -d "vol-" -f ".propperties" -P -c 80 -s "/tmp/file-list_$(date +"%Y%m%d%H%M%S").tsv"
+filelist2 -b "(blobstore)" -p "vol-" -f ".propperties" -P -c 80 -s "/tmp/file-list_$(date +"%Y%m%d%H%M%S").tsv"
 ```
-#### With the Modified Date From `-mDF`
+#### Above example with the Modified Date From `-mDF "YYYY-MM-DD"`
 ```
-filelist2 -b "(blobstore)" -d "vol-" -f ".propperties" -P -mDF "$(date -d "1 day ago" +%Y-%m-%d)" -c 80 -s "/tmp/modified_since_yesterday.tsv"
+filelist2 -b "(blobstore)" -p "vol-" -f ".propperties" -P -mDF "$(date -d "1 day ago" +%Y-%m-%d)" -c 80 -s "/tmp/modified_since_yesterday.tsv"
 ```
-#### Finding regulr expression matching .properties `-pRx "regex"`, also including the content `-P` in the saving file, but only the first 10 `-n 10`
-NOTE: Using `-pRx` automatically does same as `-f ".propperties"`. Also the content of the .properties file is sorted and one line to make the regex syntax simplar.
+#### List .properties which matches `-pRx "regex"`, also including the properties content `-P` in the saving file, but only the first N `-n N`
+NOTE: Using `-pRx` automatically does same as `-f ".propperties"`.  
+NOTE: To make the regex simpler, in the internal memory, the content of .properties file becomes same as `cat <blobId>.properties | sort | tr '\n' ','`, so that `@xxxxx` lines come before `deletedYyyyy` lines.
 ```
-filelist2 -b "(blobstore)" -d 'vol-' -pRx "^deleted=true$" -P -n 10 -c 10 -s /tmp/all_soft_deleted.tsv
+filelist2 -b "(blobstore)" -p 'vol-' -pRx ",deleted=true" -P -n 10 -c 10 -s /tmp/all_soft_deleted.tsv
+filelist2 -b "(blobstore)" -p "vol-" -pRx "@Bucket\.repo-name=docker-proxy,.+deleted=true" -P -c 80 -s ./docker-proxy_soft_deleted.tsv
 ```
-#### Finding .properties files which are for the repository 'docker-proxy' and soft deleted 
-```
-filelist2 -b "(blobstore)" -d "vol-" -pRx "@Bucket\.repo-name=docker-proxy,.+deleted=true" -P -c 80 -s ./docker-proxy_soft_deleted.tsv
-```
-NOTE: In the internal memory, the content of .properties file becomes same as `cat <blobId>.properties | sort | tr '\n' ','`, so that `@xxxxx` lines come before `deletedYyyyy` lines.
-#### List files which does NOT match with the regex `-pRxNot` but matches with `-pRx`
-```
-filelist2 -b "(blobstore)" -d "vol-" -pRxNot "BlobStore\.blob-name=.+/maven-metadata.xml.*" -pRx "@Bucket\.repo-name=maven-central,.+deleted=true" -P -c 80 -s ./maven-central_soft_deleteed_excluding_maven-metadata.tsv
-```
+#### List files which does NOT match with `-pRxNot "regex"` but matches with `-pRx "regex"`
 NOTE: `-pRxNot` is evaluated before `-pRx`
-
-#### Read the result File `-rF` which lines contain the blobIDs, and list the .properties contents with `-f` and `-P`
 ```
-filelist2 -b "(blobstore)" -d "vol-" -rF ./previous_result_without_properties_content.tsv -f ".properties" -P
+filelist2 -b "(blobstore)" -p "vol-" -pRxNot "BlobStore\.blob-name=.+/maven-metadata.xml.*" -pRx "@Bucket\.repo-name=maven-central,.+deleted=true" -P -c 80 -s ./maven-central_soft_deleteed_excluding_maven-metadata.tsv
+```
+
+#### Read the result File `-rF "file-path"`, which each lne contains a blobId, and list the .properties files only `-f "file-name-filter"` with the content `-P`
+```
+filelist2 -b "(blobstore)" -p "vol-" -rF ./previous_result_without_properties_content.tsv -f ".properties" -P
 ```
 NOTE: The above picks the blobID-like strings automatically, so no need to remove unnecessary strings. If no `-f ".properties"`, the result lines include ".bytes".
 
 #### Use this tool to check the total count and size of all .bytes files
 ```
-file-list -b "(blobstore)" -d 'vol-' -f ".bytes" >/dev/null
+file-list -b "(blobstore)" -p 'vol-' -f ".bytes" >/dev/null
 ... (in the end of the command it outputs the below) ...
 13:52:46.972949 INFO  Printed 136895 of 273790 files, size: 2423593014 bytes (elapsed:26s)
 ```
@@ -149,6 +142,10 @@ echo "select blob_ref from asset" | orient-console ./db/component/ | file-list -
 
 
 ## Misc.
+NOTE: For more accurate performance testing, may want to clear the Linux file cache (as 'root' user)
+```
+echo 3 > /proc/sys/vm/drop_caches
+```
 #### Generate blobIDs with comma separated from the saved result file:
 ```
 sed -n -E 's/.+([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})\..+/\1/p' ./docker-proxy_soft_deleted.tsv | tr '\n', ','
