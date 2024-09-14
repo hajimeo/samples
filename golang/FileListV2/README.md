@@ -35,7 +35,7 @@ TODO: filelist2 -b "az://azure-test-container/azure-test-prefix/content"
 filelist2 -b "(blobstore)" -d "vol-" -c 80 -s "/tmp/file-list_$(date +"%Y%m%d%H%M%S").tsv"
 ```
 NOTE: The recommended concurrency is less than (CPUs / 2) * 10, unless against slow disk/network. 
-Also, the concurrency is all directories under `-b` (max depth 3), so even the "vol-NN" is less than 50, the concurrency hither than 50 would work.
+Also, the concurrency is all directories under `-b` (max depth 3), so even the "vol-NN" is less than 50, the concurrency higher than 50 would work.
 
 #### Same as the above but only files which File name matches with `-f`, and including the Properties file content `-P` into the saving file
 ```
