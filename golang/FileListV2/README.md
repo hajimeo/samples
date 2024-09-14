@@ -5,15 +5,15 @@
 - Remove `deleted=true` lines from the specified files in a text file or while listing
 
 ## Download and Install:
-Saving as `file-list-v2` as an example
+Saving the binary as `filelist2` as an example:
 ```bash
-curl -o ./file-list-v2 -L https://github.com/hajimeo/samples/raw/master/misc/filelistv2_$(uname)_$(uname -m)
-chmod a+x ./file-list-v2
+curl -o ./filelist2 -L https://github.com/hajimeo/samples/raw/master/misc/filelistv2_$(uname)_$(uname -m)
+chmod a+x ./filelist2
 ```
 
 ## Display help:
 ```
-$ file-list-v2 --help
+$ filelist2 --help
 ```
 NOTE: The arguments, which name starts with a Capital letter, are boolean type.
 
@@ -25,43 +25,45 @@ echo 3 > /proc/sys/vm/drop_caches
 
 ### List files under the Blob store content `-b`
 ```
-file-list-v2 -b "./sonatype-work/nexus3/blobs/default/content"
-file-list-v2 -b "file://sonatype-work/nexus3/blobs/default/content"
-file-list-v2 -b "s3://s3-test-bucket/s3-test-prefix/content"
-TODO: file-list-v2 -b "az://azure-test-container/azure-test-prefix/content"
+filelist2 -b "./sonatype-work/nexus3/blobs/default/content"
+filelist2 -b "file://sonatype-work/nexus3/blobs/default/content"
+filelist2 -b "s3://s3-test-bucket/s3-test-prefix/content"
+TODO: filelist2 -b "az://azure-test-container/azure-test-prefix/content"
 ```
 #### List files under `-b` and the Directory names matches with `-d` the concurrency 80, and save to a file with `-s`
-NOTE: recommend to set the concurrency less than (CPUs / 2) * 10, unless against very slow disk/network
 ```
-file-list-v2 -b "(blobstore)" -d "vol-" -c 80 -s "/tmp/file-list_$(date +"%Y%m%d%H%M%S").tsv"
+filelist2 -b "(blobstore)" -d "vol-" -c 80 -s "/tmp/file-list_$(date +"%Y%m%d%H%M%S").tsv"
 ```
+NOTE: The recommended concurrency is less than (CPUs / 2) * 10, unless against slow disk/network. 
+Also, the concurrency is all directories under `-b` (max depth 3), so even the "vol-NN" is less than 50, the concurrency hither than 50 would work.
+
 #### Same as the above but only files which File name matches with `-f`, and including the Properties file content `-P` into the saving file
 ```
-file-list-v2 -b "(blobstore)" -d "vol-" -f ".propperties" -P -c 80 -s "/tmp/file-list_$(date +"%Y%m%d%H%M%S").tsv"
+filelist2 -b "(blobstore)" -d "vol-" -f ".propperties" -P -c 80 -s "/tmp/file-list_$(date +"%Y%m%d%H%M%S").tsv"
 ```
 #### With the Modified Date From `-mDF`
 ```
-file-list-v2 -b "(blobstore)" -d "vol-" -f ".propperties" -P -mDF "$(date -d "1 day ago" +%Y-%m-%d)" -c 80 -s "/tmp/modified_since_yesterday.tsv"
+filelist2 -b "(blobstore)" -d "vol-" -f ".propperties" -P -mDF "$(date -d "1 day ago" +%Y-%m-%d)" -c 80 -s "/tmp/modified_since_yesterday.tsv"
 ```
 #### Finding regulr expression matching .properties `-pRx "regex"`, also including the content `-P` in the saving file, but only the first 10 `-n 10`
 NOTE: Using `-pRx` automatically does same as `-f ".propperties"`. Also the content of the .properties file is sorted and one line to make the regex syntax simplar.
 ```
-file-list-v2 -b "(blobstore)" -d 'vol-' -pRx "^deleted=true$" -P -n 10 -c 10 -s /tmp/all_soft_deleted.tsv
+filelist2 -b "(blobstore)" -d 'vol-' -pRx "^deleted=true$" -P -n 10 -c 10 -s /tmp/all_soft_deleted.tsv
 ```
 #### Finding .properties files which are for the repository 'docker-proxy' and soft deleted 
 ```
-file-list-v2 -b "(blobstore)" -d "vol-" -pRx "@Bucket\.repo-name=docker-proxy,.+deleted=true" -P -c 80 -s ./docker-proxy_soft_deleted.tsv
+filelist2 -b "(blobstore)" -d "vol-" -pRx "@Bucket\.repo-name=docker-proxy,.+deleted=true" -P -c 80 -s ./docker-proxy_soft_deleted.tsv
 ```
 NOTE: In the internal memory, the content of .properties file becomes same as `cat <blobId>.properties | sort | tr '\n' ','`, so that `@xxxxx` lines come before `deletedYyyyy` lines.
 #### List files which does NOT match with the regex `-pRxNot` but matches with `-pRx`
 ```
-file-list-v2 -b "(blobstore)" -d "vol-" -pRxNot "BlobStore\.blob-name=.+/maven-metadata.xml.*" -pRx "@Bucket\.repo-name=maven-central,.+deleted=true" -P -c 80 -s ./maven-central_soft_deleteed_excluding_maven-metadata.tsv
+filelist2 -b "(blobstore)" -d "vol-" -pRxNot "BlobStore\.blob-name=.+/maven-metadata.xml.*" -pRx "@Bucket\.repo-name=maven-central,.+deleted=true" -P -c 80 -s ./maven-central_soft_deleteed_excluding_maven-metadata.tsv
 ```
 NOTE: `-pRxNot` is evaluated before `-pRx`
 
 #### Read the result File `-rF` which lines contain the blobIDs, and list the .properties contents with `-f` and `-P`
 ```
-file-list-v2 -b "(blobstore)" -d "vol-" -rF ./previous_result_without_properties_content.tsv -f ".properties" -P
+filelist2 -b "(blobstore)" -d "vol-" -rF ./previous_result_without_properties_content.tsv -f ".properties" -P
 ```
 NOTE: The above picks the blobID-like strings automatically, so no need to remove unnecessary strings. If no `-f ".properties"`, the result lines include ".bytes".
 
