@@ -1,5 +1,5 @@
 # File List V2
-- list files from specified location (File, S3, Azure, etc.)
+- List files from specified location (File, S3, Azure, etc.)
 - Find missing blobs in database (Dead Blobs)
 - Find missing blobs in blob store (Orphaned Blobs)
 - Remove `deleted=true` lines from the specified files in a text file or while listing
