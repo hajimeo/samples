@@ -19,7 +19,7 @@ iq_server:
   # '--set global.imageRegistry=MY_NXRM' can be used too
   imageRegistry: # Container image registry, if not specified the Docker public registry will be used
   image: "sonatype/nexus-iq-server"
-  tag: "latest"
+  #tag: "latest"
   #imagePullPolicy: "Always" # Default "IfNotPresent", and "Always" fails with this helm chart
   resources:
     requests:
