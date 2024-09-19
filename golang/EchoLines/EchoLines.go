@@ -20,87 +20,90 @@ func usage() {
 Read one file and output only necessary lines.
 
 # TO INSTALL:
-	curl -o /usr/local/bin/echolines -L https://github.com/hajimeo/samples/raw/master/misc/echolines_$(uname)_$(uname -m)
-	chmod a+x /usr/local/bin/echolines
+    curl -o /usr/local/bin/echolines -L https://github.com/hajimeo/samples/raw/master/misc/echolines_$(uname)_$(uname -m)
+    chmod a+x /usr/local/bin/echolines
 
 # HOW TO USE:
-	echolines [some_file1,some_file2] START_REGEXP [END_REGEXP] [OUT_DIR]
+    echolines [some_file1,some_file2] START_REGEXP [END_REGEXP] [OUT_DIR]
 
 # NOTE:
-	If END_REGEXP is provided but *without any capture group*, the end line is not echoed (not included).
-	If the first argument is empty, the script accepts the STDIN.
+    If END_REGEXP is provided but *without any capture group*, the end line is not echoed (not included).
+    If the first argument is empty, the script accepts the STDIN.
 
 # ENV VARIABLES:
-	SPLIT_FILE=Y
-		Save the result into multiple files (if OUT_DIR is given, this becomes Y automatically)
-	HTML_REMOVE=Y
-		Remove all HTML tags and convert HTML entities
-	INCL_REGEX=<regex string>
-		If regular expression is specified, only matching lines are included.
-	EXCL_REGEX=<regex string>
-		If regular expression is specified, matching lines are excluded.
-	ELAPSED_REGEX=<datetime capture group regex>
-		If provided, calculate the duration between START_REGEX matching line and END_REGEXP (or next START_REGEX) line
-		Group capture is required to capture the datetime
-	ELAPSED_FORMAT=<golang time library acceptable string>
-		Default is "2006-01-02 15:04:05,000" or "15:04:05,000" @see: https://pkg.go.dev/time
-	ELAPSED_KEY_REGEX=<capture group regex string>
-		If the log is for multithreading application, provide regex to capture thread Id (eg: "\[([^\]]+)")
-	ELAPSED_DIVIDE_MS=<integer milliseconds>
-		To deside the width of ascii chart
-	ASCII_DISABLED=Y
-		To disable ascii chart (for slightly faster processing)
-	ASCII_ROTATE_NUM=<num>
-		(experimental) To make ASCII chart width shorter by rotating per <num> lines
+    SPLIT_FILE=Y
+        Save the result into multiple files (if OUT_DIR is given, this becomes Y automatically)
+    HTML_REMOVE=Y
+        Remove all HTML tags and convert HTML entities
+    INCL_REGEX=<regex string>
+        If regular expression is specified, only matching lines are included.
+    EXCL_REGEX=<regex string>
+        If regular expression is specified, matching lines are excluded.
+    ELAPSED_REGEX=<datetime capture group regex>
+        If provided, calculate the duration between START_REGEX matching line and END_REGEXP (or next START_REGEX) line
+        Group capture is required to capture the datetime
+    ELAPSED_FORMAT=<golang time library acceptable string>
+        Default is "2006-01-02 15:04:05,000" or "15:04:05,000" @see: https://pkg.go.dev/time
+    ELAPSED_KEY_REGEX=<capture group regex string>
+        If the log is for multithreading application, provide regex to capture thread Id (eg: "\[([^\]]+)")
+    ELAPSED_DIVIDE_MS=<integer milliseconds>
+        To deside the width of ascii chart
+    ASCII_DISABLED=Y
+        To disable ascii chart (for slightly faster processing)
+    ASCII_ROTATE_NUM=<num>
+        (experimental) To make ASCII chart width shorter by rotating per <num> lines
 
 # USAGE EXAMPLES:
 ## Read the result with 'q' (after "rg '^# (.+)' -o -r '$1' > ./durations.out"):
-	q -O -d"|" -T "SELECT c1 as start_time, c2 as end_time, CAST(c3 as INT) as ms, c4 as key FROM ./durations.out WHERE ms > 10000"
+    q -O -d"|" -T "SELECT c1 as start_time, c2 as end_time, CAST(c3 as INT) as ms, c4 as key FROM ./durations.out WHERE ms > 10000"
 
 ## NXRM2 thread dumps (not perfect. still contains some junk lines):
-	EXCL_REGEX="^jvm 1\s+\|\s+\d\d\d\d-\d\d-\d\d \d\d:\d\d:\d\d.+" echolines "wrapper.log.2,wrapper.log.1,wrapper.log" "^jvm 1\s+\|\s+\d\d\d\d-\d\d-\d\d \d\d:\d\d:\d\d$" "(^\s+class space.+)" | sed 's/^jvm 1    | //' > threads.txt
+    EXCL_REGEX="^jvm 1\s+\|\s+\d\d\d\d-\d\d-\d\d \d\d:\d\d:\d\d.+" echolines "wrapper.log.2,wrapper.log.1,wrapper.log" "^jvm 1\s+\|\s+\d\d\d\d-\d\d-\d\d \d\d:\d\d:\d\d$" "(^\s+class space.+)" | sed 's/^jvm 1    | //' > threads.txt
 ## NXRM3 thread dumps:
-	HTML_REMOVE=Y echolines "./jvm.log" "^\d\d\d\d-\d\d-\d\d \d\d:\d\d:\d\d$" "(^\s+class space.+|^\s+Metaspace\s+.+)" "threads"
-	# If would like to split per thread:
-	echolines "threads.txt" "^\".+" "" "./threads_per_thread"
-	find ./threads -type f -name '[0-9]*_*.out' | xargs -P3 -t -I{} bash -c '_d="$(basename "{}" ".out")";echolines "{}" "^\".+" "" "./threads_per_thread/${_d}"'
+    HTML_REMOVE=Y echolines "./jvm.log" "^\d\d\d\d-\d\d-\d\d \d\d:\d\d:\d\d$" "(^\s+class space.+|^\s+Metaspace\s+.+)" "threads"
+    # If would like to split per thread:
+    echolines "threads.txt" "^\".+" "" "./threads_per_thread"
+    find ./threads -type f -name '[0-9]*_*.out' | xargs -P3 -t -I{} bash -c '_d="$(basename "{}" ".out")";echolines "{}" "^\".+" "" "./threads_per_thread/${_d}"'
 
 ## Get duration of each line of a thread #with thread+username+classnames:
-	export ELAPSED_REGEX="^\d\d\d\d-\d\d-\d\d.(\d\d:\d\d:\d\d.\d\d\d)" ASCII_DISABLED=Y ELAPSED_KEY_REGEX="\[(qtp\S+\s+\S+\s+\S+)"
-	rg 'qtp1529377038-106' ./nexus.log | echolines "" "^\d\d\d\d-\d\d-\d\d.\d\d:\d\d:\d\d.\d\d\d" "^\d\d\d\d-\d\d-\d\d.\d\d:\d\d:\d\d.\d\d\d" | rg '^# ' | sort -t'|' -k3n
+    export ELAPSED_REGEX="^\d\d\d\d-\d\d-\d\d.(\d\d:\d\d:\d\d.\d\d\d)" ASCII_DISABLED=Y ELAPSED_KEY_REGEX="(\[qtp\S+\s\S*\s\S+)"
+    rg 'qtp1529377038-106' ./nexus.log | echolines "" "^\d\d\d\d-\d\d-\d\d.\d\d:\d\d:\d\d.\d\d\d" "^\d\d\d\d-\d\d-\d\d.\d\d:\d\d:\d\d.\d\d\d" | rg '^# ' | sort -t'|' -k3n
+### (Not so useful but) similar to the above but excluding empty username:
+    export ELAPSED_REGEX="^\d\d\d\d-\d\d-\d\d.(\d\d:\d\d:\d\d.\d\d\d)" ASCII_DISABLED=Y ELAPSED_KEY_REGEX="(\[dw\-[^\]]+\]\s\S+\s\S+)"
+    echolines "_hourly_logs/clm-server_2024-09-13_16.out" "^\d\d\d\d-\d\d-\d\d.\d\d:\d\d:\d\d.\d\d\d" "^\d\d\d\d-\d\d-\d\d.\d\d:\d\d:\d\d.\d\d\d" | rg '^# ' | sort -t'|' -k3n
 ## Get duration of NXRM3 SQL queries, and sort by the longest:
-	export ELAPSED_REGEX="^\d\d\d\d-\d\d-\d\d.(\d\d:\d\d:\d\d.\d\d\d)" ASCII_DISABLED=Y ELAPSED_KEY_REGEX="(\[qtp\S+\s+\S+\s+\S+)"
-	echolines "./log/nexus.log" " - ==>  Preparing:" "(^.+ - <== .+)" | rg '^# (.+)' -o -r '$1'    #| sort -t'|' -k3n
+    export ELAPSED_REGEX="^\d\d\d\d-\d\d-\d\d.(\d\d:\d\d:\d\d.\d\d\d)" ASCII_DISABLED=Y ELAPSED_KEY_REGEX="(\[qtp\S+\s+\S+\s+\S+)"
+    echolines "./log/nexus.log" " - ==>  Preparing:" "(^.+ - <== .+)" | rg '^# (.+)' -o -r '$1'    #| sort -t'|' -k3n
 ### Get durations of specific method, which stops if 0 update, and related log lines:
-	echolines "./log/nexus.log" "trimBrowseNodes - ==>  Preparing:" "(^.+Updates: 0)" | tee trimBrowseNodes.log | rg '^# (.+)' -o -r '$1' > trimBrowseNodes_dur.out
+    echolines "./log/nexus.log" "trimBrowseNodes - ==>  Preparing:" "(^.+Updates: 0)" | tee trimBrowseNodes.log | rg '^# (.+)' -o -r '$1' > trimBrowseNodes_dur.out
 ## Get duration of the first 30 S3 pool requests (with org.apache.http = DEBUG. This example also checks 'Connection leased'):
-	export ELAPSED_REGEX="^\d\d\d\d-\d\d-\d\d.(\d\d:\d\d:\d\d.\d\d\d)" ELAPSED_KEY_REGEX="\[(s3-parallel-[^\]]+)"
-	rg -m30 '\[s3-parallel-.+ Connection (request|leased|released):' ./log/nexus.log > connections.out
-	sed -n "1,30p" connections.out | echolines "" " leased:" "(^.+ released:.+)" | rg '^# '
+    export ELAPSED_REGEX="^\d\d\d\d-\d\d-\d\d.(\d\d:\d\d:\d\d.\d\d\d)" ELAPSED_KEY_REGEX="\[(s3-parallel-[^\]]+)"
+    rg -m30 '\[s3-parallel-.+ Connection (request|leased|released):' ./log/nexus.log > connections.out
+    sed -n "1,30p" connections.out | echolines "" " leased:" "(^.+ released:.+)" | rg '^# '
 ## Get duration of Tasks
-	export ELAPSED_REGEX="^\d\d\d\d-\d\d-\d\d.(\d\d:\d\d:\d\d.\d\d\d)" ELAPSED_KEY_REGEX="Task '([^']+)'" ASCII_DISABLED=Y
-	echolines "./log/nexus.log" "QuartzTaskInfo .+ -> RUNNING" "(^.+QuartzTaskInfo .+ RUNNING -> .+)" | rg '^# (.+)' -o -r '$1' | sort -t'|' -k2
-	export ELAPSED_REGEX="^\d\d\d\d-\d\d-\d\d.(\d\d:\d\d:\d\d.\d\d\d)" ELAPSED_KEY_REGEX="\[([^\]]+)" ASCII_DISABLED=Y
-	echolines "./log/tasks/allTasks.log" " - Task information:" "(^.+ - Task complete)" "per_thread" | rg '^# (.+)' -o -r '$1' | sort -t'|' -k2
+    export ELAPSED_REGEX="^\d\d\d\d-\d\d-\d\d.(\d\d:\d\d:\d\d.\d\d\d)" ELAPSED_KEY_REGEX="Task '([^']+)'" ASCII_DISABLED=Y
+    echolines "./log/nexus.log" "QuartzTaskInfo .+ -> RUNNING" "(^.+QuartzTaskInfo .+ RUNNING -> .+)" | rg '^# (.+)' -o -r '$1' | sort -t'|' -k2
+    export ELAPSED_REGEX="^\d\d\d\d-\d\d-\d\d.(\d\d:\d\d:\d\d.\d\d\d)" ELAPSED_KEY_REGEX="\[([^\]]+)" ASCII_DISABLED=Y
+    echolines "./log/tasks/allTasks.log" " - Task information:" "(^.+ - Task complete)" "per_thread" | rg '^# (.+)' -o -r '$1' | sort -t'|' -k2
 ## Get duration of blob-store-group-removal-\d+ .bytes files, with ASCII
-	export ELAPSED_REGEX="^\d\d\d\d-\d\d-\d\d.(\d\d:\d\d:\d\d.\d\d\d)" ELAPSED_KEY_REGEX="(blob-store-group-removal-\d+)"
-	rg 'blob-store-group-removal-\d+' -m2000 nexus.log | echolines "" "Writing blob" "(^.+Finished upload to key.+)" | rg '^# (.+)' -o -r '$1' > bytes_duration_summary.tsv
+    export ELAPSED_REGEX="^\d\d\d\d-\d\d-\d\d.(\d\d:\d\d:\d\d.\d\d\d)" ELAPSED_KEY_REGEX="(blob-store-group-removal-\d+)"
+    rg 'blob-store-group-removal-\d+' -m2000 nexus.log | echolines "" "Writing blob" "(^.+Finished upload to key.+)" | rg '^# (.+)' -o -r '$1' > bytes_duration_summary.tsv
 ## Get duration of DEBUG cooperation2.datastore.internal.CooperatingFuture
-	export ELAPSED_REGEX="\d\d\d\d-\d\d-\d\d.(\d\d:\d\d:\d\d.\d\d\d)" ELAPSED_KEY_REGEX="\[(qtp[^\]]+)"
-	rg -F '/dotenv?null' -m2000 nexus.log | echolines "" "Requesting" "(^.+Completing.+)" | rg '^# (.+)' -o -r '$1' > bytes_duration_summary.tsv
+    export ELAPSED_REGEX="\d\d\d\d-\d\d-\d\d.(\d\d:\d\d:\d\d.\d\d\d)" ELAPSED_KEY_REGEX="\[(qtp[^\]]+)"
+    rg -F '/dotenv?null' -m2000 nexus.log | echolines "" "Requesting" "(^.+Completing.+)" | rg '^# (.+)' -o -r '$1' > bytes_duration_summary.tsv
 
 ## Get duration of IQ Evaluate a File, and sort by threadId and time
-	rg 'POST /rest/scan/.+Scheduling scan task (\S+)' -o -r '$1' log/clm-server.log | xargs -I{} rg -w "{}" ./log/clm-server.log | sort | uniq > scan_tasks.log
-	export ELAPSED_REGEX="^\d\d\d\d-\d\d-\d\d.(\d\d:\d\d:\d\d.\d\d\d)"
-	ELAPSED_KEY_REGEX="\[([^ \]]+)" echolines ./scan_tasks.log "Running scan task" "(^.+Completed scan task.+)" | rg '^# (.+)' -o -r '$1' | sort -t'|' -k3,3 -k1,1
+    rg 'POST /rest/scan/.+Scheduling scan task (\S+)' -o -r '$1' log/clm-server.log | xargs -I{} rg -w "{}" ./log/clm-server.log | sort | uniq > scan_tasks.log
+    export ELAPSED_REGEX="^\d\d\d\d-\d\d-\d\d.(\d\d:\d\d:\d\d.\d\d\d)"
+    ELAPSED_KEY_REGEX="\[([^ \]]+)" echolines ./scan_tasks.log "Running scan task" "(^.+Completed scan task.+)" | rg '^# (.+)' -o -r '$1' | sort -t'|' -k3,3 -k1,1
 
 ## Get duration of Eclipse Memory Analyzer Tool (MAT) threads (<file-name>.threads)
-	echolines ./java_pid1404494.threads "^Thread 0x\S+" "" "./threads_per_thread"
+    echolines ./java_pid1404494.threads "^Thread 0x\S+" "" "./threads_per_thread"
 
 ## Get duration of mvn download (need org.slf4j.simpleLogger.showDateTime=true org.slf4j.simpleLogger.dateTimeFormat=yyyy-MM-dd HH:mm:ss.SSS)
-	export ELAPSED_REGEX="^\d\d\d\d-\d\d-\d\d.(\d\d:\d\d:\d\d.\d\d\d)"
-	export ELAPSED_KEY_REGEX="https?://\S+"
-	ASCII_DISABLED=Y echolines ./mvn.log "Downloading from nexus: \S+" "(^.+Downloaded from nexus: \S+)"
+    export ELAPSED_REGEX="^\d\d\d\d-\d\d-\d\d.(\d\d:\d\d:\d\d.\d\d\d)"
+    export ELAPSED_KEY_REGEX="https?://\S+"
+    ASCII_DISABLED=Y echolines ./mvn.log "Downloading from nexus: \S+" "(^.+Downloaded from nexus: \S+)"
 END`)
 }
 
@@ -232,7 +235,7 @@ func echoStartLine(line string, key string) bool {
 	// echo "${_prev_str}" | sed "s/[ =]/_/g" | tr -cd '[:alnum:]._-\n' | cut -c1-192
 	FILE_NAME_PFXS[key] += REM_CHAR_REGEXP.ReplaceAllString(matches[len(matches)-1], "_")
 	FILE_NAME_PFXS[key] = REM_DUPE_REGEXP.ReplaceAllString(FILE_NAME_PFXS[key], "_")
-	//FILE_NAME_PFXS[key] = strings.TrimSuffix(FILE_NAME_PFXS[key], "_")	// To avoid filename_.out
+	//FILE_NAME_PFXS[key] = strings.TrimSuffix(FILE_NAME_PFXS[key], "_")    // To avoid filename_.out
 	if len(FILE_NAME_PFXS[key]) > 192 {
 		_dlog("Trimming " + FILE_NAME_PFXS[key]) // truncating
 		FILE_NAME_PFXS[key] = FILE_NAME_PFXS[key][:192]
