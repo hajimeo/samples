@@ -2142,12 +2142,13 @@ function f_start_saml_server() {
     echo "       IdP metadata: ./idp_metadata.xml"
     #echo "       curl -D- -X PUT -u admin:admin123 http://localhost:8070/api/v2/roleMemberships/global/role/b9646757e98e486da7d730025f5245f8/group/ipausers"
     if [ ! -s "${_sp_meta_file}" ]; then
-        echo "[WARN] Please get SP metadata and save into ${_sp_meta_file}, then restart."
-    echo "       Example Attr: {uid=[samluser], eduPersonPrincipalName=[samluser@standalone.localdomain], eduPersonAffiliation=[users], givenName=[saml], sn=[user], cn=[Saml User]}"
-    echo "       so, eduPersonPrincipalName can be used for 'email', eduPersonAffiliation for 'groups'."
+        echo "       Example Attr: {uid=[samluser], eduPersonPrincipalName=[samluser@standalone.localdomain], eduPersonAffiliation=[users], givenName=[saml], sn=[user], cn=[Saml User]}"
+        echo "       So, eduPersonPrincipalName can be used for 'email', eduPersonAffiliation for 'groups'."
+        echo "[INFO] If some error, please save '${_sp_meta_url}' into ${_sp_meta_file}, then restart."
+        echo "       curl -o ${_sp_meta_file} -u \"admin\" \"${_sp_meta_url}\""
     fi
 }
-function f_setup_saml_freeipa() {
+function f_setup_saml() {
     echo "TODO: use PUT /v1/security/saml"
 }
 
