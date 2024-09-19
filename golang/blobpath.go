@@ -1,5 +1,5 @@
 /*
-Trying to do same as java.lang.String.hashCode
+Doing same as org.sonatype.nexus.blobstore.VolumeChapterLocationStrategy#location and java.lang.String.hashCode
 
 env GOOS=linux GOARCH=amd64 go build -o ../misc/blobpath_Linux_x86_64 blobpath.go && \
 env GOOS=darwin GOARCH=amd64 go build -o ../misc/blobpath_Darwin_x86_64 blobpath.go && \
