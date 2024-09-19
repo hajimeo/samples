@@ -1076,7 +1076,9 @@ function f_threads() {
     local _running_thread_search_re="${3-"\.sonatype\."}"
     local _save_dir="${4}"
     local _not_split_by_date="${5:-${_NOT_SPLIT_BY_DATE}}"
+    local _incl_datetime_rx="${6:-${_INCL_DATETIME_RX}}"
 
+    [ -z "${_save_dir%/}" ] && _save_dir="./_threads"
     local _thread_file_glob="${_THREAD_FILE_GLOB:-"thread*.txt*"}"
     if [ -z "${_file}" ]; then
         _file="$(find . -type f -name threads.txt 2>/dev/null | grep "${_thread_file_glob}" -m 1)"
@@ -1127,6 +1129,10 @@ function f_threads() {
             _count=$(( ${_count} + 1 ))
             if [ -s "./f_thread_${_filename%.*}.out" ]; then
                 _LOG "WARN" "./f_thread_${_filename%.*}.out exists, so not executing f_threads ..."
+                continue
+            fi
+            if ! head -n1 "${_f}" | grep -E "${_incl_datetime_rx}"; then
+                _LOG "WARN" "The first line of $(basename ${_f}) does not start with '${_incl_datetime_rx}', so not executing f_threads ..."
                 continue
             fi
             _LOG "INFO" "Saving outputs into f_thread_${_filename%.*}.out (and ${_save_dir%/}/${_filename%.*}) ..."
@@ -1214,18 +1220,18 @@ function f_threads() {
     echo " "
 
     if [ -n "${_running_thread_search_re}" ]; then
-        echo "## Finding running threads with size is over 4k and containing '${_running_thread_search_re}'"
-        find ${_save_dir%/} -size +4k -iname '*run*' -exec rg -H -m1 "${_running_thread_search_re}[^$]+$" {} \;
-        echo " "
+        #echo "## Finding running threads with size is over 4k and containing '${_running_thread_search_re}'"
+        #find ${_save_dir%/} -size +4k -iname '*run*' -exec rg -H -m1 "${_running_thread_search_re}[^$]+$" {} \;
+        #echo " "
 
-        echo "## Finding popular methods from *probably* running threads containing '${_running_thread_search_re}'"
+        echo "## Finding popular first *3* methods from *probably* running threads containing '${_running_thread_search_re}'"
         #rg -w RUNNABLE -A1 -H ${_save_dir%/} | rg '^\sat' | sort | uniq -c
-        rg "${_running_thread_search_re}" -l -g '*runnable*' ${_save_dir%/} | xargs -P3 -I {} rg '^\s+at\s' -m1 "{}" | sort | uniq -c | sort -nr | head -10
+        rg "${_running_thread_search_re}" -l -g '*runnable*' ${_save_dir%/} | xargs -P3 -I {} rg '^\s+at\s' -m3 "{}" | sort | uniq -c | sort -nr | head -10
         # NOTE: RUNNABLE "sun.nio.ch.EPollArrayWrapper.epollWait" would be ignorable
         # https://support.sonatype.com/hc/en-us/articles/360000744687-Understanding-Eclipse-Jetty-9-4-Thread-Allocation#SelectorManager-SelectorThreads
         echo " "
 
-        echo "## Finding RUNNABLE which contains \"${_running_thread_search_re}\""
+        echo "## Finding first line which contains \"${_running_thread_search_re}\" from RUNNABLE"
         rg 'State:\s*RUNNABLE' -l ${_save_dir%/} | xargs -I{} rg -m1 "${_running_thread_search_re}" {} | sort | uniq -c | sort -nr | head -n10
         echo " "
 
@@ -2247,10 +2253,11 @@ _URL_REGEX='(https?|ftp|file|svn)://[-A-Za-z0-9\+&@#/%?=~_|!:,.;]*[-A-Za-z0-9\+&
 _TEST_REGEX='^\[.+\]$'
 _SCRIPT_DIR="$(dirname "$BASH_SOURCE")"
 
-[ -z "$_DATE_FORMAT" ] && _DATE_FORMAT="\d\d\d\d-\d\d-\d\d"
-[ -z "$_DATE_FMT_REQ" ] && _DATE_FMT_REQ="\d\d.[a-zA-Z]{3}.\d\d\d\d"
-[ -z "$_DT_FMT" ] && _DT_FMT="${_DATE_FORMAT}.\d\d:\d\d:\d\d.\d+"
-[ -z "$_DT_FMT_REQ" ] && _DT_FMT_REQ="${_DATE_FMT_REQ}.\d\d:\d\d:\d\d"
+[ -z "${_DATE_FORMAT}" ] && _DATE_FORMAT="\d\d\d\d-\d\d-\d\d"
+[ -z "${_DATE_FMT}" ] && _DATE_FMT="${_DATE_FORMAT}"
+[ -z "${_DATE_FMT_REQ}" ] && _DATE_FMT_REQ="\d\d.[a-zA-Z]{3}.\d\d\d\d"
+[ -z "${_DT_FMT}" ] && _DT_FMT="${_DATE_FORMAT}.\d\d:\d\d:\d\d.\d+"
+[ -z "${_DT_FMT_REQ}" ] && _DT_FMT_REQ="${_DATE_FMT_REQ}.\d\d:\d\d:\d\d"
 
 
 ### Main ###############################################################################################################
