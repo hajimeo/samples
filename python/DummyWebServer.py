@@ -11,7 +11,7 @@ listen_port = 9999
 delay_sec = 3
 
 
-def write_with_delay(s, fp=None, chunk_size=32768, sec=1, repeat=100, message=""):
+def response_with_delay(httpServ, fp=None, chunk_size=32768, sec=1, repeat=100, message=""):
     if fp:
         while True:
             # Always wait first
@@ -19,12 +19,12 @@ def write_with_delay(s, fp=None, chunk_size=32768, sec=1, repeat=100, message=""
                 time.sleep(float(sec))
             chunk = fp.read(chunk_size)
             if chunk:
-                s.wfile.write(chunk)
+                httpServ.wfile.write(chunk)
             else:
                 break
     else:
         for x in range(repeat):
-            s.wfile.write(bytes(message + " " + str(x) + "\n", 'utf-8'))
+            httpServ.wfile.write(bytes(message + " " + str(x) + "\n", 'utf-8'))
             if sec > 0:
                 time.sleep(float(sec))
 
@@ -32,6 +32,7 @@ def write_with_delay(s, fp=None, chunk_size=32768, sec=1, repeat=100, message=""
 class SlowserverRequestHandler(BaseHTTPRequestHandler):
     def do_GET(self):
         p = "." + self.path  # not supporting all OS
+        #time.sleep(float(60))   # was trying testing connection timeout but thi causes operational timeout
         try:
             with open(p, "rb") as fp:
                 self.send_response(200)
@@ -40,7 +41,7 @@ class SlowserverRequestHandler(BaseHTTPRequestHandler):
                     self.send_header("Content-type", mtype)
                 self.end_headers()
                 # If initial delay is needed, add sleep in here
-                write_with_delay(self, fp=fp, sec=delay_sec)
+                response_with_delay(self, fp=fp, sec=delay_sec)
         except IOError:
             self.send_response(404)
             self.end_headers()
