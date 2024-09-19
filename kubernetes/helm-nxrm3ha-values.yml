@@ -86,7 +86,7 @@ statefulset:
     env:
       nexusDBName: nxrm3helmha
       nexusDBPort: 5432
-      install4jAddVmParams: '-Xms2g -Xmx2g -Dcom.redhat.fips=false -Dnexus.scripts.allowCreation=true'
+      install4jAddVmParams: '-Xms2g -Xmx2g -Dcom.redhat.fips=false -Dnexus.scripts.allowCreation=true -Dnexus.datastore.nexus.maximumPoolSize=10'
       jdbcUrlParams: null # Must start with a '?' e.g. '?foo=bar&baz=foo'
       zeroDowntimeEnabled: true
   livenessProbe:
