@@ -827,8 +827,8 @@ function f_gc_before_after_check() {
     local _log_dir="${1:-"."}"
     local _keyword="${2-"sonatype"}"
     local _A_max="${3-"100"}"
-    echo "# Total"
-    rg -z -N --sort=path --no-filename "${_DT_FMT}.*\s+(Class Histogram|Total\s+\d+\s+\d+)" ${_log_dir} | rg -w 'Total' -B1
+    echo "# Total : 'date_time' '#instances' '#bytes'"
+    rg -z -N --sort=path --no-filename "(${_DT_FMT}.*\s+\[?Class Histogram|Total\s+\d+\s+\d+)" ${_log_dir} | paste - - | rg "(${_DT_FMT}).+\s+Total\s+(\d+\s+\d+)" -o -r '$1   $2' | sort | uniq
     echo ""
     #rg -z -N --no-filename "^(${_DT_FMT}).+\bFull GC" -o -r '$1' ${_log_dir} | sort | uniq > /tmp/${FUNCNAME[0]}_datetimes_$$.tmp || return $?
     # NOTE: expecting filenames works with --sort=path
