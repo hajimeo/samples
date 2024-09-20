@@ -40,13 +40,7 @@ import com.orientechnologies.orient.core.db.tool.ODatabaseImport;
 import com.orientechnologies.orient.core.db.tool.ODatabaseRepair;
 import com.orientechnologies.orient.core.exception.OPageIsBrokenException;
 import com.orientechnologies.orient.core.id.ORID;
-import com.orientechnologies.orient.core.index.ODefaultIndexFactory;
-import com.orientechnologies.orient.core.index.OIndex;
-import com.orientechnologies.orient.core.index.OIndexDefinition;
-import com.orientechnologies.orient.core.index.OIndexDefinitionFactory;
-import com.orientechnologies.orient.core.index.OIndexException;
-import com.orientechnologies.orient.core.index.OIndexRebuildOutputListener;
-import com.orientechnologies.orient.core.index.OIndexes;
+import com.orientechnologies.orient.core.index.*;
 import com.orientechnologies.orient.core.metadata.OMetadataDefault;
 import com.orientechnologies.orient.core.metadata.schema.OClass.INDEX_TYPE;
 import com.orientechnologies.orient.core.metadata.schema.OClassImpl;
@@ -89,21 +83,22 @@ public class AssetDupeCheckV2 {
         System.out.println(
                 "  java -Xmx4g -XX:MaxDirectMemorySize=8g -jar asset-dupe-checker-v2.jar <component directory path> | tee asset-dupe-checker.sql");
         System.out.println("System properties:");
-        System.out.println("  -DextractDir=./component            # Location of extracting component-*.bak file");
-        System.out.println("  -Drepair=true                       # Remove duplicates and insert missing index records");
+        System.out.println("  -DextractDir=./component            # If .bak is used, extracting it in this location");
+        System.out.println("  -Drepair=true                       # Automatically detect and remove duplicates in the specified index");
         System.out.println("  -Ddebug=true                        # Verbose outputs");
         System.out.println("Advanced properties (use those carefully):");
         System.out.println("  -DrebuildIndex=true                 # Rebuild index (eg:asset_bucket_component_name_idx, '*')");
-        System.out.println("  -DexportOnly=true                   # DB Export to current (or extractDir)");
+        System.out.println("  -DexportOnly=true                   # DB Export into current (or extractDir) location");
         System.out.println("  -DimportReuse=true                  # If 'true', reuse the component-export.gz if exists");
-        System.out.println("  -DexportImport=true                 # DB Export to current (or extractDir), then import");
+        System.out.println("  -DexportImport=true                 # DB Export into current (or extractDir) location, then import");
         System.out.println("                                        May require larger -XX:MaxDirectMemorySize");
-        System.out.println("  -DnoCheckIndex=true                 # Does not check index...");
-        System.out.println("  -DindexName=component_bucket_group_name_version_idx   # or '*'");
-        System.out.println("  -DtableName=component               # NOTE: be careful of repairing component");
-        System.out.println("  -DdropTables=deleted_blob_index     # Useful only for export/import");
-        System.out.println("  -DdropIndexes=component_bucket_group_name_version_idx  # Useful only for export/import");
-        System.out.println("  -DdbRepair=true                     # Experimental: REPAIR DATABASE --fix-links");
+        System.out.println("  -DnoCheckIndex=true                 # Not checking index (eg. just want to export/import)");
+        System.out.println("  -DindexName=<index name>            # asset_bucket_component_name_idx (default), component_bucket_group_name_version_idx,");
+        System.out.println("                                        asset_bucket_name_idx, or * (to rebuild all indexes)");
+        System.out.println("  -DtableName=<table name>            # 'asset' (default) or 'component'");
+        System.out.println("  -DdropTables=<table name,name2...>  # To workaround export/import errors");
+        System.out.println("  -DdropIndexes=<index name,name2...> # To workaround export/import errors");
+        System.out.println("  -DdbRepair=true                     # Same as executing REPAIR DATABASE --fix-links");
     }
 
     private static String getCurrentLocalDateTimeStamp() {
@@ -646,6 +641,7 @@ public class AssetDupeCheckV2 {
     }
 
     private static boolean validateIndex(ODatabaseDocumentTx db, String indexName) {
+        // Checking if the index exist
         List<ODocument> oDocs = db.command(new OCommandSQL(
                         "select * from (select expand(indexes) from metadata:indexmanager) where name = '" + indexName + "'"))
                 .execute();
@@ -653,12 +649,13 @@ public class AssetDupeCheckV2 {
             return false;
         }
         String indexDef = oDocs.get(0).toJSON("rid,attribSameRow,alwaysFetchEmbedded,fetchPlan:*:0"); //,prettyPrint
-        log(indexDef);
+        log("Index definition: " + indexDef);
         if (!indexDef.contains("\"" + indexName + "\"")) {
             return false;
         }
+        // TODO: asset_bucket_name_idx is a non-unique index, and it generates 'java.lang.ClassCastException: com.orientechnologies.orient.core.index.OCompositeKey cannot be cast to java.lang.String'
         if (!indexDef.contains("\"" + INDEX_TYPE.UNIQUE.name() + "\"")) {
-            return false;
+            return true;
         }
         String indexFields = getIndexFields(indexName);
         String[] fields = indexFields.split(",");
@@ -674,6 +671,7 @@ public class AssetDupeCheckV2 {
             }
             testQuery.append(" AND ").append(fields[i]).append(val);
         }
+        log("Testing with: " + testQuery.toString());
         String explainStr = ((ODocument) db.command(new OCommandSQL(testQuery.toString())).execute()).toJSON(
                 "rid,attribSameRow,alwaysFetchEmbedded,fetchPlan:*:0"); //,prettyPrint
         log(explainStr);
