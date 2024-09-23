@@ -2,7 +2,7 @@
 - List files from specified location (File, S3, Azure, etc.)
 - Find missing blobs in database (Dead Blobs)
 - Find missing blobs in blob store (Orphaned Blobs)
-- Remove `deleted=true` lines from the specified files in a text file or while listing
+- (no need any more?) Remove `deleted=true` lines from the specified files in a text file or while listing
 
 ## Download and Install:
 Saving the binary as `filelist2` as an example:
