@@ -2,34 +2,48 @@
 #source /dev/stdin <<< "$(curl -sfL https://raw.githubusercontent.com/hajimeo/samples/master/bash/utils.sh --compressed)"
 #source /dev/stdin <<< "$(curl -sfL https://raw.githubusercontent.com/hajimeo/samples/master/bash/utils_db.sh --compressed)"
 
+_DB_ADMIN="${_DB_ADMIN:-"postgres"}"
+_CMD_PREFIX="${_CMD_PREFIX:-""}"  # "docker exec -ti name" or "ssh postgres@host"
+
 function _get_dbadmin_user() {
-    local _dbadmin="$1"
+    local _DB_ADMIN="$1"
     local _port="${2:-"5432"}"
-    if [ -n "${_dbadmin}" ]; then
-        echo "${_dbadmin}"
-        return $?
+    if [ -n "${_DB_ADMIN}" ]; then
+        echo "${_DB_ADMIN}"
+        return
     fi
     if [ "`uname`" = "Darwin" ]; then
         #psql template1 -c "create database $USER"
-        _dbadmin="$USER"
+        _DB_ADMIN="$USER"
     else
-        _dbadmin="$(_user_by_port "${_port}" 2>/dev/null)"
+        _DB_ADMIN="$(_user_by_port "${_port}" 2>/dev/null)"
     fi
-    echo "${_dbadmin:-"postgres"}"
+    echo "${_DB_ADMIN:-"postgres"}"
 }
 
 function _get_psql_as_admin() {
-    local _dbadmin="${1:-"$USER"}"
-    local _cmd="${2:-"psql"}"
-    local _psql_as_admin="sudo -u ${_dbadmin} -i psql"
-    if ! id "${_dbadmin}" &>/dev/null; then
-        _log "WARN" "'${_dbadmin}' OS user may not exist. May require to set PGPASSWORD variable."
+    local _DB_ADMIN="${1:-"$USER"}"
+    local _cmd="${2:-"psql"}"   # can be pg_dump
+    local _psql_as_admin="sudo -u ${_DB_ADMIN} -i psql"
+    if [ -z "${_PSQL}" ] && ! id "${_DB_ADMIN}" &>/dev/null; then
+        _log "WARN" "'${_DB_ADMIN}' OS user may not exist. May require to set PGPASSWORD variable."
         # This will ask the password everytime, but you can use PGPASSWORD
-        _psql_as_admin="${_cmd} -U ${_dbadmin}"
-    elif [ "$USER" == "postgres" ]; then
-        _psql_as_admin="${_cmd} -U ${_dbadmin}"
+        _psql_as_admin="${_cmd} -U ${_DB_ADMIN}"
+    elif [ -z "${_PSQL}" ] && [ "$USER" == "postgres" ]; then
+        _psql_as_admin="${_cmd} -U ${_DB_ADMIN}"
+    elif [ -n "${_PSQL}" ]; then
+        _psql_as_admin="${_PSQL} ${_cmd}"
     fi
     echo "${_psql_as_admin}"
+}
+
+function _as_dbadmin() {
+    local _cmd="${1}"
+    if [ -n "${_CMD_PREFIX}" ]; then
+        eval "${_CMD_PREFIX} ${_cmd}"
+    else
+        eval "${_cmd}"
+    fi
 }
 
 function _huge_page() {
@@ -65,14 +79,11 @@ function _postgresql_configure() {
     local _verbose_logging="${1}"   # If Y, adds more logging configs which would work with pgbadger.
     local _wal_archive_dir="${2}"   # Automatically decided if empty
     local _postgresql_conf="${3}"   # Automatically detected if empty. "/var/lib/pgsql/data" or "/etc/postgresql/10/main" or /var/lib/pgsql/12/data/
-    local _dbadmin="${4}"
-    local _port="${5:-"5432"}"      # just for deciding the username. Optional.
-    _dbadmin="$(_get_dbadmin_user "${_dbadmin}" "${_port}")"
-    local _psql_as_admin="$(_get_psql_as_admin "${_dbadmin}")"
+    local _port="${4:-"5432"}"      # just for deciding the username. Optional.
     local _restart=false
 
     if [ ! -f "${_postgresql_conf}" ]; then
-        _postgresql_conf="$(${_psql_as_admin} -tAc 'SHOW config_file')" || return $?
+        _postgresql_conf="$(_as_dbadmin "psql -tAc 'SHOW config_file'")" || return $?
     fi
     if [ -z "${_postgresql_conf}" ] || [ ! -s "${_postgresql_conf}" ]; then
         _log "ERROR" "No postgresql config file specified."
@@ -113,7 +124,7 @@ function _postgresql_configure() {
         _wal_archive_dir="${_WORK_DIR%/}/backups/`hostname -s`_wal"
     fi
     if [ ! -d "${_wal_archive_dir}" ]; then
-        sudo -u "${_dbadmin}" mkdir -v -p "${_wal_archive_dir}" || return $?
+        sudo -u "${_DB_ADMIN}" mkdir -v -p "${_wal_archive_dir}" || return $?
     fi
 
     # @see: https://www.postgresql.org/docs/current/continuous-archiving.html https://www.postgresql.org/docs/current/runtime-config-wal.html
@@ -185,15 +196,50 @@ function _postgresql_configure() {
     fi
 }
 
+function _postresql_replication_common() {
+    # @see: bash/archives/build-dev-server.sh:2398
+    local _db_data_dir="${1}"
+    # At least 10GB disk space for now
+    if ! _isEnoughDisk "${_db_data_dir}" "10"; then
+        _log "WARN" "Not enough disk space. Please fix this later."
+    fi
+
+    # Create user, update pg_hba.conf, and reload
+    _postgresql_create_dbuser "replicator" "replicator" ""
+}
+
+function _postresql_replication_primary() {
+    local __doc__="Update postgresql.conf for primary server. Need to run from the PostgreSQL server (localhost)"
+    # @see: bash/archives/build-dev-server.sh:2472
+    local _db_data_dir="${1}"
+    _postresql_replication_common "${_db_data_dir}"
+}
+
+function _postresql_replication_standby() {
+    local __doc__="TODO: Update postgresql.conf for standby server. Need to run from the PostgreSQL server (localhost)"
+    # @see: bash/archives/build-dev-server.sh:2520
+    # @see: https://www.linkedin.com/pulse/postgresql-tutorial-how-setup-streaming-replication-mahto-k1clf/
+    local _primary_host="${1}"
+    local _primary_port="${2:-"5432"}"
+    local _wal_archive_dir="${3}"   # Automatically decided if empty
+    local _postgresql_conf="${4}"   # Automatically detected if empty. "/var/lib/pgsql/data" or "/etc/postgresql/10/main" or /var/lib/pgsql/12/data/
+    local _DB_ADMIN="${5}"
+    local _port=""
+
+    #Expecting the below command are running in a container crated by:
+    # docker run -d -p 15432:5432 --name pgstandby -e POSTGRES_PASSWORD=postgres postgres:14
+    _postresql_replication_common "${_db_data_dir}"
+
+    # TODO: Copy the primary's data directory to the standby server
+    #pg_basebackup -h ${_primary_host} -D /var/lib/postgresql/16/main/ -U replicator -P -v -R -X stream -C -S slaveslot1
+}
+
 function _postresql_configure_ssl() {
     local _cert_dir="$1"
     local _postgresql_conf="${2}"
-    local _dbadmin="${3}"
-    local _port="${4:-"5432"}"      # just for deciding the username. Optional.
-    _dbadmin="$(_get_dbadmin_user "${_dbadmin}" "${_port}")"
-    local _psql_as_admin="$(_get_psql_as_admin "${_dbadmin}")"
+    local _port="${3:-"5432"}"      # just for deciding the username. Optional.
     if [ ! -f "${_postgresql_conf}" ]; then
-        _postgresql_conf="$(${_psql_as_admin} -tAc 'SHOW config_file')" || return $?
+        _postgresql_conf="$(_as_dbadmin "psql -tAc 'SHOW config_file'")" || return $?
     fi
     if [ -z "${_postgresql_conf}" ] || [ ! -s "${_postgresql_conf}" ]; then
         _log "ERROR" "No postgresql config file specified."
@@ -229,14 +275,11 @@ function _postgresql_create_dbuser() {
     local _dbpwd="${2:-"${_dbusr}"}"
     local _dbname="${3-"${_dbusr}"}"    # accept "" (empty string), then 'all' database is allowed
     local _schema="${4}"
-    local _dbadmin="${5}"
     local _port="${6:-"5432"}"
     local _force="${7-"${_RECREATE_DB}"}"
-    _dbadmin="$(_get_dbadmin_user "${_dbadmin}" "${_port}")"
-    local _psql_as_admin="$(_get_psql_as_admin "${_dbadmin}")"
 
-    local _pg_hba_conf="$(${_psql_as_admin} -d template1 -tAc 'SHOW hba_file')"
-    if [ ! -f "${_pg_hba_conf}" ]; then
+    local _pg_hba_conf="$(_as_dbadmin "psql -d template1 -tAc 'SHOW hba_file'")"
+    if [ -z "${_pg_hba_conf}" ]; then
         _log "WARN" "No pg_hba.conf (${_pg_hba_conf}) found."
         return 1
     fi
@@ -247,18 +290,21 @@ function _postgresql_create_dbuser() {
 
     # NOTE: Use 'hostssl all all 0.0.0.0/0 cert clientcert=1' for 2-way | client certificate authentication
     #       To do that, also need to utilise database.parameters.some_key:value in config.yml
-    local _sudo=""
-    [ -r "${_pg_hba_conf}" ] || _sudo="sudo -u ${_dbadmin}"
+    local _sudo="${_CMD_PREFIX}"
+    # If local file, edit as DB admin user
+    if [ -z "${_CMD_PREFIX}" ] && [ ! -w "${_pg_hba_conf}" ]; then
+        _sudo="sudo -u ${_DB_ADMIN} -i"
+    fi
     if ! ${_sudo} grep -E "host\s+(${_dbname:-"all"}|all)\s+${_dbusr}\s+" "${_pg_hba_conf}"; then
         ${_sudo} bash -c "echo \"host ${_dbname:-"all"} ${_dbusr} 0.0.0.0/0 md5\" >> \"${_pg_hba_conf}\"" || return $?
-        ${_psql_as_admin} -d template1 -tAc 'SELECT pg_reload_conf()' || return $?
-        #${_psql_as_admin} -tAc 'SELECT pg_read_file('pg_hba.conf');'
-        ${_psql_as_admin} -d template1 -tAc "select * from pg_hba_file_rules where database = '{${_dbname:-"all"}}' and user_name = '{${_dbusr}}';"
+        _as_dbadmin "psql -d template1 -tAc 'SELECT pg_reload_conf()'" || return $?
+        #_as_dbadmin "psql -tAc \"SELECT pg_read_file('pg_hba.conf');\""
+        _as_dbadmin "psql -d template1 -tAc \"select * from pg_hba_file_rules where database = '{${_dbname:-"all"}}' and user_name = '{${_dbusr}}';\""
     fi
 
     [ "${_dbusr}" == "all" ] && return 0    # not creating user 'all'
     _log "INFO" "Creating Role:${_dbusr} and Database:${_dbname} ..."
-    _postgresql_create_role_and_db "${_dbusr}" "${_dbpwd}" "${_dbname}" "${_schema}" "${_dbadmin}" "${_port}" "${_force}"
+    _postgresql_create_role_and_db "${_dbusr}" "${_dbpwd}" "${_dbname}" "${_schema}" "${_DB_ADMIN}" "${_port}" "${_force}"
 }
 
 function _postgresql_create_role_and_db() {
@@ -267,57 +313,55 @@ function _postgresql_create_role_and_db() {
     local _dbpwd="${2:-"${_dbusr}"}"
     local _dbname="${3-"${_dbusr}"}"    # If explicitly "", not creating DB but user/role only
     local _schema="${4}"
-    local _dbadmin="${5}"
-    local _port="${6:-"5432"}"
-    local _force="${7-"${_RECREATE_DB}"}"
-    _dbadmin="$(_get_dbadmin_user "${_dbadmin}" "${_port}")"
+    local _port="${5:-"5432"}"
+    local _force="${6-"${_RECREATE_DB}"}"
 
-    local _psql_as_admin="$(_get_psql_as_admin "${_dbadmin}")"
-    # NOTE: need to be superuser and 'usename' is correct. options: -t --tuples-only, -A --no-align, -F --field-separator
-    ${_psql_as_admin} -d template1 -tA -c "SELECT usename FROM pg_shadow" | grep -q "^${_dbusr}$" || ${_psql_as_admin} -d template1 -c "CREATE USER \"${_dbusr}\" WITH LOGIN PASSWORD '${_dbpwd}';"    # not SUPERUSER
-    if [ "${_dbadmin}" != "postgres" ] && [ "${_dbadmin}" != "$USER" ]; then
-        # TODO ${_dbadmin%@*} is only for Azure
-        ${_psql_as_admin} -d template1 -c "GRANT \"${_dbusr}\" TO \"${_dbadmin%@*}\";"
+    # NOTE: need to be superuser. 'usename' (no 'r') is correct. options: -t --tuples-only, -A --no-align, -F --field-separator
+    #       Also, double-quote for case sensitivity but not using for now.
+    _as_dbadmin "psql -d template1 -tA -c \"SELECT usename FROM pg_shadow\"" | grep -q "^${_dbusr}$" || _as_dbadmin "psql -d template1 -c \"CREATE USER ${_dbusr} WITH LOGIN PASSWORD '${_dbpwd}';\""    # not giving SUPERUSER
+    if [ "${_DB_ADMIN}" != "postgres" ] && [ "${_DB_ADMIN}" != "$USER" ]; then
+        # NOTE: This ${_DB_ADMIN%@*} is for Azure
+        _as_dbadmin "psql -d template1 -c \"GRANT ${_dbusr} TO ${_DB_ADMIN%@*};\""
     fi
 
     if [ -n "${_dbname}" ]; then
         local _create_db=true
-        if ${_psql_as_admin} -d template1 -ltA  -F',' | grep -q "^${_dbname},"; then
+        if _as_dbadmin "psql -d template1 -ltA  -F','" | grep -q "^${_dbname},"; then
             if [[ "${_force}" =~ ^[yY] ]]; then
                 _log "WARN" "${_dbname} already exists. As force is specified, dropping ${_dbname} ..."
                 sleep 5
-                ${_psql_as_admin} -d template1 -c "DROP DATABASE \"${_dbname}\";"
+                _as_dbadmin "psql -d template1 -c \"DROP DATABASE ${_dbname};\""
             else
                 _log "WARN" "${_dbname} already exists. May need to run below first (or _RECREATE_DB=Y):
-                ${_psql_as_admin} -d ${_dbname} -c \"DROP SCHEMA ${_schema:-"public"} CASCADE;CREATE SCHEMA ${_schema:-"public"} AUTHORIZATION ${_dbusr};GRANT ALL ON SCHEMA ${_schema:-"public"} TO ${_dbusr};\""
+                psql -d ${_dbname} -c \"DROP SCHEMA ${_schema:-"public"} CASCADE;CREATE SCHEMA ${_schema:-"public"} AUTHORIZATION ${_dbusr};GRANT ALL ON SCHEMA ${_schema:-"public"} TO ${_dbusr};\""
                 sleep 3
                 _create_db=false
             fi
         fi
         if ${_create_db}; then
             # NOTE: to copy a database locally 'WITH TEMPLATE another_db OWNER ${_dbusr}'
-            ${_psql_as_admin} -d template1 -c "CREATE DATABASE \"${_dbname}\" WITH OWNER \"${_dbusr}\" ENCODING 'UTF8';"
+            _as_dbadmin "psql -d template1 -c \"CREATE DATABASE ${_dbname} WITH OWNER ${_dbusr} ENCODING 'UTF8';\""
         else
-            ${_psql_as_admin} -d template1 -c "GRANT ALL ON DATABASE \"${_dbname}\" TO \"${_dbusr}\";" >/dev/null || return $?
+            _as_dbadmin "psql -d template1 -c \"GRANT ALL ON DATABASE ${_dbname} TO ${_dbusr};\"" >/dev/null || return $?
         fi
-        # NOTE: For postgresql v15 change. Also use double-quotes for case sensitivity?
-        ${_psql_as_admin} -d ${_dbname} -c "GRANT ALL ON SCHEMA public TO \"${_dbusr}\";" >/dev/null
+        # NOTE: For postgresql v15 change.
+        _as_dbadmin "psql -d ${_dbname} -c \"GRANT ALL ON SCHEMA public TO ${_dbusr};\"" >/dev/null
         # To delete user: DROP OWNED BY ${_dbusr}; DROP USER ${_dbusr};
 
         if [ -n "${_schema}" ]; then
             local _search_path="${_dbusr},public"
             for _s in ${_schema}; do
-                ${_psql_as_admin} -d ${_dbname} -c "CREATE SCHEMA IF NOT EXISTS ${_s} AUTHORIZATION ${_dbusr};"
+                _as_dbadmin "psql -d ${_dbname} -c \"CREATE SCHEMA IF NOT EXISTS ${_s} AUTHORIZATION ${_dbusr};\""
                 _search_path="${_search_path},${_s}"
             done
-            ${_psql_as_admin} -d template1 -c "ALTER ROLE ${_dbusr} SET search_path = ${_search_path};"
+            _as_dbadmin "psql -d template1 -c \"ALTER ROLE ${_dbusr} SET search_path = ${_search_path};\""
         fi
     fi
 
     # test
     local _cmd="psql -h $(hostname -f) -p 5432 -U ${_dbusr} -d ${_dbname} -c \"\l ${_dbname}\""
     _log "INFO" "Testing the connection with \"${_cmd}\" ..."
-    eval "PGPASSWORD=\"${_dbpwd}\" ${_cmd}" || return $?
+    eval "${_CMD_PREFIX} PGPASSWORD=\"${_dbpwd}\" ${_cmd}" || return $?
 }
 
 function _postgres_pitr() {
@@ -328,9 +372,7 @@ function _postgres_pitr() {
     local _base_backup_tgz="${2}"       # File path. eg: .../node-nxiq1960_base_20201105T091218z/base.tar.gz
     local _wal_archive_dir="${3}"       # ${_WORK_DIR%/}/${_SERVICE%/}/backups/`hostname -s`_wal
     local _target_ISO_datetime="${4}"   # yyyy-mm-dd hh:mm:ss (optional)
-    local _dbadmin="${5:-"postgres"}"   # DB OS user
-    local _port="${6:-"5432"}"          # PostgreSQL port number (optional)
-    _dbadmin="$(_get_dbadmin_user "${_dbadmin}" "${_port}")"
+    local _port="${5:-"5432"}"          # PostgreSQL port number (optional)
 
     if [ ! -d "${_data_dir}" ]; then
         _log "ERROR" "No PostgreSQL data dir provided: ${_data_dir}"
@@ -346,9 +388,9 @@ function _postgres_pitr() {
     fi
 
     mv -v ${_data_dir%/} ${_data_dir%/}_$(date +"%Y%m%d%H%M%S") || return $?
-    sudo -u ${_dbadmin} -i mkdir -m 700 -p ${_data_dir%/} || return $?
+    sudo -u ${_DB_ADMIN} -i mkdir -m 700 -p ${_data_dir%/} || return $?
     tar -xvf "${_base_backup_tgz}" -C "${_data_dir%/}" || return $?
-    sudo -u ${_dbadmin} -i touch ${_data_dir%/}/recovery.signal || return $?
+    sudo -u ${_DB_ADMIN} -i touch ${_data_dir%/}/recovery.signal || return $?
     #mv -v ${_data_dir%/}/pg_wal/* ${_TMP%/}/ || return $?
     if [ -s "$(dirname "${_base_backup_tgz}")/pg_wal.tar.gz" ]; then
         tar -xvf "$(dirname "${_base_backup_tgz}")/pg_wal.tar.gz" -C "${_data_dir%/}/pg_wal"
@@ -414,6 +456,5 @@ function _psql_copydb() {
     local _dbhost="${5:-"${_DBHOST:-"localhost"}"}"
     local _dbport="${6:-"${_DBPORT:-"5432"}"}"
 
-    local _pg_dump_as_admin="$(_get_psql_as_admin "$(_get_dbadmin_user)" "pg_dump" "${_dbport}")"
-    ${_pg_dump_as_admin} -d "${_local_src_db}" -c -O | PGPASSWORD="${_dbpwd}" psql -h ${_dbhost} -p ${_dbport} -U ${_dbusr} -d ${_dbname}
+    _as_dbadmin "pg_dump -d ${_local_src_db} -c -O" | PGPASSWORD="${_dbpwd}" psql -h ${_dbhost} -p ${_dbport} -U ${_dbusr} -d ${_dbname}
 }
