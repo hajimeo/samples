@@ -8,6 +8,9 @@ _CMD_PREFIX="${_CMD_PREFIX:-""}"  # "docker exec -ti name" or "ssh postgres@host
 function _as_dbadmin() {
     if [ -n "${_CMD_PREFIX}" ]; then
         ${_CMD_PREFIX} "$@"
+    elif [ -n "${_DB_ADMIN}" ]; then
+        # TODO: need -i?
+        sudo -u ${_DB_ADMIN} "$@"
     else
         "$@"
     fi
@@ -94,19 +97,6 @@ function _postgresql_configure() {
     [ -d /var/log/postgresql ] || mkdir -p -m 777 /var/log/postgresql
     [ -d /var/log/postgresql ] && _psql_adm "ALTER SYSTEM SET log_directory TO ''/var/log/postgresql' '"
 
-    if [ -z "${_wal_archive_dir}" ]; then
-        _wal_archive_dir="${_WORK_DIR%/}/backups/`hostname -s`_wal"
-    fi
-    if [ ! -d "${_wal_archive_dir}" ]; then
-        sudo -u "${_DB_ADMIN}" mkdir -v -p "${_wal_archive_dir}" || return $?
-    fi
-
-    # @see: https://www.postgresql.org/docs/current/continuous-archiving.html https://www.postgresql.org/docs/current/runtime-config-wal.html
-    _psql_adm "ALTER SYSTEM SET archive_mode TO 'on'"
-    _upsert ${_postgresql_conf} "archive_command" "'test ! -f ${_wal_archive_dir%/}/%f && cp %p ${_wal_archive_dir%/}/%f'" # this is asynchronous
-    #TODO: Can't append under #archive_command. Use recovery_min_apply_delay = '1h'
-    # For wal/replication/pg_rewind, better save log files outside of _postgresql_conf
-
     #_upsert ${_postgresql_conf} "log_destination" "stderr" "#log_destination"  # stderr
     _psql_adm "ALTER SYSTEM SET log_error_verbosity TO 'verbose'"  # default
     _psql_adm "ALTER SYSTEM SET log_connections TO 'on'"
@@ -174,36 +164,75 @@ function _postresql_replication_common() {
     # @see: https://www.percona.com/blog/setting-up-streaming-replication-postgresql/
     # @see: bash/archives/build-dev-server.sh:2398
     local _db_data_dir="${1}"
+    local _wal_archive_dir="${2}"
+
     # At least 10GB disk space for now
     if ! _isEnoughDisk "${_db_data_dir}" "10"; then
-        _log "WARN" "Not enough disk space. Please fix this later."
+        _log "WARN" "${_db_data_dir} does not have enough disk space. Please fix this later."
     fi
+
+    if [ -z "${_wal_archive_dir}" ]; then
+        _wal_archive_dir="${_WORK_DIR:-"."}/backups/`hostname -s`_wal"
+    fi
+    if [ ! -d "${_wal_archive_dir}" ]; then
+        _as_dbadmin mkdir -v -p "${_wal_archive_dir}" || return $?
+    fi
+    # At least 40GB disk space for now
+    if ! _isEnoughDisk "${_wal_archive_dir}" "40"; then
+        _log "WARN" "${_wal_archive_dir} does not have enough disk space. Please fix this later."
+    fi
+
+    # Some of the commands are not required to run on the standby but anyway run for now.
+    # Create user, update pg_hba.conf, and reload. The user might be already created. If so, not updating pg_hba.conf.
+    if _psql_adm "CREATE USER replicator WITH REPLICATION ENCRYPTED PASSWORD 'replicator'"; then
+        _update_pg_hba_conf "replicator" ""
+    fi
+
+    _psql_adm "ALTER SYSTEM SET wal_level TO 'hot_standby';
+               ALTER SYSTEM SET archive_mode TO 'ON';
+               ALTER SYSTEM SET max_wal_senders TO '5';
+               ALTER SYSTEM SET wal_keep_segments TO '10';
+               ALTER SYSTEM SET hot_standby TO 'ON'"
+
+    # @see: https://www.postgresql.org/docs/current/continuous-archiving.html https://www.postgresql.org/docs/current/runtime-config-wal.html
+    _psql_adm "ALTER SYSTEM SET archive_command 'test ! -f ${_wal_archive_dir%/}/%f && cp %p ${_wal_archive_dir%/}/%f'" # this is asynchronous
+    # NOTE: For wal/replication/pg_rewind, better save the log files outside of pgdata (DATADIR)
+
+    _log "INFO" "Updated postgresql config. Please restart the service."
 }
 
 function _postresql_replication_primary() {
     local __doc__="Update postgresql.conf for primary server. Need to run from the PostgreSQL server (localhost)"
     # @see: bash/archives/build-dev-server.sh:2472
     local _db_data_dir="${1}"
+    local _wal_archive_dir="${2}"
 
-    # Create user, update pg_hba.conf, and reload
-    _psql_adm "CREATE USER replicator WITH REPLICATION ENCRYPTED PASSWORD 'replicator'" || return $?
+    _postresql_replication_common "${_db_data_dir}" "${_wal_archive_dir}"
 }
 
 function _postresql_replication_standby() {
-    local __doc__="TODO: Update postgresql.conf for standby server. Need to run from the PostgreSQL server (localhost)"
+    local __doc__="TODO: Update postgresql.conf for standby server"
     # @see: bash/archives/build-dev-server.sh:2520
     local _primary_host="${1}"
     local _primary_port="${2:-"5432"}"
-    local _wal_archive_dir="${3}"   # Automatically decided if empty
-    local _postgresql_conf="${4}"   # Automatically detected if empty. "/var/lib/pgsql/data" or "/etc/postgresql/10/main" or /var/lib/pgsql/12/data/
-    local _port=""
+    local _db_data_dir="${3}"
+    local _wal_archive_dir="${4}"   # Automatically decided if empty
 
     #Expecting the below command are running in a container crated by:
     # docker run -d -p 15432:5432 --name pgstandby -e POSTGRES_PASSWORD=postgres postgres:14
-    _postresql_replication_common "${_db_data_dir}"
+    #_postresql_replication_common "${_db_data_dir}" "${_wal_archive_dir}"
+    if _psql_adm "SELECT 1" &>/dev/null; then
+        _log "ERROR" "PostgreSQL is running. Please stop first (also make sure ${_db_data_dir} is empty)"
+        return 1
+    fi
+    if [ -d "${_db_data_dir}" ]; then
+        _log "WARN" "${_db_data_dir} already exists. Please remove it first."
+        return 1
+    fi
 
-    # TODO: Copy the primary's data directory to the standby server
-    #pg_basebackup -h ${_primary_host} -D /var/lib/postgresql/16/main/ -U replicator -P -v -R -X stream -C -S slaveslot1
+    # TODO: Copy the primary's data directory to the standby server    -C -S slaveslot1
+    pg_basebackup -h ${_primary_host} -U replicator -p ${_primary_port} -D ${_db_data_dir} --progress --wal-method=stream --write-recovery-conf --checkpoint=spread -v || return $?
+    _log "INFO" "base backup completed. Please start the service."
 }
 
 function _postresql_configure_ssl() {
@@ -250,9 +279,19 @@ function _postgresql_create_dbuser() {
     local _port="${6:-"5432"}"
     local _force="${7-"${_RECREATE_DB}"}"
 
+    _update_pg_hba_conf "${_dbusr}" "${_dbname}"
+
+    [ "${_dbusr}" == "all" ] && return 0    # not creating user 'all'
+    _log "INFO" "Creating Role:${_dbusr} and Database:${_dbname} ..."
+    _postgresql_create_role_and_db "${_dbusr}" "${_dbpwd}" "${_dbname}" "${_schema}" "${_DB_ADMIN}" "${_port}" "${_force}"
+}
+
+function _update_pb_hba_conf() {
+    local _dbusr="${1}"
+    local _dbname="${2}"    # accept "" (empty string), then 'all' database is allowed
     local _pg_hba_conf="$(_psql_adm "SHOW hba_file" "-tA")"
     if [ -z "${_pg_hba_conf}" ]; then
-        _log "WARN" "No pg_hba.conf (${_pg_hba_conf}) found."
+        _log "WARN" "No pg_hba.conf found."
         return 1
     fi
     if [ -z "${_dbname}" ]; then
@@ -262,21 +301,12 @@ function _postgresql_create_dbuser() {
 
     # NOTE: Use 'hostssl all all 0.0.0.0/0 cert clientcert=1' for 2-way | client certificate authentication
     #       To do that, also need to utilise database.parameters.some_key:value in config.yml
-    local _sudo="${_CMD_PREFIX}"
-    # If local file, edit as DB admin user
-    if [ -z "${_CMD_PREFIX}" ] && [ ! -w "${_pg_hba_conf}" ]; then
-        _sudo="sudo -u ${_DB_ADMIN} -i"
-    fi
-    if ! ${_sudo} grep -E "host\s+(${_dbname:-"all"}|all)\s+${_dbusr}\s+" "${_pg_hba_conf}"; then
-        ${_sudo} bash -c "echo \"host ${_dbname:-"all"} ${_dbusr} 0.0.0.0/0 md5\" >> \"${_pg_hba_conf}\"" || return $?
+    if ! _as_dbadmin grep -E "host\s+(${_dbname:-"all"}|all)\s+${_dbusr}\s+" "${_pg_hba_conf}"; then
+        _as_dbadmin bash -c "echo \"host ${_dbname:-"all"} ${_dbusr} 0.0.0.0/0 md5\" >> \"${_pg_hba_conf}\"" || return $?
         _psql_adm "SELECT pg_reload_conf()" || return $?
         #_as_dbadmin "psql -tAc \"SELECT pg_read_file('pg_hba.conf');\""
         _psql_adm "select * from pg_hba_file_rules where database = '{${_dbname:-"all"}}' and user_name = '{${_dbusr}}'" "-tA"
     fi
-
-    [ "${_dbusr}" == "all" ] && return 0    # not creating user 'all'
-    _log "INFO" "Creating Role:${_dbusr} and Database:${_dbname} ..."
-    _postgresql_create_role_and_db "${_dbusr}" "${_dbpwd}" "${_dbname}" "${_schema}" "${_DB_ADMIN}" "${_port}" "${_force}"
 }
 
 function _postgresql_create_role_and_db() {
@@ -360,9 +390,9 @@ function _postgres_pitr() {
     fi
 
     mv -v ${_data_dir%/} ${_data_dir%/}_$(date +"%Y%m%d%H%M%S") || return $?
-    sudo -u ${_DB_ADMIN} -i mkdir -m 700 -p ${_data_dir%/} || return $?
+    _as_dbadmin mkdir -m 700 -p ${_data_dir%/} || return $?
     tar -xvf "${_base_backup_tgz}" -C "${_data_dir%/}" || return $?
-    sudo -u ${_DB_ADMIN} -i touch ${_data_dir%/}/recovery.signal || return $?
+    _as_dbadmin touch ${_data_dir%/}/recovery.signal || return $?
     #mv -v ${_data_dir%/}/pg_wal/* ${_TMP%/}/ || return $?
     if [ -s "$(dirname "${_base_backup_tgz}")/pg_wal.tar.gz" ]; then
         tar -xvf "$(dirname "${_base_backup_tgz}")/pg_wal.tar.gz" -C "${_data_dir%/}/pg_wal"
