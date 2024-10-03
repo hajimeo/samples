@@ -169,7 +169,7 @@ func _setGlobals() {
 	_BS_TYPE = flag.String("bsType", "F", "F (file) or S (s3) or A (azure)")
 	_CONC_2 = flag.Int("c2", 8, "AWS S3: Concurrent number for retrieving AWS Tags")
 	_IS_S3 = flag.Bool("S3", false, "AWS S3: If true, access S3 bucket with AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY, AWS_REGION and AWS_ENDPOINT_URL") // TODO: remove this
-	_MAXKEYS = flag.Int("m", 1000, "AWS S3: Integer value for Max Keys (<= 1000)")
+	_MAXKEYS = flag.Int("m", 0, "AWS S3: Max Keys number for NewListObjectsV2Paginator (<= 1000, default 0)")
 	_WITH_OWNER = flag.Bool("O", false, "AWS S3: If true, get the owner display name")
 	_WITH_TAGS = flag.Bool("T", false, "AWS S3: If true, get tags of each object")
 
@@ -1375,7 +1375,6 @@ func listObjectsS3(dir string, db *sql.DB, client interface{}) int64 {
 	var subTtl int64
 	input := &s3.ListObjectsV2Input{
 		Bucket:     _BASEDIR,
-		MaxKeys:    aws.Int32(int32(*_MAXKEYS)),
 		FetchOwner: aws.Bool(*_WITH_OWNER),
 		Prefix:     &dir,
 	}
@@ -1385,30 +1384,44 @@ func listObjectsS3(dir string, db *sql.DB, client interface{}) int64 {
 	//}
 
 	for {
-		resp, err := (client.(*s3.Client)).ListObjectsV2(context.TODO(), input)
-		if err != nil {
-			println("Got error retrieving list of objects:")
-			panic(err.Error())
-		}
+		p := s3.NewListObjectsV2Paginator((client.(*s3.Client)), input, func(o *s3.ListObjectsV2PaginatorOptions) {
+			if v := int32(*_MAXKEYS); v != 0 {
+				o.Limit = v
+			}
+		})
 
 		//https://stackoverflow.com/questions/25306073/always-have-x-number-of-goroutines-running-at-any-time
 		wgTags := sync.WaitGroup{}                 // *
 		guardTags := make(chan struct{}, *_CONC_2) // **
 
-		for _, item := range resp.Contents {
-			if len(*_FILTER) == 0 || strings.Contains(*item.Key, *_FILTER) {
-				subTtl++
-				guardTags <- struct{}{}                                     // **
-				wgTags.Add(1)                                               // *
-				go func(client *s3.Client, item types.Object, db *sql.DB) { // **
-					printLineS3(item, client, db)
-					<-guardTags   // **
-					wgTags.Done() // *
-				}(client.(*s3.Client), item, db)
+		var i int
+		for p.HasMorePages() {
+			i++
+			resp, err := p.NextPage(context.Background())
+			if err != nil {
+				println("Got error retrieving list of objects:")
+				panic(err.Error())
+			}
+			if i > 1 {
+				_log("INFO", fmt.Sprintf("%s: Page %d, %d objects", dir, i, len(resp.Contents)))
 			}
 
+			for _, item := range resp.Contents {
+				if len(*_FILTER) == 0 || strings.Contains(*item.Key, *_FILTER) {
+					subTtl++
+					guardTags <- struct{}{}                                     // **
+					wgTags.Add(1)                                               // *
+					go func(client *s3.Client, item types.Object, db *sql.DB) { // **
+						printLineS3(item, client, db)
+						<-guardTags   // **
+						wgTags.Done() // *
+					}(client.(*s3.Client), item, db)
+				}
+				if *_TOP_N > 0 && *_TOP_N <= _PRINTED_N {
+					break
+				}
+			}
 			if *_TOP_N > 0 && *_TOP_N <= _PRINTED_N {
-				_log("DEBUG", fmt.Sprintf("Printed %d >= %d", _PRINTED_N, *_TOP_N))
 				break
 			}
 		}
@@ -1416,11 +1429,8 @@ func listObjectsS3(dir string, db *sql.DB, client interface{}) int64 {
 
 		// Continue if truncated (more data available) and if not reaching to the top N.
 		if *_TOP_N > 0 && *_TOP_N <= _PRINTED_N {
-			_log("DEBUG", fmt.Sprintf("Found %d and reached %d", _PRINTED_N, *_TOP_N))
+			_log("INFO", fmt.Sprintf("Found total: %d and reached to %d", _PRINTED_N, *_TOP_N))
 			break
-		} else if *resp.IsTruncated {
-			_log("DEBUG", fmt.Sprintf("Set ContinuationToken to %s", *resp.NextContinuationToken))
-			input.ContinuationToken = resp.NextContinuationToken
 		} else {
 			break
 		}

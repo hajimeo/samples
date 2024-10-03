@@ -3,8 +3,9 @@ Demo script to list all files from a File type blob store with tab delimiter for
 
 ## DOWNLOAD and INSTALL:
 ```bash
-curl -o ./file-list -L https://github.com/hajimeo/samples/raw/master/misc/filelist_$(uname)_$(uname -m)
-chmod a+x ./file-list
+#curl -o ./file-list -L https://github.com/hajimeo/samples/raw/master/misc/filelist_$(uname)_$(uname -m)
+curl -o ./file-list -L https://github.com/sonatype-nexus-community/nexus-monitoring/raw/refs/heads/main/resources/filelist_$(uname)_$(uname -m)
+chmod u+x ./file-list
 ```
 
 ## ARGUMENTS:
@@ -96,14 +97,14 @@ sed -n -E 's/.+([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})\..
 
 ### Remove 'deleted=true' (-RDel) which soft-deleted within 1 day (-dF <YYYY-MM-DD>) against S3 (-bsType S -b <bucket> -p <prefix>/content/vol-) but only "raw-s3-hosted" (-R -fP <regex>) , and outputs the contents of .properties (-P) to check, but *Dry Run* (-Dry)
 ```
-export AWS_REGION=us-east-1 AWS_ACCESS_KEY_ID="xxxxxxxxxxx" AWS_SECRET_ACCESS_KEY="yyyyyyyyyyyyy" AWS_ENDPOINT_URL="http://127.0.0.1:9000"
+export AWS_REGION=us-east-1 AWS_ACCESS_KEY_ID="xxxxxxxxxxx" AWS_SECRET_ACCESS_KEY="yyyyyyyyyyyyy" #AWS_ENDPOINT_URL="http://127.0.0.1:9000"
 S3_BUCKET="apac-support-bucket" S3_PREFIX="$(hostname -s)_s3-test"
-file-list -RDel -dF "$(date -d "1 day ago" +%Y-%m-%d)" -bsType S -b "${S3_BUCKET}" -p "${S3_PREFIX}/content/vol-" -R -fP "@Bucket\.repo-name=raw-s3-hosted,.+deleted=true" -P -c 10 -s ./undelete_raw-s3-hosted.out -Dry
+file-list -RDel -dF "$(date -d "1 day ago" +%Y-%m-%d)" -bsType S -b "${S3_BUCKET}" -p "${S3_PREFIX}/content/vol-" -R -fP "@Bucket\.repo-name=raw-s3-hosted,.+deleted=true" -P -c 20 -s ./undelete_raw-s3-hosted.out -Dry
 ```
 Just get the list
 ```
-S3_BUCKET="apac-support-bucket" S3_PREFIX="$(hostname -s)_s3-test"
-file-list -bsType S -b "${S3_BUCKET}" -p "${S3_PREFIX}/content/vol-" -R -fP "@Bucket\.repo-name=raw-s3-hosted,.+deleted=true" -P -c 10 -s ./raw-s3-hosted_deleted.out
+S3_BUCKET="apac-support-bucket" S3_PREFIX="filelist_test"
+file-list -bsType S -b "${S3_BUCKET}" -p "${S3_PREFIX}/content/vol-" -R -fP "@Bucket\.repo-name=raw-s3-hosted,.+deleted=true" -P -c 20 -s ./raw-s3-hosted_deleted.out
 ```
 
 ### Remove 'deleted=true' (-RDel) which @BlobStore.blob-name=/test/test_1k.img but only "raw-hosted" (-R -fP <regex>) , and outputs the contents of .properties (-P) to check, but *Dry Run* (-Dry)

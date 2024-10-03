@@ -9,6 +9,8 @@
 #   _FORCE=Y _NO_RM3_STOP_AFTER_TEST=Y _EXIT_AT_FIRST_TEST_ERROR=Y ./FileList_test.sh
 #   # Delete RM3 & DB and use S3, and won't stop RM3 after testing
 #   _FORCE=Y _NO_RM3_STOP_AFTER_TEST=Y _EXIT_AT_FIRST_TEST_ERROR=Y _WITH_S3=Y ./FileList_test.sh
+#   # Delete RM3 & DB and use S3, and with dry run
+#   _FORCE=Y _WITH_DRY_RUN=Y _EXIT_AT_FIRST_TEST_ERROR=Y _WITH_S3=Y ./FileList_test.sh
 #
 #   # Execute test function only (not preparing RM3 and DB)
 #   source ./FileList_test.sh
@@ -37,7 +39,8 @@ _NEXUS_TGZ_DIR="${6:-"$HOME/.nexus_executable_cache"}"
 #_NO_RM3_STOP_AFTER_TEST="N"
 #_EXIT_AT_FIRST_TEST_ERROR="N"
 #_WITH_S3="N"
-_NEXUS_DEFAULT_PORT="8081"
+#_WITH_DRY_RUN="N"
+_NEXUS_DEFAULT_PORT="18081"
 _ASSET_CREATE_NUM=100
 _PID=""
 _WORKING_DIR=""
@@ -331,6 +334,11 @@ function test_SoftDeletedThenUndeleteThenOrphaned() {
         [[ "${_EXIT_AT_FIRST_TEST_ERROR}" =~ ^[yY] ]] && return 1
     fi
 
+    if [[ "${_WITH_S3}" =~ ^[yY] ]]; then
+        _log "INFO" "As S3, adding extra 10 seconds for the soft-deleting ..."
+        sleep 10
+    fi
+
     _log "INFO" "Finding soft deleted blobs for ${_repo_name} which modified today ..."
     local _file_list_ln="$(_exec "${_cmd} -mF \"$(date -u +%Y-%m-%d)\"" "/tmp/${_tsv}_deleted_modified_today.tsv")"
     if [ ${_file_list_ln:-0} -lt ${_soft_deleted} ]; then
@@ -347,13 +355,16 @@ function test_SoftDeletedThenUndeleteThenOrphaned() {
 
     _log "INFO" "Finding blobs which were *deleted* (not modified) today ..."
     local _deleted_today="$(_exec "${_cmd} -dF $(date -u +%Y-%m-%d)" "/tmp/${_tsv}_deleted_today.tsv")"
-    _log "INFO" "Un-soft-deleting blobs by using /tmp/${_tsv}_deleted_today.tsv (bF) ..."
-    _file_list_ln="$(_exec "${_cmd} -dF $(date -u +%Y-%m-%d) -RDel -bF /tmp/${_tsv}_deleted_today.tsv" "/tmp/${_tsv}_deleted_today_undelete.tsv")"
+
+    _log "INFO" "Un-soft-deleting blobs by using /tmp/${_tsv}_deleted_today.tsv (bF) with _WITH_DRY_RUN="${_WITH_DRY_RUN}" ..."
+    local _dry_run=""
+    [[ "${_WITH_DRY_RUN}" =~ ^[yY] ]] && _dry_run="-Dry"
+    _file_list_ln="$(_exec "${_cmd} -dF $(date -u +%Y-%m-%d) -RDel ${_dry_run} -bF /tmp/${_tsv}_deleted_today.tsv" "/tmp/${_tsv}_deleted_today_undelete.tsv")"
     if [ ${_file_list_ln:-0} -le 1 ] || [ ${_file_list_ln} -ne ${_deleted_today} ]; then
         _log "ERROR" "Test failed. file-list didn't find expected un-soft-deleted ${_deleted_today} blobs but ${_file_list_ln}"
         [[ "${_EXIT_AT_FIRST_TEST_ERROR}" =~ ^[yY] ]] && return 1
     fi
-    _is_undeleted=true
+    [[ "${_WITH_DRY_RUN}" =~ ^[yY] ]] || _is_undeleted=true
     # File type only test/check:
     if [[ ! "${_WITH_S3}" =~ ^[yY] ]]; then
         if ${_GREP} -l '^deleted=true' ${_working_dir%/}/blobs/${_bsName}/content/vol-*; then
