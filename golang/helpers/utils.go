@@ -70,11 +70,15 @@ func TruncateStr(s string, maxLength int) string {
 }
 
 func AppendSlash(dirPath string) string {
-	// If empty, not appending slash
+	return AppendChar(dirPath, string(filepath.Separator))
+}
+
+func AppendChar(dirPath string, c string) string {
+	// If empty, not appending character
 	if len(dirPath) == 0 {
 		return dirPath
 	}
-	return strings.TrimSuffix(dirPath, string(filepath.Separator)) + string(filepath.Separator)
+	return strings.TrimSuffix(dirPath, c) + c
 }
 
 func PathWithoutExt(path string) string {
