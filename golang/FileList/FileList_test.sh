@@ -290,7 +290,7 @@ function test_DeadBlobsFind() {
     local _bsName="$(genBsName)"
     local _repo_name="$(genRepoName)"
     local _cmd="$(genCmdBase "${_working_dir%/}/blobs/${_bsName}/content") -mF \"$(date -u +%Y-%m-%d)\""
-    local _tsv="./${FUNCNAME[0]}_${_bsName}"
+    local _tsv="${FUNCNAME[0]}_${_bsName}"
     local _how_many=10
 
     # File type only test/check:
@@ -322,7 +322,7 @@ function test_SoftDeletedThenUndeleteThenOrphaned() {
     local _bsName="$(genBsName)"
     local _repo_name="$(genRepoName)"
     local _cmd_base="$(genCmdBase "${_working_dir%/}/blobs/${_bsName}/content")"
-    local _tsv="./${FUNCNAME[0]}_${_bsName}"
+    local _tsv="${FUNCNAME[0]}_${_bsName}"
 
     local _is_undeleted=false
     local _cmd="${_cmd_base} -P -fP \"@Bucket\.repo-name=${_repo_name}.+deleted=true\" -R"
@@ -385,7 +385,7 @@ function test_SoftDeletedThenUndeleteThenOrphaned() {
 
             if [[ ! "${_WITH_S3}" =~ ^[yY] ]]; then
                 #rg '/([0-9a-f\-]+)\..+(\d\d\d\d.\d\d.\d\d.\d\d:\d\d:\d\d)' -o -r '$2,$1' test_SoftDeletedThenUndeleteThenOrphaned_default_orphaned.tsv
-                sed -n -E 's/.+([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})\..+([0-9]{4}.[0-9]{2}.[0-9]{2}.[0-9]{2}:[0-9]{2}:[0-9]{2}).+/\2,\1/p' ${_tsv}_orphaned.tsv > "${_working_dir%/}/blobs/${_bsName}/reconciliation/$(date '+%Y-%m-%d')"
+                sed -n -E 's/.+([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})\..+([0-9]{4}.[0-9]{2}.[0-9]{2}.[0-9]{2}:[0-9]{2}:[0-9]{2}).+/\2,\1/p' /tmp/${_tsv}_orphaned.tsv > "${_working_dir%/}/blobs/${_bsName}/reconciliation/$(date '+%Y-%m-%d')"
                 if [ ! -s "${_working_dir%/}/blobs/${_bsName}/reconciliation/$(date '+%Y-%m-%d')" ]; then
                     _log "ERROR" "Test failed. '${_working_dir%/}/blobs/${_bsName}/reconciliation/$(date '+%Y-%m-%d')' is empty"
                     [[ "${_EXIT_AT_FIRST_TEST_ERROR}" =~ ^[yY] ]] && return 1
@@ -410,7 +410,7 @@ function test_UndeleteRepository() {
     local _bsName="$(genBsName)"
     local _repo_name="$(genRepoName)-undelete"
     local _cmd="$(genCmdBase "${_working_dir%/}/blobs/${_bsName}/content") -mF \"$(date -u +%Y-%m-%d)\""
-    local _tsv="./${FUNCNAME[0]}_${_bsName}"
+    local _tsv="${FUNCNAME[0]}_${_bsName}"
 
     if ! _apiS '{"action":"coreui_Repository","method":"create","data":[{"attributes":{"storage":{"blobStoreName":"'${_bsName}'","writePolicy":"ALLOW","strictContentTypeValidation":true'${_extra_sto_opt}'},"cleanup":{"policyName":[]}},"name":"raw-s3-hosted","format":"","type":"","url":"","online":true,"recipe":"raw-hosted"}],"type":"rpc"}'; then
         [[ "${_EXIT_AT_FIRST_TEST_ERROR}" =~ ^[yY] ]] && return 1
@@ -444,9 +444,13 @@ function main() {
 
 if [ "$0" = "$BASH_SOURCE" ]; then
     main
-    if [ -n "${_PID}" ] && [[ ! "${_NO_RM3_STOP_AFTER_TEST}" =~ ^[yY] ]]; then
-        _log "INFO" "Stopping Nexus (${_PID}) ..."
-        sleep 3
-        kill ${_PID}
+    if [[ ! "${_NO_RM3_STOP_AFTER_TEST}" =~ ^[yY] ]]; then
+        if [ -z "${_PID}" ]; then
+            _log "WARN" "Could not stop Nexus as no PID found."
+        else
+            _log "INFO" "Stopping Nexus (${_PID}) ..."
+            sleep 3
+            kill ${_PID}
+        fi
     fi
 fi

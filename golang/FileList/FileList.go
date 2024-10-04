@@ -146,7 +146,7 @@ func _setGlobals() {
 	_SAVE_TO = flag.String("s", "", "Save the output (TSV text) into the specified path")
 	_USE_REGEX = flag.Bool("R", false, "If true, .properties content is *sorted* and -fP|-fPX string is treated as regex")
 	_TOP_N = flag.Int64("n", 0, "Return first N lines (0 = no limit). (TODO: may return more than N)")
-	_CONC_1 = flag.Int("c", 1, "Concurrent number for reading directories")
+	_CONC_1 = flag.Int("c", 4, "Concurrent number for reading directories (default 4)")
 	_LIST_DIRS = flag.Bool("L", false, "If true, just list directories and exit")
 	_NO_HEADER = flag.Bool("H", false, "If true, no header line")
 	_DEBUG = flag.Bool("X", false, "If true, verbose logging")
@@ -167,7 +167,7 @@ func _setGlobals() {
 
 	// AWS S3 / Azure related
 	_BS_TYPE = flag.String("bsType", "F", "F (file) or S (s3) or A (azure)")
-	_CONC_2 = flag.Int("c2", 8, "AWS S3: Concurrent number for retrieving AWS Tags")
+	_CONC_2 = flag.Int("c2", 8, "AWS S3: Concurrent number for retrieving files (default 8, max concurency = c * c2)")
 	_IS_S3 = flag.Bool("S3", false, "AWS S3: If true, access S3 bucket with AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY, AWS_REGION and AWS_ENDPOINT_URL") // TODO: remove this
 	_MAXKEYS = flag.Int("m", 0, "AWS S3: Max Keys number for NewListObjectsV2Paginator (<= 1000, default 0)")
 	_WITH_OWNER = flag.Bool("O", false, "AWS S3: If true, get the owner display name")
@@ -1111,37 +1111,52 @@ func genOutputFromProp(contents string) (string, error) {
 
 // get *all* directories under basedir and which name starts with prefix
 func getDirsS3(client *s3.Client) []string {
-	dirs := make([]string, 1)
-	dirs = append(dirs, *_PREFIX)
+	var dirs []string
+	var prefix string = *_PREFIX
+	var contain string
+
+	// Prefix not ending / does not work, for example: ${S3_PREFIX}/content/vol-, so trying to handle in here
+	if !strings.HasSuffix(prefix, "/") {
+		if strings.Contains(prefix, "/") {
+			prefix_tmp := filepath.Dir(prefix)
+			if len(prefix_tmp) > 0 {
+				prefix = prefix_tmp
+				contain = filepath.Base(prefix)
+				_log("DEBUG", fmt.Sprintf("S3 prefix = %s, contain = %s", prefix, contain))
+			}
+		}
+	}
 
 	_log("DEBUG", fmt.Sprintf("Retriving sub folders under %s", *_PREFIX))
-	delimiter := "/"
-	inputV1 := &s3.ListObjectsInput{
-		Bucket:    _BASEDIR,
-		Prefix:    _PREFIX,
-		MaxKeys:   aws.Int32(int32(*_MAXKEYS)),
-		Delimiter: &delimiter,
+	// Not expecting more than 1000 sub folders, so no MaxKeys
+	input := &s3.ListObjectsV2Input{
+		Bucket:    aws.String(*_BASEDIR),
+		Prefix:    aws.String(strings.TrimSuffix(prefix, "/") + "/"),
+		Delimiter: aws.String("/"),
 	}
-	resp, err := client.ListObjects(context.TODO(), inputV1)
+	resp, err := client.ListObjectsV2(context.TODO(), input)
 	if err != nil {
 		println("Got error retrieving list of objects:")
 		panic(err.Error())
 	}
-	// replacing dirs with the result (excluding 1 as it would make slower)
-	if *_CONC_1 > 1 && len(resp.CommonPrefixes) > 1 {
-		dirs = make([]string, len(resp.CommonPrefixes))
-	}
-	for _, item := range resp.CommonPrefixes {
-		// TODO: somehow empty value is added into dirs even below
-		if len(strings.TrimSpace(*item.Prefix)) == 0 {
-			continue
-		}
-		if *_CONC_1 > 1 && len(resp.CommonPrefixes) > 1 {
+
+	if len(resp.CommonPrefixes) == 0 {
+		_log("DEBUG", fmt.Sprintf("resp.CommonPrefixes is empty for %s, so using this prefix.", *_PREFIX))
+		dirs = append(dirs, *_PREFIX)
+	} else {
+		for _, item := range resp.CommonPrefixes {
+			if len(strings.TrimSpace(*item.Prefix)) == 0 {
+				continue
+			}
+			if len(contain) > 0 && !strings.Contains(*item.Prefix, contain) {
+				_log("DEBUG", fmt.Sprintf("Skipping %s as it doss not contain %s", *item.Prefix, contain))
+				continue
+			}
+			_log("DEBUG", fmt.Sprintf("Appending %s in dirs", *item.Prefix))
 			dirs = append(dirs, *item.Prefix)
 		}
+		sort.Strings(dirs)
 	}
-
-	sort.Strings(dirs)
 	return dirs
 }
 
@@ -1391,8 +1406,8 @@ func listObjectsS3(dir string, db *sql.DB, client interface{}) int64 {
 		})
 
 		//https://stackoverflow.com/questions/25306073/always-have-x-number-of-goroutines-running-at-any-time
-		wgTags := sync.WaitGroup{}                 // *
-		guardTags := make(chan struct{}, *_CONC_2) // **
+		wgTags := sync.WaitGroup{}                  // *
+		guardFiles := make(chan struct{}, *_CONC_2) // **
 
 		var i int
 		for p.HasMorePages() {
@@ -1409,11 +1424,11 @@ func listObjectsS3(dir string, db *sql.DB, client interface{}) int64 {
 			for _, item := range resp.Contents {
 				if len(*_FILTER) == 0 || strings.Contains(*item.Key, *_FILTER) {
 					subTtl++
-					guardTags <- struct{}{}                                     // **
+					guardFiles <- struct{}{}                                    // **
 					wgTags.Add(1)                                               // *
 					go func(client *s3.Client, item types.Object, db *sql.DB) { // **
 						printLineS3(item, client, db)
-						<-guardTags   // **
+						<-guardFiles  // **
 						wgTags.Done() // *
 					}(client.(*s3.Client), item, db)
 				}
@@ -1659,7 +1674,7 @@ func main() {
 				//_log("DEBUG", "Ignoring empty sub directory.")
 				continue
 			}
-			_log("DEBUG", s+" starting ...")
+			_log("INFO", "Starting "+s+" ...")
 			guard <- struct{}{}
 			wg.Add(1)
 			go func(subdir string, client interface{}) {
