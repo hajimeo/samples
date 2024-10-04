@@ -60,9 +60,7 @@ spec:
           - path: /
             backend:
               service:
-                name: nexus-docker-service
+                name: nxrm3ha-nxrm-ha-docker-5000
                 port:
-                  #number: 5000 # httpsPort
-                  number: 4999 # httpPort
-                  #number: 8081
+                  number: 5000 # Service's port
             pathType: Prefix

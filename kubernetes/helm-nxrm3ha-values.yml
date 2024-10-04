@@ -86,7 +86,8 @@ statefulset:
     env:
       nexusDBName: nxrm3helmha
       nexusDBPort: 5432
-      install4jAddVmParams: '-Xms2g -Xmx2g -Dcom.redhat.fips=false -Dnexus.scripts.allowCreation=true -Dnexus.datastore.nexus.maximumPoolSize=10'
+      #\\nleakDetectionThreshold=20000
+      install4jAddVmParams: '-Xms2g -Xmx2g -Dcom.redhat.fips=false -Dnexus.scripts.allowCreation=true -Dnexus.datastore.nexus.maximumPoolSize=10 -Dnexus.datastore.nexus.advanced=maxLifetime=600000'
       jdbcUrlParams: null # Must start with a '?' e.g. '?foo=bar&baz=foo'
       zeroDowntimeEnabled: true
   livenessProbe:
@@ -101,7 +102,6 @@ statefulset:
     periodSeconds: 60
   imagePullSecrets: {}
 
-# TODO: this wouldn't work with more than 1 replica?
 pvc:
   accessModes: ReadWriteMany
   storage: 10Gi
@@ -122,13 +122,6 @@ service:  #Nexus Repo NodePort Service
     protocol: TCP
     port: 8081
     targetPort: 8081
-  docker:  #Nodeport Service for Docker Service
-    #name: 'nexus-docker-service'
-    enabled: true
-    type: NodePort
-    protocol: TCP
-    port: 4999
-    targetPort: 4999
 
 secret:
   secretProviderClass: 'secretProviderClass'
@@ -155,3 +148,13 @@ secret:
       enabled: true
       fileContentsBase64: '${LICENSE_B64}'
       mountPath: /var/nexus-repo-license
+
+nexus:
+  # This seems to be working even "Ingress.networking.k8s.io "nxrm3ha-nxrm-ha-docker-5000" is invalid:..."
+  docker:
+    enabled: true
+    type: NodePort
+    protocol: TCP
+    registries:
+      - port: 5000
+        targetPort: 4999
