@@ -799,6 +799,7 @@ function f_apache_reverse_proxy() {
         RewriteCond %{LA-U:REMOTE_USER} (^[^/@]+)
         # Assigning above into RU
         RewriteRule . - [E=RU:%1]
+        # Setting RU in REMOTE_USER environment variable
         RequestHeader set REMOTE_USER %{RU}e
     </location>
 " >>${_conf}
