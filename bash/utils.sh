@@ -494,15 +494,59 @@ function _wait() {
 
 function _parallel() {
     local _cmds_list="$1"   # File or strings of commands
-    local _prefix_cmd="$2"  # eg: '(date;'
-    local _suffix_cmd="$3"  # eg: ';date) &> test_$$.out'
-    local _num_process="${4:-3}"
+    local _num_process="${2:-3}"
+    local _prefix_cmd="$3"  # eg: '(date;'
+    local _suffix_cmd="$4"  # eg: ';date) &> test_$$.out'
     if [ -f "${_cmds_list}" ]; then
         cat "${_cmds_list}"
     else
         echo ${_cmds_list}
-    fi | sed '/^$/d' | tr '\n' '\0' | xargs -t -0 -n1 -P${_num_process} -I @@ bash -c "${_prefix_cmd}@@${_suffix_cmd}"
+    fi | sed '/^$/d' | tr ';' '\0' | tr '\n' '\0' | xargs -t -0 -n1 -P${_num_process} -I @@ bash -c "${_prefix_cmd}@@${_suffix_cmd}"
     # Somehow " | sed 's/"/\\"/g'" does not need... why?
+    # TODO: xargs has command length limit, probably 255 chars
+}
+
+function _parallel2() {
+    local _cmds_list="$1"   # File or strings of commands
+    local _num_process="${2:-3}"
+    local _prefix_cmd="$3"  # eg: '(date;'
+    local _suffix_cmd="$4"  # eg: ';date) &> test_$$.out'
+    local _tmp="$(mktemp -d)"
+    if [ -f "${_cmds_list}" ]; then
+        cat "${_cmds_list}"
+    else
+        echo ${_cmds_list}
+    fi | sed '/^$/d' | tr ';' '\0' | tr '\n' '\0' | while read -r _t; do
+        if ! _wait_jobs "${_num_process}"; then
+            _log "ERROR" "${FUNCNAME[0]} _wait_jobs failed."
+            return 1
+        fi
+        local _started="$(date +%s)"
+        echo "[$(date +"%Y-%m-%d %H:%M:%S %z")] Starting ${_prefix_cmd}${_t}${_suffix_cmd}" > ${_tmp}/${_pfx}.out
+        eval "${_prefix_cmd}${_t}${_suffix_cmd} > ${_tmp}/${_t}.out;" &
+    done
+    _wait_jobs 0
+    cat ${_tmp}/${_pfx}*.out
+    _LOG "INFO" "Completed ${FUNCNAME[1]}->${FUNCNAME[0]}."
+}
+
+function _wait_jobs() {
+    local _until_how_many="${1:-2}" # Running two is OK
+    local _timeout_sec="${2:-180}"
+    local _sp="0.2"
+    local _loop_num="$(echo "${_timeout_sec}/${_sp}" | bc)"
+    for _i in $(seq 0 ${_loop_num}); do
+        local _num="$(jobs -l | grep -iw "Running" | wc -l | tr -d '[:space:]')"
+        if [ -z "${_num}" ] || [ ${_num} -le ${_until_how_many} ]; then
+            return 0
+        fi
+        #echo "${_num} background jobs are still running" >&2
+        sleep ${_sp}
+    done
+}
+
+function _defer() {
+    trap "trap \"$@\" RETURN" RETURN
 }
 
 function _ask() {
