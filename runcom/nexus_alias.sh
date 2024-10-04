@@ -40,7 +40,7 @@ function _java_home() {
     local _is_java17=false
     if [[ "${_check_path}" =~ 3\.(7[1-9]\.|[89][0-9]\.|[1-9][0-9][0-9]).+ ]]; then
         _is_java17=true
-    elif [[ "${_check_path}" =~ \.1[89][0-9]\. ]]; then
+    elif [[ "${_check_path}" =~ 1\.1[89][0-9]\. ]]; then
         _is_java17=true
     fi
     if ${_is_java17}; then
@@ -55,7 +55,7 @@ function _java_home() {
 function _get_rm_url() {
     local _rm_url="${1:-${_NEXUS_URL}}"
     if [ -z "${_rm_url}" ]; then
-        for _url in "http://localhost:8081/" "https://nxrm3pg-k8s.standalone.localdomain/" "http://dh1:8081/"; do
+        for _url in "http://localhost:8081/" "https://nxrm3pg-k8s.standalone.localdomain/" "https://nxrm3helmha-k8s.standalone.localdomain/" "http://dh1:8081/"; do
             if curl -m1 -f -s -I "${_url%/}/" &>/dev/null; then
                 echo "${_url%/}/"
                 _NEXUS_URL="${_url%/}/"
@@ -129,11 +129,15 @@ function iqCli() {
             curl -f -L "https://download.sonatype.com/clm/scanner/nexus-iq-cli-${_iq_cli_ver}.jar" -o "${_iq_cli_jar}" || return $?
         fi
     fi
+    local _java="java"
+    if [[ "${_iq_cli_ver}" =~ ^1\.1[89] ]] && [ -n "${JAVA_HOME_17}" ]; then
+        _java="${JAVA_HOME_17%/}/bin/java"
+    fi
     # NOTE: -X/--debug outputs to STDOUT
     #       Mac uses "TMPDIR" (and can't change), which is like java.io.tmpdir = /var/folders/ct/cc2rqp055svfq_cfsbvqpd1w0000gn/T/ + nexus-iq
     #       Newer IQ CLI removes scan-6947340794864341803.xml.gz (if no -k), so no point of changing the tmpdir...
     # -D includeSha256=true is for BFS
-    local _cmd="java -jar ${_iq_cli_jar} ${_iq_cli_opt} -s ${_iq_url} -a \"${_iq_cred}\" -i ${_iq_app_id} -t ${_iq_stage} -D includeSha256=true -r ./iq_result_$$.json -k -X ${_path}"
+    local _cmd="${_java} -jar ${_iq_cli_jar} ${_iq_cli_opt} -s ${_iq_url} -a \"${_iq_cred}\" -i ${_iq_app_id} -t ${_iq_stage} -D includeSha256=true -r ./iq_result_$$.json -k -X ${_path}"
     echo "[$(date +'%Y-%m-%d %H:%M:%S')] Executing: ${_cmd} | tee ./iq_cli_$$.out" >&2
     eval "${_cmd} | tee ./iq_cli_$$.out"
     echo "[$(date +'%Y-%m-%d %H:%M:%S')] Completed ($?)." >&2
@@ -577,11 +581,14 @@ $(sed -n "/^  loggers:/,\$p" ${_cfg_file} | grep -v '^  loggers:')" > "${_cfg_fi
     [ "${_base_dir}" != "." ] && cd -
 }
 function _iqStartSQLs() {
-#DELETE FROM insight_brain_ods.ldap_usermapping;
-#DELETE FROM insight_brain_ods.ldap_connection;
-#DELETE FROM insight_brain_ods.ldap_server;
-#DELETE FROM insight_brain_ods.mail_configuration;
 #UPDATE insight_brain_ods.source_control SET remediation_pull_requests_enabled = false, status_checks_enabled = false, pull_request_commenting_enabled = false, source_control_evaluations_enabled = false;
+#update insight_brain_ods.user set password = '' where username is not null;
+# TODO
+#truncate table insight_brain_ods.user_token;
+#truncate table insight_brain_ods.saml_configuration;
+#truncate table insight_brain_ods.jira_configuration;
+#truncate table insight_brain_ods.crowd_configuration;
+#truncate table insight_brain_ods.artifactory_connection;
     cat << EOF
 UPDATE insight_brain_ods.ldap_connection SET hostname = hostname || '.sptboot' WHERE hostname not like '%.sptboot';
 UPDATE insight_brain_ods.mail_configuration SET hostname = hostname || '.sptboot' WHERE hostname not like '%.sptboot';
@@ -589,6 +596,7 @@ DELETE FROM insight_brain_ods.proxy_server_configuration;
 INSERT INTO insight_brain_ods.proxy_server_configuration (proxy_server_configuration_id, hostname, port, exclude_hosts) VALUES ('proxy-server-configuration', 'non-existing-hostname', 8800, '*.sonatype.com');
 INSERT INTO insight_brain_ods.system_configuration_property (system_configuration_property_id, name, value) VALUES (md5(random()::text), 'internalFirewallOnboardingEnabled', false) on conflict do nothing;
 UPDATE insight_brain_ods.source_control SET token = 'dRSAUHA92JkHPb7295V8U/OPBHVh8dDrxs0kv9nMz7JZmR8vX+JXbplxHs+rB+lQv+6QvpU2XCnca//TS1ZNOg==' WHERE token IS NOT NULL AND token <> '';
+UPDATE insight_brain_ods.webhook set secret_key = '<removed>' where webhook_id is not null;
 EOF
 # the last query for 'system_configuration_property' is to avoid "Unable to decrypt SourceControl token"
 }
@@ -713,8 +721,8 @@ function mvn-package() {
 # Example to generate 10 versions / snapshots (NOTE: in bash heredoc, 'EOF' and just EOF is different)
 : <<'EOF'
 _REPO_URL="http://localhost:8081/repository/maven-snapshots/"
-#_REPO_URL="http://dh1:8081/nexus/content/repositories/releases/"
 _SNAPSHOT="-SNAPSHOT"
+#_REPO_URL="https://local.standalone.localdomain:8479/nexus/content/repositories/releases/"
 mvn-arch-gen
 #mvn-deploy "${_REPO_URL}" "" "nexus"
 for v in {1..3}; do

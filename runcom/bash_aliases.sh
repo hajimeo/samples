@@ -483,7 +483,7 @@ for l in sys.stdin:
    sys.stdout.write(l.rstrip("\n"))'
 }
 # Find recently modified (log) files
-function _find_recent() {
+function find_recent() {
     local _dir="${1}"
     local _file_glob="${2:-"*.log"}"
     local _follow_symlink="${3}"
@@ -507,7 +507,7 @@ function _find_recent() {
 function tail_logs() {
     local _log_dir="${1}"
     local _log_file_glob="${2:-"*.log"}"
-    tail -n20 -f $(_find_recent "${_log_dir}" "${_log_file_glob}")
+    tail -n20 -f $(find_recent "${_log_dir}" "${_log_file_glob}")
 }
 # Grep only recently modified files (TODO: should check if ggrep or rg is available)
 function grep_logs() {
@@ -515,12 +515,12 @@ function grep_logs() {
     local _log_dir="${2}"
     local _log_file_glob="${3:-"*.log"}"
     local _grep_opts="${4:-"-IrsP"}"
-    grep ${_grep_opts} "${_search_regex}" $(_find_recent "${_log_dir}" "${_log_file_glob}")
+    grep ${_grep_opts} "${_search_regex}" $(find_recent "${_log_dir}" "${_log_file_glob}")
 }
 # Extract threads from some stdout log or jvm.log
 #curl -o /usr/local/bin/echolines -L https://github.com/hajimeo/samples/raw/master/misc/echolines_$(uname)_$(uname -m);
 #HTML_REMOVE=Y EXCL_REGEX="^\d\d\d\d-\d\d-\d\dT\d\d:\d\d:\d\d\.\d+" echolines "./sonatype-work/nexus3/log/jvm.log" "^\d\d\d\d-\d\d-\d\d \d\d:\d\d:\d\d$" "(^\s+(class space|Metaspace).+)" > "./threads.txt"
-function threadsFromLog() {
+function threadsFromJvmLog() {
     local _files="$1"
     local _save_to="${2:-"./threads.txt"}"
     local _end_regex="$3"
@@ -945,9 +945,13 @@ function pubS() {
     #cp -v -f $HOME/IdeaProjects/work/nexus-groovy/src2/TrustStoreConverter.groovy $HOME/IdeaProjects/nexus-toolbox/scripts/
     [ $HOME/IdeaProjects/samples/java/asset-dupe-checker/src/main/java/AssetDupeCheckV2.java -nt /tmp/pubS.last ] && cp -v -f $HOME/IdeaProjects/samples/java/asset-dupe-checker/src/main/java/AssetDupeCheckV2.java $HOME/IdeaProjects/nexus-toolbox/asset-dupe-checker/src/main/java/ && cp -v -f $HOME/IdeaProjects/samples/misc/asset-dupe-checker-v2.jar $HOME/IdeaProjects/nexus-toolbox/asset-dupe-checker/
 
-    if [ -d "$HOME/IdeaProjects/nexus-monitoring/resources" ] && [ $HOME/IdeaProjects/samples/misc/h2-console.jar -nt /tmp/pubS.last ]; then
-        cp -v -f $HOME/IdeaProjects/samples/misc/*-console*.jar $HOME/IdeaProjects/nexus-monitoring/resources/
-        cp -v -f $HOME/IdeaProjects/samples/misc/filelist_* $HOME/IdeaProjects/nexus-monitoring/resources/
+    if [ -d "$HOME/IdeaProjects/nexus-monitoring/resources" ]; then
+        if [ $HOME/IdeaProjects/samples/misc/h2-console.jar -nt /tmp/pubS.last ]; then
+            cp -v -f $HOME/IdeaProjects/samples/misc/*-console*.jar $HOME/IdeaProjects/nexus-monitoring/resources/
+        fi
+        if [ $HOME/IdeaProjects/samples/misc/filelist_Linux_x86_64 -nt /tmp/pubS.last ]; then
+            cp -v -f $HOME/IdeaProjects/samples/misc/filelist_* $HOME/IdeaProjects/nexus-monitoring/resources/
+        fi
     fi
 
     sync_nexus_binaries &>/dev/null &
@@ -998,6 +1002,6 @@ function startCommonUtils() {
     pgStatus start
     #tabby_start
     slackS
-    chrome-work
-    open -na "Google Chrome"
+    #chrome-work
+    #open -na "Google Chrome"
 }
