@@ -28,9 +28,8 @@
 #: ${_PATH="/v2/ratelimitpreview/test/blobs/sha256:edabd795951a0baa224f156b81ab1afa71c64c3cf10b1ded9225c2a6810f4a3d"}    # This path can be diff from Nexus's path
 #: ${_DOCKER_REGISTRY_URL:="http://localhost:8081/repository/docker-proxy/"}
 #: ${_TOKEN_SERVER_URL:="${_DOCKER_REGISTRY_URL%/}/v2/token"}
-: ${_DOCKER_REGISTRY_URL:="https://registry-1.docker.io"}
-#www-authenticate: Bearer realm="https://auth.docker.io/token",service="registry.docker.io"
-: ${_TOKEN_SERVER_URL:="https://auth.docker.io/token?service=registry.docker.io"}
+: ${_DOCKER_REGISTRY_URL:="https://registry-1.docker.io"}                           # Basically 'remoteUrl'
+: ${_TOKEN_SERVER_URL:="https://auth.docker.io/token?service=registry.docker.io"}   #www-authenticate: Bearer realm="https://auth.docker.io/token",service="registry.docker.io"
 : ${_CURL_OPTS:="-D /dev/stderr"}   # or -v -p -x http://proxyhost:port --proxy-basic -U proxyuser:proxypwd
 
 _CURL="curl -sfLk --compressed ${_CURL_OPTS}"
