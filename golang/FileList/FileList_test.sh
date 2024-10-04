@@ -9,7 +9,7 @@
 #   _FORCE=Y _NO_RM3_STOP_AFTER_TEST=Y _EXIT_AT_FIRST_TEST_ERROR=Y ./FileList_test.sh
 #   # Delete RM3 & DB and use S3, and won't stop RM3 after testing
 #   _FORCE=Y _NO_RM3_STOP_AFTER_TEST=Y _EXIT_AT_FIRST_TEST_ERROR=Y _WITH_S3=Y ./FileList_test.sh
-#   # Delete RM3 & DB and use S3, and with dry run
+#   # Delete RM3 & DB and use S3, and with dry run (to just generate deleted assets)
 #   _FORCE=Y _WITH_DRY_RUN=Y _EXIT_AT_FIRST_TEST_ERROR=Y _WITH_S3=Y ./FileList_test.sh
 #
 #   # Execute test function only (not preparing RM3 and DB)
