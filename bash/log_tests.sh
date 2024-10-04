@@ -480,6 +480,9 @@ function t_basic() {
     if ! find . -maxdepth 5 -type f -name sysinfo.json | grep -q 'sysinfo.json'; then
         _head "ERROR" "No 'sysinfo.json' under $(realpath .) with maxdepth 5"
     fi
+    if ! find . -maxdepth 5 -type f -name jmx.json | grep -q 'jmx.json'; then
+        _head "ERROR" "No 'jmx.json' under $(realpath .) with maxdepth 5"
+    fi
 }
 function t_system() {
     _basic_check "" "${_FILTERED_DATA_DIR%/}/extracted_configs.md" || return
