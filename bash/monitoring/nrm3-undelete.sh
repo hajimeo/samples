@@ -27,7 +27,7 @@ To run concurrently:
 OPTIONS:
     -I  Installing the groovy script for undeleting (only once per Nexus)
     -b  blob IDs (comma separated), or a file contains lines of blobIDs
-    -s  blob store name
+    -s  blob store name (if group blob store, use the group member name)
 EOF
 }
 
