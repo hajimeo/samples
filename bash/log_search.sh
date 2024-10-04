@@ -1290,7 +1290,7 @@ function f_analyse_multiple_dumps() {
     #| rg -v "(ParallelGC|G1 Concurrent Refinement|Parallel Marking Threads|GC Thread|VM Thread)"
     echo " "
 
-    echo "## Counting methods (but more than once) from running threads which also contains '${_running_thread_search_re}'"
+    echo "## Counting methods per the Running thread, which thread contains '${_running_thread_search_re}'"
     rg "${_running_thread_search_re}" -l -g '*runnable*' ${_individual_thread_dir%/} | while read -r _f; do
         echo "$(basename "${_f}") $(rg '^\sat\s' -m1 "${_f}")"
     done | sort | uniq -c | sort -nr | rg -v '^\s*1\s' | head -n40
@@ -1791,7 +1791,7 @@ function f_splitByRegex() {
         _file="${_tmp_file}"
     fi
     # this may not be working
-    local _tmp_str=""
+    local _tmp_filename=""
     local _prev_n=1
     local _prev_str=""
 
@@ -1813,19 +1813,24 @@ function f_splitByRegex() {
             # At this moment, Skip if the previous key is same as current key. Expecting key is unique...
             [ -n "${_prev_str}" ] && [ "${_prev_str}" == "${BASH_REMATCH[2]}" ] && continue
             # Found new value (next date, next thread etc.)
-            _tmp_str="$(echo "${_prev_str}" | sed "s/[ =]/_/g" | tr -cd '[:alnum:]._-\n' | cut -c1-192)"
+            _tmp_filename="$(_gen_filename "${_prev_str}")"
             # TODO: this might cause some performance issue
-            sed -n "${_prev_n},$((${BASH_REMATCH[1]} - 1))p;$((${BASH_REMATCH[1]} - 1))q" ${_file} > ${_save_path_prefix}${_tmp_str}.${_out_ext} || return $?
+            sed -n "${_prev_n},$((${BASH_REMATCH[1]} - 1))p;$((${BASH_REMATCH[1]} - 1))q" ${_file} > ${_save_path_prefix}${_tmp_filename}.${_out_ext} || return $?
             _prev_str="${BASH_REMATCH[2]}"  # Used for the file name and detecting a new value
             _prev_n=${BASH_REMATCH[1]}
         elif [ "${_t}" == "END_OF_FILE:ZZZ" ] && [ -n "${_prev_str}" ]; then
-            _tmp_str="$(echo "${_prev_str}" | sed "s/[ =]/_/g" | tr -cd '[:alnum:]._-\n' | cut -c1-192)"
-            sed -n "${_prev_n},\$p" ${_file} > ${_save_path_prefix}${_tmp_str}.${_out_ext} || return $?
+            _tmp_filename="$(_gen_filename "${_prev_str}")"
+            sed -n "${_prev_n},\$p" ${_file} > ${_save_path_prefix}${_tmp_filename}.${_out_ext} || return $?
         fi
     done
     if [ -n "${_tmp_file}" ] && [ -f "${_tmp_file}" ]; then
         rm -f ${_tmp_file}
     fi
+}
+function _gen_filename() {
+    local _str="$1"
+    # TODO: not good location to handle this but Java 17 thread includes cpu and elapsed
+    echo "${_str}" | sed -E "s/ cpu=[^ ]+ elapsed=[^ ]+//" | sed "s/[ =]/_/g" | tr -cd '[:alnum:]._-\n' | cut -c1-192
 }
 function f_splitPerHour() {
     local _file="$1"
