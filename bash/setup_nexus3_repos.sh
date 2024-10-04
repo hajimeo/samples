@@ -86,6 +86,7 @@ Just get the repositories setting:
 : ${_ADMIN_PWD:="admin123"}
 : ${_DOMAIN:="standalone.localdomain"}
 : ${_NEXUS_URL:="http://localhost:8081/"}   # or https://local.standalone.localdomain:8443/ for docker
+: ${_NEXUS_DOCKER_HOSTNAME:="local.standalone.localdomain"}
 : ${_IQ_URL:="http://localhost:8070/"}
 : ${_IQ_CLI_VER-"latest"}                   # If "" (empty), not download CLI jar
 : ${_DOCKER_NETWORK_NAME:="nexus"}
@@ -494,37 +495,54 @@ function f_setup_docker() {
     if ! _is_repo_available "${_prefix}-proxy"; then
         # "httpPort":18178 - 18179
         # https://issues.sonatype.org/browse/NEXUS-26642 contentMaxAge -1
-        _apiS '{"action":"coreui_Repository","method":"create","data":[{"attributes":{"docker":{"httpPort":18178,"httpsPort":18179,"forceBasicAuth":false,"v1Enabled":true},"proxy":{"remoteUrl":"https://registry-1.docker.io","contentMaxAge":-1,"metadataMaxAge":1440},"dockerProxy":{"indexType":"HUB","cacheForeignLayers":false,"useTrustStoreForIndexAccess":false},"httpclient":{"blocked":false,"autoBlock":true,"connection":{"useTrustStore":false}},"storage":{"blobStoreName":"'${_bs_name}'","strictContentTypeValidation":true'${_extra_sto_opt}'},"negativeCache":{"enabled":true,"timeToLive":1440},"cleanup":{"policyName":[]}},"name":"'${_prefix}'-proxy","format":"","type":"","url":"","online":true,"undefined":[false,false],"routingRuleId":"","authEnabled":false,"httpRequestSettings":false,"recipe":"docker-proxy"}],"type":"rpc"}' || return $?
+        _apiS '{"action":"coreui_Repository","method":"create","data":[{"attributes":{"docker":{"httpPort":18178,"httpsPort":18179,"forceBasicAuth":false,"v1Enabled":true},"proxy":{"remoteUrl":"https://registry-1.docker.io","contentMaxAge":-1,"metadataMaxAge":1440},"dockerProxy":{"indexType":"HUB","cacheForeignLayers":false,"useTrustStoreForIndexAccess":false},"httpclient":{"blocked":false,"autoBlock":true,"connection":{"useTrustStore":false}},"storage":{"blobStoreName":"'${_bs_name}'","strictContentTypeValidation":true'${_extra_sto_opt}'},"negativeCache":{"enabled":true,"timeToLive":1440},"cleanup":{"policyName":[]}},"name":"'${_prefix}'-proxy","format":"","type":"","url":"","online":true,"routingRuleId":"","authEnabled":false,"httpRequestSettings":false,"recipe":"docker-proxy"}],"type":"rpc"}' || return $?
+    fi
+    if ! _is_repo_available "${_prefix}-quay-proxy"; then
+        # "httpPort":18168 - 18169. For v1 test. cacheForeignLayers is true
+        _apiS '{"action":"coreui_Repository","method":"create","data":[{"attributes":{"docker":{"httpPort":18168,"httpsPort":18169,"forceBasicAuth":false,"v1Enabled":true},"proxy":{"remoteUrl":"https://quay.io","contentMaxAge":-1,"metadataMaxAge":1440},"dockerProxy":{"indexType":"REGISTRY","cacheForeignLayers":true,"useTrustStoreForIndexAccess":false},"httpclient":{"blocked":false,"autoBlock":true,"connection":{"useTrustStore":false}},"storage":{"blobStoreName":"'${_bs_name}'","strictContentTypeValidation":true'${_extra_sto_opt}'},"negativeCache":{"enabled":true,"timeToLive":1440},"cleanup":{"policyName":[]}},"name":"'${_prefix}'-quay-proxy","format":"","type":"","url":"","online":true,"routingRuleId":"","authEnabled":false,"httpRequestSettings":false,"recipe":"docker-proxy"}],"type":"rpc"}' || return $?
+        #curl https://quay.io/v2/coreos/clair/manifests/v2.1.2|grep schemaVersion
+        # Need docker version older than 27
+        #docker pull local.standalone.localdomain:18169/coreos/clair:v2.1.2
     fi
     # add some data for xxxx-proxy
     _log "INFO" "Populating ${_prefix}-proxy repository with some image ..."
     if ! _populate_docker_proxy; then
         _log "WARN" "_populate_docker_proxy failed. May need f_setup_https (and FQDN) or 'Docker Bearer Token Realm' (not only for anonymous access)."
+        if [ -n "${_NEXUS_DOCKER_HOSTNAME}" ]; then
+            _populate_docker_proxy "" "${_NEXUS_DOCKER_HOSTNAME}:18179" || _log "WARN" "_populate_docker_proxy \"${_NEXUS_DOCKER_HOSTNAME}:18179\" also failed"
+        fi
     fi
 
     if [ -n "${_source_nexus_url}" ] && [ -n "${_extra_sto_opt}" ] && ! _is_repo_available "${_prefix}-repl-proxy"; then
-        _apiS '{"action":"coreui_Repository","method":"create","data":[{"attributes":{"docker":{"httpPort":null,"httpsPort":null,"forceBasicAuth":false,"v1Enabled":true},"proxy":{"remoteUrl":"'${_source_nexus_url%/}'/repository/'${_prefix}'-hosted/","contentMaxAge":-1,"metadataMaxAge":60},"replication":{"preemptivePullEnabled":true,"assetPathRegex":""},"dockerProxy":{"indexType":"HUB","cacheForeignLayers":false,"useTrustStoreForIndexAccess":false},"httpclient":{"blocked":false,"autoBlock":true,"connection":{"useTrustStore":true}},"storage":{"blobStoreName":"'${_bs_name}'","strictContentTypeValidation":true'${_extra_sto_opt}'},"negativeCache":{"enabled":true,"timeToLive":1440},"cleanup":{"policyName":[]}},"name":"'${_prefix}'-repl-proxy","format":"","type":"","url":"","online":true,"undefined":[false,false],"routingRuleId":"","authEnabled":false,"httpRequestSettings":false,"recipe":"docker-proxy"}],"type":"rpc"}' || return $?
+        _apiS '{"action":"coreui_Repository","method":"create","data":[{"attributes":{"docker":{"httpPort":null,"httpsPort":null,"forceBasicAuth":false,"v1Enabled":true},"proxy":{"remoteUrl":"'${_source_nexus_url%/}'/repository/'${_prefix}'-hosted/","contentMaxAge":-1,"metadataMaxAge":60},"replication":{"preemptivePullEnabled":true,"assetPathRegex":""},"dockerProxy":{"indexType":"HUB","cacheForeignLayers":false,"useTrustStoreForIndexAccess":false},"httpclient":{"blocked":false,"autoBlock":true,"connection":{"useTrustStore":true}},"storage":{"blobStoreName":"'${_bs_name}'","strictContentTypeValidation":true'${_extra_sto_opt}'},"negativeCache":{"enabled":true,"timeToLive":1440},"cleanup":{"policyName":[]}},"name":"'${_prefix}'-repl-proxy","format":"","type":"","url":"","online":true,"routingRuleId":"","authEnabled":false,"httpRequestSettings":false,"recipe":"docker-proxy"}],"type":"rpc"}' || return $?
     fi
 
     # If no xxxx-hosted, create it
     if ! _is_repo_available "${_prefix}-hosted"; then
         # Using "httpPort":18181 - 18182,
-        _apiS '{"action":"coreui_Repository","method":"create","data":[{"attributes":{"docker":{"httpPort":18181,"httpsPort":18182,"forceBasicAuth":true,"v1Enabled":true},"storage":{"blobStoreName":"'${_bs_name}'","writePolicy":"ALLOW","strictContentTypeValidation":true'${_extra_sto_opt}'},"cleanup":{"policyName":[]}},"name":"'${_prefix}'-hosted","format":"","type":"","url":"","online":true,"undefined":[false,false],"recipe":"docker-hosted"}],"type":"rpc"}' || return $?
+        _apiS '{"action":"coreui_Repository","method":"create","data":[{"attributes":{"docker":{"httpPort":18181,"httpsPort":18182,"forceBasicAuth":true,"v1Enabled":true},"storage":{"blobStoreName":"'${_bs_name}'","writePolicy":"ALLOW","strictContentTypeValidation":true'${_extra_sto_opt}'},"cleanup":{"policyName":[]}},"name":"'${_prefix}'-hosted","format":"","type":"","url":"","online":true,"recipe":"docker-hosted"}],"type":"rpc"}' || return $?
     fi
     # add some data for xxxx-hosted
     _log "INFO" "Populating ${_prefix}-hosted repository with some image ..."
     if ! _populate_docker_hosted; then
         _log "WARN" "_populate_docker_hosted failed. May need f_setup_https (and FQDN) or 'Docker Bearer Token Realm' (not only for anonymous access)."
+        if [ -n "${_NEXUS_DOCKER_HOSTNAME}" ]; then
+            _populate_docker_hosted "" "${_NEXUS_DOCKER_HOSTNAME}:18182" || _log "WARN" "_populate_docker_hosted \"${_NEXUS_DOCKER_HOSTNAME}:18182\" also failed"
+        fi
     fi
 
     # If no xxxx-group, create it
     if ! _is_repo_available "${_prefix}-group"; then
         # Using "httpPort":4999, httpsPort: 15000
-        _apiS '{"action":"coreui_Repository","method":"create","data":[{"attributes":{"docker":{"httpPort":4999,"httpsPort":15000,"forceBasicAuth":true,"v1Enabled":true},"storage":{"blobStoreName":"'${_bs_name}'","strictContentTypeValidation":true'${_extra_sto_opt}'},"group":{"groupWriteMember":"'${_prefix}'-hosted","memberNames":["'${_prefix}'-hosted","'${_prefix}'-proxy"]}},"name":"'${_prefix}'-group","format":"","type":"","url":"","online":true,"undefined":[false,false],"recipe":"docker-group"}],"type":"rpc"}' || return $?
+        _apiS '{"action":"coreui_Repository","method":"create","data":[{"attributes":{"docker":{"httpPort":4999,"httpsPort":15000,"forceBasicAuth":true,"v1Enabled":true},"storage":{"blobStoreName":"'${_bs_name}'","strictContentTypeValidation":true'${_extra_sto_opt}'},"group":{"groupWriteMember":"'${_prefix}'-hosted","memberNames":["'${_prefix}'-hosted","'${_prefix}'-proxy"]}},"name":"'${_prefix}'-group","format":"","type":"","url":"","online":true,"recipe":"docker-group"}],"type":"rpc"}' || return $?
     fi
     # add some data for xxxx-group
     _log "INFO" "Populating ${_prefix}-group repository with some image via docker proxy repo ..."
-    _populate_docker_proxy "hello-world" "${r_DOCKER_GROUP}" "15000 4999"
+    if ! _populate_docker_proxy "hello-world" "${r_DOCKER_GROUP}" "15000 4999"; then
+        if [ -n "${_NEXUS_DOCKER_HOSTNAME}" ]; then
+            _populate_docker_proxy "hello-world" "${_NEXUS_DOCKER_HOSTNAME}:15000"
+        fi
+    fi
 }
 
 #_populate_docker_proxy "" "m1mac.standalone.localdomain:15000"
@@ -546,64 +564,66 @@ function _populate_docker_proxy() {
     _log "DEBUG" "${_cmd} pull ${_host_port}/${_img_name}"
     ${_cmd} pull ${_host_port}/${_img_name} || return $?
 }
-#ssh -2CNnqTxfg -L18182:localhost:18182 node3250    #ps aux | grep 2CNnqTxfg
-# then: _populate_docker_hosted "" "local.standalone.localdomain:18182"
-# Create an image which uses blobs from proxy (pull & push from group repo)
-# After deleting alpine_hosted (and 'docker system prune -a -f'):
+# Example 1: RHEL UBI9 image
+#   _populate_docker_hosted "redhat/ubi9:9.4-1181" "local.standalone.localdomain:18182"
+# Example 2: with ssh port forwarding
+#   ssh -2CNnqTxfg -L18182:localhost:18182 node3250    #ps aux | grep 2CNnqTxfg
+#   _populate_docker_hosted "" "local.standalone.localdomain:18182"
+# Example 3: Group repo test by creating an image which uses blobs from proxy (pull & push from group repo)
+#   # After deleting alpine_hosted (and 'docker system prune -a -f'):
 #   _populate_docker_hosted "local.standalone.localdomain:15000/alpine:latest" "local.standalone.localdomain:15000"
-#   _TAG_TO="thrivent-web/doi-invite" _populate_docker_hosted "local.standalone.localdomain:15000/alpine:latest" "local.standalone.localdomain:15000"
+#   _TAG_TO="thrivent-web/doi-invite:latest" _populate_docker_hosted "local.standalone.localdomain:15000/alpine:latest" "local.standalone.localdomain:15000"
 function _populate_docker_hosted() {
     local _base_img="${1:-"alpine:latest"}"    # dh1.standalone.localdomain:15000/alpine:3.7
     local _host_port="${2:-"${r_DOCKER_PROXY:-"${r_DOCKER_GROUP:-"${r_NEXUS_URL:-"${_NEXUS_URL}"}"}"}"}"
-    local _backup_ports="${3-"18182 18181 15000 443"}"
-    local _cmd="${4-"${r_DOCKER_CMD}"}"
-    local _tag_to="${5:-"${_TAG_TO}"}"  # If empty, it uploads three images
-    local _num_layers="${6:-"${_NUM_LAYERS:-"1"}"}" # Can be used to test overwriting image
+    local _tag_to="${3:-"${_TAG_TO:-"dummyimg:latest"}"}"
+    local _num_layers="${4:-"${_NUM_LAYERS:-"1"}"}" # Can be used to test overwriting image
+    local _backup_ports="${5-"18182 18181 15000 443"}"
+    local _cmd="${6-"${r_DOCKER_CMD}"}"
+    local _usr="${7:-"${_ADMIN_USER}"}"
+    local _pwd="${8:-"${_ADMIN_PWD}"}"
     [ -z "${_cmd}" ] && _cmd="$(_docker_cmd)"
     [ -z "${_cmd}" ] && return 0    # If no docker command, just exist
-    _host_port="$(_docker_login "${_host_port}" "${_backup_ports}" "${r_ADMIN_USER:-"${_ADMIN_USER}"}" "${r_ADMIN_PWD:-"${_ADMIN_PWD}"}" "${_cmd}")" || return $?
 
-    local _tag_to_img="$(basename "${_tag_to%:*}")"
-    if [ -z "${_tag_to}" ]; then
-        _tag_to_img="dummies/$(basename "${_base_img%:*}")_hosted"
-        _tag_to="${_tag_to_img}:9.99.0 ${_tag_to_img}:9.99.1 ${_tag_to_img}:9.99.1-SNAPSHOT"
+    if [[ ! "${_DOCKER_NO_LOGIN}" =~ [yY] ]]; then
+        _log "INFO" "docker login ${_host_port}"
+        _host_port="$(_docker_login "${_host_port}" "${_backup_ports}" "${_usr}" "${_pwd}" "${_cmd}")" || return $?
     fi
 
-    for _imn in $(${_cmd} images --format "{{.Repository}}" | grep -w "${_tag_to_img}"); do
-        _log "WARN" "Deleting ${_imn} (waiting for 3 secs)";sleep 3
-        if ! ${_cmd} rmi ${_imn}; then
-            _log "WARN" "Deleting ${_imn} failed but keep continuing..."
+    if ${_cmd} images --format "{{.Repository}}:{{.Tag}}" | grep -qE "^${_host_port%/}/${_tag_to}$"; then
+        _log "INFO" "'${_host_port%/}/${_tag_to}' already exists. Skipping the build ..."
+    else
+        # NOTE: docker build -f does not work (bug?)
+        local _build_dir="${HOME%/}/${FUNCNAME[0]}_build_tmp_dir_$(date +'%Y%m%d%H%M%S')"  # /tmp or /var/tmp fails on Ubuntu
+        if [ ! -d "${_build_dir%/}" ]; then
+            mkdir -v -p ${_build_dir} || return $?
         fi
-    done
+        cd ${_build_dir} || return $?
+        local _build_str="FROM ${_base_img}"
+        # Crating random (multiple) layer. NOTE: 'CMD' doesn't create new layers.
+        #echo -e "FROM alpine:3.7\nRUN apk add --no-cache mysql-client\nCMD echo 'Built ${_tag_to} from image:${_base_img}' > Dockerfile
+        for i in $(seq 1 ${_num_layers}); do
+            #\nRUN apk add --no-cache mysql-client
+            _build_str="${_build_str}\nRUN echo 'Adding layer ${i} for ${_tag_to} at $(date +'%Y%m%d%H%M%S') (R${RANDOM})' > /var/tmp/layer_${i}"
+        done
+        echo -e "${_build_str}" > Dockerfile
+        ${_cmd} build --rm -t ${_tag_to} .
+        local _rc=$?
+        cd -  && mv -v ${_build_dir} ${_TMP%/}/
+        if [ ${_rc} -ne 0 ]; then
+            _log "ERROR" "'${_cmd} build --rm -t ${_tag_to} .' failed (${_rc}, ${_TMP%/}/$(basename "${_build_dir}"))"
+            return ${_rc}
+        fi
+    fi
 
-    # NOTE: docker build -f does not work (bug?)
-    local _build_dir="${HOME%/}/${FUNCNAME[0]}_build_tmp_dir_$(date +'%Y%m%d%H%M%S')"  # /tmp or /var/tmp fails on Ubuntu
-    if [ ! -d "${_build_dir%/}" ]; then
-        mkdir -v -p ${_build_dir} || return $?
-    fi
-    cd ${_build_dir} || return $?
-    # NOTE: Trying to create a layer. NOTE: 'CMD' doesn't create new layers.
-    local _build_str="FROM ${_base_img}"    #\nRUN apk add --no-cache mysql-client
-    for i in $(seq 1 ${_num_layers}); do
-        _build_str="${_build_str}\nRUN echo 'Adding layer ${i} for ${_tag_to_img}' > /var/tmp/layer_${i}"
-    done
-    #echo -e "FROM alpine:3.7\nRUN apk add --no-cache mysql-client\nCMD echo 'Built ${_tag_to_img} from image:${_base_img}' > Dockerfile
-    echo -e "${_build_str}" > Dockerfile
-    ${_cmd} build --rm -t ${_tag_to_img} .
-    local _rc=$?
-    cd -  && mv -v ${_build_dir} ${_TMP%/}/
-    if [ ${_rc} -ne 0 ]; then
-        _log "ERROR" "'${_cmd} build --rm -t ${_tag_to_img} .' failed (${_rc}, ${_TMP%/}/$(basename "${_build_dir}"))"
-        return ${_rc}
-    fi
     # It seems newer docker appends "localhost/" so trying this one first.
-    for _new_tag in ${_tag_to}; do
-        if ! ${_cmd} tag localhost/${_tag_to_img} ${_host_port}/${_new_tag} 2>/dev/null; then
-            ${_cmd} tag ${_tag_to_img} ${_host_port}/${_new_tag} || return $?
-        fi
-        _log "DEBUG" "${_cmd} push ${_host_port}/${_new_tag}"
-        ${_cmd} push ${_host_port}/${_new_tag} || return $?
-    done
+    if ! ${_cmd} tag localhost/${_tag_to} ${_host_port}/${_tag_to} 2>/dev/null; then
+        _log "INFO" "docker tag ${_tag_to} ${_host_port}/${_tag_to}"
+        ${_cmd} tag ${_tag_to} ${_host_port}/${_tag_to} || return $?
+    fi
+    _log "INFO" "${_cmd} push ${_host_port}/${_tag_to}"
+    ${_cmd} push ${_host_port}/${_tag_to} || return $?
+    #${_cmd} rmi ${_host_port}/${_tag_to} || return $?  # this leaves <none> images
 }
 
 function f_setup_yum() {
@@ -2090,8 +2110,12 @@ function f_setup_https() {
     _log "INFO" "Please restart service.
 Also update _NEXUS_URL. For example: export _NEXUS_URL=\"https://local.standalone.localdomain:${_port}/\""
     if [[ "${_NEXUS_URL}" =~ https?://([^:/]+) ]]; then
+        local _hostname="${BASH_REMATCH[1]}"
+        if [ ${_hostname} == "localhost" ]; then
+            _hostname="${_NEXUS_DOCKER_HOSTNAME:-"$(hostname -f)"}"
+        fi
         echo "To check the SSL connection:
-    curl -svf -k \"https://${BASH_REMATCH[1]}:${_port}/\" -o/dev/null 2>&1 | grep 'Server certificate:' -A 5"
+    curl -svf -k \"https://${_hostname}:${_port}/\" -o/dev/null 2>&1 | grep 'Server certificate:' -A 5"
     fi
     # TODO: generate pem file and trust
     #_trust_ca "${_ca_pem}" || return $?
@@ -2286,11 +2310,12 @@ function f_upload_dummies_raw() {
     local _repo_name="${1:-"raw-hosted"}"
     local _how_many="${2:-"10"}"
     local _parallel="${3:-"3"}"
-    local _file_prefix="${4:-"test_"}"
-    local _file_suffix="${5:-".txt"}"
-    local _usr="${6:-"${_ADMIN_USER}"}"
-    local _pwd="${7:-"${_ADMIN_PWD}"}"
-    f_upload_dummies "${_NEXUS_URL%/}/repository/${_repo_name}/dummies" "${_how_many}" "${_parallel}" "${_file_prefix}" "${_file_suffix}" "${_usr}" "${_pwd}"
+    local _path="${4:-"dummies"}"
+    local _file_prefix="${5:-"test_"}"
+    local _file_suffix="${6:-".txt"}"
+    local _usr="${7:-"${_ADMIN_USER}"}"
+    local _pwd="${8:-"${_ADMIN_PWD}"}"
+    f_upload_dummies "${_NEXUS_URL%/}/repository/${_repo_name}/${_path#/}" "${_how_many}" "${_parallel}" "${_file_prefix}" "${_file_suffix}" "${_usr}" "${_pwd}"
 }
 function f_upload_dummies_raw_with_api() {
     local __doc__="Upload text files into raw hosted repository with Upload API"
@@ -2377,6 +2402,7 @@ for g in {1..101}; do
   done; wait
 done
 EOF
+alias f_upload_dummies_maven2='f_upload_dummies_maven'
 function f_upload_dummies_maven() {
     local __doc__="Upload dummy jar files into maven hosted repository"
     local _repo_name="${1:-"maven-releases"}"
@@ -2458,7 +2484,7 @@ function f_upload_dummies_npm() {
     local __doc__="Upload dummy tgz into npm hosted repository"
     local _repo_name="${1:-"npm-hosted"}"
     local _how_many="${2:-"10"}"
-    local _pkg_name="${3:-"@dummy/policy-demo"}"
+    local _dummy_tzg_name="${3:-"dummy-policy-demo"}"
     local _repo_url="${_NEXUS_URL%/}/repository/${_repo_name}/"
     local _seq_start="${_SEQ_START:-1}"
     local _seq_end="$((${_seq_start} + ${_how_many} - 1))"
@@ -2466,13 +2492,15 @@ function f_upload_dummies_npm() {
     if [ ! -s "${_TMP%/}/policy-demo-2.0.0.tgz.tgz" ]; then
         curl -sSf -o "${_TMP%/}/policy-demo-2.0.0.tgz.tgz" -L "https://registry.npmjs.org/@sonatype/policy-demo/-/policy-demo-2.0.0.tgz" || return $?
     fi
-    local _dummy_tzg_name="dummy-policy-demo"
     # TODO: replace with _update_npm_tgz()
-    local _tmpdir="$(mktemp -d)"
     # TODO: upload concurrently with some limit (not only using _ASYNC_CURL="Y")
     for i in $(eval "${_seq}"); do
-        _update_npm_tgz "${_TMP%/}/policy-demo-2.0.0.tgz.tgz" "${_dummy_tzg_name}" "9.${i}.0" || return $?
-        f_upload_asset "${_repo_name}" -F "npm.asset=@${_TMP%/}/${_dummy_tzg_name}-9.${i}.0.tgz" || return $?
+        local _uploading_file="$(_update_npm_tgz "${_TMP%/}/policy-demo-2.0.0.tgz.tgz" "${_dummy_tzg_name}" "9.${i}.0")" || return $?
+        if [ -z "${_uploading_file}" ]; then
+            _log "ERROR" "Failed to generate a new upload tgz file with ${_TMP%/}/policy-demo-2.0.0.tgz.tgz, ${_dummy_tzg_name}, 9.${i}.0"
+            return 1
+        fi
+        f_upload_asset "${_repo_name}" -F "npm.asset=@${_uploading_file}" || return $?
         rm -v -f ${_TMP%/}/${_dummy_tzg_name}-9.${i}.0.tgz
     done
 }
@@ -2509,9 +2537,10 @@ function _update_npm_tgz() {
     fi
     rm -f ${_tmpdir%/}/package/package.json.tmp
     if [[ "${_no_tgz}" =~ [yY] ]]; then
-        _log "INFO" "Updated ${_tmpdir%/}/package/package.json"
+        _log "INFO" "Updated ${_tmpdir%/}/package/package.json only"
     else
-        tar -czf ./${_tzg_name}-${_tzg_ver}.tgz -C ${_tmpdir%/} package || return $?
+        tar -czf ${_tmpbase}/${_tzg_name}-${_tzg_ver}.tgz -C ${_tmpdir%/} package || return $?
+        echo "${_tmpbase}/${_tzg_name}-${_tzg_ver}.tgz"
     fi
 }
 
@@ -2605,6 +2634,41 @@ function f_upload_dummies_rubygem() {
         f_upload_asset "${_repo_name}" -F rubygem.asset=@${_tmpdir%/}/${_pkg}-${_ver}.gem || return $?
         #curl -sSf -w "Download: %{http_code} specs.4.8.gz (%{time_total}s | %{size_download}b)\n" -o/dev/null "${_repo_url%/}/specs.4.8.gz"
     done
+}
+
+function f_upload_dummies_docker() {
+    local __doc__="Upload dummy docker images into docker hosted repository (requires 'docker' command)"
+    local _host_port="${1}"
+    local _how_many="${2:-"10"}"    # this number * _parallel is the actual number of images
+    local _parallel="${3:-"1"}"
+    local _usr="${4:-"${_ADMIN_USER}"}"
+    local _pwd="${5:-"${_ADMIN_PWD}"}"
+    local _cmd="$(_docker_cmd)"
+    local _seq_start="${_SEQ_START:-1}"
+    local _seq_end="$((${_seq_start} + ${_how_many} - 1))"
+    local _seq="seq ${_seq_start} ${_seq_end}"
+    # docker login first
+    _docker_login "${_host_port}" "" "${_usr}" "${_pwd}" "${_cmd}" || return $?
+    for i in $(eval "${_seq}"); do
+        for j in $(eval "seq 1 ${_parallel}"); do
+            local _img="dummy${i}-${j}:tag$(date +'%H%M%S')"
+            (_DOCKER_NO_LOGIN="Y" _populate_docker_hosted "" "${_host_port}" "${_img}" &>/dev/null &&  echo "[$(date +'%H:%M:%S')] Pushed dummy image '${_img}' to ${_host_port}") &
+        done
+        wait
+    done 2>/tmp/f_upload_dummies_docker_$$.err
+    _log "INFO" "Completed. May want to run 'f_delete_dummy_docker_images \"${_host_port}\"' to remove dummy images."
+}
+
+function f_delete_dummy_docker_images() {
+    local _host_port="${1}"
+    local _cmd="$(_docker_cmd)"
+    ${_cmd} images --format "{{.Repository}}:{{.Tag}}" | grep -E "^${_host_port%/}/dummy[0-9]+" | while read -r _img; do
+        ${_cmd} rmi -f "${_img}"
+    done
+    ${_cmd} images --format "{{.Repository}}:{{.Tag}}" | grep -E "^dummy[0-9]+" | while read -r _img; do
+        ${_cmd} rmi -f "${_img}"
+    done
+    echo "May need to run 'docker system prune -f' to remove dangling images"
 }
 
 function f_upload_dummies_helm() {
@@ -2708,35 +2772,15 @@ function f_upload_dummies_yum() {
 }
 
 function f_upload_dummies_all_hosted() {
+    # TODO: When a new f_upload_dummies_* is added, need to add here
     local __doc__="Get repositories with /v1/repositorySettings, and call f_upload_dummies_* for each"
     f_api /service/rest/v1/repositorySettings | JSON_SEARCH_KEY="name,format,type" OUTPUT_DELIMITER=" " sortjson | grep -E ' hosted$' | while read -r _repo _format _type; do
-        _log "INFO" "Uploading dummy data to ${_repo} (${_format})"
-        case "${_format}" in
-            "maven2")
-                f_upload_dummies_maven "${_repo}"
-                ;;
-            "npm")
-                f_upload_dummies_npm "${_repo}"
-                ;;
-            "nuget")
-                f_upload_dummies_nuget "${_repo}"
-                ;;
-            "rubygems")
-                f_upload_dummies_rubygem "${_repo}"
-                ;;
-            "helm")
-                f_upload_dummies_helm "${_repo}"
-                ;;
-            "yum")
-                f_upload_dummies_yum "${_repo}"
-                ;;
-            "raw")
-                f_upload_dummies_raw "${_repo}"
-                ;;
-            *)
-                _log "WARN" "Not supported: ${_repo} (${_format})"
-                ;;
-        esac
+        if type "f_upload_dummies_${_format}" &>/dev/null; then
+            _log "INFO" "Uploading dummy data to ${_repo} (${_format})"
+            eval "f_upload_dummies_${_format} \"${_repo}\""
+        else
+            _log "WARN" "Not supported: ${_repo} (${_format})"
+        fi
     done
 }
 
@@ -2792,20 +2836,23 @@ function f_get_all_assets() {
     local _query=""
     local _base_query=""
     [ -n "${_repo}" ] && _base_query="?repository=${_repo}"
-    cat /dev/null > ${_TMP%/}/${FUNCNAME[0]}_$$.out
+    cat /dev/null > ${_TMP%/}/${FUNCNAME[0]}_attr_$$.out
     for i in $(seq "1" "${_max_loop}"); do
-        f_api "${_path}${_base_query}${_query}" > ${_TMP%/}/${FUNCNAME[0]}.json || return $?
+        f_api "${_path}${_base_query}${_query}" > ${_TMP%/}/${FUNCNAME[0]}_$$.json || return $?
         # TODO: should output only '"_attr":"_value_"'
-        grep -E '^            "'${_attr}'":' -h ${_TMP%/}/${FUNCNAME[0]}.json | sort | uniq >> ${_TMP%/}/${FUNCNAME[0]}_$$.out || return $?
-        grep -qE '"continuationToken": *"[0-9a-f]+' ${_TMP%/}/${FUNCNAME[0]}.json || break
-        local cToken="$(cat ${_TMP%/}/${FUNCNAME[0]}.json | JSON_SEARCH_KEY="continuationToken" _sortjson)"
+        grep -E '^            "'${_attr}'":' -h ${_TMP%/}/${FUNCNAME[0]}_$$.json | sort | uniq >> ${_TMP%/}/${FUNCNAME[0]}_attr_$$.out || return $?
+        grep -qE '"continuationToken": *"[0-9a-f]+' ${_TMP%/}/${FUNCNAME[0]}_$$.json || break
+        local _line_num="$(cat "${_TMP%/}/${FUNCNAME[0]}_attr_$$.out" | wc -l | tr -d '[:space:]')"
+        _log "INFO" "Found ${_line_num} assets so far (${i})"
+        local cToken="$(cat ${_TMP%/}/${FUNCNAME[0]}_$$.json | JSON_SEARCH_KEY="continuationToken" _sortjson)"
         if [ -z "${_base_query}" ]; then
             _query="?continuationToken=${cToken}"
         else
             _query="&continuationToken=${cToken}"
         fi
     done
-    echo "${_TMP%/}/${FUNCNAME[0]}_$$.out"
+    # NOTE: as this function is used for f_check_all_assets, should output only file name
+    echo "${_TMP%/}/${FUNCNAME[0]}_attr_$$.out"
 }
 function f_check_all_assets() {
     local __doc__="Check/test if all assets can be downloaded (should update the downloaded time)"
@@ -2822,17 +2869,19 @@ function f_check_all_assets() {
             echo "${BASH_REMATCH[1]}${BASH_REMATCH[2]}"
         fi
     done | xargs -I{} -P${_parallel} curl -sSf -u "${_usr}:${_pwd}" -w '%{http_code} {} (%{time_total}s)\n' -L -k "{}" -o/dev/null
-    echo "Checked ${_line_num} assets"
+    _log "INFO" "Checked ${_line_num} assets"
 }
 function f_delete_all_assets() {
     local __doc__="Delete all assets (not components) with Search REST API (require correct search index)"
     local _repo="$1"
     local _force="$2"
-    local _parallel="${3:-"3"}"
-    local _usr="${4:-"${_ADMIN_USER}"}"
-    local _pwd="${5:-"${_ADMIN_PWD}"}"
-    local _nexus_url="${6:-"${r_NEXUS_URL:-"${_NEXUS_URL}"}"}"
-    local _all_asset_file="$(f_get_all_assets "${_repo}" "id")" || return $?
+    local _max_loop="$3"    # One loop gets 50 assets
+    local _parallel="${4:-"3"}"
+    local _usr="${5:-"${_ADMIN_USER}"}"
+    local _pwd="${6:-"${_ADMIN_PWD}"}"
+    local _nexus_url="${7:-"${r_NEXUS_URL:-"${_NEXUS_URL}"}"}"
+
+    local _all_asset_file="$(f_get_all_assets "${_repo}" "id" "${_max_loop}")" || return $?
     local _line_num="$(cat "${_all_asset_file}" | wc -l | tr -d '[:space:]')"
     if [[ ! "${_force}" =~ ^[yY] ]]; then
         read -p "Are you sure to delete all (${_line_num}) assets?: " "_yes"
@@ -2845,7 +2894,7 @@ function f_delete_all_assets() {
         fi
     done | xargs -I{} -P${_parallel} curl -sSf -u "${_usr}:${_pwd}" -w '%{http_code} {} (%{time_total}s)\n' -X DELETE -L -k "${_nexus_url%/}{}"
     # To make this function faster, not using f_api "/service/rest/v1/assets/${BASH_REMATCH[1]}" "" "DELETE" (but now can't stop at the first error...)
-    echo "Deleted ${_line_num} assets. 'Cleanup unused <format> blobs from <datastore> task' (assetBlob.cleanup) may need to be run."
+    _log "INFO" "Deleted ${_line_num} assets. 'Cleanup unused <format> blobs from <datastore> task' (assetBlob.cleanup) may need to be run."
 }
 
 # 1. Create a new raw-test-hosted repo from Web UI (or API)
@@ -2855,7 +2904,7 @@ function f_delete_all_assets() {
 # 4. f_staging_move "raw-hosted" "raw-test-tag" "repository=raw-test-hosted&name=*test/nxrm3Staging.txt"
 # With maven2:
 #   export _NEXUS_URL="https://nxrm3ha-k8s.standalone.localdomain/"
-#   mvn-upload "" "com.example:my-app-staging:1.0" "maven-hosted"
+#   f_upload_dummies_maven "maven-hosted" "" "" "com.example" "my-app-staging"
 #   f_staging_move "maven-releases" "maven-test-tag" "repository=maven-hosted&name=my-app-staging"
 # Just search components with the tag
 #   f_api "/service/rest/v1/search?tag=raw-test-tag"
@@ -2904,9 +2953,8 @@ function f_associate_tag() {
 }
 # TODO: add `/service/rest/v1/staging/delete`
 
-#f_run_tasks_by_type "assetBlob.cleanup"
 function f_run_tasks_by_type() {
-    local __doc__="Run/start multiple tasks by type"
+    local __doc__="Run/start multiple tasks by type (eg. 'assetBlob.cleanup')"
     local _task_type="$1"   #assetBlob.cleanup
     if [ -z "${_task_type}" ]; then
         f_api "/service/rest/v1/tasks"
