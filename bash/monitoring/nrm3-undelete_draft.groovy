@@ -1,7 +1,3 @@
-/**
- * How to converto to json consumable string:
- *  python -c "import sys,json;print(json.dumps(open('path_to_this_file').read()))"
- */
 import groovy.json.JsonSlurper
 import org.sonatype.nexus.blobstore.restore.RestoreBlobStrategy
 import org.sonatype.nexus.common.log.LogManager
@@ -18,39 +14,35 @@ import static org.sonatype.nexus.blobstore.api.BlobAttributesConstants.DELETED_D
 import static org.sonatype.nexus.blobstore.api.BlobStore.REPO_NAME_HEADER
 
 class RBSs {
-    /**
-     * RBSs.restoreBlobStrategyClassNames need to be checked/changed if older Nexus version is used.
-     *  # After checking out customer's Nexus version:
-     *  find . -type f -name '*RestoreBlobStrategy.java' | sed -E 's@^.+/src/main/java/(.+)\.java@"\1",@p' | sort | uniq | tr '/' '.'
-     */
-    static restoreBlobStrategyClassNames = ["com.sonatype.nexus.blobstore.restore.conan.ConanRestoreBlobStrategy",
-                                            "com.sonatype.nexus.blobstore.restore.datastore.RubygemsRestoreBlobStrategy",
-                                            "com.sonatype.nexus.blobstore.restore.helm.internal.HelmRestoreBlobStrategy",
-                                            "com.sonatype.nexus.blobstore.restore.helm.internal.orient.OrientHelmRestoreBlobStrategy",
-                                            "com.sonatype.nexus.blobstore.restore.internal.datastore.DockerRestoreBlobStrategy",
-                                            "com.sonatype.nexus.blobstore.restore.internal.datastore.NpmRestoreBlobStrategy",
-                                            "com.sonatype.nexus.blobstore.restore.internal.datastore.YumRestoreBlobStrategy",
-                                            "com.sonatype.nexus.blobstore.restore.internal.orient.OrientDockerRestoreBlobStrategy",
-                                            "com.sonatype.nexus.blobstore.restore.internal.orient.OrientNpmRestoreBlobStrategy",
-                                            "com.sonatype.nexus.blobstore.restore.internal.orient.OrientYumRestoreBlobStrategy",
-                                            "com.sonatype.nexus.blobstore.restore.nuget.internal.NugetRestoreBlobStrategy",
-                                            "com.sonatype.nexus.blobstore.restore.nuget.internal.orient.OrientNugetRestoreBlobStrategy",
-                                            "com.sonatype.nexus.blobstore.restore.orient.OrientRubygemsRestoreBlobStrategy",
-                                            "com.sonatype.nexus.blobstore.restore.p2.internal.datastore.P2RestoreBlobStrategy",
-                                            "com.sonatype.nexus.blobstore.restore.p2.internal.orient.OrientP2RestoreBlobStrategy",
-                                            "com.sonatype.nexus.blobstore.restore.pypi.internal.PyPiRestoreBlobStrategy",
-                                            "com.sonatype.nexus.blobstore.restore.pypi.internal.orient.OrientPyPiRestoreBlobStrategy",
-                                            "com.sonatype.nexus.blobstore.restore.r.internal.datastore.RRestoreBlobStrategy",
-                                            "com.sonatype.nexus.blobstore.restore.r.internal.orient.OrientRRestoreBlobStrategy",
-                                            "org.sonatype.nexus.blobstore.restore.RestoreBlobStrategy",
-                                            "org.sonatype.nexus.blobstore.restore.apt.internal.AptRestoreBlobStrategy",
-                                            "org.sonatype.nexus.blobstore.restore.apt.internal.orient.OrientAptRestoreBlobStrategy",
-                                            "org.sonatype.nexus.blobstore.restore.datastore.BaseRestoreBlobStrategy",
-                                            "org.sonatype.nexus.blobstore.restore.maven.internal.MavenRestoreBlobStrategy",
-                                            "org.sonatype.nexus.blobstore.restore.maven.internal.orient.OrientMavenRestoreBlobStrategy",
-                                            "org.sonatype.nexus.blobstore.restore.orient.OrientBaseRestoreBlobStrategy",
-                                            "org.sonatype.nexus.blobstore.restore.raw.internal.RawRestoreBlobStrategy",
-                                            "org.sonatype.nexus.blobstore.restore.raw.internal.orient.OrientRawRestoreBlobStrategy",]
+    static restoreBlobStrategyClassNames = [
+            "com.sonatype.nexus.blobstore.restore.conan.ConanRestoreBlobStrategy",
+            "com.sonatype.nexus.blobstore.restore.datastore.RubygemsRestoreBlobStrategy",
+            "com.sonatype.nexus.blobstore.restore.helm.internal.HelmRestoreBlobStrategy",
+            "com.sonatype.nexus.blobstore.restore.helm.internal.orient.OrientHelmRestoreBlobStrategy",
+            "com.sonatype.nexus.blobstore.restore.internal.datastore.DockerRestoreBlobStrategy",
+            "com.sonatype.nexus.blobstore.restore.internal.datastore.NpmRestoreBlobStrategy",
+            "com.sonatype.nexus.blobstore.restore.internal.datastore.YumRestoreBlobStrategy",
+            "com.sonatype.nexus.blobstore.restore.internal.orient.OrientDockerRestoreBlobStrategy",
+            "com.sonatype.nexus.blobstore.restore.internal.orient.OrientNpmRestoreBlobStrategy",
+            "com.sonatype.nexus.blobstore.restore.internal.orient.OrientYumRestoreBlobStrategy",
+            "com.sonatype.nexus.blobstore.restore.nuget.internal.NugetRestoreBlobStrategy",
+            "com.sonatype.nexus.blobstore.restore.nuget.internal.orient.OrientNugetRestoreBlobStrategy",
+            "com.sonatype.nexus.blobstore.restore.orient.OrientRubygemsRestoreBlobStrategy",
+            "com.sonatype.nexus.blobstore.restore.p2.internal.datastore.P2RestoreBlobStrategy",
+            "com.sonatype.nexus.blobstore.restore.p2.internal.orient.OrientP2RestoreBlobStrategy",
+            "com.sonatype.nexus.blobstore.restore.pypi.internal.PyPiRestoreBlobStrategy",
+            "com.sonatype.nexus.blobstore.restore.pypi.internal.orient.OrientPyPiRestoreBlobStrategy",
+            "com.sonatype.nexus.blobstore.restore.r.internal.datastore.RRestoreBlobStrategy",
+            "com.sonatype.nexus.blobstore.restore.r.internal.orient.OrientRRestoreBlobStrategy",
+            "org.sonatype.nexus.blobstore.restore.RestoreBlobStrategy",
+            "org.sonatype.nexus.blobstore.restore.apt.internal.AptRestoreBlobStrategy",
+            "org.sonatype.nexus.blobstore.restore.apt.internal.orient.OrientAptRestoreBlobStrategy",
+            "org.sonatype.nexus.blobstore.restore.datastore.BaseRestoreBlobStrategy",
+            "org.sonatype.nexus.blobstore.restore.maven.internal.MavenRestoreBlobStrategy",
+            "org.sonatype.nexus.blobstore.restore.maven.internal.orient.OrientMavenRestoreBlobStrategy",
+            "org.sonatype.nexus.blobstore.restore.orient.OrientBaseRestoreBlobStrategy",
+            "org.sonatype.nexus.blobstore.restore.raw.internal.RawRestoreBlobStrategy",
+            "org.sonatype.nexus.blobstore.restore.raw.internal.orient.OrientRawRestoreBlobStrategy",]
 
     static String lookupRestoreBlobStrategy(formatName, isOrient) {
         def className = ""
@@ -78,22 +70,25 @@ class RBSs {
 }
 
 def main(params) {
-    // 'params' should contain 'blobIDs', 'blobStore', 'isOrient', 'dryRun'
-    log.debug("params = ${params}")
     def blobIdPtn = '([a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12})'
     def lineCounter = 0
     def restoredNum = 0
     // Blobs deleted after this time will be ignored
     def startedMsec = Instant.now().getEpochSecond() * 1000
-
     BlobStore store = container.lookup(BlobStoreManager.class.name).get(params.blobStore)
     if (!store) {
-        def logMsg = "blobStore from params: ${params} is invalid"
+        def logMsg = "params.blobStore: ${params.blobStore} is invalid"
         log.error(logMsg)
         return ['error': logMsg]
     }
-
     def blobIDs = (params.blobIDs as String).split(",")
+    if (!blobIDs || blobIDs.size() == 0) {
+        def logMsg = "params.blobIDs is empty"
+        log.error(logMsg)
+        return ['error': logMsg]
+    }
+    // 'params' should contain 'blobIDs', 'blobStore', 'isOrient', 'dryRun', and 'debug'
+    log.info("Checking ${blobIDs.length} blobIds with blobStore: ${params.blobStore}, isOrient: ${params.isOrient}, dryRun: ${params.dryRun}, debug: ${params.debug}")
     for (line in blobIDs) {
         lineCounter++
         try {
@@ -132,16 +127,19 @@ def main(params) {
                 log.warn("deletedDateTime:{} is greater than startedMsec:{}", deletedDateTime, startedMsec)
                 continue
             }
-
             // Remove soft delete flag then restore blob
             if (!params.dryRun) {
-                log.info("Un-deleting blobId:{}", blobId)
-                // from org.sonatype.nexus.blobstore.BlobStoreSupport.undelete
-                blobAttributes.setDeleted(false)
-                //blobAttributes.setDeletedReason(null);    // Keeping this one so that can find the props edited by this task
-                store.doUndelete(blobIdObj, blobAttributes)
-                blobAttributes.store()
-                log.debug("blobAttributes:{}", blobAttributes)
+                if (!blobAttributes.deleted) {
+                    log.debug("BlobId:{} is not deleted, so not un-deleting.", blobId)
+                } else {
+                    log.info("Un-deleting blobId:{}", blobId)
+                    // from org.sonatype.nexus.blobstore.BlobStoreSupport.undelete
+                    blobAttributes.setDeleted(false)
+                    //blobAttributes.setDeletedReason(null);    // Keeping this one so that can find the props edited by this task
+                    store.doUndelete(blobIdObj, blobAttributes)
+                    blobAttributes.store()
+                    log.debug("blobAttributes:{}", blobAttributes)
+                }
             }
             log.info("Restoring blobId:{} (DryRun:{})", blobId, params.dryRun)
             def className = RBSs.lookupRestoreBlobStrategy(formatName, params.isOrient)
@@ -170,7 +168,6 @@ def main(params) {
     log.info("Undeleted {}/{}", restoredNum, blobIDs.size())
     return ['checked': lineCounter, 'restored': restoredNum, 'dryRun': params.dryRun]
 }
-
 
 log.info("Undeleting Blobs script started.")
 def logMgr = container.lookup(LogManager.class.name) as LogManager
