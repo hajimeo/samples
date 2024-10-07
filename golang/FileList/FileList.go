@@ -125,6 +125,7 @@ var _TTL_SIZE int64 = 0  // Atomic (maybe slower?)
 var _SLOW_MS int64 = 100
 var _SEP = "	"
 var _PROP_EXT = ".properties"
+var _BYTE_EXT = ".bytes"
 var (
 	_OBJECT_OUTPUTS = make(map[string]interface{})
 	mu              sync.RWMutex
@@ -145,6 +146,7 @@ func _setGlobals() {
 	_FILTER_PX = flag.String("fPX", "", "Excluding Filter for .properties (eg: 'BlobStore.blob-name=.+/maven-metadata.xml.*')")
 	_SAVE_TO = flag.String("s", "", "Save the output (TSV text) into the specified path")
 	_USE_REGEX = flag.Bool("R", false, "If true, .properties content is *sorted* and -fP|-fPX string is treated as regex")
+	// TODO: (at least) -n is not working with -bF
 	_TOP_N = flag.Int64("n", 0, "Return first N lines (0 = no limit). (TODO: may return more than N)")
 	_CONC_1 = flag.Int("c", 4, "Concurrent number for reading directories (default 4)")
 	_LIST_DIRS = flag.Bool("L", false, "If true, just list directories and exit")
@@ -156,7 +158,7 @@ func _setGlobals() {
 	// Reconcile / orphaned blob finding related
 	_TRUTH = flag.String("src", "", "Using database or blobstore as source [BS|DB]. If not specified and -db is given, 'BS' is set.")
 	_DB_CON_STR = flag.String("db", "", "DB connection string or path to DB connection properties file")
-	_BLOB_IDS_FILE = flag.String("bF", "", "file path whic contains the list of blob IDs")
+	_BLOB_IDS_FILE = flag.String("bF", "", "file path contains the list of blob IDs. If -f is not specified, both .properties and .bytes are included")
 	_BS_NAME = flag.String("bsName", "", "eg. 'default'. If provided, the SQL query will be faster. 3.47 and higher only")
 	_REPO_NAMES = flag.String("repos", "", "Repository names. eg. 'maven-central,raw-hosted,npm-proxy', only with -src=DB")
 	_REMOVE_DEL = flag.Bool("RDel", false, "Remove 'deleted=true' from .properties. Requires -dF")
@@ -266,7 +268,8 @@ func _setGlobals() {
 		}
 
 		if len(*_BLOB_IDS_FILE) == 0 && (len(*_DEL_DATE_FROM) == 0 && len(*_MOD_DATE_FROM) == 0) {
-			panic("Currently -RDel requires -dF or -mF.")
+			// If not from the blob ID file (-bf), just in case, the deleted from or the modified from is required
+			panic("Currently '-RDel' requires '-dF YYYY-MM-DD' or '-mF YYYY-MM-DD' for safety.")
 		}
 	}
 
@@ -561,7 +564,7 @@ func printLineS3(item types.Object, client *s3.Client, db *sql.DB) {
 	var blobSize int64 = 0
 	// If .properties file is checked and _WITH_BLOB_SIZE, then get the size of .bytes file
 	if *_WITH_BLOB_SIZE && *_FILTER == _PROP_EXT && strings.HasSuffix(path, _PROP_EXT) {
-		blobPath := getPathWithoutExt(path) + ".bytes"
+		blobPath := getPathWithoutExt(path) + _BYTE_EXT
 		blobSize = getBlobSizeS3(blobPath, client)
 	}
 	output := genOutput(path, *modTime, *propSize, blobSize, db, client)
@@ -594,7 +597,7 @@ func printLineFile(path string, fInfo os.FileInfo, db *sql.DB) {
 	var blobSize int64 = 0
 	// If .properties file is checked and _WITH_BLOB_SIZE, then get the size of .bytes file
 	if *_WITH_BLOB_SIZE && *_FILTER == _PROP_EXT && strings.HasSuffix(path, _PROP_EXT) {
-		blobPath := getPathWithoutExt(path) + ".bytes"
+		blobPath := getPathWithoutExt(path) + _BYTE_EXT
 		blobSize = getBlobSizeFile(blobPath)
 	}
 	output := genOutput(path, modTime, fInfo.Size(), blobSize, db, nil)
@@ -1048,7 +1051,7 @@ func removeDel(contents string, path string, client interface{}) bool {
 			return false
 		}
 
-		bPath := getPathWithoutExt(path) + ".bytes"
+		bPath := getPathWithoutExt(path) + _BYTE_EXT
 		errTag = removeTagsS3(bPath, client.(*s3.Client))
 		if errTag != nil {
 			_log("WARN", fmt.Sprintf("Removed 'deleted=true' but removeTagsS3 for path:%s failed with %s", bPath, errTag))
@@ -1324,9 +1327,9 @@ func printDeadBlob(assetId int64, blobRef string, s3Client interface{}) {
 	size := getBlobSize(path+_PROP_EXT, s3Client)
 	if size < 0 { // At this moment, accepting 0 bytes .properties file...
 		// At this moment, not checkinb .bytes for performance
-		/*size2 := getBlobSize(path+".bytes", s3Client)
+		/*size2 := getBlobSize(path+_BYTE_EXT, s3Client)
 		if size2 >= 0 {
-			_log("WARN", fmt.Sprintf("%s exists.", path+".bytes"))
+			_log("WARN", fmt.Sprintf("%s exists.", path+_BYTE_EXT))
 		}*/
 		_log("WARN", fmt.Sprintf("%s is unreadable.", path+_PROP_EXT))
 		_println(fmt.Sprintf("%d%s%s", assetId, _SEP, blobRef))
@@ -1506,6 +1509,16 @@ func printObjectByBlobId(blobId string, db *sql.DB, client interface{}) {
 		return
 	}
 	path := _CONTENT_PATH + string(filepath.Separator) + genBlobPath(blobId) + _PROP_EXT
+	if len(*_FILTER) == 0 || strings.Contains(path, *_FILTER) {
+		printObjectByPath(path, db, client)
+	}
+	path = _CONTENT_PATH + string(filepath.Separator) + genBlobPath(blobId) + _BYTE_EXT
+	if len(*_FILTER) == 0 || strings.Contains(path, *_FILTER) {
+		printObjectByPath(path, db, client)
+	}
+}
+
+func printObjectByPath(path string, db *sql.DB, client interface{}) {
 	_log("DEBUG", path)
 	switch client.(type) {
 	// TODO: add Azure
