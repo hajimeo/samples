@@ -435,6 +435,7 @@ function f_setup_ldap_freeipa() {
 }
 
 function f_setup_scm_for_bitbucket() {
+    local __doc__="Setup SCM for Bitbucket"
     echo "docker run -v /var/tmp/share/bitbucket:/var/atlassian/application-data/bitbucket --name=bitbucket -d -p 7990:7990 -p 7999:7999 atlassian/bitbucket"
     cat << 'EOF'
 1. Setup Bitbucket
@@ -459,21 +460,27 @@ function f_setup_scm_for_bitbucket() {
 EOF
 }
 
-function f_scan_maven_demo() {
-    if [ ! -s "maven-policy-demo-1.1.0.jar" ]; then
-        curl -sSf -O "https://repo1.maven.org/maven2/org/sonatype/maven-policy-demo/1.1.0/maven-policy-demo-1.1.0.jar" || return $?
+function f_get_maven_demo_jar() {
+    local __doc__="Download a demo jar file for Maven scan"
+    local _ver="${1:-"1.1.0"}"
+    local _remote_url="${2:-"https://repo1.maven.org/maven2/"}"
+    if [ ! -s "./maven-policy-demo-${_ver}.jar" ]; then
+        curl -sSf -O "${_remote_url%/}/org/sonatype/maven-policy-demo/${_ver}/maven-policy-demo-${_ver}.jar" || return $?
     fi
-    echo "Please scan ./maven-policy-demo-1.1.0.jar"
+    _log "INFO" "Please scan ./maven-policy-demo-${_ver}.jar"
 }
 
-function f_gen_npm_dummy_meta() {
-    local _name="${1:-"lodash-vulnerable"}"
-    local _ver="${2:-"1.0.0"}"
-    # "jsonwebtoken": "^0.4.0"
+#f_gen_dummy_npm_meta '{"@nestjs/cli": "^9.3.0"}'
+function f_gen_dummy_npm_meta() {
+    local __doc__="Generate a dummy package.json for NPM scan"
+    local _deps_json="${1:-"{\"lodash\":\"4.17.4\"}"}"
+    local _remote_url="${2:-"https://registry.npmjs.org/"}"
+    local _tmpdir="$(mktemp -d)" || return $?
+    cd "${_tmpdir}" || return $?
     cat << EOF > ./package.json
 {
-  "name": "${_name}",
-  "version": "${_ver}",
+  "name": "iq-npm-scan-demo",
+  "version": "0.0.1",
   "description": "",
   "main": "index.js",
   "scripts": {
@@ -481,74 +488,21 @@ function f_gen_npm_dummy_meta() {
   },
   "keywords": [],
   "author": "",
-  "dependencies" : {
-    "lodash": "4.17.4",
-    "on-finished": "2.3.0"
-  },
+  "dependencies" : ${_deps_json},
   "license": "ISC"
 }
 EOF
-    echo "npm install --package-lock-only" >&2
-    cat << EOF > ./package-lock.json
-{
-  "name": "${_name}",
-  "version": "${_ver}",
-  "lockfileVersion": 2,
-  "requires": true,
-  "packages": {
-    "": {
-      "version": "1.0.0",
-      "license": "ISC",
-      "dependencies": {
-        "lodash": "4.17.4",
-        "on-finished": "2.3.0"
-      }
-    },
-    "node_modules/ee-first": {
-      "version": "1.1.1",
-      "resolved": "https://registry.npmjs.org/ee-first/-/ee-first-1.1.1.tgz",
-      "integrity": "sha512-WMwm9LhRUo+WUaRN+vRuETqG89IgZphVSNkdFgeb6sS/E4OrDIN7t48CAewSHXc6C8lefD8KKfr5vY61brQlow=="
-    },
-    "node_modules/lodash": {
-      "version": "4.17.4",
-      "resolved": "https://registry.npmjs.org/lodash/-/lodash-4.17.4.tgz",
-      "integrity": "sha512-6X37Sq9KCpLSXEh8uM12AKYlviHPNNk4RxiGBn4cmKGJinbXBneWIV7iE/nXkM928O7ytHcHb6+X6Svl0f4hXg=="
-    },
-    "node_modules/on-finished": {
-      "version": "2.3.0",
-      "resolved": "https://registry.npmjs.org/on-finished/-/on-finished-2.3.0.tgz",
-      "integrity": "sha512-ikqdkGAAyf/X/gPhXGvfgAytDZtDbr+bkNUJ0N9h5MI/dmdgCs3l6hoHrcUv41sRKew3jIwrp4qQDXiK99Utww==",
-      "dependencies": {
-        "ee-first": "1.1.1"
-      },
-      "engines": {
-        "node": ">= 0.8"
-      }
-    }
-  },
-  "dependencies": {
-    "ee-first": {
-      "version": "1.1.1",
-      "resolved": "https://registry.npmjs.org/ee-first/-/ee-first-1.1.1.tgz",
-      "integrity": "sha512-WMwm9LhRUo+WUaRN+vRuETqG89IgZphVSNkdFgeb6sS/E4OrDIN7t48CAewSHXc6C8lefD8KKfr5vY61brQlow=="
-    },
-    "lodash": {
-      "version": "4.17.4",
-      "resolved": "https://registry.npmjs.org/lodash/-/lodash-4.17.4.tgz",
-      "integrity": "sha512-6X37Sq9KCpLSXEh8uM12AKYlviHPNNk4RxiGBn4cmKGJinbXBneWIV7iE/nXkM928O7ytHcHb6+X6Svl0f4hXg=="
-    },
-    "on-finished": {
-      "version": "2.3.0",
-      "resolved": "https://registry.npmjs.org/on-finished/-/on-finished-2.3.0.tgz",
-      "integrity": "sha512-ikqdkGAAyf/X/gPhXGvfgAytDZtDbr+bkNUJ0N9h5MI/dmdgCs3l6hoHrcUv41sRKew3jIwrp4qQDXiK99Utww==",
-      "requires": {
-        "ee-first": "1.1.1"
-      }
-    }
-  }
+    if type npm &>/dev/null; then
+        npm install --package-lock-only --registry ${_remote_url%/} || return $?
+        _log "INFO" "Please scan ./package-lock.json and ./package.json"
+    else
+        _log "INFO" "Please install npm and run 'npm install --package-lock-only'"
+    fi
 }
-EOF
-    echo "Please scan ./package-lock.json and ./package.json"
+
+function f_gen_dummy_yum_txt() {
+    echo "expat.x86_64                   2.2.5-13.el8                 @nexusiq-test" > ./yum-packages.txt
+    echo "expat.x86_64                   2.5.0-2.el9                  @nexusiq-test" >> ./yum-packages.txt
 }
 
 function _apiS() {
