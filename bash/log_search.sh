@@ -1039,11 +1039,22 @@ function f_wrapper2threads() {
 function f_splitScriptLog() {
     local _script_log="$1"
     local _full_split="$2"
-    sed -n "/^20[0-9][0-9]-[0-9][0-9]-[0-9][0-9]/,\$p" "${_script_log}" > ./threads.raw
-    if [ -s ./threads.raw ]; then
-        cat ./threads.raw | python3 -c "import sys,html,re;rx=re.compile(r\"<[^>]+>\");print(html.unescape(rx.sub(\"\",sys.stdin.read())))" > threads.txt && rm -f ./threads.raw
+    if head -n1 "${_script_log}" | rg -q '^20[0-9][0-9]-[0-9][0-9]-[0-9][0-9]'; then
+        HTML_REMOVE=Y echolines ${_script_log} "^\d\d\d\d-\d\d-\d\d \d\d:\d\d:\d\d$" "" ./_tmp_script_log
+        ls -1 _tmp_script_log/* | while read _f; do
+            local _prefix=$(basename ${_f})
+            sed -n "/^top - /q;p" "${_f}" > ./${_prefix}_threads.txt
+            sed -n "/^top - /,\$p" "${_script_log}" > ./${_prefix}_tops_netstats.txt
+        done
+    else
+        # Expecting threads are end of the file
+        sed -n "/^20[0-9][0-9]-[0-9][0-9]-[0-9][0-9]/,\$p" "${_script_log}" > ./threads.raw
+        sed -n "/^20[0-9][0-9]-[0-9][0-9]-[0-9][0-9]/q;p" "${_script_log}" > ./tops_netstats.txt
+
+        if [ -s ./threads.raw ]; then
+            cat ./threads.raw | python3 -c "import sys,html,re;rx=re.compile(r\"<[^>]+>\");print(html.unescape(rx.sub(\"\",sys.stdin.read())))" > threads.txt && rm -f ./threads.raw
+        fi
     fi
-    sed -n "/^20[0-9][0-9]-[0-9][0-9]-[0-9][0-9]/q;p" "${_script_log}" > ./tops_netstats.txt
     if [[ "${_full_split}" =~ [yY] ]]; then
         [ -s ./threads.txt ] && f_threads ./threads.txt
         if [ -s ./tops_netstats.txt ]; then
@@ -1105,14 +1116,17 @@ function f_threads() {
     fi
 
     [ ! -d "${_save_dir%/}" ] && mkdir -p ${_save_dir%/}
-    local _tmp_dir="$(mktemp -d)"
+    local _tmp_dir="./threads_per_datetime"
 
     if [ -f "${_file}" ] && [[ ! "${_not_split_by_date}" =~ ^(y|Y) ]]; then
         local _how_many_threads=$(rg '^20\d\d-\d\d-\d\d \d\d:\d\d:\d\d' -c ${_file})
         echo "## Found ${_how_many_threads} threads from ${_file}"
         if [ 1 -lt ${_how_many_threads:-0} ]; then
-            echo "## Check if 'Heap' information exists"
+            echo "## Check if any 'Heap' information exists"
             rg '^Heap' -A8 ${_file} | rg '(total|\d\d+% used)'    # % didn't work with G1GC
+            echo " "
+            echo "## Check if any 'deadlock' information exists"
+            rg -i 'deadlock' ${_file}
             echo " "
 
             f_splitByRegex "${_file}" "^20\d\d-\d\d-\d\d \d\d:\d\d:\d\d" "${_tmp_dir%/}" "" || return $?
@@ -1122,7 +1136,7 @@ function f_threads() {
 
     if [ -d "${_file}" ]; then
         local _count=0
-        # _count doesn't work with while
+        # _count doesn't work with 'while'
         #find ${_file%/} -type f -name 'threads*.txt' 2>/dev/null | while read -r _f; do
         for _f in $(find ${_file%/} -type f \( -name "${_thread_file_glob}" -o -name '20*.out' \) -print 2>/dev/null | sort -n); do
             local _filename=$(basename ${_f})
@@ -1162,6 +1176,10 @@ function f_threads() {
     echo "WAITING: $(rg '\bQueuedThreadPool.*\.run' ${_save_dir%/}/ -l -g '*WAITING*' -g '*waiting*' | wc -l)"
     echo " "
 
+    echo "## 'deadlock'"
+    rg -i -w 'deadlock' ${_save_dir%/}/ -m1 --no-filename | sort | uniq -c
+    echo " "
+
     echo "## Counting 'Pool.acquire' for DB pool"
     rg -i 'Pool\.acquire\b' ${_save_dir%/}/ -m1 --no-filename | sort | uniq -c
     echo " "
@@ -1185,7 +1203,7 @@ function f_threads() {
     #echo " "
 
     echo "## Counting 'waiting to lock|waiting on|waiting to lock' etc. basically hung processes (excluding smaller than 2k size threads, 'parking to wait for' and 'None', and top 20)"
-    rg '^\s+\- [^<]' --no-filename `find ${_save_dir%/} -type f -size +2k` | rg -v '(- locked|- None|parking to wait for)' | sort | uniq -c | sort -nr | tee ${_tmp_dir%/}/f_threads_$$_waiting_counts.out | head -n 20
+    rg '^\s+\- [^<]' --no-filename `find ${_save_dir%/} -type f -size +2k` | rg -v '(- locked|- None|parking to wait for)' | sort | uniq -c | sort -nr | tee /tmp/f_threads_$$_waiting_counts.out | head -n 20
     echo " "
 
     echo "## Checking 'parking to wait for' qtp threads, because it may indicate the pool exhaustion issue (eg:NEXUS-17896 / NEXUS-10372) (excluding smaller than 2k size threads)"
@@ -1194,8 +1212,8 @@ function f_threads() {
     # NOTE: probably java.util.concurrent.SynchronousQueue can be ignored
     echo " "
 
-    # At least more than 5 waiting:
-    local _most_waiting="$(rg -m 1 '^\s*([5-9]|\d\d+)\s+.+(0x[0-9a-f]+)' -o -r '$2' ${_tmp_dir%/}/f_threads_$$_waiting_counts.out)"
+    # At least more than 5 waiting. waiting_counts.out can be empty
+    local _most_waiting="$(rg -m 1 '^\s*([5-9]|\d\d+)\s+.+(0x[0-9a-f]+)' -o -r '$2' /tmp/f_threads_$$_waiting_counts.out 2>/dev/null)"
     if [ -n "${_most_waiting}" ]; then
         echo "## Finding thread(s) locked '${_most_waiting}' (excluding smaller than 2k size threads)"
         # I was doing 'rg ... `find ...` | xargs', but when find is empty, rg checks everything, so below is not efficient but safer
@@ -1253,7 +1271,7 @@ function f_threads() {
     echo "### Counting thread states"
     _thread_state_sum "${_file}"
 
-    echo "### _threads_extra_check"
+    echo "### _threads_extra_check (product specific issues)"
     _threads_extra_check "${_file}"
 }
 function f_analyse_multiple_dumps() {
@@ -1360,7 +1378,7 @@ function _threads_extra_check() {
     if [ ! -f "${_file}" ]; then
         _file="--no-filename -g \"${_file}\""
     fi
-    rg '(DefaultTimelineIndexer|content_digest|findAssetByContentDigest|touchItemLastRequested|preClose0|sun\.security\.util\.MemoryCache|java\.lang\.Class\.forName|CachingDateFormatter|metrics\.health\.HealthCheck\.execute|WeakHashMap|userId\.toLowerCase|MessageDigest|UploadManagerImpl\.startUpload|UploadManagerImpl\.blobsByName|maybeTrimRepositories|getQuarantinedVersions|nonCatalogedVersions|getProxyDownloadNumbers|RepositoryManagerImpl.retrieveConfigurationByName|\.StorageFacetManagerImpl\.|OTransactionRealAbstract\.isIndexKeyMayDependOnRid|AptFacetImpl.put|componentMetadata|ensureGetUpload|OrientCommonQueryDataService|getWaivedFixed|AbstractOperationalSqlDAO\.getAll|NewestRiskService|acquireLock)' ${_file} | sort | uniq -c > /tmp/$FUNCNAME_$$.out || return $?
+    rg '(DefaultTimelineIndexer|content_digest|findAssetByContentDigest|touchItemLastRequested|preClose0|sun\.security\.util\.MemoryCache|java\.lang\.Class\.forName|CachingDateFormatter|metrics\.health\.HealthCheck\.execute|WeakHashMap|userId\.toLowerCase|MessageDigest|UploadManagerImpl\.startUpload|UploadManagerImpl\.blobsByName|maybeTrimRepositories|getQuarantinedVersions|nonCatalogedVersions|getProxyDownloadNumbers|RepositoryManagerImpl.retrieveConfigurationByName|\.StorageFacetManagerImpl\.|OTransactionRealAbstract\.isIndexKeyMayDependOnRid|AptFacetImpl.put|componentMetadata|ensureGetUpload|OrientCommonQueryDataService|getWaivedFixed|AbstractOperationalSqlDAO\.getAll|NewestRiskService|acquireLock|com\.sonatype\.insight\.brain\.dataaccess\.policy\.PolicyViolationDAO\.getUnfixed)' ${_file} | sort | uniq -c > /tmp/$FUNCNAME_$$.out || return $?
     if [ -s /tmp/$FUNCNAME_$$.out ]; then
         echo "## Counting:"
         echo "##    'DefaultTimelineIndexer' for NXRM2 System Feeds: timeline-plugin,"
@@ -1389,6 +1407,7 @@ function _threads_extra_check() {
         echo "##    'OrientCommonQueryDataService' NEXUS-41312"
         echo "##    'getWaivedFixed' CLM-29328"
         echo "##    'AbstractOperationalSqlDAO.getAll' CLM-29339"
+        echo "##    'getUnfixed' CLM-31559"
         echo "##    'NewestRiskService' dashboard/policy/newestRisks"
         echo "##    'acquireLock' SELECT * FROM insight_brain_ods.lock WHERE lock_id = \$1 FOR UPDATE"
         cat /tmp/$FUNCNAME_$$.out
