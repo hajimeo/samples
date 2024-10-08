@@ -857,10 +857,11 @@ function backupC() {
         if type gdu &>/dev/null; then
             gdu -Shx ${_src} | sort -h | tail -n40
         else
-            echo "#mdfind 'kMDItemFSSize > 209715200 && kMDItemContentModificationDate < \$time.now(-2419200)' | LC_ALL=C sort" >&2   # -onlyin "${_src}"
+            echo "# mdfind 'kMDItemFSSize > 209715200 && kMDItemContentModificationDate < \$time.now(-2419200)' | LC_ALL=C sort" >&2   # -onlyin "${_src}"
             mdfind 'kMDItemFSSize > 209715200 && kMDItemContentModificationDate < $time.now(-2419200)' | LC_ALL=C sort | rg -v -w 'cases_local' | while read -r _l;do ls -lh "${_l}"; done | sort -k5 -h | tail -n40
         fi
     else
+        echo "# du -Shx ${_src} | sort -h | tail -n40" >&2
         du -Shx ${_src} | sort -h | tail -n40
     fi
     # Currently updatedb may not index external drive (maybe because exFat?)
