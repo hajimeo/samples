@@ -286,7 +286,7 @@ function _postgresql_create_dbuser() {
     _postgresql_create_role_and_db "${_dbusr}" "${_dbpwd}" "${_dbname}" "${_schema}" "${_DB_ADMIN}" "${_port}" "${_force}"
 }
 
-function _update_pb_hba_conf() {
+function _update_pg_hba_conf() {
     local _dbusr="${1}"
     local _dbname="${2}"    # accept "" (empty string), then 'all' database is allowed
     local _pg_hba_conf="$(_psql_adm "SHOW hba_file" "-tA")"
