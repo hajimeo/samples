@@ -2898,10 +2898,11 @@ function f_delete_all_assets() {
 }
 
 # 1. Create a new raw-test-hosted repo from Web UI (or API)
+#   f_api "/service/rest/v1/repositories/raw/hosted" '{"name":"raw-test-hosted","online":true,"storage":{"blobStoreName":"default","strictContentTypeValidation":false,"writePolicy":"ALLOW"}}'
 # 2. curl -D- -u "admin:admin123" -T<(echo "test for f_staging_move") -L -k "${_NEXUS_URL%/}/repository/raw-hosted/test/nxrm3Staging.txt"
-# 3. f_staging_move "raw-test-hosted" "raw-test-tag" "repository=raw-hosted&name=*test/nxrm3Staging.txt"
+# 3. f_staging_move "raw-test-hosted" "raw-test-tag" "repository=raw-hosted&name=*test/nxrm3Staging*.txt"
 # ^ Tag is optional. Using "*" in name= as name|path in NewDB starts with "/"
-# 4. f_staging_move "raw-hosted" "raw-test-tag" "repository=raw-test-hosted&name=*test/nxrm3Staging.txt"
+# 4. f_staging_move "raw-hosted" "raw-test-tag" "repository=raw-test-hosted&name=*test/nxrm3Staging*.txt"
 # With maven2:
 #   export _NEXUS_URL="https://nxrm3ha-k8s.standalone.localdomain/"
 #   f_upload_dummies_maven "maven-hosted" "" "" "com.example" "my-app-staging"
