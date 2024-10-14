@@ -8,7 +8,7 @@ _CMD_PREFIX="${_CMD_PREFIX:-""}"  # "docker exec -ti name" or "ssh postgres@host
 function _as_dbadmin() {
     if [ -n "${_CMD_PREFIX}" ]; then
         ${_CMD_PREFIX} "$@"
-    elif [ -n "${_DB_ADMIN}" ]; then
+    elif [ -n "${_DB_ADMIN}" ] && [ "${_DB_ADMIN}" != "${USER}" ] && id "${_DB_ADMIN}" &>/dev/null; then
         # TODO: need -i?
         sudo -u ${_DB_ADMIN} "$@"
     else
