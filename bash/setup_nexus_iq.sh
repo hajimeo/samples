@@ -124,7 +124,8 @@ function f_install_iq() {
         _RECREATE_DB="Y"
     fi
 
-    _prepare_install "${_dirpath}" "https://download.sonatype.com/clm/server/nexus-iq-server-${_ver}-bundle.tar.gz" "${r_NEXUS_LICENSE_FILE}" || return $?
+    # This function sets _LICENSE_PATH
+    _prepare_install "${_dirpath}" "https://download.sonatype.com/clm/server/nexus-iq-server-${_ver}-bundle.tar.gz" || return $?
     local _license_path="${_LICENSE_PATH}"
 
     local _jar_file="$(find ${_dirpath%/} -maxdepth 2 -type f -name 'nexus-iq-server*.jar' 2>/dev/null | sort | tail -n1)"
@@ -216,10 +217,11 @@ if 'id' in a:
 function f_api_appIntId() {
     local __doc__="Get application Internal ID from /api/v2/applications?publicId=\${_app_pub_id}"
     local _app_pub_id="${1}"
-    _curl "${_IQ_URL%/}/api/v2/applications" --get --data-urlencode "publicId=${_app_pub_id}" | python -c "import sys,json
-a=json.loads(sys.stdin.read())
-if len(a['applications']) > 0:
-    print(a['applications'][0]['id'])"
+    if [ -n "${_app_pub_id}" ]; then
+        _curl "${_IQ_URL%/}/api/v2/applications" --get --data-urlencode "publicId=${_app_pub_id}" | JSON_SEARCH_KEY="applications.id" _sortjson
+    else
+        _curl "${_IQ_URL%/}/api/v2/applications" | JSON_SEARCH_KEY="applications" _sortjson | JSON_SEARCH_KEY="id,publicId" _sortjson
+    fi
 }
 
 function f_api_create_app() {
@@ -371,16 +373,18 @@ Also update _IQ_URL. For example: export _IQ_URL=\"https://${_fqdn}:${_port}/\""
 }
 
 
-# Setup Org only: f_setup_scm "_token"
-# Setup Org&app : f_setup_scm "_token" "github" "https://github.com/hajimeo/private-repo"
+#   export GIT_TOKEN="*******************"
+# Setup Org only: f_setup_scm
+# Setup Org&app : f_setup_scm "https://github.com/hajimeo/private-repo" "github"
+# Setup Org&app : f_setup_scm "https://gitlab.com/emijah/private-repo.git" "gitlab" "gitlab" "master"
 #  vs. CLI scan : iqCli . "private-repo" "source"
 function f_setup_scm() {
     local __doc__="Setup IQ SCM"
     local _git_url="${1}"   # https://github.com/sonatype/support-apac-scm-test https://github.com/hajimeo/private-repo
     local _org_name="${2}"
-    local _token="${3:-"${GITHUB_TOKEN}"}"
-    local _provider="${4:-"github"}"
-    local _branch="${5:-"main"}"
+    local _provider="${3:-"github"}"
+    local _branch="${4:-"main"}"
+    local _token="${5:-"${GIT_TOKEN}"}"
     [ -z "${_org_name}" ] && _org_name="${_provider}_org"
 
     #echo "Current SCM configuration:"
@@ -406,7 +410,7 @@ function f_setup_scm() {
     fi
     # https://help.sonatype.com/iqserver/automating/rest-apis/source-control-rest-api---v2
     # NOTE: It seems the remediationPullRequestsEnabled is false for default
-    echo 'Setting "remediationPullRequestsEnabled":true,"statusChecksEnabled":true,"pullRequestCommentingEnabled":true,"sourceControlEvaluationsEnabled":true ...'
+    _log "INFO" 'Updating organization: '${_org_int_id}' with "remediationPullRequestsEnabled":true,"statusChecksEnabled":true,"pullRequestCommentingEnabled":true,"sourceControlEvaluationsEnabled":true ...'
     _curl "${_IQ_URL%/}/api/v2/sourceControl/organization/${_org_int_id}" -H "Content-Type: application/json" -d '{"token":"'${_token}'","provider":"'${_provider}'","baseBranch":"'${_branch}'","remediationPullRequestsEnabled":true,"statusChecksEnabled":true,"pullRequestCommentingEnabled":true,"sourceControlEvaluationsEnabled":true}' &> /tmp/${FUNCNAME[0]}_$$.tmp #|| return $?
     # 400 SourceControl already exists for organization with id: ...
 
@@ -415,9 +419,11 @@ function f_setup_scm() {
         f_api_create_app "${_app_pub_id}" "${_org_name}" &>/dev/null
         local _app_int_id="$(f_api_appIntId "${_app_pub_id}" "${_org_name}")" || return $?
         [ -n "${_app_int_id}" ] || return 12
-        _curl "${_IQ_URL%/}/api/v2/sourceControl/application/${_app_int_id}" -H "Content-Type: application/json" -d '{"remediationPullRequestsEnabled":true,"statusChecksEnabled":true,"pullRequestCommentingEnabled":true,"sourceControlEvaluationsEnabled":true,"baseBranch":"'${_branch}'","repositoryUrl":"'${_git_url}'"}' | python -m json.tool #|| return $?
         # 400 SourceControl already exists for application with id: ...
-        echo "TODO: If application is manually created like this, may need to scan this repository with 'source' stage"
+        _curl "${_IQ_URL%/}/api/v2/sourceControl/application/${_app_int_id}" -H "Content-Type: application/json" -d '{"remediationPullRequestsEnabled":true,"statusChecksEnabled":true,"pullRequestCommentingEnabled":true,"sourceControlEvaluationsEnabled":true,"baseBranch":"'${_branch}'","repositoryUrl":"'${_git_url}'"}' &> /tmp/${FUNCNAME[0]}_2_$$.tmp #|| return $?
+        _log "INFO" "If application is manually created like this, may need to scan this repository with 'source' stage, so starting ..."
+        _curl "${_IQ_URL%/}/api/v2/evaluation/applications/${_app_int_id}/sourceControlEvaluation" -H "Content-Type: application/json" -d '{"stageId":"source","branchName":"'${_branch}'"}' | _sortjson
+        echo "NOTE: if you face some strange SCM issue, try restarting IQ service."
     fi
 }
 
@@ -460,18 +466,57 @@ function f_setup_scm_for_bitbucket() {
 EOF
 }
 
-function f_get_maven_demo_jar() {
+function f_prep_maven_jar_for_scan() {
     local __doc__="Download a demo jar file for Maven scan"
     local _ver="${1:-"1.1.0"}"
     local _remote_url="${2:-"https://repo1.maven.org/maven2/"}"
+    local _tmpdir="$(mktemp -d)" || return $?
+    cd "${_tmpdir}" || return $?
     if [ ! -s "./maven-policy-demo-${_ver}.jar" ]; then
         curl -sSf -O "${_remote_url%/}/org/sonatype/maven-policy-demo/${_ver}/maven-policy-demo-${_ver}.jar" || return $?
     fi
-    _log "INFO" "Please scan ./maven-policy-demo-${_ver}.jar"
 }
 
-#f_gen_dummy_npm_meta '{"@nestjs/cli": "^9.3.0"}'
-function f_gen_dummy_npm_meta() {
+function f_prep_maven_pom_for_scan() {
+    local __doc__="TODO: generate a pom.xml with dependencies for Maven scan"
+    local _tmpdir="$(mktemp -d)" || return $?
+    cd "${_tmpdir}" || return $?
+    # https://help.sonatype.com/en/java-application-analysis.html#example--pom-xml
+    # Does the pom.xml require `dependencyManagement`?
+    cat << 'EOF' > ./pom.xml
+<project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+   <modelVersion>4.0.0</modelVersion>
+   <groupId>org.example</groupId>
+   <artifactId>ACME-Consumer</artifactId>
+   <packaging>pom</packaging>
+   <version>1.0-SNAPSHOT</version>
+   <modules>
+      <module>Consumer-Service</module>
+      <module>Consumer-Data</module>
+   </modules>
+   <properties>
+      <commons.version>2.6</commons.version>
+   </properties>
+   <dependencyManagement>
+      <dependencies>
+         <dependency>
+            <groupId>commons-io</groupId>
+            <artifactId>commons-io</artifactId>
+            <version>${commons.version}</version>
+         </dependency>
+         <dependency>
+            <groupId>org.example</groupId>
+            <artifactId>ACME-data</artifactId>
+            <version>1.0-SNAPSHOT</version>
+         </dependency>
+      </dependencies>
+   </dependencyManagement>
+</project>
+EOF
+}
+
+#f_prep_dummy_npm_meta '{"@nestjs/cli": "^9.3.0"}'
+function f_prep_npm_meta_for_scan() {
     local __doc__="Generate a dummy package.json for NPM scan"
     local _deps_json="${1:-"{\"lodash\":\"4.17.4\"}"}"
     local _remote_url="${2:-"https://registry.npmjs.org/"}"
@@ -500,7 +545,9 @@ EOF
     fi
 }
 
-function f_gen_dummy_yum_txt() {
+function f_prep_yum_meta_for_scan() {
+    local _tmpdir="$(mktemp -d)" || return $?
+    cd "${_tmpdir}" || return $?
     echo "expat.x86_64                   2.2.5-13.el8                 @nexusiq-test" > ./yum-packages.txt
     echo "expat.x86_64                   2.5.0-2.el9                  @nexusiq-test" >> ./yum-packages.txt
 }
@@ -527,6 +574,102 @@ function _apiS() {
     fi
     eval ${_cmd}
 }
+
+# In case _IQ_URL is not specified, check my test servers
+function _get_iq_url() {
+    local _iq_url="${1-${_IQ_URL}}"
+    if [ -n "${_iq_url%/}" ]; then
+        if [[ ! "${_iq_url}" =~ ^https?://.+ ]]; then
+            if [[ ! "${_iq_url}" =~ .+:[0-9]+ ]]; then   # Provided hostname only
+                _iq_url="http://${_iq_url%/}:8070/"
+            else
+                _iq_url="http://${_iq_url%/}/"
+            fi
+        fi
+        if curl -m1 -f -s -I "${_url%/}/" &>/dev/null; then
+            echo "${_url%/}/"
+            return
+        fi
+    fi
+    for _url in "http://localhost:8070/" "https://nxiqha-k8s.standalone.localdomain/" "http://dh1:8070/"; do
+        if curl -m1 -f -s -I "${_url%/}/" &>/dev/null; then
+            echo "${_url%/}/"
+            return
+        fi
+    done
+    return 1
+}
+
+#JAVA_TOOL_OPTIONS="-agentlib:jdwp=transport=dt_socket,server=y,suspend=y,address=5007" f_cli
+#iqCli "container:amazonlinux:2023"
+function f_cli() {
+    local __doc__="Start IQ CLI https://help.sonatype.com/integrations/nexus-iq-cli#NexusIQCLI-Parameters"
+    local _path="${1:-"./"}"
+    # overwrite-able global variables
+    local _iq_app_id="${2:-${_IQ_APP_ID:-"sandbox-application"}}"
+    local _iq_stage="${3:-${_IQ_STAGE:-"build"}}" #develop|build|stage-release|release|operate
+    local _iq_url="${4:-${_IQ_URL}}"
+    local _iq_cli_ver="${5:-${_IQ_CLI_VER}}"
+    local _iq_cli_opt="${6:-${_IQ_CLI_OPT}}"    # -D fileIncludes="**/package-lock.json"
+    local _iq_cred="${7:-${_IQ_CRED:-"${_ADMIN_USER}:${_ADMIN_PWD}"}}"
+
+    _iq_url="$(_get_iq_url "${_iq_url}")" || return $?
+        if [ -z "${_iq_cli_ver}" ]; then
+        _iq_cli_ver="$(curl -m3 -sf "${_iq_url%/}/rest/product/version" | python -c "import sys,json;a=json.loads(sys.stdin.read());print(a['version'])")"
+    fi
+
+    local _iq_cli_jar="${_IQ_CLI_JAR:-"$HOME/.nexus_executable_cache/nexus-iq-cli-${_iq_cli_ver}.jar"}"
+    if [ ! -s "${_iq_cli_jar}" ]; then
+        #local _tmp_iq_cli_jar="$(find ${_WORK_DIR%/}/sonatype -name 'nexus-iq-cli*.jar' 2>/dev/null | sort -r | head -n1)"
+        local _cli_dir="$(dirname "${_iq_cli_jar}")"
+        [ ! -d "${_cli_dir}" ] && mkdir -p "${_cli_dir}"
+        if [ -s "$HOME/.nexus_executable_cache/nexus-iq-server-${_iq_cli_ver}-bundle.tar.gz" ]; then
+            tar -xvf $HOME/.nexus_executable_cache/nexus-iq-server-${_iq_cli_ver}-bundle.tar.gz -C "${_cli_dir}" nexus-iq-cli-${_iq_cli_ver}.jar || return $?
+        else
+            curl -f -L "https://download.sonatype.com/clm/scanner/nexus-iq-cli-${_iq_cli_ver}.jar" -o "${_iq_cli_jar}" || return $?
+        fi
+    fi
+    local _java="java"
+    if [[ "${_iq_cli_ver}" =~ ^1\.1[89] ]] && [ -n "${JAVA_HOME_17}" ]; then
+        _java="${JAVA_HOME_17%/}/bin/java"
+    fi
+    # NOTE: -X/--debug outputs to STDOUT
+    #       Mac uses "TMPDIR" (and can't change), which is like java.io.tmpdir = /var/folders/ct/cc2rqp055svfq_cfsbvqpd1w0000gn/T/ + nexus-iq
+    #       Newer IQ CLI removes scan-6947340794864341803.xml.gz (if no -k), so no point of changing the tmpdir...
+    # -D includeSha256=true is for BFS
+    local _cmd="${_java} -jar ${_iq_cli_jar} ${_iq_cli_opt} -s ${_iq_url} -a \"${_iq_cred}\" -i ${_iq_app_id} -t ${_iq_stage} -D includeSha256=true -r ./iq_result_$$.json -k -X ${_path}"
+    echo "[$(date +'%Y-%m-%d %H:%M:%S')] Executing: ${_cmd} | tee ./iq_cli_$$.out" >&2
+    eval "${_cmd} | tee ./iq_cli_$$.out"
+    echo "[$(date +'%Y-%m-%d %H:%M:%S')] Completed ($?)." >&2
+    local _scanId="$(rg -m1 '"reportDataUrl"\s*:\s*".+/([0-9a-f]{32})/.*"' -o -r '$1' ./iq_result_$$.json)"
+    if [ -n "${_scanId}" ]; then
+        _cmd="curl -sf -u \"${_iq_cred}\" ${_iq_url%/}/api/v2/applications/${_iq_app_id}/reports/${_scanId}/raw | python -m json.tool > ./iq_raw_$$.json"
+        echo "[$(date +'%Y-%m-%d %H:%M:%S')] Executing: ${_cmd}" >&2
+        eval "${_cmd}"
+    fi
+}
+
+function f_mvn() {
+    local __doc__="Start mvn with IQ plugin https://help.sonatype.com/display/NXI/Sonatype+CLM+for+Maven"
+    # overwrite-able global variables
+    local _iq_app_id="${1:-${_IQ_APP_ID:-"sandbox-application"}}"
+    local _iq_stage="${2:-${_IQ_STAGE:-"build"}}" #develop|build|stage-release|release|operate
+    local _iq_url="${3:-${_IQ_URL}}"
+    local _file="${4:-"."}"
+    local _mvn_opts="${5:-"-X"}"    # no -U
+    #local _iq_tmp="${_IQ_TMP:-"./iq-tmp"}" # does not generate anything
+
+    local _iq_mvn_ver="${_IQ_MVN_VER}"  # empty = latest
+    [ -n "${_iq_mvn_ver}" ] && _iq_mvn_ver=":${_iq_mvn_ver}"
+    _iq_url="$(_get_iq_url "${_iq_url}")" || return $?
+
+    #clm-maven-plugin:2.30.2-01:index | com.sonatype.clm:clm-maven-plugin:index to generate module.xml file
+    local _cmd="mvn -f ${_file} com.sonatype.clm:clm-maven-plugin${_iq_mvn_ver}:evaluate -Dclm.serverUrl=${_iq_url} -Dclm.applicationId=${_iq_app_id} -Dclm.stage=${_iq_stage} -Dclm.username=admin -Dclm.password=admin123 -Dclm.resultFile=iq_result.json -Dclm.scan.dirExcludes=\"**/BOOT-INF/lib/**\" ${_mvn_opts}"
+    echo "[$(date +'%Y-%m-%d %H:%M:%S')] Executing: ${_cmd}" >&2
+    eval "${_cmd}"
+    echo "[$(date +'%Y-%m-%d %H:%M:%S')] Completed." >&2
+}
+
 
 ### Main #######################################################################################################
 main() {
