@@ -12,7 +12,7 @@ import (
 )
 
 var Debug bool
-var Debug2 bool
+var Debug2 bool // For AWS SDK
 
 //var DryRun bool
 

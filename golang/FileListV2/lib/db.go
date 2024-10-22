@@ -39,7 +39,7 @@ func GenDbConnStrFromFile(filePath string) string {
 
 func OpenDb(dbConnStr string) *sql.DB {
 	if len(dbConnStr) == 0 {
-		h.Log("DEBUG2", "Empty DB connection string")
+		h.Log("DEBUG", "Empty DB connection string")
 		return nil
 	}
 	if !strings.Contains(dbConnStr, "sslmode") {

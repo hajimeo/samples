@@ -1,4 +1,4 @@
-package lib
+package bs_clients
 
 import (
 	"FileListV2/common"

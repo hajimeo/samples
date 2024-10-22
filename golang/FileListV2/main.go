@@ -27,48 +27,48 @@ func usage() {
 List .properties and .bytes files as *Tab* Separated Values (Path LastModified Size).
     
 HOW TO and USAGE EXAMPLES:
-    https://github.com/hajimeo/samples/blob/master/golang/FileList2/README.md`)
+    https://github.com/hajimeo/samples/blob/master/golang/FileListV2/README.md`)
 	fmt.Println("")
 }
 
 // Populate all global variables
 func setGlobals() {
-	h.Log("DEBUG", "Starting setGlobals for "+strings.Join(os.Args[1:], " "))
 	common.StartTimestamp = time.Now().Unix()
-	common.BaseDir = *flag.String("b", ".", "Blob store directory or URI (eg. 's3://s3-test-bucket/s3-test-prefix/'), which location contains 'content' directory (default: '.')")
-	common.Filter4Path = *flag.String("p", "", "Filter for directory / file *path* (eg 'vol-'), or S3 prefix.")
-	common.Filter4FileName = *flag.String("f", "", "Filter for the file *name* (eg: '.properties' to include only this extension)")
-	common.WithProps = *flag.Bool("P", false, "If true, the .properties file content is included in the output")
-	common.Filter4PropsIncl = *flag.String("pRx", "", "Filter for the content of the .properties files (eg: 'deleted=true')")
-	common.Filter4PropsExcl = *flag.String("pRxNot", "", "Excluding Filter for .properties (eg: 'BlobStore.blob-name=.+/maven-metadata.xml.*')")
-	//common.WithBlobSize = *flag.Bool("BSize", false, "If true, includes .bytes size (When -f is '.properties')")
-	common.SaveToFile = *flag.String("s", "", "Save the output (TSV text) into the specified path")
-	common.TopN = *flag.Int64("n", 0, "Return first N lines (0 = no limit). (TODO: may return more than N)")
-	common.Conc1 = *flag.Int("c", 1, "Concurrent number for reading directories")
-	common.Conc2 = *flag.Int("c2", 8, "2nd Concurrent number. Currently used when retrieving AWS Tags")
-	common.NoHeader = *flag.Bool("H", false, "If true, no header line")
-	// Reconcile / orphaned blob finding related
-	common.Truth = *flag.String("src", "", "Using database or blobstore as source [BS|DB] (if Blob ID file is provided, DB conn is not required)")
-	common.DbConnStr = *flag.String("db", "", "DB connection string or path to DB connection properties file")
-	common.BlobIDFIle = *flag.String("rF", "", "file path to read the blob IDs")
-	common.BsName = *flag.String("bsName", "", "eg. 'default'. If provided, the SQL query will be faster. 3.47 and higher only")
-	common.RepoNames = *flag.String("repos", "", "Repository names. eg. 'maven-central,raw-hosted,npm-proxy', only with -src=DB")
-	common.RemoveDeleted = *flag.Bool("RDel", false, "TODO: Remove 'deleted=true' from .properties. Requires -dF")
-	common.DelFromDateStr = *flag.String("dF", "", "Deleted date YYYY-MM-DD (from). Used to search deletedDateTime")
-	common.DelToDateStr = *flag.String("dT", "", "Deleted date YYYY-MM-DD (to). To exclude newly deleted assets")
-	common.ModFromDateStr = *flag.String("mF", "", "File modification date YYYY-MM-DD (from). For DB, this is used against <format>_asset_blob.blob_created")
-	common.ModToDateStr = *flag.String("mT", "", "File modification date YYYY-MM-DD (to). For DB, this is used against <format>_asset_blob.blob_created")
-	// TODO: SizeFrom and SizeTo should be used for both .properties and .bytes
-	common.SizeFrom = *flag.Int("sF", -1, "Finding files which size is same or larger by checking actual file size")
-	common.SizeTo = *flag.Int("sT", -1, "Finding files which size is same or smaller by checking actual file size")
-	// AWS S3 / Azure related
-	common.MaxKeys = *flag.Int("m", 1000, "AWS S3: Integer value for Max Keys (<= 1000)")
-	common.WithOwner = *flag.Bool("O", false, "AWS S3: If true, get the owner display name")
-	common.WithTags = *flag.Bool("T", false, "AWS S3: If true, get tags of each object")
 
-	common.Debug = *flag.Bool("X", false, "If true, verbose logging")
-	common.Debug2 = *flag.Bool("XX", false, "If true, more verbose logging")
-	//common.DryRun = *flag.Bool("Dry", false, "If true, RDel does not do anything")	# No longer needed as -rF can be used
+	flag.StringVar(&common.BaseDir, "b", ".", "Blob store directory or URI (eg. 's3://s3-test-bucket/s3-test-prefix/'), which location contains 'content' directory (default: '.')")
+	flag.StringVar(&common.Filter4Path, "p", "", "Filter for directory / file *path* (eg 'vol-'), or S3 prefix.")
+	flag.StringVar(&common.Filter4FileName, "f", "", "Filter for the file *name* (eg: '.properties' to include only this extension)")
+	flag.BoolVar(&common.WithProps, "P", false, "If true, the .properties file content is included in the output")
+	flag.StringVar(&common.Filter4PropsIncl, "pRx", "", "Filter for the content of the .properties files (eg: 'deleted=true')")
+	flag.StringVar(&common.Filter4PropsExcl, "pRxNot", "", "Excluding Filter for .properties (eg: 'BlobStore.blob-name=.+/maven-metadata.xml.*')")
+	//flag.BoolVar(&common.WithBlobSize, "BSize", false, "If true, includes .bytes size (When -f is '.properties')")
+	flag.StringVar(&common.SaveToFile, "s", "", "Save the output (TSV text) into the specified path")
+	flag.Int64Var(&common.TopN, "n", 0, "Return first N lines (0 = no limit). (TODO: may return more than N)")
+	flag.IntVar(&common.Conc1, "c", 1, "Concurrent number for reading directories")
+	flag.IntVar(&common.Conc2, "c2", 8, "2nd Concurrent number. Currently used when retrieving AWS Tags")
+	flag.BoolVar(&common.NoHeader, "H", false, "If true, no header line")
+	// Reconcile / orphaned blob finding related
+	flag.StringVar(&common.Truth, "src", "", "Using database or blobstore as source [BS|DB] (if Blob ID file is provided, DB conn is not required)")
+	flag.StringVar(&common.DbConnStr, "db", "", "DB connection string or path to DB connection properties file")
+	flag.StringVar(&common.BlobIDFIle, "rF", "", "file path to read the blob IDs")
+	flag.StringVar(&common.BsName, "bsName", "", "eg. 'default'. If provided, the SQL query will be faster. 3.47 and higher only")
+	flag.StringVar(&common.RepoNames, "repos", "", "Repository names. eg. 'maven-central,raw-hosted,npm-proxy', only with -src=DB")
+	flag.BoolVar(&common.RemoveDeleted, "RDel", false, "TODO: Remove 'deleted=true' from .properties. Requires -dF")
+	flag.StringVar(&common.DelFromDateStr, "dF", "", "Deleted date YYYY-MM-DD (from). Used to search deletedDateTime")
+	flag.StringVar(&common.DelToDateStr, "dT", "", "Deleted date YYYY-MM-DD (to). To exclude newly deleted assets")
+	flag.StringVar(&common.ModFromDateStr, "mF", "", "File modification date YYYY-MM-DD (from). For DB, this is used against <format>_asset_blob.blob_created")
+	flag.StringVar(&common.ModToDateStr, "mT", "", "File modification date YYYY-MM-DD (to). For DB, this is used against <format>_asset_blob.blob_created")
+	// TODO: SizeFrom and SizeTo should be used for both .properties and .bytes
+	flag.IntVar(&common.SizeFrom, "sF", -1, "Finding files which size is same or larger by checking actual file size")
+	flag.IntVar(&common.SizeTo, "sT", -1, "Finding files which size is same or smaller by checking actual file size")
+	// AWS S3 / Azure related
+	flag.IntVar(&common.MaxKeys, "m", 1000, "AWS S3: Integer value for Max Keys (<= 1000)")
+	flag.BoolVar(&common.WithOwner, "O", false, "AWS S3: If true, get the owner display name")
+	flag.BoolVar(&common.WithTags, "T", false, "AWS S3: If true, get tags of each object")
+
+	flag.BoolVar(&common.Debug, "X", false, "If true, verbose logging")
+	flag.BoolVar(&common.Debug2, "XX", false, "If true, more verbose logging (currently only for AWS")
+	//flag.BoolVar(&common.DryRun, "Dry", false, "If true, RDel does not do anything")	# No longer needed as -rF can be used
 	flag.Parse()
 
 	if common.Debug2 {
@@ -77,9 +77,11 @@ func setGlobals() {
 	}
 	h.DEBUG = common.Debug
 
-	h.Log("INFO", "common.BaseDir = "+common.BaseDir)
+	h.Log("INFO", "Starting setGlobals for "+strings.Join(os.Args[1:], " "))
+
+	h.Log("DEBUG", "common.BaseDir = "+common.BaseDir)
 	common.BaseDir = h.AppendSlash(common.BaseDir)
-	h.Log("INFO", "common.BaseDir2 = "+common.BaseDir)
+	h.Log("DEBUG", "common.BaseDir2 = "+common.BaseDir)
 	common.BsType = lib.GetSchema(common.BaseDir)
 	h.Log("DEBUG", "common.BsType = "+common.BsType)
 	common.ContentPath = lib.GetContentPath(common.BaseDir)
@@ -224,32 +226,27 @@ func myHashCode(s string) int32 {
 func genBlobPath(blobId string, extension string) string {
 	// org.sonatype.nexus.blobstore.VolumeChapterLocationStrategy#location
 	// TODO: this will be changed in a newer version, with DB <format>_asset_blob.use_date_path flag
+	if len(blobId) == 0 {
+		h.Log("ERROR", "genBlobPath got empty blobId.")
+		return ""
+	}
 	hashInt := myHashCode(blobId)
 	vol := math.Abs(math.Mod(float64(hashInt), 43)) + 1
 	chap := math.Abs(math.Mod(float64(hashInt), 47)) + 1
 	return filepath.Join(fmt.Sprintf("vol-%02d", int(vol)), fmt.Sprintf("chap-%02d", int(chap)), blobId) + extension
 }
 
-type BlobInfo struct {
-	path     string
-	modTime  time.Time
-	size     int64
-	blobSize int64
-	owner    string
-	tags     map[string]string
-}
-
-func genOutput(path string, bi BlobInfo, db *sql.DB, client bs_clients.Client) string {
+func genOutput(path string, bi bs_clients.BlobInfo, db *sql.DB, client bs_clients.Client) string {
 	// Increment checked number counter synchronously
 	atomic.AddInt64(&common.CheckedNum, 1)
 
-	modTimestamp := bi.modTime.Unix()
+	modTimestamp := bi.ModTime.Unix()
 	if !isTsMSecBetweenTs(modTimestamp, common.ModFromDateTS, common.ModToDateTS) {
 		h.Log("DEBUG", fmt.Sprintf("path:%s modTime %d is outside of the range %d to %d", path, modTimestamp, common.ModFromDateTS, common.ModToDateTS))
 		return ""
 	}
 
-	output := fmt.Sprintf("%s%s%s%s%d", path, common.SEP, bi.modTime, common.SEP, bi.size)
+	output := fmt.Sprintf("%s%s%s%s%d", path, common.SEP, bi.ModTime, common.SEP, bi.Size)
 	// If .properties file is checked, depending on other flags, need to generate extra output
 	if isExtraInfoNeeded(path, modTimestamp) {
 		props := extraInfo(path, db, client)
@@ -261,7 +258,7 @@ func genOutput(path string, bi BlobInfo, db *sql.DB, client bs_clients.Client) s
 	// Updating counters before returning
 	if len(output) > 0 {
 		atomic.AddInt64(&common.PrintedNum, 1)
-		atomic.AddInt64(&common.TotalSize, bi.size+bi.blobSize)
+		atomic.AddInt64(&common.TotalSize, bi.Size+bi.BlobSize)
 	}
 	return output
 }
@@ -330,7 +327,7 @@ func genOutputFromProp(contents string) (string, error) {
 		if common.RxIncl.MatchString(sortedContents) {
 			return sortedContents, nil
 		} else {
-			h.Log("DEBUG2", fmt.Sprintf("Sorted content: '%s'", sortedContents))
+			//h.Log("DEBUG", fmt.Sprintf("Sorted content: '%s'", sortedContents))
 			return "", errors.New(fmt.Sprintf("Does NOT match with the regex: %s. Skipping.", common.RxIncl.String()))
 		}
 	}
@@ -395,9 +392,7 @@ func isBlobMissingInDB(contents string, blobId string, db *sql.DB) bool {
 	return false
 }
 
-func printLine(path interface{}, f interface{}, db *sql.DB) {
-	var blobInfo BlobInfo
-	// TODO: populate blobInfo from f
+func printLine(path interface{}, blobInfo bs_clients.BlobInfo, db *sql.DB) {
 	output := genOutput(path.(string), blobInfo, db, nil)
 	printOrSave(output)
 }
@@ -422,13 +417,13 @@ func listObjects(dir string, db *sql.DB, client bs_clients.Client) {
 
 func printObjectByBlobId(blobId string, db *sql.DB, client bs_clients.Client) {
 	if len(blobId) == 0 {
-		h.Log("DEBUG2", fmt.Sprintf("Empty blobId"))
+		h.Log("DEBUG", fmt.Sprintf("Empty blobId"))
 		return
 	}
 	path := h.AppendSlash(common.ContentPath) + genBlobPath(blobId, common.PROP_EXT)
 	h.Log("DEBUG", path)
-	var blobInfo BlobInfo
 	// TODO: populate blobInfo with client
+	var blobInfo bs_clients.BlobInfo
 	printLine(path, blobInfo, db)
 }
 
@@ -456,17 +451,17 @@ func runParallel(chunks [][]string, client bs_clients.Client, f func(string, *sq
 }
 
 func main() {
-	// Configure logging and common variables
-	log.SetFlags(log.Lmicroseconds)
 	if len(os.Args) == 1 || os.Args[1] == "-h" || os.Args[1] == "--help" {
 		usage()
 		setGlobals() // to show the flags
+		flag.PrintDefaults()
 		os.Exit(0)
 	}
+
+	// Configure logging and common variables
+	log.SetFlags(log.Lmicroseconds)
 	setGlobals()
-
 	printHeader()
-
 	client := getClient()
 
 	// If Truth is empty, just list the files

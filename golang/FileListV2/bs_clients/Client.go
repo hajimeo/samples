@@ -1,6 +1,9 @@
 package bs_clients
 
-import "database/sql"
+import (
+	"database/sql"
+	"time"
+)
 
 // Client : Like an OOP interface
 type Client interface {
@@ -10,5 +13,15 @@ type Client interface {
 	WriteToPath(string, string) error
 	RemoveDeleted(string, string) error
 	GetDirs(string, string, int) ([]string, error)
-	ListObjects(string, string, *sql.DB, func(interface{}, interface{}, *sql.DB)) int64
+	ListObjects(string, string, *sql.DB, func(interface{}, BlobInfo, *sql.DB)) int64
+	Convert2BlobInfo(interface{}) BlobInfo
+}
+
+type BlobInfo struct {
+	Path     string
+	ModTime  time.Time
+	Size     int64
+	BlobSize int64 // This is updated when .bytes is read
+	Owner    string
+	Tags     map[string]string
 }

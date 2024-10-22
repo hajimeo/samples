@@ -2,6 +2,7 @@ package bs_clients
 
 import (
 	"FileListV2/common"
+	"FileListV2/lib"
 	"database/sql"
 	"fmt"
 	h "github.com/hajimeo/samples/golang/helpers"
@@ -66,12 +67,14 @@ func (c *FileClient) GetDirs(baseDir string, pathFilter string, maxDepth int) ([
 		defer h.Elapsed(time.Now().UnixMilli(), "WARN  slow directory walk for "+baseDir, 1000)
 	}
 	var matchingDirs []string
-	// Just in case, remove the ending slash
 	filterRegex := regexp.MustCompile(pathFilter)
+	// Just in case, remove the ending slash
 	baseDir = strings.TrimSuffix(baseDir, string(filepath.Separator))
-	depth := 0
+	depth := strings.Count(baseDir, string(filepath.Separator))
+	realMaxDepth := maxDepth + depth
 
 	// Walk through the directory structure
+	h.Log("DEBUG", fmt.Sprintf("Walking directory: %s with pathFilter: %s", baseDir, pathFilter))
 	err := filepath.Walk(baseDir, func(path string, info os.FileInfo, err error) error {
 		if err != nil {
 			return err
@@ -80,10 +83,13 @@ func (c *FileClient) GetDirs(baseDir string, pathFilter string, maxDepth int) ([
 			if len(pathFilter) == 0 || filterRegex.MatchString(path) {
 				h.Log("DEBUG", fmt.Sprintf("Matching directory: %s (Depth: %d)\n", path, depth))
 				matchingDirs = append(matchingDirs, path)
+			} else {
+				h.Log("DEBUG", fmt.Sprintf("Not matching directory: %s (Depth: %d)\n", path, depth))
 			}
 			// Not sure if this is a good way to limit the depth
 			count := strings.Count(path, string(filepath.Separator))
-			if maxDepth > 0 && count > maxDepth {
+			if realMaxDepth > 0 && count > realMaxDepth {
+				h.Log("DEBUG", fmt.Sprintf("Reached to the max depth %d / %d (path: %s)\n", count, maxDepth, path))
 				return filepath.SkipDir
 			}
 		}
@@ -99,7 +105,21 @@ func (c *FileClient) GetDirs(baseDir string, pathFilter string, maxDepth int) ([
 	return matchingDirs, err
 }
 
-func (c *FileClient) ListObjects(baseDir string, fileFilter string, db *sql.DB, perLineFunc func(interface{}, interface{}, *sql.DB)) int64 {
+func (c *FileClient) Convert2BlobInfo(f interface{}) BlobInfo {
+	fileInfo := f.(os.FileInfo)
+	// Below is for Unix only. Windows causes "undefined: syscall.Stat_t"
+	// 	strconv.Itoa(int(fileInfo.Sys().(*syscall.Stat_t).Uid))
+	uid, gid := lib.GetXid(fileInfo)
+	blobInfo := BlobInfo{
+		Path:    fileInfo.Name(),
+		ModTime: fileInfo.ModTime(),
+		Size:    fileInfo.Size(),
+		Owner:   uid + ":" + gid,
+	}
+	return blobInfo
+}
+
+func (c *FileClient) ListObjects(baseDir string, fileFilter string, db *sql.DB, perLineFunc func(interface{}, BlobInfo, *sql.DB)) int64 {
 	// ListObjects: List all files in the baseDir directory. Include only common.Filter4FileName if set.
 	var subTtl int64
 	filterRegex := regexp.MustCompile(fileFilter)
@@ -112,7 +132,7 @@ func (c *FileClient) ListObjects(baseDir string, fileFilter string, db *sql.DB, 
 		if !f.IsDir() {
 			if len(fileFilter) == 0 || filterRegex.MatchString(f.Name()) {
 				subTtl++
-				perLineFunc(path, f.(os.FileInfo), db)
+				perLineFunc(path, c.Convert2BlobInfo(f), db)
 				if common.TopN > 0 && common.TopN <= common.PrintedNum {
 					h.Log("DEBUG", fmt.Sprintf("Printed %d >= %d", common.PrintedNum, common.TopN))
 					return io.EOF
