@@ -7,7 +7,6 @@ package common
 import (
 	"os"
 	"regexp"
-	"sync"
 	"time"
 )
 
@@ -68,7 +67,7 @@ var RxIncl *regexp.Regexp
 var RxExcl *regexp.Regexp
 var RxDeletedDT, _ = regexp.Compile("[^#]?deletedDateTime=([0-9]+)")
 var RxDeleted, _ = regexp.Compile("deleted=true") // should not use ^ as replacing one-line text
-var RxRepoName, _ = regexp.Compile("[^#]?@Bucket.repo-name=(.+)")
+// var RxRepoName, _ = regexp.Compile("[^#]?@Bucket.repo-name=(.+)")
 var RxBlobId, _ = regexp.Compile("[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}")
 
 // Counters and misc.
@@ -79,8 +78,8 @@ var StartTimestamp = time.Now().Unix()
 var CheckedNum int64 = 0 // Atomic (maybe slower?)
 var PrintedNum int64 = 0 // Atomic (maybe slower?)
 var TotalSize int64 = 0  // Atomic (maybe slower?)
-var SlowMS int64 = 100
-var (
+//var SlowMS int64 = 100
+/*var (
 	ObjectOutputs = make(map[string]interface{})
 	mu            sync.RWMutex
-)
+)*/

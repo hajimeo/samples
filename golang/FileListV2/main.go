@@ -43,7 +43,7 @@ func setGlobals() {
 	flag.StringVar(&common.Filter4PropsExcl, "pRxNot", "", "Excluding Filter for .properties (eg: 'BlobStore.blob-name=.+/maven-metadata.xml.*')")
 	//flag.BoolVar(&common.WithBlobSize, "BSize", false, "If true, includes .bytes size (When -f is '.properties')")
 	flag.StringVar(&common.SaveToFile, "s", "", "Save the output (TSV text) into the specified path")
-	flag.Int64Var(&common.TopN, "n", 0, "Return first N lines (0 = no limit). (TODO: may return more than N)")
+	flag.Int64Var(&common.TopN, "n", 0, "Return first N lines (0 = no limit). (TODO: may return more than N because of concurrency)")
 	flag.IntVar(&common.Conc1, "c", 1, "Concurrent number for reading directories")
 	flag.IntVar(&common.Conc2, "c2", 8, "2nd Concurrent number. Currently used when retrieving AWS Tags")
 	flag.BoolVar(&common.NoHeader, "H", false, "If true, no header line")
