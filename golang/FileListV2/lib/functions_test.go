@@ -56,32 +56,39 @@ func TestSortToSingleLine_EmptyContent_ReturnsEmptyString(t *testing.T) {
 }
 
 func TestGetContentPath_EmptyBsType_ReturnsFullPath(t *testing.T) {
-	common.BsType = ""
 	result := GetContentPath("/base/dir")
 	assert.Equal(t, "/base/dir/content", result)
 }
 
 func TestGetContentPath_S3BsType_ReturnsContentOnly(t *testing.T) {
-	common.BsType = "s3"
+	// TODO: haven't decided the behavior for S3
 	result := GetContentPath("s3://s3-test-bucket/s3-test-prefix/")
 	assert.Equal(t, "content", result)
 }
 
 func TestGetContentPath_FileBsType_ReturnsFullPath(t *testing.T) {
-	common.BsType = "file"
 	result := GetContentPath("/base/dir")
 	assert.Equal(t, "/base/dir/content", result)
 }
 
 func TestGetContentPath_FileBsType_PathContainingContent(t *testing.T) {
-	common.BsType = "file"
 	result := GetContentPath("/base/dir/content/vol-NN/chap-MM")
 	assert.Equal(t, "/base/dir/content", result)
 }
-func TestGetContentPath_UnknownBsType_ReturnsEmptyString(t *testing.T) {
-	common.BsType = "unknown"
-	result := GetContentPath("/base/dir")
-	assert.Equal(t, "", result)
+
+func TestGetContentPath_WithProtocol_PathContainingContent(t *testing.T) {
+	result := GetContentPath("file://base/dir/content/vol-NN/chap-MM")
+	assert.Equal(t, "base/dir/content", result)
+}
+
+func TestGetContentPath_WithProtocol_FullPathContainingContent(t *testing.T) {
+	result := GetContentPath("file:///tmp/base/dir/content/vol-NN/chap-MM")
+	assert.Equal(t, "/tmp/base/dir/content", result)
+}
+
+func TestGetContentPath_WithProtocol_FullPathContainingContent2(t *testing.T) {
+	result := GetContentPath("file:///Users/hosako/Documents/tests/nxrm_3.73.0-12_nxrm3730/sonatype-work/nexus3/blobs/default/")
+	assert.Equal(t, "/Users/hosako/Documents/tests/nxrm_3.73.0-12_nxrm3730/sonatype-work/nexus3/blobs/default/content", result)
 }
 
 func TestGetUpToContent_PathWithContentSubdir_ReturnsUpToContent(t *testing.T) {

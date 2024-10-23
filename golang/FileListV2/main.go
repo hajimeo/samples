@@ -79,9 +79,8 @@ func setGlobals() {
 
 	h.Log("INFO", "Starting setGlobals for "+strings.Join(os.Args[1:], " "))
 
-	h.Log("DEBUG", "common.BaseDir = "+common.BaseDir)
 	common.BaseDir = h.AppendSlash(common.BaseDir)
-	h.Log("DEBUG", "common.BaseDir2 = "+common.BaseDir)
+	h.Log("DEBUG", "common.BaseDir with slash = "+common.BaseDir)
 	common.BsType = lib.GetSchema(common.BaseDir)
 	h.Log("DEBUG", "common.BsType = "+common.BsType)
 	common.ContentPath = lib.GetContentPath(common.BaseDir)

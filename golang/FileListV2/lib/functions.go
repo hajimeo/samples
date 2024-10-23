@@ -12,6 +12,9 @@ import (
 )
 
 func GetSchema(urlString string) string {
+	if strings.HasPrefix(urlString, string(filepath.Separator)) {
+		return "file"
+	}
 	u, err := url.Parse(urlString)
 	if err != nil {
 		return "" // Return empty string if parsing fails
@@ -20,34 +23,41 @@ func GetSchema(urlString string) string {
 }
 
 func GetContentPath(blobStoreWithPrefix string) string {
-	if common.BsType == "s3" {
+	bsType := GetSchema(blobStoreWithPrefix)
+	h.Log("DEBUG", "GetContentPath - bsType:"+bsType)
+	// Default (empty) is "file"
+	if bsType == "" || bsType == "file" {
+		if strings.Contains(blobStoreWithPrefix, "://") {
+			blobStoreWithPrefix = strings.SplitAfter(blobStoreWithPrefix, "://")[1]
+			h.Log("DEBUG", "GetContentPath - blobStoreWithPrefix:"+blobStoreWithPrefix)
+		}
+		return GetUpToContent(blobStoreWithPrefix)
+	} else if bsType == "s3" {
 		// TODO: If S3, common.BaseDir is an S3 bucket + prefix, assuming no need to include those in the content path (test needed)
 		return common.CONTENT
-	} else if common.BsType == "file" || common.BsType == "" {
-		return GetUpToContent(blobStoreWithPrefix)
 	} else {
 		h.Log("TODO", "Do something for Azure/Google etc. blob store content path")
 		return ""
 	}
 }
 
-func GetUpToContent(blobStoreWithPrefix string) string {
-	blobStoreWithPrefix = strings.TrimSuffix(blobStoreWithPrefix, string(filepath.Separator))
+func GetUpToContent(path string) string {
+	path = strings.TrimSuffix(path, string(filepath.Separator))
 	searchWord := string(filepath.Separator) + common.CONTENT + string(filepath.Separator)
-	if strings.Contains(blobStoreWithPrefix, searchWord) {
+	if strings.Contains(path, searchWord) {
 		// 'dummy/content/sonatype-work/nexus3/blobs/default/content/vol-NN' -> 'dummy/content/sonatype-work/nexus3/blobs/default/content'
-		lastIndex := strings.LastIndex(blobStoreWithPrefix, searchWord)
-		lengthOfContent := len(searchWord)
-		return blobStoreWithPrefix[:lastIndex+lengthOfContent-1]
-	} else if strings.HasSuffix(blobStoreWithPrefix, string(filepath.Separator)+common.CONTENT) {
+		lastIndex := strings.LastIndex(path, searchWord)
+		lengthOfSearchWord := len(searchWord)
+		return path[:lastIndex+lengthOfSearchWord-1]
+	} else if strings.HasSuffix(path, string(filepath.Separator)+common.CONTENT) {
 		// 'sonatype-work/nexus3/blobs/default/content' -> 'sonatype-work/nexus3/blobs/default/content'
-		return blobStoreWithPrefix
-	} else if len(blobStoreWithPrefix) == 0 {
+		return path
+	} else if len(path) == 0 {
 		// '' -> 'content'
 		return common.CONTENT
 	} else {
 		// 'sonatype-work/nexus3/blobs/default' -> 'sonatype-work/nexus3/blobs/default/content'
-		return blobStoreWithPrefix + string(filepath.Separator) + common.CONTENT
+		return path + string(filepath.Separator) + common.CONTENT
 	}
 }
 

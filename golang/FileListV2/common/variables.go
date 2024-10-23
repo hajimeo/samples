@@ -40,7 +40,7 @@ var MaxDepth = 3
 
 // Blob store related
 var BsName = ""
-var BsType = "file" // 'file' for File, 's3' for AWS S3, (TODO) 'az' for Azure, 'g' for Google
+var BsType = "" // 'file' for File, 's3' for AWS S3, (TODO) 'az' for Azure, 'g' for Google
 var BlobIDFIle = ""
 var RemoveDeleted bool
 var RepoNames = ""
