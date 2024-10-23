@@ -17,7 +17,7 @@ def _update_dict_with_key(k, d, rtn_d):
     """
     if bool(rtn_d) is False:
         rtn_d = {}  # initialising
-    if "\." not in k and k.find(".") > 0:
+    if r"\." not in k and k.find(".") > 0:
         _debug(str(k) + "\n")
         # returning the value only if all keys in _kNs exist
         tmp_d = d
@@ -40,7 +40,7 @@ def _update_dict_with_key(k, d, rtn_d):
         # At this moment, using the given k as key rather than above
         rtn_d[k] = tmp_d
         _debug(str(k) + " does not have backslash dot.\n")
-    elif "\." in k:
+    elif r"\." in k:
         _tmp_k = k.replace("\\", "")
         rtn_d[_tmp_k] = d[_tmp_k]
         _debug(str(k) + " has backslash dot. ("+ str(_tmp_k) +"\n")
@@ -70,7 +70,7 @@ def get_json(filepath="", json_str="", search_props=[], key_name=None, rtn_attrs
     if bool(search_props) and type(search_props) != list:
         search_props = search_props.split(",")
     if bool(key_name):
-        ptn_k = re.compile("[\"]?" + key_name + "[\"]?\s*[:=]\s*[\"]?([^\"]+)[\"]?")
+        ptn_k = re.compile(r"[\"]?" + key_name + r"[\"]?\s*[:=]\s*[\"]?([^\"]+)[\"]?")
     if bool(rtn_attrs) and type(rtn_attrs) != list:
         rtn_attrs = rtn_attrs.split(",")
     _d = None
@@ -96,7 +96,7 @@ def get_json(filepath="", json_str="", search_props=[], key_name=None, rtn_attrs
             _p_name = None
             if bool(ptn_k):
                 # searching "key_name" : "some value"
-                _debug("_p = %s and ptn_k (regex) = %s " % (str(_p), str("[\"]?" + key_name + "[\"]?\s*[:=]\s*[\"]?([^\"]+)[\"]?")))
+                _debug("_p = %s and ptn_k (regex) = %s " % (str(_p), str(r"[\"]?" + key_name + r"[\"]?\s*[:=]\s*[\"]?([^\"]+)[\"]?")))
                 m = ptn_k.search(_p)
                 if m:
                     _p_name = m.groups()[0]
