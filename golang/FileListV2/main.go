@@ -54,10 +54,10 @@ func setGlobals() {
 	flag.StringVar(&common.BsName, "bsName", "", "eg. 'default'. If provided, the SQL query will be faster. 3.47 and higher only")
 	flag.StringVar(&common.RepoNames, "repos", "", "Repository names. eg. 'maven-central,raw-hosted,npm-proxy', only with -src=DB")
 	flag.BoolVar(&common.RemoveDeleted, "RDel", false, "TODO: Remove 'deleted=true' from .properties. Requires -dF")
-	flag.StringVar(&common.DelFromDateStr, "dF", "", "Deleted date YYYY-MM-DD (from). Used to search deletedDateTime")
-	flag.StringVar(&common.DelToDateStr, "dT", "", "Deleted date YYYY-MM-DD (to). To exclude newly deleted assets")
-	flag.StringVar(&common.ModFromDateStr, "mF", "", "File modification date YYYY-MM-DD (from). For DB, this is used against <format>_asset_blob.blob_created")
-	flag.StringVar(&common.ModToDateStr, "mT", "", "File modification date YYYY-MM-DD (to). For DB, this is used against <format>_asset_blob.blob_created")
+	flag.StringVar(&common.DelDateFromStr, "dDF", "", "Deleted date YYYY-MM-DD (from). Used to search deletedDateTime")
+	flag.StringVar(&common.DelDateToStr, "dDT", "", "Deleted date YYYY-MM-DD (to). To exclude newly deleted assets")
+	flag.StringVar(&common.ModDateFromStr, "mDF", "", "File modification date YYYY-MM-DD (from). For DB, this is used against <format>_asset_blob.blob_created")
+	flag.StringVar(&common.ModDateToStr, "mDT", "", "File modification date YYYY-MM-DD (to). For DB, this is used against <format>_asset_blob.blob_created")
 	// TODO: SizeFrom and SizeTo should be used for both .properties and .bytes
 	flag.IntVar(&common.SizeFrom, "sF", -1, "Finding files which size is same or larger by checking actual file size")
 	flag.IntVar(&common.SizeTo, "sT", -1, "Finding files which size is same or smaller by checking actual file size")
@@ -124,17 +124,17 @@ func setGlobals() {
 
 	}
 
-	if len(common.DelFromDateStr) > 0 {
-		common.DelFromDateTS = h.DatetimeStrToInt(common.DelFromDateStr)
+	if len(common.DelDateFromStr) > 0 {
+		common.DelDateFromTS = h.DatetimeStrToInt(common.DelDateFromStr)
 	}
-	if len(common.DelToDateStr) > 0 {
-		common.DelToDateTS = h.DatetimeStrToInt(common.DelToDateStr)
+	if len(common.DelDateToStr) > 0 {
+		common.DelDateToTS = h.DatetimeStrToInt(common.DelDateToStr)
 	}
-	if len(common.ModFromDateStr) > 0 {
-		common.ModFromDateTS = h.DatetimeStrToInt(common.ModFromDateStr)
+	if len(common.ModDateFromStr) > 0 {
+		common.ModDateFromTS = h.DatetimeStrToInt(common.ModDateFromStr)
 	}
-	if len(common.ModToDateStr) > 0 {
-		common.ModToDateTS = h.DatetimeStrToInt(common.ModToDateStr)
+	if len(common.ModDateToStr) > 0 {
+		common.ModDateToTS = h.DatetimeStrToInt(common.ModDateToStr)
 	}
 
 	if common.RemoveDeleted {
@@ -143,7 +143,7 @@ func setGlobals() {
 			common.Filter4PropsIncl = "deleted=true"
 		}
 
-		if len(common.BlobIDFIle) == 0 && (len(common.DelFromDateStr) == 0 && len(common.ModFromDateStr) == 0) {
+		if len(common.BlobIDFIle) == 0 && (len(common.DelDateFromStr) == 0 && len(common.ModDateFromStr) == 0) {
 			panic("Currently -RDel requires -dF or -mF not to un-delete too many or unexpected files.")
 		}
 	}
@@ -227,7 +227,7 @@ func genBlobPath(blobId string, extension string) string {
 	// org.sonatype.nexus.blobstore.VolumeChapterLocationStrategy#location
 	// TODO: this will be changed in a newer version, with DB <format>_asset_blob.use_date_path flag
 	if len(blobId) == 0 {
-		h.Log("ERROR", "genBlobPath got empty blobId.")
+		h.Log("WARN", "genBlobPath got empty blobId.")
 		return ""
 	}
 	hashInt := myHashCode(blobId)
@@ -241,15 +241,19 @@ func genOutput(path string, bi bs_clients.BlobInfo, db *sql.DB, client bs_client
 	atomic.AddInt64(&common.CheckedNum, 1)
 
 	modTimestamp := bi.ModTime.Unix()
-	if !isTsMSecBetweenTs(modTimestamp, common.ModFromDateTS, common.ModToDateTS) {
-		h.Log("DEBUG", fmt.Sprintf("path:%s modTime %d is outside of the range %d to %d", path, modTimestamp, common.ModFromDateTS, common.ModToDateTS))
+	if !isTsMSecBetweenTs(modTimestamp*1000, common.ModDateFromTS, common.ModDateToTS) {
+		h.Log("DEBUG", fmt.Sprintf("path:%s modTime %d is outside of the range %d to %d", path, modTimestamp, common.ModDateFromTS, common.ModDateToTS))
 		return ""
 	}
 
 	output := fmt.Sprintf("%s%s%s%s%d", path, common.SEP, bi.ModTime, common.SEP, bi.Size)
 	// If .properties file is checked, depending on other flags, need to generate extra output
 	if isExtraInfoNeeded(path, modTimestamp) {
-		props := extraInfo(path, db, client)
+		props, skipReason := extraInfo(path, db, client)
+		if skipReason != nil {
+			h.Log("DEBUG", fmt.Sprintf("%s: %s", path, skipReason.Error()))
+			return ""
+		}
 		if len(props) > 0 {
 			output = fmt.Sprintf("%s%s%s", output, common.SEP, props)
 		}
@@ -273,18 +277,19 @@ func isExtraInfoNeeded(path string, modTimestamp int64) bool {
 		return false
 	}
 	// no need to open the properties file if no _REMOVE_DEL, no _WITH_PROPS, and no _DEL_DATE_FROM/TO
-	if common.RemoveDeleted || common.WithProps || len(common.Filter4FileName) > 0 || len(common.Filter4PropsIncl) > 0 || len(common.Filter4PropsExcl) > 0 || common.DelFromDateTS > 0 || common.DelToDateTS > 0 {
+	if common.RemoveDeleted || common.WithProps || len(common.Filter4FileName) > 0 || len(common.Filter4PropsIncl) > 0 || len(common.Filter4PropsExcl) > 0 || common.DelDateFromTS > 0 || common.DelDateToTS > 0 {
 		return true
 	}
 	return false
 }
 
-func extraInfo(path string, db *sql.DB, client bs_clients.Client) string {
+func extraInfo(path string, db *sql.DB, client bs_clients.Client) (string, error) {
 	// This function returns the extra information, and also does extra checks.
 	contents, err := client.ReadPath(path)
 	if err != nil {
 		h.Log("ERROR", "extraInfo for "+path+" returned error:"+err.Error())
-		return ""
+		// This is not skip reason, so returning nil
+		return "", nil
 	}
 	if len(contents) == 0 {
 		h.Log("WARN", "extraInfo for "+path+" returned 0 size.") // But still can check extra
@@ -294,7 +299,7 @@ func extraInfo(path string, db *sql.DB, client bs_clients.Client) string {
 			_ = removeDel(contents, path, client)
 		}
 
-		// If DB connection is given and the truet is blob store side, check if the blob ID in the path exists in the DB
+		// TODO: If DB connection is given and the truth is blob store side, check if the blob ID in the path exists in the DB
 		if len(common.DbConnStr) > 0 && common.Truth == "BS" {
 			blobId := extractBlobIdFromString(path)
 			if isBlobMissingInDB(contents, blobId, db) {
@@ -306,14 +311,13 @@ func extraInfo(path string, db *sql.DB, client bs_clients.Client) string {
 	// Finally, generate the properties output
 	props, skipReason := genOutputFromProp(contents)
 	if skipReason != nil {
-		h.Log("DEBUG", fmt.Sprintf("%s: %s", path, skipReason.Error()))
-		return ""
+		return props, skipReason
 	}
 	// If With Properties output is specified, return the contents
 	if common.WithProps && len(props) > 0 {
-		return props
+		return props, skipReason
 	}
-	return ""
+	return "", nil
 }
 
 func genOutputFromProp(contents string) (string, error) {
@@ -357,10 +361,10 @@ func shouldBeUndeleted(contents string, path string) bool {
 		return true
 	}
 
-	if isTsMSecBetweenTs(delTimeTs, common.DelFromDateTS, common.DelToDateTS) {
+	if isTsMSecBetweenTs(delTimeTs, common.DelDateFromTS, common.DelDateToTS) {
 		return true
 	}
-	h.Log("DEBUG", fmt.Sprintf("path:%s delTimeTs %d (msec) is NOT in the range %d (sec) to %d (sec)", path, delTimeTs, common.DelFromDateTS, common.DelToDateTS))
+	h.Log("DEBUG", fmt.Sprintf("path:%s delTimeTs %d (msec) is NOT in the range %d (sec) to %d (sec)", path, delTimeTs, common.DelDateFromTS, common.DelDateToTS))
 	return false
 }
 
@@ -392,8 +396,8 @@ func isBlobMissingInDB(contents string, blobId string, db *sql.DB) bool {
 	return false
 }
 
-func printLine(path interface{}, blobInfo bs_clients.BlobInfo, db *sql.DB) {
-	output := genOutput(path.(string), blobInfo, db, nil)
+func printLine(path interface{}, blobInfo bs_clients.BlobInfo, db *sql.DB, client bs_clients.Client) {
+	output := genOutput(path.(string), blobInfo, db, client)
 	printOrSave(output)
 }
 
@@ -412,7 +416,7 @@ func listObjects(dir string, db *sql.DB, client bs_clients.Client) {
 	startMs := time.Now().UnixMilli()
 	subTtl := client.ListObjects(dir, common.Filter4FileName, db, printLine)
 	// Always log this elapsed time by using 0 thresholdMs
-	h.Elapsed(startMs, fmt.Sprintf("INFO  Completed %s for %d files (current total: %d)", dir, subTtl, common.CheckedNum), 0)
+	h.Elapsed(startMs, fmt.Sprintf("Completed %s for %d files (current total: %d)", dir, subTtl, common.CheckedNum), 0)
 }
 
 func printObjectByBlobId(blobId string, db *sql.DB, client bs_clients.Client) {
@@ -424,7 +428,7 @@ func printObjectByBlobId(blobId string, db *sql.DB, client bs_clients.Client) {
 	h.Log("DEBUG", path)
 	// TODO: populate blobInfo with client
 	var blobInfo bs_clients.BlobInfo
-	printLine(path, blobInfo, db)
+	printLine(path, blobInfo, db, client)
 }
 
 func runParallel(chunks [][]string, client bs_clients.Client, f func(string, *sql.DB, bs_clients.Client), conc int) {
@@ -460,6 +464,7 @@ func main() {
 
 	// Configure logging and common variables
 	log.SetFlags(log.Lmicroseconds)
+	log.SetPrefix(time.Now().Format("2006-01-02 15:04:05"))
 	setGlobals()
 	printHeader()
 	client := getClient()

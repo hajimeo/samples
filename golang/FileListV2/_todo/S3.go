@@ -107,8 +107,8 @@ func (c *S3Client) ListObjects(dir string, db *sql.DB, printLine func(interface{
 		Prefix:     &dir,
 	}
 	// TODO: below does not seem to be working, as StartAfter should be Key
-	if common.ModFromDateTS > 0 {
-		input.StartAfter = aws.String(time.Unix(common.ModFromDateTS, 0).UTC().Format("2006-01-02T15:04:05.000Z"))
+	if common.ModDateFromTS > 0 {
+		input.StartAfter = aws.String(time.Unix(common.ModDateFromTS, 0).UTC().Format("2006-01-02T15:04:05.000Z"))
 	}
 
 	client := c.GetBsClient().(*s3.Client)

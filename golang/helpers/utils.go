@@ -43,16 +43,19 @@ func CaptureStdout(f func()) string {
 
 func Log(level string, message interface{}) {
 	if level != "DEBUG" || DEBUG {
-		log.SetPrefix(time.Now().Format("2006-01-02 15:04:05") + " [" + level + "] ")
-		log.Printf("%v\n", message)
+		log.Printf("[%s] %v\n", level, message)
 	}
 }
 
 func Elapsed(startTsMs int64, message string, thresholdMs int64) {
 	//elapsed := time.Since(start)
 	elapsed := time.Now().UnixMilli() - startTsMs
+	label := "INFO"
+	if thresholdMs > 0 {
+		label = "WARN"
+	}
 	if elapsed >= thresholdMs {
-		log.Printf("%s (%d ms)", message, elapsed)
+		Log(label, fmt.Sprintf("%s (%d ms)", message, elapsed))
 	}
 }
 

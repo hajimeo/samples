@@ -54,14 +54,14 @@ var Filter4FileName = ""
 var Filter4PropsIncl = ""
 var Filter4PropsExcl = ""
 
-var DelFromDateStr = ""
-var DelFromDateTS int64
-var DelToDateStr = ""
-var DelToDateTS int64
-var ModFromDateStr = ""
-var ModFromDateTS int64
-var ModToDateStr = ""
-var ModToDateTS int64
+var DelDateFromStr = ""
+var DelDateFromTS int64
+var DelDateToStr = ""
+var DelDateToTS int64
+var ModDateFromStr = ""
+var ModDateFromTS int64
+var ModDateToStr = ""
+var ModDateToTS int64
 var SizeFrom int
 var SizeTo int
 var RxIncl *regexp.Regexp

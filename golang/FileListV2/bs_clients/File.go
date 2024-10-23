@@ -23,10 +23,11 @@ func (c *FileClient) GetBsClient() interface{} {
 
 func (c *FileClient) ReadPath(path string) (string, error) {
 	if common.Debug {
-		defer h.Elapsed(time.Now().UnixMilli(), "DEBUG Read "+path, int64(0))
+		// Record the elapsed time
+		defer h.Elapsed(time.Now().UnixMilli(), "Read "+path, int64(0))
 	} else {
 		// If File type blob store, shouldn't take more than 1 second
-		defer h.Elapsed(time.Now().UnixMilli(), "WARN  slow file read for path:"+path, int64(1000))
+		defer h.Elapsed(time.Now().UnixMilli(), "Slow file read for path:"+path, int64(1000))
 	}
 	bytes, err := os.ReadFile(path)
 	if err != nil {
@@ -39,9 +40,9 @@ func (c *FileClient) ReadPath(path string) (string, error) {
 
 func (c *FileClient) WriteToPath(path string, contents string) error {
 	if common.Debug {
-		defer h.Elapsed(time.Now().UnixMilli(), "DEBUG Wrote "+path, 0)
+		defer h.Elapsed(time.Now().UnixMilli(), "Wrote "+path, 0)
 	} else {
-		defer h.Elapsed(time.Now().UnixMilli(), "WARN  slow file write for path:"+path, 100)
+		defer h.Elapsed(time.Now().UnixMilli(), "Slow file write for path:"+path, 100)
 	}
 	f, err := os.OpenFile(path, os.O_RDWR|os.O_CREATE|os.O_TRUNC, 0644)
 	if err != nil {
@@ -62,9 +63,9 @@ func (c *FileClient) RemoveDeleted(path string, contents string) error {
 
 func (c *FileClient) GetDirs(baseDir string, pathFilter string, maxDepth int) ([]string, error) {
 	if common.Debug {
-		defer h.Elapsed(time.Now().UnixMilli(), "DEBUG Walked "+baseDir, 0)
+		defer h.Elapsed(time.Now().UnixMilli(), "Walked "+baseDir, 0)
 	} else {
-		defer h.Elapsed(time.Now().UnixMilli(), "WARN  slow directory walk for "+baseDir, 1000)
+		defer h.Elapsed(time.Now().UnixMilli(), "Slow directory walk for "+baseDir, 1000)
 	}
 	var matchingDirs []string
 	filterRegex := regexp.MustCompile(pathFilter)
@@ -80,17 +81,18 @@ func (c *FileClient) GetDirs(baseDir string, pathFilter string, maxDepth int) ([
 			return err
 		}
 		if info.IsDir() {
-			if len(pathFilter) == 0 || filterRegex.MatchString(path) {
-				h.Log("DEBUG", fmt.Sprintf("Matching directory: %s (Depth: %d)\n", path, depth))
-				matchingDirs = append(matchingDirs, path)
-			} else {
-				h.Log("DEBUG", fmt.Sprintf("Not matching directory: %s (Depth: %d)\n", path, depth))
-			}
 			// Not sure if this is a good way to limit the depth
 			count := strings.Count(path, string(filepath.Separator))
 			if realMaxDepth > 0 && count > realMaxDepth {
 				h.Log("DEBUG", fmt.Sprintf("Reached to the max depth %d / %d (path: %s)\n", count, maxDepth, path))
 				return filepath.SkipDir
+			}
+
+			if len(pathFilter) == 0 || filterRegex.MatchString(path) {
+				h.Log("DEBUG", fmt.Sprintf("Matching directory: %s (Depth: %d)\n", path, depth))
+				matchingDirs = append(matchingDirs, path)
+			} else {
+				h.Log("DEBUG", fmt.Sprintf("Not matching directory: %s (Depth: %d)\n", path, depth))
 			}
 		}
 		return nil
@@ -100,7 +102,7 @@ func (c *FileClient) GetDirs(baseDir string, pathFilter string, maxDepth int) ([
 		h.Log("ERROR", fmt.Sprintf("%s (base dir: %s, depth: %d)\n", err, baseDir, depth))
 	}
 	h.Log("DEBUG", fmt.Sprintf("Matched directory: %s", matchingDirs))
-	// Sorting would make resuming easier, i think
+	// Sorting would make resuming easier, I think
 	sort.Strings(matchingDirs)
 	return matchingDirs, err
 }
@@ -119,24 +121,24 @@ func (c *FileClient) Convert2BlobInfo(f interface{}) BlobInfo {
 	return blobInfo
 }
 
-func (c *FileClient) ListObjects(baseDir string, fileFilter string, db *sql.DB, perLineFunc func(interface{}, BlobInfo, *sql.DB)) int64 {
+func (c *FileClient) ListObjects(baseDir string, fileFilter string, db *sql.DB, perLineFunc func(interface{}, BlobInfo, *sql.DB, Client)) int64 {
 	// ListObjects: List all files in the baseDir directory. Include only common.Filter4FileName if set.
 	var subTtl int64
 	filterRegex := regexp.MustCompile(fileFilter)
 	// NOTE: `filepath.Glob` does not work because currently Glob does not support ./**/*
 	//       Also, somehow filepath.WalkDir is slower in this code
 	err := filepath.Walk(baseDir, func(path string, f os.FileInfo, err error) error {
+		if common.TopN > 0 && common.TopN <= common.PrintedNum {
+			h.Log("DEBUG", fmt.Sprintf("Printed %d >= %d", common.PrintedNum, common.TopN))
+			return io.EOF
+		}
 		if err != nil {
 			return err
 		}
 		if !f.IsDir() {
 			if len(fileFilter) == 0 || filterRegex.MatchString(f.Name()) {
 				subTtl++
-				perLineFunc(path, c.Convert2BlobInfo(f), db)
-				if common.TopN > 0 && common.TopN <= common.PrintedNum {
-					h.Log("DEBUG", fmt.Sprintf("Printed %d >= %d", common.PrintedNum, common.TopN))
-					return io.EOF
-				}
+				perLineFunc(path, c.Convert2BlobInfo(f), db, c)
 			}
 		}
 		return nil
