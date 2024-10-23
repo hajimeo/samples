@@ -30,6 +30,7 @@ DOWNLOADS:
     curl ${_DL_URL%/}/bash/${_filename} -o ${_WORK_DIR%/}/sonatype/${_filename}
 
 REQUIREMENTS / DEPENDENCIES:
+    'unzip', 'gunzip', 'curl'
     If Mac, 'gsed' and 'ggrep' are required (brew install gnu-sed grep)
     'python' is required for f_setup_cocoapods, f_register_script
 
@@ -1135,10 +1136,13 @@ function f_setup_raw() {
 
     # Quicker way: NOTE --limit-rate=4k can be a handy option to test:
     #   time curl -D- -u 'admin:admin123' -T <(echo 'test') "${_NEXUS_URL%/}/repository/raw-hosted/test/test.txt"
-    # Creating a dummy 1K file (not real 1K file): _TMP="/tmp"
-    #dd if=/dev/zero of=./test_large.img bs=1 count=0 seek=$((1024*1024*1024))
+    # To create a dummy 1K file (not real 1K file), but not work with MacOS, and not much diff:
+    #   dd if=/dev/zero of=${_TMP%/}/test_1k.img bs=1024 count=1 oflag=dsync
     dd if=/dev/zero of=${_TMP%/}/test_1k.img bs=1 count=0 seek=1024 && \
     _ASYNC_CURL="Y" f_upload_asset "${_prefix}-hosted" -F raw.directory=test -F raw.asset1=@${_TMP%/}/test_1k.img -F raw.asset1.filename=test_1k.img
+    # If real large size is required:
+    #   dd if=/dev/zero of=./test_100MB.img bs=1 count=0 seek=$((1024*1024*100))
+    # Test by uploading and downloading:
     #   time curl -D- -u 'admin:admin123' -T ${_TMP%/}/test_1k.img "${_NEXUS_URL%/}/repository/raw-hosted/test/test_1k.img"
     #   time curl -D- -u 'admin:admin123' -o/dev/null "${_NEXUS_URL%/}/repository/raw-hosted/test/test_1k.img"
     # Upload a large dummy file
@@ -2933,7 +2937,7 @@ function f_staging_move() {
         f_api "/service/rest/v1/staging/move/${_move_to_repo}?tag=${_tag}" "" "POST" || return $?
     elif [ -n "${_search}" ]; then
         echo "# /service/rest/v1/staging/move/${_move_to_repo}?${_search}"
-        f_api "${_nxrm3_url%/}/service/rest/v1/staging/move/${_move_to_repo}?${_search}" "" "POST" || return $?
+        f_api "/service/rest/v1/staging/move/${_move_to_repo}?${_search}" "" "POST" || return $?
     fi
     echo ""
 }
@@ -2967,6 +2971,27 @@ function f_run_tasks_by_type() {
         f_api "/service/rest/v1/tasks/${_id}/run" "" "POST" || return $?
         cat ${_TMP%/}/_api_header_$$.out
     done
+}
+
+function f_test_download() {
+    local __doc__="Test download with curl"
+    local _repo="${1:-"raw-test-hosted"}"
+    local _work_dir="${2}"
+    local _bs_name="${3}"
+    local _usr="${4:-"${_ADMIN_USER}"}"
+    local _pwd="${5:-"${_ADMIN_PWD}"}"
+    [ -z "${_work_dir}" ] && _work_dir="$(_get_work_dir)"
+    local _tmpdir="${_work_dir:-"."}/tmp"
+    [ -z "${_bs_name}" ] && _bs_name="$(_get_blobstore_name)"
+    _log "INFO" "Crete a new repository "raw-test-hosted", which might already exist ..."
+    curl -sSf -u "${USER_PWD}" -k "${_NEXUS_URL%/}/service/rest/v1/repositories/raw/hosted" -H "Content-Type: application/json" -d '{"name":"'${_repo}'","online":true,"storage":{"blobStoreName":"'${_bs_name}'","strictContentTypeValidation":false,"writePolicy":"ALLOW"}}'
+
+    _log "INFO" "Creating ${_tmpdir%/}/test_100MB.img, and check how fast this location is ..."
+    time dd if=/dev/zero of=${_tmpdir%/}/test_100MB.img bs=1 count=0 seek=$((1024*1024*100))
+    _log "INFO" "Uploading as ${_repo}/test/test_100MB.img, and check how fast ..."
+    time curl -D- -Sf -u "${USER_PWD}" -k "${_NEXUS_URL%/}/repository/${_repo}/test/test_100MB.img" -T ${_tmpdir%/}/test_100MB.img
+    _log "INFO" "Downloading ${_repo}/test/test_100MB.img, and check how fast ..."
+    time curl -D- -Sf -u "${USER_PWD}" -k "${NEXUS_URL%/}/repository/${_repo}/test/test_100MB.img" -o/dev/null
 }
 
 # K8s related but not in use yet | any more
