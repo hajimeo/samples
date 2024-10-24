@@ -82,8 +82,9 @@ function _postgresql_configure() {
     _psql_adm "ALTER SYSTEM SET statement_timeout TO '8h'" # NOTE: ALTER ROLE nexus SET statement_timeout = '1h';
     _psql_adm "ALTER SYSTEM SET shared_buffers TO '1024MB'" # Default 8MB. RAM * 25%. Make sure enough kernel.shmmax (ipcs -l) and /dev/shm if very old Linux or BSD
     _psql_adm "ALTER SYSTEM SET work_mem TO '8MB'"    # Default 4MB. RAM * 25% / max_connections (200) + extra a few MB. NOTE: I'm not expecting my PG uses 200 though
-    #_upsert ${_postgresql_conf} "maintenance_work_mem" "64MB" "#maintenance_work_mem"    # Default 64MB. Used for VACUUM, CREATE INDEX etc.
-    #_upsert ${_postgresql_conf} "autovacuum_work_mem" "-1" "#autovacuum_work_mem"    # Default -1 means uses the above for AUTO vacuum.
+    _psql_adm "ALTER SYSTEM SET maintenance_work_mem TO '1GB'" # RAM * 5%. Default 64MB. Used for VACUUM, CREATE INDEX etc.
+    #_psql_adm "ALTER SYSTEM SET autovacuum_work_mem TO '-1'"  # Default -1 means uses the above for AUTO vacuum.
+    #_psql_adm "ALTER SYSTEM SET max_parallel_maintenance_workers TO '4'" # Default 2. Used for (manual) VACUUM, CREATE INDEX etc.
     _psql_adm "ALTER SYSTEM SET effective_cache_size TO '3072MB'" # Default 4GB. RAM * 50% ~ 75%. Used by planner.
     #_upsert ${_postgresql_conf} "wal_buffers" "16MB" "#wal_buffers" # Default -1 (1/32 of shared_buffers) Usually higher provides better write performance
     #_upsert ${_postgresql_conf} "random_page_cost" "1.1" "#random_page_cost"   # Default 4.0. If very fast disk is used, recommended to use same as seq_page_cost (1.0)
@@ -123,6 +124,7 @@ function _postgresql_configure() {
         # ALTER system SET log_statement = 'mod';SELECT pg_reload_conf();
         _psql_adm "ALTER SYSTEM SET log_statement TO ''mod''"
         _psql_adm "ALTER SYSTEM SET log_min_duration_statement TO '100'"
+        _psql_adm "ALTER SYSTEM SET log_autovacuum_min_duration TO '600000'"
     fi
     # NOTE: ALTER system generates postgresql.auto.conf
 
@@ -147,7 +149,7 @@ function _postgresql_configure() {
         _restart=true
     fi
 
-    _upsert ${_postgresql_conf} "auto_explain.log_min_duration" "5000"
+    _psql_adm "ALTER SYSTEM SET auto_explain.log_min_duration TO '5000'"
     # To check:
     # SELECT setting, pending_restart FROM pg_settings WHERE name = 'shared_preload_libraries';
     # ALTER system SET auto_explain.log_min_duration TO '0';

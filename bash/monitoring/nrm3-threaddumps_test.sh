@@ -23,9 +23,9 @@ function test_genDbConnTest() {
 }
 
 function test_runDbQuery() {
-    # If no ${_STORE_FILE}, should fail
+    # If no ${_STORE_FILE}, should fail, and no proper test is done
     if [ -z "${_STORE_FILE}" ] && runDbQuery 2>/dev/null; then
-        _error "runDbQuery should fail"
+        _error "runDbQuery should fail if no _STORE_FILE"
     fi
     if [ -n "${_STORE_FILE}" ] && ! runDbQuery "SELECT version()"; then
         _error "runDbQuery should not fail for 'SELECT version()'"
@@ -125,6 +125,7 @@ _error() {
 
 if [ "$0" = "$BASH_SOURCE" ]; then
     for _t in $(typeset -F | grep -E '^declare -f test_' | cut -d' ' -f3); do
+        echo "Running ${_t} ..." >&2
         ${_t}
     done
     echo "Tests completed."

@@ -18,6 +18,7 @@
 #   https://www.docker.com/blog/checking-your-current-docker-pull-rate-limits-and-status/
 #   https://docs.docker.com/registry/spec/auth/token/
 #
+# NOTE: registry.hub.docker.com
 
 # Use 'export' to overwrite
 : ${_USER:=""}      # admin

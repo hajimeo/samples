@@ -293,7 +293,8 @@ function f_config_update() {
         fi
         f_api_config '{"baseUrl":"'${_baseUrl%/}'/","forceBaseUrl":false}' || return $?
     fi
-    f_api_config '{"hdsUrl":"https://clm-staging.sonatype.com/"}'
+    f_api_config '{"hdsUrl":"https://clm.sonatype.com/"}'
+    #f_api_config '{"hdsUrl":"https://clm-staging.sonatype.com/"}'
     f_api_config '{"enableDefaultPasswordWarning":false}'
     f_api_config '{"sessionTimeout":120}'   # between 3 and 120
     f_api_config "" "/features/internalFirewallOnboardingEnabled" "DELETE" &>/dev/null  # this one can return 400
@@ -304,9 +305,11 @@ function f_add_testuser() {
     local __doc__="Add/Create a test IQ user with test-role"
     local _username="${1:-"testuser"}"
     local _password="${2:-"${_username}123"}"
+    local _apporg_name="${3:-"Root Organization"}"
     _apiS "/rest/user" '{"firstName":"'${_username}'","lastName":"test","email":"'${_username}'@example.com","username":"'${_username}'","password":"'${_password}'"}'
     _apiS "/rest/security/roles" '{"name":"test-role","description":"test_role_desc","builtIn":false,"permissionCategories":[{"displayName":"Administrator","permissions":[{"id":"VIEW_ROLES","displayName":"View","description":"All Roles","allowed":false}]},{"displayName":"IQ","permissions":[{"id":"MANAGE_PROPRIETARY","displayName":"Edit","description":"Proprietary Components","allowed":false},{"id":"CLAIM_COMPONENT","displayName":"Claim","description":"Components","allowed":false},{"id":"WRITE","displayName":"Edit","description":"IQ Elements","allowed":false},{"id":"READ","displayName":"View","description":"IQ Elements","allowed":true},{"id":"EDIT_ACCESS_CONTROL","displayName":"Edit","description":"Access Control","allowed":false},{"id":"EVALUATE_APPLICATION","displayName":"Evaluate","description":"Applications","allowed":true},{"id":"EVALUATE_COMPONENT","displayName":"Evaluate","description":"Individual Components","allowed":true},{"id":"ADD_APPLICATION","displayName":"Add","description":"Applications","allowed":false},{"id":"MANAGE_AUTOMATIC_APPLICATION_CREATION","displayName":"Manage","description":"Automatic Application Creation","allowed":false},{"id":"MANAGE_AUTOMATIC_SCM_CONFIGURATION","displayName":"Manage","description":"Automatic Source Control Configuration","allowed":false}]},{"displayName":"Remediation","permissions":[{"id":"WAIVE_POLICY_VIOLATIONS","displayName":"Waive","description":"Policy Violations","allowed":true},{"id":"CHANGE_LICENSES","displayName":"Change","description":"Licenses","allowed":false},{"id":"CHANGE_SECURITY_VULNERABILITIES","displayName":"Change","description":"Security Vulnerabilities","allowed":false},{"id":"LEGAL_REVIEWER","displayName":"Review","description":"Legal obligations for components licenses","allowed":false}]}]}' || return $?
-    f_api_role_mapping "test-role" "testuser" "Root Organization" "user"
+    # Some times no root organization
+    f_api_role_mapping "test-role" "testuser" "${_apporg_name}" "user"
 }
 
 function f_setup_https() {

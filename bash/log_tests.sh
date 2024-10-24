@@ -481,7 +481,7 @@ function t_basic() {
         _head "ERROR" "No 'sysinfo.json' under $(realpath .) with maxdepth 5"
     fi
     if ! find . -maxdepth 5 -type f -name jmx.json | grep -q 'jmx.json'; then
-        _head "ERROR" "No 'jmx.json' under $(realpath .) with maxdepth 5"
+        _head "ERROR" "No 'jmx.json' under $(realpath .) with maxdepth 5 (NEXUS-44017)"
     fi
 }
 function t_system() {

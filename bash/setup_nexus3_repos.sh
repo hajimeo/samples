@@ -1437,14 +1437,15 @@ function _get_asset_NXRM2() {
     fi
 }
 
-# Same way as using Upload UI
-#NOTE: Using _ASYNC_CURL env variable. using _IS_NXRM2.
-#      If NXRM2, below curl also works:
-#curl -D- -u admin:admin123 -T <(echo "test upload") "http://localhost:8081/nexus/content/repositories/raw-hosted/test/test.txt"
+# NOTE: Using _ASYNC_CURL env variable. If Nexus2, _IS_NXRM2.
+# If NXRM2, below curl also works:
+#   curl -D- -u admin:admin123 -T <(echo "test upload") "http://localhost:8081/nexus/content/repositories/raw-hosted/test/test.txt"
+#f_upload_asset "maven-releases" -F "maven2.groupId=keystores" -F "maven2.artifactId=my-test-jks" -F "maven2.version=20241024" -F "maven2.asset1.extension=jks" -F "maven2.asset1=@$HOME/IdeaProjects/samples/misc/standalone.localdomain.jks"
+#f_api "/service/rest/v1/staging/move/maven-hosted?repository=maven-releases&maven.groupId=keystores&maven.artifactId=my-test-jks&maven.baseVersion=20241024" "" "POST"
 function f_upload_asset() {
     local __doc__="Upload one asset with Upload API"
     local _repo_or_fmt="$1"    # format if NXRM2
-    local _forms=${@:2} #-F "maven2.groupId=junit" -F "maven2.artifactId=junit" -F "maven2.version=4.21" -F "maven2.asset1=@${_TMP%/}/junit-4.12.jar" -F "maven2.asset1.extension=jar"
+    local _forms=${@:2} #-F "maven2.groupId=junit" -F "maven2.artifactId=junit" -F "maven2.version=4.21" -F "maven2.asset1.extension=jar" -F "maven2.asset1=@${_TMP%/}/junit-4.12.jar"
     # NOTE: Because _forms takes all arguments except first one, can't assign any other arguments
     local _usr="${r_ADMIN_USER:-"${_ADMIN_USER}"}"
     local _pwd="${r_ADMIN_PWD:-"${_ADMIN_PWD}"}"   # If explicitly empty string, curl command will ask password (= may hang)
