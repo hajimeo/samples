@@ -35,6 +35,7 @@ h=md5.hexdigest()
 print(\"Specs/%s/%s/%s/%s/%s/%s.podspec.json\" % (h[0],h[1],h[2],n,v,n))"
 }
 
+_ORIG_JAVA_HOME=""
 function _java_home() {
     local _check_path="${1}"
     local _is_java17=false
@@ -45,11 +46,15 @@ function _java_home() {
     fi
     if ${_is_java17}; then
         if [ -d "${JAVA_HOME_17}" ]; then
+            _ORIG_JAVA_HOME="${JAVA_HOME}"
             export JAVA_HOME="${JAVA_HOME_17}" #NEXUSTOOLS_JAVA_HOME="${JAVA_HOME_17}"
             echo "# export JAVA_HOME=\"${JAVA_HOME_17}\""
         else
             echo "# Make sure JAVA_HOME is set to Java 17"; sleep 3
         fi
+    elif [ -n "${_ORIG_JAVA_HOME}" ]; then
+        export JAVA_HOME="${_ORIG_JAVA_HOME}"
+        echo "# export JAVA_HOME=\"${_ORIG_JAVA_HOME}\""
     fi
 }
 function _get_rm_url() {
@@ -96,79 +101,6 @@ function _get_iq_url() {
         fi
     done
     return 1
-}
-
-# Start iq CLI
-# To debug, use suspend=y
-#JAVA_TOOL_OPTIONS="-agentlib:jdwp=transport=dt_socket,server=y,suspend=y,address=5007" iqCli
-#iqCli "container:amazonlinux:2023"
-function iqCli() {
-    local __doc__="https://help.sonatype.com/integrations/nexus-iq-cli#NexusIQCLI-Parameters"
-    local _path="${1:-"./"}"
-    # overwrite-able global variables
-    local _iq_app_id="${2:-${_IQ_APP_ID:-"sandbox-application"}}"
-    local _iq_stage="${3:-${_IQ_STAGE:-"build"}}" #develop|build|stage-release|release|operate
-    local _iq_url="${4:-${_IQ_URL}}"
-    local _iq_cli_ver="${5:-${_IQ_CLI_VER}}"
-    local _iq_cli_opt="${6:-${_IQ_CLI_OPT}}"    # -D fileIncludes="**/package-lock.json"
-    local _iq_cred="${7:-${_IQ_CRED:-"admin:admin123"}}"
-
-    _iq_url="$(_get_iq_url "${_iq_url}")" || return $?
-        if [ -z "${_iq_cli_ver}" ]; then
-        _iq_cli_ver="$(curl -m3 -sf "${_iq_url%/}/rest/product/version" | python -c "import sys,json;a=json.loads(sys.stdin.read());print(a['version'])")"
-    fi
-
-    local _iq_cli_jar="${_IQ_CLI_JAR:-"$HOME/.nexus_executable_cache/nexus-iq-cli-${_iq_cli_ver}.jar"}"
-    if [ ! -s "${_iq_cli_jar}" ]; then
-        #local _tmp_iq_cli_jar="$(find ${_WORK_DIR%/}/sonatype -name 'nexus-iq-cli*.jar' 2>/dev/null | sort -r | head -n1)"
-        local _cli_dir="$(dirname "${_iq_cli_jar}")"
-        [ ! -d "${_cli_dir}" ] && mkdir -p "${_cli_dir}"
-        if [ -s "$HOME/.nexus_executable_cache/nexus-iq-server-${_iq_cli_ver}-bundle.tar.gz" ]; then
-            tar -xvf $HOME/.nexus_executable_cache/nexus-iq-server-${_iq_cli_ver}-bundle.tar.gz -C "${_cli_dir}" nexus-iq-cli-${_iq_cli_ver}.jar || return $?
-        else
-            curl -f -L "https://download.sonatype.com/clm/scanner/nexus-iq-cli-${_iq_cli_ver}.jar" -o "${_iq_cli_jar}" || return $?
-        fi
-    fi
-    local _java="java"
-    if [[ "${_iq_cli_ver}" =~ ^1\.1[89] ]] && [ -n "${JAVA_HOME_17}" ]; then
-        _java="${JAVA_HOME_17%/}/bin/java"
-    fi
-    # NOTE: -X/--debug outputs to STDOUT
-    #       Mac uses "TMPDIR" (and can't change), which is like java.io.tmpdir = /var/folders/ct/cc2rqp055svfq_cfsbvqpd1w0000gn/T/ + nexus-iq
-    #       Newer IQ CLI removes scan-6947340794864341803.xml.gz (if no -k), so no point of changing the tmpdir...
-    # -D includeSha256=true is for BFS
-    local _cmd="${_java} -jar ${_iq_cli_jar} ${_iq_cli_opt} -s ${_iq_url} -a \"${_iq_cred}\" -i ${_iq_app_id} -t ${_iq_stage} -D includeSha256=true -r ./iq_result_$$.json -k -X ${_path}"
-    echo "[$(date +'%Y-%m-%d %H:%M:%S')] Executing: ${_cmd} | tee ./iq_cli_$$.out" >&2
-    eval "${_cmd} | tee ./iq_cli_$$.out"
-    echo "[$(date +'%Y-%m-%d %H:%M:%S')] Completed ($?)." >&2
-    local _scanId="$(rg -m1 '"reportDataUrl"\s*:\s*".+/([0-9a-f]{32})/.*"' -o -r '$1' ./iq_result_$$.json)"
-    if [ -n "${_scanId}" ]; then
-        _cmd="curl -sf -u \"${_iq_cred}\" ${_iq_url%/}/api/v2/applications/${_iq_app_id}/reports/${_scanId}/raw | python -m json.tool > ./iq_raw_$$.json"
-        echo "[$(date +'%Y-%m-%d %H:%M:%S')] Executing: ${_cmd}" >&2
-        eval "${_cmd}"
-    fi
-}
-
-# Start "mvn" with IQ plugin
-function iqMvn() {
-    local __doc__="https://help.sonatype.com/display/NXI/Sonatype+CLM+for+Maven"
-    # overwrite-able global variables
-    local _iq_app_id="${1:-${_IQ_APP_ID:-"sandbox-application"}}"
-    local _iq_stage="${2:-${_IQ_STAGE:-"build"}}" #develop|build|stage-release|release|operate
-    local _iq_url="${3:-${_IQ_URL}}"
-    local _file="${4:-"."}"
-    local _mvn_opts="${5:-"-X"}"    # no -U
-    #local _iq_tmp="${_IQ_TMP:-"./iq-tmp"}" # does not generate anything
-
-    local _iq_mvn_ver="${_IQ_MVN_VER}"  # empty = latest
-    [ -n "${_iq_mvn_ver}" ] && _iq_mvn_ver=":${_iq_mvn_ver}"
-    _iq_url="$(_get_iq_url "${_iq_url}")" || return $?
-
-    #clm-maven-plugin:2.30.2-01:index | com.sonatype.clm:clm-maven-plugin:index to generate module.xml file
-    local _cmd="mvn -f ${_file} com.sonatype.clm:clm-maven-plugin${_iq_mvn_ver}:evaluate -Dclm.serverUrl=${_iq_url} -Dclm.applicationId=${_iq_app_id} -Dclm.stage=${_iq_stage} -Dclm.username=admin -Dclm.password=admin123 -Dclm.resultFile=iq_result.json -Dclm.scan.dirExcludes=\"**/BOOT-INF/lib/**\" ${_mvn_opts}"
-    echo "[$(date +'%Y-%m-%d %H:%M:%S')] Executing: ${_cmd}" >&2
-    eval "${_cmd}"
-    echo "[$(date +'%Y-%m-%d %H:%M:%S')] Completed." >&2
 }
 
 # export JAVA_HOME=$JAVA_HOME_17
@@ -453,7 +385,7 @@ function nxrmDocker() {
         done
     fi
 
-    local _my_params="-Xms2703m -Xmx2703m -Djava.util.prefs.userRoot=/tmp/javaprefs" # no need to be /nexus-data
+    local _my_params="-XX:ActiveProcessorCount=2 -Xms2703m -Xmx2703m -Djava.util.prefs.userRoot=/tmp/javaprefs" # no need to be /nexus-data
     _my_params="${_my_params} -Dnexus.security.randompassword=false -Dnexus.onboarding.enabled=false -Dnexus.script.allowCreation=true -Dnexus.assetBlobCleanupTask.blobCreatedDelayMinute=0"
     local _license="$(ls -1t ${_work_dir%/}/sonatype/*.lic 2>/dev/null | head -n1)"
     if [ -s "${_license}" ]; then
@@ -642,7 +574,7 @@ function iqDocker() {
         done
     fi
     local _opts="--name=${_name}"
-    local _java_opts="" #"-Ddw.dbCacheSizePercent=50 -Ddw.needsAcknowledgementOfInitialDashboardFilter=true"
+    local _java_opts="-XX:ActiveProcessorCount=2 -Xms2703m -Xmx2703m" #"-Ddw.dbCacheSizePercent=50 -Ddw.needsAcknowledgementOfInitialDashboardFilter=true"
     # NOTE: symlink of *.lic does not work with -v
     local _license="$(ls -1t ${_work_dir%/}/sonatype/*.lic 2>/dev/null | head -n1)"
     if [ -s "${_license}" ]; then

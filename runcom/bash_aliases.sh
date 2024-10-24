@@ -751,18 +751,35 @@ function goBuild() {
     local _goFile="$1"
     local _name="$2"
     local _destDir="${3:-"$HOME/IdeaProjects/samples/misc"}"
-    [ -z "${_name}" ] && _name="$(basename "${_goFile}" ".go" | tr '[:upper:]' '[:lower:]')"
+    if [ -z "${_name}" ]; then
+        if [ -z "${_goFile}" ]; then
+            _name="$(basename "${PWD}" | tr '[:upper:]' '[:lower:]')"
+        else
+            _name="$(basename "${_goFile}" ".go" | tr '[:upper:]' '[:lower:]')"
+        fi
+    fi
     if [ -d /opt/homebrew/opt/go/libexec ]; then
         export GOROOT=/opt/homebrew/opt/go/libexec
     fi
+    if [[ "${GO_SKIP_TESTS}" =~ ^[yY] ]]; then
+        echo "# Skipping tests ..." >&2
+    else
+        echo "# Starting tests at $(date)" >&2
+        # Saving into current directory
+        go test -coverprofile=./coverage.out || return $?
+        go tool cover -func=./coverage.out
+        echo "" >&2
+    fi
+    echo "# Compiling at $(date)" >&2
+    env GOOS=darwin GOARCH=arm64 go build -o "${_destDir%/}/${_name}_Darwin_arm64" ${_goFile} || return $?
     env GOOS=linux GOARCH=amd64 go build -o "${_destDir%/}/${_name}_Linux_x86_64" ${_goFile} && \
     env GOOS=linux GOARCH=arm64 go build -o "${_destDir%/}/${_name}_Linux_aarch64" ${_goFile} && \
     env GOOS=darwin GOARCH=amd64 go build -o "${_destDir%/}/${_name}_Darwin_x86_64" ${_goFile} && \
-    env GOOS=darwin GOARCH=arm64 go build -o "${_destDir%/}/${_name}_Darwin_arm64" ${_goFile} || return $?
     env GOOS=windows GOARCH=amd64 go build -o "${_destDir%/}/${_name}_Windows_x86_64" ${_goFile}
-    ls -l ${_destDir%/}/${_name}_* || return $?
-    echo "curl -o /usr/local/bin/${_name} -L \"https://github.com/hajimeo/samples/raw/master/misc/${_name}_\$(uname)_\$(uname -m)\""
-    date
+    echo "" >&2
+    find "${_destDir%/}" -type f -name "${_name}_*" -mmin -1 >&2
+    echo "# curl -o /usr/local/bin/${_name} -L \"https://github.com/hajimeo/samples/raw/master/misc/${_name}_\$(uname)_\$(uname -m)\"" >&2
+    echo "Completed at $(date)" >&2
 }
 
 # backup & cleanup Cases (backing up files smaller than 10MB only)
