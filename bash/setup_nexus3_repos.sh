@@ -1009,14 +1009,20 @@ function f_setup_go() {
     [ -n "${_ds_name}" ] && _extra_sto_opt=',"dataStoreName":"'${_ds_name}'"'
     # If no xxxx-proxy, create it (NOTE: No HA support)
     if ! _is_repo_available "${_prefix}-proxy"; then
-        _apiS '{"action":"coreui_Repository","method":"create","data":[{"attributes":{"proxy":{"remoteUrl":"https://gonexus.dev/","contentMaxAge":1440,"metadataMaxAge":1440},"httpclient":{"blocked":false,"autoBlock":true,"connection":{"useTrustStore":false}},"storage":{"blobStoreName":"'${_bs_name}'","strictContentTypeValidation":true'${_extra_sto_opt}'},"negativeCache":{"enabled":true,"timeToLive":1440},"cleanup":{"policyName":[]}},"name":"'${_prefix}'-proxy","format":"","type":"","url":"","online":true,"routingRuleId":"","authEnabled":false,"httpRequestSettings":false,"recipe":"go-proxy"}],"type":"rpc"}' || return $?
+        # https://gonexus.dev/ was deprecated
+        _apiS '{"action":"coreui_Repository","method":"create","data":[{"attributes":{"proxy":{"remoteUrl":"https://proxy.golang.org/","contentMaxAge":1440,"metadataMaxAge":1440},"httpclient":{"blocked":false,"autoBlock":true,"connection":{"useTrustStore":false}},"storage":{"blobStoreName":"'${_bs_name}'","strictContentTypeValidation":true'${_extra_sto_opt}'},"negativeCache":{"enabled":true,"timeToLive":1440},"cleanup":{"policyName":[]}},"name":"'${_prefix}'-proxy","format":"","type":"","url":"","online":true,"routingRuleId":"","authEnabled":false,"httpRequestSettings":false,"recipe":"go-proxy"}],"type":"rpc"}' || return $?
     fi
+    # TODO: add some data for xxxx-proxy
     # Workaround for https://issues.sonatype.org/browse/NEXUS-21642
     if ! _is_repo_available "gosum-raw-proxy"; then
         _apiS '{"action":"coreui_Repository","method":"create","data":[{"attributes":{"raw":{"contentDisposition":"ATTACHMENT"},"proxy":{"remoteUrl":"https://sum.golang.org","contentMaxAge":1440,"metadataMaxAge":1440},"httpclient":{"blocked":false,"autoBlock":true,"connection":{"useTrustStore":false}},"storage":{"blobStoreName":"'${_bs_name}'","strictContentTypeValidation":true'${_extra_sto_opt}'},"negativeCache":{"enabled":true,"timeToLive":1440},"cleanup":{"policyName":[]}},"name":"gosum-raw-proxy","format":"","type":"","url":"","online":true,"routingRuleId":"","authEnabled":false,"httpRequestSettings":false,"recipe":"raw-proxy"}],"type":"rpc"}' || return $?
         _log "INFO" "May need to set 'GOSUMDB=\"sum.golang.org ${r_NEXUS_URL:-"${_NEXUS_URL%/}"}/repository/gosum-raw-proxy\"'"
     fi
-    # TODO: add some data for xxxx-proxy
+    # TODO: add hosted probably from 3.74
+    #curl -X PUT -u 'admin:admin123' http://localhost:8081/repository/go-hosted/github.com/gorilla/mux/@v/mux-1.8.1.zip  -T mux-1.8.1.zip
+    #if [ -s "${_TMP%/}/hello-world_1.0.0.deb" ] || curl -sf -o ${_TMP%/}/hello-world_1.0.0.deb -L "https://github.com/hajimeo/samples/raw/master/misc/hello-world_1.0.0_unsigned.deb"; then
+    #    _ASYNC_CURL="Y" f_upload_asset "${_prefix}-hosted" -F apt.asset=@${_TMP%/}/hello-world_1.0.0.deb
+    #fi
 }
 
 function f_setup_apt() {
@@ -1178,6 +1184,13 @@ function _get_work_dir() {
         _work_dir="$(find . -mindepth 1 -maxdepth 2 -type d -path '*/sonatype-work/*' -name 'nexus3' | sort | tail -n1)"
     fi
     readlink -f "${_work_dir}"
+}
+# TODO: haven't used yet. Thinking of adding conditions based on version
+function _get_version() {
+    #curl -I "${_NEXUS_URL%/}/service/rest/v1/status" often doesn't work via reverse proxy
+    [ -n "${_NEXUS_VER}" ] && [ "${_NEXUS_VER}" != "<null>" ] && echo "${_NEXUS_VER}" && return
+    local _app_ver="$(f_api "/service/rest/atlas/system-information" | grep -A1 '"nexus-status"' | grep '"version"' | sed -r 's/.*"version" *: *"([^"]+)".*/\1/g')"
+    [ -n "${_app_ver}" ] && export _NEXUS_VER="${_app_ver}" && echo "${_app_ver}"
 }
 function _get_blobstore_name() {
     local _bs_name="default"
