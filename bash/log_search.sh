@@ -966,7 +966,6 @@ function f_splitTopNetstat() {
     local _file="$1"
     local _out_dir="${2:-"./top_netstat"}"
 
-    local _tmpDir="$(mktemp -d)"
     local _netstat_str=""   # used to split netstat output
     local _useGonetstat=false
 
@@ -987,8 +986,9 @@ function f_splitTopNetstat() {
         fi
     fi
 
+    local _tmpDir="$(mktemp -d)"
     local _split_pfx="${_tmpDir%/}/_topOrNet_"
-    if [ -z "${_netstat_str}" ]; then
+    if ! rg -q "^(Active Internet\s+|\s*sl\s+)" "${_file}"; then
         _split_pfx="${_out_dir%/}/top_"
     fi
     _csplit -z -f "${_split_pfx}" ${_file} "/^top /" '{*}' || return $?
@@ -1011,6 +1011,52 @@ function f_splitTopNetstat() {
             else
                 mv "${_fpath}" "${_out_dir%/}/netstat_${_n1}.out"
             fi
+        fi
+    done
+}
+
+#f_splitNetstats script-20241025085904002.log
+function f_splitNetstats() {
+    local _file="$1"
+    local _out_dir="${2:-"./netstats"}"
+    local _netstat_str=""   # used to split netstat output
+    local _useGonetstat=false
+
+    if rg -q "^Active Internet\s+" "${_file}"; then
+        _netstat_str="Active Internet"
+    elif rg -q "^\s*sl\s+" "${_file}"; then
+        # if /proc/net/tcp, " *sl" NOTE: the value in HEX is reversed order
+        _netstat_str=" *sl"
+        if ! type gonetstat &>/dev/null; then
+            curl -o /usr/local/bin/gonetstat -L "https://github.com/hajimeo/samples/raw/master/misc/gonetstat_$(uname)_$(uname -m)" && chmod a+x /usr/local/bin/gonetstat
+        fi
+        if type gonetstat &>/dev/null; then
+            _useGonetstat=true
+        fi
+    fi
+
+    if [ -z "${_netstat_str}" ]; then
+        return
+    fi
+
+    if [ ! -d $_out_dir ]; then
+        mkdir -v -p $_out_dir || return $?
+    fi
+
+    local _split_pfx="${_out_dir%/}/$(basename ${_file})_"
+    if rg -q '^\d\d\d\d-\d\d-\d\d \d\d\:\d\d:\d\d$' "${_file}"; then
+        rg -v '^\d\d\d\d-\d\d-\d\d \d\d\:\d\d:\d\d$' "${_file}" > ${_file}.tmp
+        _file="${_file}.tmp"
+    fi
+    _csplit -z -f "${_split_pfx}" "${_file}" "/^${_netstat_str} /" '{*}' || return $?
+
+    ls -1 ${_split_pfx}* | while read _fpath; do
+        [[ "${_fpath}" =~ ._([0-9]+)$ ]]
+        local _n1="${BASH_REMATCH[1]}"
+        if ${_useGonetstat}; then
+            gonetstat ${_fpath} > "${_out_dir%/}/netstat_${_n1}.out" && rm -f "${_fpath}"
+        else
+            mv "${_fpath}" "${_out_dir%/}/netstat_${_n1}.out"
         fi
     done
 }
