@@ -316,7 +316,7 @@ function _basic_check() {
     if [ -n "${_required_file}" ] && [ ! -s "${_required_file}" ]; then
         # ${FUNCNAME[1]} is to get the caller function name
         [ -z "${_message}" ] && _message="Can not run ${FUNCNAME[1]} as no ${_required_file}"
-        _head "WARN" "${_message}"
+        _head "${_level}" "${_message}"
         return 1
     fi
     return 0
@@ -621,8 +621,8 @@ function t_requests() {
 
     # TODO: Using agg_requests_count_hour_api.ssv as SQLite does not have regex replace (so that can include elapsed)
     if [ -s "${_FILTERED_DATA_DIR%/}/agg_requests_count_hour_api.ssv" ]; then
-        # once in 10 seconds or higher APIs. NXRM3's /rest/v1/status is light and fast so excluding
-        local _query="SELECT c2 as hour, c3 as api, sum(c1) as c FROM ${_FILTERED_DATA_DIR%/}/agg_requests_count_hour_api.ssv WHERE api not like '%/rest/v1/status%' GROUP BY hour, api HAVING c > 360 ORDER BY c DESC LIMIT 40"
+        # Greater than 1 request per sec APIs. NXRM3's /rest/v1/status is light and fast so excluding
+        local _query="SELECT c2 as hour, c3 as api, sum(c1) as c FROM ${_FILTERED_DATA_DIR%/}/agg_requests_count_hour_api.ssv WHERE api not like '%/rest/v1/status%' GROUP BY hour, api HAVING c > 3600 ORDER BY c DESC LIMIT 40"
         _test_tmpl_auto "$(_q -d" " -T  --disable-double-double-quoting "${_query}")" "2" "5" "Potentially too frequent API-like requests per hour (${_FILTERED_DATA_DIR%/}/agg_requests_count_hour_api.ssv)" \
           "_q -H \"SELECT substr(date,1,14) as hour, count(*), avg(elapsedTime), max(elapsedTime), sum(elapsedTime) FROM ${_FILTERED_DATA_DIR%/}/request.csv where requestURL like '%/<REPLACE_HERE>/%' GROUP by hour HAVING max(elapsedTime) > 2000\""
     fi
