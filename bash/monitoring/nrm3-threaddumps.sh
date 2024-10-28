@@ -222,7 +222,7 @@ function takeDumps() {
         local _wpid_in_for=""
         if [ -s "${_storeProp}" ] || [ -n "${jdbcUrl}" ]; then
             # If _storeProp is given, do extra check for NXRM3
-            (date +'%Y-%m-%d %H:%M:%S'; runDbQuery "select * from pg_stat_activity where state <> 'idle' and query not like '% pg_stat_activity %' order by query_start limit 100;select relation::regclass, * from pg_locks where relation::regclass::text != 'pg_locks' limit 100;" "${_storeProp}" "${_interval}") >> "${_outPfx}101.log" &
+            (date +'%Y-%m-%d %H:%M:%S'; runDbQuery "select pg_blocking_pids(pid) as blocked_by, * from pg_stat_activity where state <> 'idle' and query not like '% pg_stat_activity %' order by query_start limit 50;" "${_storeProp}" "${_interval}") >> "${_outPfx}101.log" &
             _wpid_in_for="$!"
         fi
         if [ -n "${_jstack}" ]; then
