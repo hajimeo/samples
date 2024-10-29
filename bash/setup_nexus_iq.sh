@@ -443,9 +443,54 @@ function f_setup_ldap_freeipa() {
     _apiS "/rest/config/ldap/${_id}/userMapping" '{"id":null,"serverId":"'${_id}'","userBaseDN":"cn=users","userSubtree":true,"userObjectClass":"person","userFilter":"","userIDAttribute":"uid","userRealNameAttribute":"cn","userEmailAttribute":"mail","userPasswordAttribute":"","groupMappingType":"DYNAMIC","groupBaseDN":"","groupSubtree":false,"groupObjectClass":null,"groupIDAttribute":null,"groupMemberAttribute":null,"groupMemberFormat":null,"userMemberOfGroupAttribute":"memberOf","dynamicGroupSearchEnabled":true}' "PUT" | python -m json.tool
 }
 
-function f_setup_scm_for_bitbucket() {
-    local __doc__="Setup SCM for Bitbucket"
-    echo "docker run -v /var/tmp/share/bitbucket:/var/atlassian/application-data/bitbucket --name=bitbucket -d -p 7990:7990 -p 7999:7999 atlassian/bitbucket"
+function f_setup_jenkins() {
+    local __doc__="Setup Jenkins with Docker"
+    # @see: https://abrahamntd.medium.com/automating-jenkins-setup-using-docker-and-jenkins-configuration-as-code-897e6640af9d
+    local _plugin_ver="${1:-"3.20.6-01"}"
+    local _jenkins_home="${2:-"/var/tmp/share/jenkins_home"}"
+
+    if [ ! -d "${_jenkins_home%/}" ]; then
+        mkdir -v -p -m 777 "${_jenkins_home%/}/tmp" || return $?
+        chmod 777 ${_jenkins_home} || return $?
+    fi
+    cat << 'EOF' > ./jenkins_home/jenkins-configuration.yaml
+jenkins:
+ securityRealm:
+  local:
+   allowsSignup: false
+   users:
+    — id: admin
+     password: admin123
+EOF
+    _log "INFO" "Executing 'docker run --rm ... --name=jenkins' ..."
+    docker run --rm -d -p 8080:8080 -p 50000:50000 \
+    -e JAVA_OPTS="-Djenkins.install.runSetupWizard=false" -e CASC_JENKINS_CONFIG="/var/jenkins_home/jenkins-configuration.yaml" \
+    -v ${_jenkins_home}:/var/jenkins_home:z \
+    --name=jenkins jenkins/jenkins:lts-jdk17 || return $?
+    # If password is not set: docker exec jenkins cat /var/jenkins_home/secrets/initialAdminPassword
+
+    # NOTE: Creating ${_jenkins_home%/}/plugins and copying .hpi may fail with "Plugin is missing" errors
+    if [ ! -s "${_jenkins_home%/}/tmp/nexus-jenkins-plugin-${_plugin_ver}.hpi" ]; then
+        _log "INFO" "Downloading nexus-jenkins-plugin-${_plugin_ver}.hpi ..."
+        curl -Sf -o "${_jenkins_home%/}/tmp/nexus-jenkins-plugin-${_plugin_ver}.hpi" -L "https://download.sonatype.com/integrations/jenkins/nexus-jenkins-plugin-${_plugin_ver}.hpi" || return $?
+    fi
+    _log "INFO" "Waiting http://localhost:8080/ ..."
+    if _wait_url "http://localhost:8080/" "30" "2"; then
+        curl -sSf -o "${_jenkins_home%/}/tmp/jenkins-cli.jar" -L http://localhost:8080/jnlpJars/jenkins-cli.jar || return $?
+        _log "INFO" "Installing nexus-jenkins-plugin-${_plugin_ver}.hpi and dependencies ..."
+        docker exec -ti jenkins java -jar /var/jenkins_home/tmp/jenkins-cli.jar -s http://localhost:8080/ -auth admin:admin123 install-plugin file:///var/jenkins_home/tmp/nexus-jenkins-plugin-${_plugin_ver}.hpi workflow-api plain-credentials structs credentials bouncycastle-api || return $?
+        _log "INFO" "Restarting jenkins ..."
+        #docker exec -ti jenkins java -jar /var/jenkins_home/tmp/jenkins-cli.jar -s http://localhost:8080/ -auth admin:admin123 safe-restart || return $?
+        docker restart jenkins || return $?
+    fi
+
+    _log "INFO" "Executing 'docker logs -f jenkins' ..."
+    docker logs -f jenkins
+}
+
+function f_setup_bitbucket() {
+    local __doc__="TODO: Setup Bitbucket with Docker"
+    echo "docker run --rm -d -v /var/tmp/share/bitbucket:/var/atlassian/application-data/bitbucket -p 7990:7990 -p 7999:7999 --name=bitbucket atlassian/bitbucket"
     cat << 'EOF'
 1. Setup Bitbucket
     mkdir -p -m 777 /var/tmp/share/bitbucket
