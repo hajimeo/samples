@@ -447,13 +447,14 @@ function f_setup_jenkins() {
     local __doc__="Setup Jenkins with Docker"
     # @see: https://abrahamntd.medium.com/automating-jenkins-setup-using-docker-and-jenkins-configuration-as-code-897e6640af9d
     local _plugin_ver="${1:-"3.20.6-01"}"
-    local _jenkins_home="${2:-"/var/tmp/share/jenkins_home"}"
+    local _jenkins_ver="${2:-"2.462.3"}"
+    local _jenkins_home="${3:-"/var/tmp/share/jenkins_home"}"
 
     if [ ! -d "${_jenkins_home%/}" ]; then
         mkdir -v -p -m 777 "${_jenkins_home%/}/tmp" || return $?
         chmod 777 ${_jenkins_home} || return $?
     fi
-    cat << 'EOF' > ./jenkins_home/jenkins-configuration.yaml
+    cat << 'EOF' > "${_jenkins_home%/}/jenkins-configuration.yaml"
 jenkins:
  securityRealm:
   local:
@@ -462,11 +463,15 @@ jenkins:
     — id: admin
      password: admin123
 EOF
-    _log "INFO" "Executing 'docker run --rm ... --name=jenkins' ..."
-    docker run --rm -d -p 8080:8080 -p 50000:50000 \
-    -e JAVA_OPTS="-Djenkins.install.runSetupWizard=false" -e CASC_JENKINS_CONFIG="/var/jenkins_home/jenkins-configuration.yaml" \
-    -v ${_jenkins_home}:/var/jenkins_home:z \
-    --name=jenkins jenkins/jenkins:lts-jdk17 || return $?
+    _log "INFO" "Downloading and starting jenkins (may require Java17 in JAVA_HOME) ..."
+    if [ ! -s "${_jenkins_home%/}/tmp/jenkins-${_jenkins_ver}.war" ]; then
+        _log "INFO" "Downloading jenkins.war (${_jenkins_ver}) ..."
+        curl -Sf -o "${_jenkins_home%/}/tmp/jenkins-${_jenkins_ver}.war" -L "https://get.jenkins.io/war-stable/${_jenkins_ver}/jenkins.war" || return $?
+    fi
+    export JENKINS_HOME="${_jenkins_home%/}" CASC_JENKINS_CONFIG="${_jenkins_home%/}/jenkins-configuration.yaml"
+    #-Djava.util.logging.config.file=$HOME/Apps/jenkins-logging.properties
+    $JAVA_HOME/bin/java -Djenkins.install.runSetupWizard=false -jar ${_jenkins_home%/}/tmp/jenkins-${_jenkins_ver}.war &> /tmp/jenkins.log &
+    #docker run --rm -d -p 8080:8080 -p 50000:50000 -e JAVA_OPTS="-Djenkins.install.runSetupWizard=false" -e CASC_JENKINS_CONFIG="/var/jenkins_home/jenkins-configuration.yaml" -v ${_jenkins_home}:/var/jenkins_home --name=jenkins jenkins/jenkins:lts-jdk17 || return $?
     # If password is not set: docker exec jenkins cat /var/jenkins_home/secrets/initialAdminPassword
 
     # NOTE: Creating ${_jenkins_home%/}/plugins and copying .hpi may fail with "Plugin is missing" errors
@@ -476,16 +481,26 @@ EOF
     fi
     _log "INFO" "Waiting http://localhost:8080/ ..."
     if _wait_url "http://localhost:8080/" "30" "2"; then
-        curl -sSf -o "${_jenkins_home%/}/tmp/jenkins-cli.jar" -L http://localhost:8080/jnlpJars/jenkins-cli.jar || return $?
-        _log "INFO" "Installing nexus-jenkins-plugin-${_plugin_ver}.hpi and dependencies ..."
-        docker exec -ti jenkins java -jar /var/jenkins_home/tmp/jenkins-cli.jar -s http://localhost:8080/ -auth admin:admin123 install-plugin file:///var/jenkins_home/tmp/nexus-jenkins-plugin-${_plugin_ver}.hpi workflow-api plain-credentials structs credentials bouncycastle-api || return $?
-        _log "INFO" "Restarting jenkins ..."
-        #docker exec -ti jenkins java -jar /var/jenkins_home/tmp/jenkins-cli.jar -s http://localhost:8080/ -auth admin:admin123 safe-restart || return $?
-        docker restart jenkins || return $?
+        if ! grep -q -w "${_plugin_ver}" ${_jenkins_home%/}/plugins/nexus-jenkins-plugin/META-INF/MANIFEST.MF; then
+            curl -sSf -o "${_jenkins_home%/}/tmp/jenkins-cli.jar" -L http://localhost:8080/jnlpJars/jenkins-cli.jar || return $?
+            _log "INFO" "Installing nexus-jenkins-plugin-${_plugin_ver}.hpi and dependencies ..."
+            $JAVA_HOME/bin/java -jar ${_jenkins_home%/}/tmp/jenkins-cli.jar -s http://localhost:8080/ -auth admin:admin123 install-plugin file://${_jenkins_home%/}/tmp/nexus-jenkins-plugin-${_plugin_ver}.hpi workflow-api plain-credentials structs credentials bouncycastle-api || return $?
+            _log "INFO" "Restarting jenkins ..."
+            $JAVA_HOME/bin/java -jar ${_jenkins_home%/}/tmp/jenkins-cli.jar -s http://localhost:8080/ -auth admin:admin123 safe-restart || return $?
+            #docker restart jenkins || return $?
+        fi
     fi
 
-    _log "INFO" "Executing 'docker logs -f jenkins' ..."
-    docker logs -f jenkins
+    _log "INFO" "Checking logs ..."
+    tail -f /tmp/jenkins.log
+    #docker logs -f jenkins
+    cat << 'EOF'
+# To configure Nexus IQ Server (jenkins_home/org.sonatype.nexus.ci.config.GlobalNexusConfiguration.xml):
+    http://localhost:8080/manage/configure
+# To configure maven / java:
+    http://localhost:8080/configureTools/
+EOF
+    jobs -l
 }
 
 function f_setup_bitbucket() {
