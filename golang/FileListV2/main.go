@@ -41,7 +41,6 @@ func setGlobals() {
 	flag.BoolVar(&common.WithProps, "P", false, "If true, the .properties file content is included in the output")
 	flag.StringVar(&common.Filter4PropsIncl, "pRx", "", "Filter for the content of the .properties files (eg: 'deleted=true')")
 	flag.StringVar(&common.Filter4PropsExcl, "pRxNot", "", "Excluding Filter for .properties (eg: 'BlobStore.blob-name=.+/maven-metadata.xml.*')")
-	//flag.BoolVar(&common.WithBlobSize, "BSize", false, "If true, includes .bytes size (When -f is '.properties')")
 	flag.StringVar(&common.SaveToFile, "s", "", "Save the output (TSV text) into the specified path")
 	flag.Int64Var(&common.TopN, "n", 0, "Return first N lines (0 = no limit). (TODO: may return more than N because of concurrency)")
 	flag.IntVar(&common.Conc1, "c", 1, "Concurrent number for reading directories")
@@ -77,8 +76,7 @@ func setGlobals() {
 	}
 	h.DEBUG = common.Debug
 
-	h.Log("INFO", "Starting setGlobals for "+strings.Join(os.Args[1:], " "))
-
+	h.Log("DEBUG", "Starting setGlobals for "+strings.Join(os.Args[1:], " "))
 	common.BaseDir = h.AppendSlash(common.BaseDir)
 	h.Log("DEBUG", "common.BaseDir with slash = "+common.BaseDir)
 	common.BsType = lib.GetSchema(common.BaseDir)
@@ -182,9 +180,6 @@ func getClient() bs_clients.Client {
 func printHeader() {
 	if !common.NoHeader {
 		header := fmt.Sprintf("Path%sLastModified%sSize", common.SEP, common.SEP)
-		/*if common.WithBlobSize && common.Filter4FileName == common.PROP_EXT {
-			header += fmt.Sprintf("%sBlobSize", common.SEP)
-		}*/
 		if common.WithProps {
 			header += fmt.Sprintf("%sProperties", common.SEP)
 		}
@@ -261,7 +256,7 @@ func genOutput(path string, bi bs_clients.BlobInfo, db *sql.DB, client bs_client
 	// Updating counters before returning
 	if len(output) > 0 {
 		atomic.AddInt64(&common.PrintedNum, 1)
-		atomic.AddInt64(&common.TotalSize, bi.Size+bi.BlobSize)
+		atomic.AddInt64(&common.TotalSize, bi.Size)
 	}
 	return output
 }
@@ -415,7 +410,7 @@ func listObjects(dir string, db *sql.DB, client bs_clients.Client) {
 	startMs := time.Now().UnixMilli()
 	subTtl := client.ListObjects(dir, common.Filter4FileName, db, printLine)
 	// Always log this elapsed time by using 0 thresholdMs
-	h.Elapsed(startMs, fmt.Sprintf("Completed %s for %d files (current total: %d)", dir, subTtl, common.CheckedNum), 0)
+	h.Elapsed(startMs, fmt.Sprintf("Checked %s for %d files (current total: %d)", dir, subTtl, common.CheckedNum), 0)
 }
 
 func printObjectByBlobId(blobId string, db *sql.DB, client bs_clients.Client) {
@@ -431,6 +426,8 @@ func printObjectByBlobId(blobId string, db *sql.DB, client bs_clients.Client) {
 }
 
 func runParallel(chunks [][]string, client bs_clients.Client, f func(string, *sql.DB, bs_clients.Client), conc int) {
+	startMs := time.Now().UnixMilli()
+
 	wg := sync.WaitGroup{}
 	guard := make(chan struct{}, conc)
 	for _, chunk := range chunks {
@@ -451,6 +448,9 @@ func runParallel(chunks [][]string, client bs_clients.Client, f func(string, *sq
 		}(chunk, client)
 	}
 	wg.Wait()
+
+	// Always log this elapsed time by using 0 thresholdMs
+	h.Elapsed(startMs, fmt.Sprintf("Completed. Listed: %d (checked: %d), Size: %d bytes", common.PrintedNum, common.CheckedNum, common.TotalSize), 0)
 }
 
 func main() {

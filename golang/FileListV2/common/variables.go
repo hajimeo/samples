@@ -61,7 +61,7 @@ var ModDateFromStr = ""
 var ModDateFromTS int64
 var ModDateToStr = ""
 var ModDateToTS int64
-var SizeFrom int
+var SizeFrom int // TODO: is this in use?
 var SizeTo int
 var RxIncl *regexp.Regexp
 var RxExcl *regexp.Regexp

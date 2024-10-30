@@ -7,7 +7,6 @@ import (
 
 // Client : Like an OOP interface
 type Client interface {
-	//NewClient() Client	// like new Xxxxxxx() in OOP
 	GetBsClient() interface{}
 	ReadPath(string) (string, error)
 	WriteToPath(string, string) error
@@ -18,10 +17,9 @@ type Client interface {
 }
 
 type BlobInfo struct {
-	Path     string
-	ModTime  time.Time
-	Size     int64
-	BlobSize int64 // This is updated when .bytes is read
-	Owner    string
-	Tags     map[string]string
+	Path    string
+	ModTime time.Time
+	Size    int64
+	Owner   string
+	Tags    map[string]string
 }

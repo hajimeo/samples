@@ -90,6 +90,7 @@ func (c *FileClient) GetDirs(baseDir string, pathFilter string, maxDepth int) ([
 
 			if len(pathFilter) == 0 || filterRegex.MatchString(path) {
 				h.Log("DEBUG", fmt.Sprintf("Matching directory: %s (Depth: %d)\n", path, depth))
+				// NOTE: As ListObjects for File type is not checking the subdirectories, it's OK to contain the parent directories.
 				matchingDirs = append(matchingDirs, path)
 			} else {
 				h.Log("DEBUG", fmt.Sprintf("Not matching directory: %s (Depth: %d)\n", path, depth))
@@ -121,13 +122,13 @@ func (c *FileClient) Convert2BlobInfo(f interface{}) BlobInfo {
 	return blobInfo
 }
 
-func (c *FileClient) ListObjects(baseDir string, fileFilter string, db *sql.DB, perLineFunc func(interface{}, BlobInfo, *sql.DB, Client)) int64 {
-	// ListObjects: List all files in the baseDir directory. Include only common.Filter4FileName if set.
+func (c *FileClient) ListObjects(dir string, fileFilter string, db *sql.DB, perLineFunc func(interface{}, BlobInfo, *sql.DB, Client)) int64 {
+	// ListObjects: List all files in the dir directory. Include only common.Filter4FileName if set.
 	var subTtl int64
 	filterRegex := regexp.MustCompile(fileFilter)
 	// NOTE: `filepath.Glob` does not work because currently Glob does not support ./**/*
 	//       Also, somehow filepath.WalkDir is slower in this code
-	err := filepath.Walk(baseDir, func(path string, f os.FileInfo, err error) error {
+	err := filepath.Walk(dir, func(path string, f os.FileInfo, err error) error {
 		if common.TopN > 0 && common.TopN <= common.PrintedNum {
 			h.Log("DEBUG", fmt.Sprintf("Printed %d >= %d", common.PrintedNum, common.TopN))
 			return io.EOF
@@ -140,11 +141,17 @@ func (c *FileClient) ListObjects(baseDir string, fileFilter string, db *sql.DB, 
 				subTtl++
 				perLineFunc(path, c.Convert2BlobInfo(f), db, c)
 			}
+		} else {
+			if common.MaxDepth > 1 && dir != path {
+				//TODO: Because GetDirs for "File" type returns all directories, this should not recursively check sub-directories. But if other blob store types will implement GetDirs differently, may need to change this line.
+				h.Log("INFO", fmt.Sprintf("Skipping directory: %s, %s", dir, path))
+				return filepath.SkipDir
+			}
 		}
 		return nil
 	})
 	if err != nil && err != io.EOF {
-		h.Log("ERROR", "Got error: "+err.Error()+" from "+baseDir+" with filter: "+fileFilter)
+		h.Log("ERROR", "Got error: "+err.Error()+" from "+dir+" with filter: "+fileFilter)
 	}
 	return subTtl
 }
