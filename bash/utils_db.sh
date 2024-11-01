@@ -285,7 +285,7 @@ function _postgresql_create_dbuser() {
 
     [ "${_dbusr}" == "all" ] && return 0    # not creating user 'all'
     _log "INFO" "Creating Role:${_dbusr} and Database:${_dbname} ..."
-    _postgresql_create_role_and_db "${_dbusr}" "${_dbpwd}" "${_dbname}" "${_schema}" "${_DB_ADMIN}" "${_port}" "${_force}"
+    _postgresql_create_role_and_db "${_dbusr}" "${_dbpwd}" "${_dbname}" "${_schema}" "${_port}" "${_force}"
 }
 
 function _update_pg_hba_conf() {
