@@ -363,7 +363,7 @@ function f_nfs_server() {
 echo '_DIR="/mnt/nfs";
 mount -t nfs -vvv -o vers=3,noatime,nodiratime,rsize=1048576,wsize=1048576,timeo=600,retrans=2 '$(hostname)':'${_dir%/}' ${_DIR%/};
 mount -t nfs -vvv -o vers=4.2,noatime,nodiratime,rsize=1048576,wsize=1048576,timeo=600,retrans=2 '$(hostname)':'${_dir%/}' ${_DIR%/};
-grep -wE "(nfs|nfs4)" /proc/mounts # to check the nfs version
+grep -wE "(nfs|nfs4)" /proc/mounts # to check the nfs version (or use findmnt)
 dd if=/dev/zero of=/tmp/test.img bs=33M count=1 oflag=dsync;
 time (for i in {1..100}; do bash -c "cp -v /tmp/test.img ${_DIR%/}/test_${i}.img && mv -v ${_DIR%/}/test_${i}.img ${_DIR%/}/test_${i}_deleting.img && rm -v -f ${_DIR%/}/test_${i}_deleting.img" & done; wait);
 umount -f -l ${_DIR%/}'
@@ -1205,7 +1205,6 @@ function f_microk8s() {
     helm repo add nfs-subdir-external-provisioner https://kubernetes-sigs.github.io/nfs-subdir-external-provisioner
     helm install nfs-subdir-external-provisioner nfs-subdir-external-provisioner/nfs-subdir-external-provisioner --create-namespace --namespace nfs-provisione --set nfs.server=node004.b9tcluster.local --set nfs.path=/data
 
-
 ## Kubectl
     kubectl config get-contexts             # list available kubectl configs
     kubectl cluster-info #dump
@@ -1223,6 +1222,7 @@ function f_microk8s() {
     kubectl logs <pod-name>                 # To see if app had error, also --previous is useful
     kubectl delete pod --grace-period=0 --force <pod-name>      # force terminating/deleting. check 'get pvc' and 'get pv'
     kubectl scale --replicas=0 deployment <deployment-name>     # stop all pods temporarily (if no HPA)
+    kubectl -n kube-system rollout restart deployment coredns   # Do rollout-restart
 ### list images (docker images)
     microk8s ctr images list
     kubectl get node -o json | jq -r '.items[].status.images[].names'   # jq is required

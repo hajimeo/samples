@@ -116,9 +116,9 @@ function f_install_iq() {
         [ -n "${_dbname}" ] && _dirpath="${_dirpath}_${_dbname}"
         [ "${_port}" != "8070" ] && _dirpath="${_dirpath}_${_port}"
     fi
-    if [[ "${_RECREATE_ALL}" =~ [yY] ]]; then
+    if [[ "${_RECREATE_ALL-"Y"}" =~ [yY] ]]; then
         if [ -d "${_dirpath%/}" ]; then
-            _log "WARN" "As _RECREATE_ALL=${_RECREATE_ALL}, removing ${_dirpath%/}"; sleep 3
+            _log "WARN" "Removing ${_dirpath%/} (to avoid set _RECREATE_ALL)"; sleep 3
             rm -v -rf "${_dirpath%/}" || return $?
         fi
         _RECREATE_DB="Y"
@@ -154,6 +154,7 @@ database:
   username: ${_dbusr}
   password: ${_dbpwd}
 EOF
+        _log "INFO" "Creating database with \"${_dbusr}\" \"********\" \"${_dbname}\" in localhost:5432"
         if ! _RECREATE_DB=${_RECREATE_DB} _postgresql_create_dbuser "${_dbusr}" "${_dbpwd}" "${_dbname}"; then
             _log "WARN" "Failed to create ${_dbusr} or ${_dbname}"
         fi
@@ -297,6 +298,7 @@ function f_config_update() {
     #f_api_config '{"hdsUrl":"https://clm-staging.sonatype.com/"}'
     f_api_config '{"enableDefaultPasswordWarning":false}'
     f_api_config '{"sessionTimeout":120}'   # between 3 and 120
+    #f_api_config "" "/features/internalFirewallOnboardingEnabled" "POST"  # to enable
     f_api_config "" "/features/internalFirewallOnboardingEnabled" "DELETE" &>/dev/null  # this one can return 400
     #curl -u "admin:admin123" "${_IQ_URL%/}/api/v2/config/features/internalFirewallOnboardingEnabled" -X DELETE #POST
 }
@@ -375,27 +377,69 @@ Also update _IQ_URL. For example: export _IQ_URL=\"https://${_fqdn}:${_port}/\""
     _log "INFO" "To trust this certificate, _trust_ca \"\${_ca_pem}\""
 }
 
+function f_start_ldap_server() {
+    local __doc__="Install and start a dummy LDAP server with glauth"
+    local _fname="$(uname | tr '[:upper:]' '[:lower:]')$(uname -m).zip"
+    local _download_dir="/tmp"
+    if [ ! -s "${_download_dir%/}/${_fname}" ]; then
+        curl -o "${_download_dir%/}/${_fname}" -L "https://github.com/glauth/glauth/releases/download/v2.1.0/${_fname}" --compressed || return $?
+    fi
+    if [ ! -s ./glauth/glauth ]; then
+        unzip -d ./glauth "${_download_dir%/}/${_fname}"
+        chmod u+x ./glauth/glauth || return $?
+    fi
+    if [ ! -s ./glauth/glauth-simple.cfg ]; then
+        curl -o ./glauth/glauth-simple.cfg -L "https://raw.githubusercontent.com/hajimeo/samples/master/misc/glauth-simple.cfg" --compressed || return $?
+    fi
+    # listening 0.0.0.0:389
+    ./glauth/glauth -c ./glauth/glauth-simple.cfg
+}
+function f_setup_ldap_glauth() {
+    local __doc__="Setup LDAP for GLAuth server."
+    local _name="${1:-"glauth"}"
+    local _host="${2:-"localhost"}"
+    local _port="${3:-"389"}"   # 636
+    #[ -z "${_LDAP_PWD}" ] && _log "WARN" "Missing _LDAP_PWD" && sleep 3
+    local _id="$(_apiS "/rest/config/ldap" '{"id":null,"name":"'${_name}'"}' | python -c "import sys,json;a=json.loads(sys.stdin.read());print(a['id'])")" || return $?
+    [ -z "${_id}" ] && return 111
+    #nc -z ${_host} ${_port} || return $?
+    # Using 'mail' instead of 'uid' so that not confused with same 'admin' user between local and ldap
+    _apiS "/rest/config/ldap/${_id}/connection" '{"id":null,"serverId":"'${_id}'","protocol":"LDAP","hostname":"'${_host}'","port":'${_port}',"searchBase":"dc=standalone,dc=localdomain","authenticationMethod":"SIMPLE","saslRealm":null,"systemUsername":"admin@standalone.localdomain","systemPassword":"'${_LDAP_PWD:-"secret12"}'","connectionTimeout":30,"retryDelay":30}' "PUT" | python -m json.tool || return $?
+    _apiS "/rest/config/ldap/${_id}/userMapping" '{"id":null,"serverId":"'${_id}'","userBaseDN":"ou=users","userSubtree":true,"userObjectClass":"posixAccount","userFilter":"","userIDAttribute":"mail","userRealNameAttribute":"cn","userEmailAttribute":"mail","userPasswordAttribute":"","groupMappingType":"DYNAMIC","groupBaseDN":"","groupSubtree":false,"groupObjectClass":null,"groupIDAttribute":null,"groupMemberAttribute":null,"groupMemberFormat":null,"userMemberOfGroupAttribute":"memberOf","dynamicGroupSearchEnabled":true}' "PUT" | python -m json.tool
+}
+function f_setup_ldap_freeipa() {
+    local __doc__="Setup LDAP. Currently using my freeIPA server."
+    local _name="${1:-"freeIPA"}"
+    local _host="${2:-"dh1.standalone.localdomain"}"
+    local _port="${3:-"389"}"
+    [ -z "${_LDAP_PWD}" ] && echo "Missing _LDAP_PWD" && return 1
+    local _id="$(_apiS "/rest/config/ldap" '{"id":null,"name":"'${_name}'"}' | python -c "import sys,json;a=json.loads(sys.stdin.read());print(a['id'])")" || return $?
+    [ -z "${_id}" ] && return 111
+    _apiS "/rest/config/ldap/${_id}/connection" '{"id":null,"serverId":"'${_id}'","protocol":"LDAP","hostname":"'${_host}'","port":'${_port}',"searchBase":"cn=accounts,dc=standalone,dc=localdomain","authenticationMethod":"SIMPLE","saslRealm":null,"systemUsername":"uid=admin,cn=users,cn=accounts,dc=standalone,dc=localdomain","systemPassword":"'${_LDAP_PWD}'","connectionTimeout":30,"retryDelay":30}' "PUT" | python -m json.tool || return $?
+    _apiS "/rest/config/ldap/${_id}/userMapping" '{"id":null,"serverId":"'${_id}'","userBaseDN":"cn=users","userSubtree":true,"userObjectClass":"person","userFilter":"","userIDAttribute":"uid","userRealNameAttribute":"cn","userEmailAttribute":"mail","userPasswordAttribute":"","groupMappingType":"DYNAMIC","groupBaseDN":"","groupSubtree":false,"groupObjectClass":null,"groupIDAttribute":null,"groupMemberAttribute":null,"groupMemberFormat":null,"userMemberOfGroupAttribute":"memberOf","dynamicGroupSearchEnabled":true}' "PUT" | python -m json.tool
+}
 
-#   export GIT_TOKEN="*******************"
-# Setup Org only: f_setup_scm
-# Setup Org&app : f_setup_scm "https://github.com/hajimeo/private-repo" "github"
-# Setup Org&app : f_setup_scm "https://gitlab.com/emijah/private-repo.git" "gitlab" "gitlab" "master"
+
+### Integration setup related ###
+
+# NOTE: Do not forget export IQ_GIT_TOKEN or GIT_TOKEN:
+#   export IQ_GIT_TOKEN="*******************"
+# Setup Org only: f_setup_scm   # this will create 'github-org' with token
+# Setup Org&app for github: f_setup_scm "github-org" "https://github.com/hajimeo/private-repo2"
+# Setup Org&app for gitlab: f_setup_scm "gitlab-org" "https://gitlab.com/emijah/private-repo.git" "gitlab" "master"
 #  vs. CLI scan : iqCli . "private-repo" "source"
 function f_setup_scm() {
-    local __doc__="Setup IQ SCM"
-    local _git_url="${1}"   # https://github.com/sonatype/support-apac-scm-test https://github.com/hajimeo/private-repo
-    local _org_name="${2}"
+    local __doc__="Setup IQ SCM on the Organisation and app if _git_url is specified"
+    local _org_name="${1}"
+    local _git_url="${2}"   # https://github.com/sonatype/support-apac-scm-test https://github.com/hajimeo/private-repo
     local _provider="${3:-"github"}"
     local _branch="${4:-"main"}"
-    local _token="${5:-"${GIT_TOKEN}"}"
-    [ -z "${_org_name}" ] && _org_name="${_provider}_org"
+    local _token="${5:-"${IQ_GIT_TOKEN:-"${GIT_TOKEN}"}"}"
+    [ -z "${_org_name}" ] && _org_name="${_provider:-"scmtest"}-org"
 
-    #echo "Current SCM configuration:"
-    #_curl "${_IQ_URL%/}/api/v2/config/sourceControl" | python -m json.tool
-    #sleep 2
-
-    # Automatic Source Control Configuration
+    # Automatic Source Control Configuration. It's OK if fails
     _apiS "/rest/config/automaticScmConfiguration" '{"enabled":true}' "PUT" &>/dev/null
+
     local _org_int_id
     if [ -n "${_org_name}" ]; then
         # Check if org exist, and if not, create
@@ -407,40 +451,43 @@ function f_setup_scm() {
         _org_name="Root Organization"
         _org_int_id="ROOT_ORGANIZATION_ID"
     fi
-    if [ -z "${_token}" ]; then
-        _log "WARN" "No token specified. Please specify _token or GITHUB_TOKEN."
-        return 1
+
+    local _existing_config="$(_curl "${_IQ_URL%/}/api/v2/sourceControl/organization/${_org_int_id}" 2>/dev/null)"
+    if [ -n "${_existing_config}" ]; then
+        _log "INFO" "SourceControl already exists for organization ${_org_name}:${_org_int_id}"
+        echo "${_existing_config}" | _sortjson
+    else
+        if [ -z "${_token}" ]; then # and provider and default branch are required
+            _log "ERROR" "No token specified. Please specify _token or IQ_GIT_TOKEN or GITHUB_TOKEN."
+            return 1
+        fi
+
+        # https://help.sonatype.com/iqserver/automating/rest-apis/source-control-rest-api---v2
+        # NOTE: It seems the remediationPullRequestsEnabled is false for default (if null UI may not show as Inherited)
+        _log "INFO" 'Configuring organization: '${_org_int_id}' with "token":"********","provider":"'${_provider}'","baseBranch":"'${_branch}' ...'
+        _curl "${_IQ_URL%/}/api/v2/sourceControl/organization/${_org_int_id}" -H "Content-Type: application/json" -d '{"token":"'${_token}'","provider":"'${_provider}'","baseBranch":"'${_branch}'","remediationPullRequestsEnabled":true,"statusChecksEnabled":true,"pullRequestCommentingEnabled":true,"sourceControlEvaluationsEnabled":true}' || return $?
     fi
-    # https://help.sonatype.com/iqserver/automating/rest-apis/source-control-rest-api---v2
-    # NOTE: It seems the remediationPullRequestsEnabled is false for default
-    _log "INFO" 'Updating organization: '${_org_int_id}' with "remediationPullRequestsEnabled":true,"statusChecksEnabled":true,"pullRequestCommentingEnabled":true,"sourceControlEvaluationsEnabled":true ...'
-    _curl "${_IQ_URL%/}/api/v2/sourceControl/organization/${_org_int_id}" -H "Content-Type: application/json" -d '{"token":"'${_token}'","provider":"'${_provider}'","baseBranch":"'${_branch}'","remediationPullRequestsEnabled":true,"statusChecksEnabled":true,"pullRequestCommentingEnabled":true,"sourceControlEvaluationsEnabled":true}' &> /tmp/${FUNCNAME[0]}_$$.tmp #|| return $?
-    # 400 SourceControl already exists for organization with id: ...
 
     if [ "${_git_url}" ]; then
         local _app_pub_id="$(basename "${_git_url}")"
         f_api_create_app "${_app_pub_id}" "${_org_name}" &>/dev/null
         local _app_int_id="$(f_api_appIntId "${_app_pub_id}" "${_org_name}")" || return $?
         [ -n "${_app_int_id}" ] || return 12
-        # 400 SourceControl already exists for application with id: ...
-        _curl "${_IQ_URL%/}/api/v2/sourceControl/application/${_app_int_id}" -H "Content-Type: application/json" -d '{"remediationPullRequestsEnabled":true,"statusChecksEnabled":true,"pullRequestCommentingEnabled":true,"sourceControlEvaluationsEnabled":true,"baseBranch":"'${_branch}'","repositoryUrl":"'${_git_url}'"}' &> /tmp/${FUNCNAME[0]}_2_$$.tmp #|| return $?
-        _log "INFO" "If application is manually created like this, may need to scan this repository with 'source' stage, so starting ..."
+
+        local _existing_config="$(_curl "${_IQ_URL%/}/api/v2/sourceControl/application/${_app_int_id}" 2>/dev/null)"
+        if [ -n "${_existing_config}" ]; then
+            _log "INFO" "SourceControl already exists for application ${_app_pub_id}:${_app_int_id}"
+            echo "${_existing_config}" | _sortjson
+            return 0
+        fi
+
+        _curl "${_IQ_URL%/}/api/v2/sourceControl/application/${_app_int_id}" -H "Content-Type: application/json" -d '{"remediationPullRequestsEnabled":true,"statusChecksEnabled":true,"pullRequestCommentingEnabled":true,"sourceControlEvaluationsEnabled":true,"baseBranch":"'${_branch}'","repositoryUrl":"'${_git_url}'"}' | _sortjson || return $?
+
+        _log "INFO" "If application is manually created, may need to scan the repository with 'source' stage, so evaluating ..."; sleep 3
         _curl "${_IQ_URL%/}/api/v2/evaluation/applications/${_app_int_id}/sourceControlEvaluation" -H "Content-Type: application/json" -d '{"stageId":"source","branchName":"'${_branch}'"}' | _sortjson
         echo "NOTE: if you face some strange SCM issue, try restarting IQ service."
+        #TODO: not sure if this is needed: curl -u admin:admin123 -sSf -X POST 'http://localhost:8070/api/v2/config/features/scan-pom-files-in-meta-inf-directory'
     fi
-}
-
-### Integration setup related ###
-function f_setup_ldap_freeipa() {
-    local __doc__="Setup LDAP. Currently using my freeIPA server."
-    local _name="${1:-"freeIPA"}"
-    local _ldap_host="${2:-"dh1.standalone.localdomain"}"
-    local _ldap_port="${3:-"389"}"
-    [ -z "${_LDAP_PWD}" ] && echo "Missing _LDAP_PWD" && return 1
-    local _id="$(_apiS "/rest/config/ldap" '{"id":null,"name":"'${_name}'"}' | python -c "import sys,json;a=json.loads(sys.stdin.read());print(a['id'])")" || return $?
-    [ -z "${_id}" ] && return 111
-    _apiS "/rest/config/ldap/${_id}/connection" '{"id":null,"serverId":"'${_id}'","protocol":"LDAP","hostname":"'${_ldap_host}'","port":'${_ldap_port}',"searchBase":"cn=accounts,dc=standalone,dc=localdomain","authenticationMethod":"SIMPLE","saslRealm":null,"systemUsername":"uid=admin,cn=users,cn=accounts,dc=standalone,dc=localdomain","systemPassword":"'${_LDAP_PWD}'","connectionTimeout":30,"retryDelay":30}' "PUT" | python -m json.tool || return $?
-    _apiS "/rest/config/ldap/${_id}/userMapping" '{"id":null,"serverId":"'${_id}'","userBaseDN":"cn=users","userSubtree":true,"userObjectClass":"person","userFilter":"","userIDAttribute":"uid","userRealNameAttribute":"cn","userEmailAttribute":"mail","userPasswordAttribute":"","groupMappingType":"DYNAMIC","groupBaseDN":"","groupSubtree":false,"groupObjectClass":null,"groupIDAttribute":null,"groupMemberAttribute":null,"groupMemberFormat":null,"userMemberOfGroupAttribute":"memberOf","dynamicGroupSearchEnabled":true}' "PUT" | python -m json.tool
 }
 
 function f_setup_jenkins() {
@@ -449,6 +496,7 @@ function f_setup_jenkins() {
     local _plugin_ver="${1:-"3.20.6-01"}"
     local _jenkins_ver="${2:-"2.462.3"}"
     local _jenkins_home="${3:-"/var/tmp/share/jenkins_home"}"
+    local _use_docker="${4:-"${_JENKINS_USE_DOCKER}"}"
 
     if [ ! -d "${_jenkins_home%/}" ]; then
         mkdir -v -p -m 777 "${_jenkins_home%/}/tmp" || return $?
@@ -468,17 +516,21 @@ EOF
         _log "INFO" "Downloading jenkins.war (${_jenkins_ver}) ..."
         curl -Sf -o "${_jenkins_home%/}/tmp/jenkins-${_jenkins_ver}.war" -L "https://get.jenkins.io/war-stable/${_jenkins_ver}/jenkins.war" || return $?
     fi
-    export JENKINS_HOME="${_jenkins_home%/}" CASC_JENKINS_CONFIG="${_jenkins_home%/}/jenkins-configuration.yaml"
-    #-Djava.util.logging.config.file=$HOME/Apps/jenkins-logging.properties
-    $JAVA_HOME/bin/java -Djenkins.install.runSetupWizard=false -jar ${_jenkins_home%/}/tmp/jenkins-${_jenkins_ver}.war &> /tmp/jenkins.log &
-    #docker run --rm -d -p 8080:8080 -p 50000:50000 -e JAVA_OPTS="-Djenkins.install.runSetupWizard=false" -e CASC_JENKINS_CONFIG="/var/jenkins_home/jenkins-configuration.yaml" -v ${_jenkins_home}:/var/jenkins_home --name=jenkins jenkins/jenkins:lts-jdk17 || return $?
-    # If password is not set: docker exec jenkins cat /var/jenkins_home/secrets/initialAdminPassword
+    if [[ "${_use_docker}" =~ ^[yY] ]]; then
+        docker run --rm -d -p 8080:8080 -p 50000:50000 -e JAVA_OPTS="-Djenkins.install.runSetupWizard=false" -e CASC_JENKINS_CONFIG="/var/jenkins_home/jenkins-configuration.yaml" -v ${_jenkins_home}:/var/jenkins_home --name=jenkins jenkins/jenkins:lts-jdk17 || return $?
+        # If password is not set: docker exec jenkins cat /var/jenkins_home/secrets/initialAdminPassword
+    else
+        export JENKINS_HOME="${_jenkins_home%/}" CASC_JENKINS_CONFIG="${_jenkins_home%/}/jenkins-configuration.yaml"
+        #-Djava.util.logging.config.file=$HOME/Apps/jenkins-logging.properties
+        $JAVA_HOME/bin/java -Djenkins.install.runSetupWizard=false -jar ${_jenkins_home%/}/tmp/jenkins-${_jenkins_ver}.war &> /tmp/jenkins.log &
+    fi
 
     # NOTE: Creating ${_jenkins_home%/}/plugins and copying .hpi may fail with "Plugin is missing" errors
     if [ ! -s "${_jenkins_home%/}/tmp/nexus-jenkins-plugin-${_plugin_ver}.hpi" ]; then
         _log "INFO" "Downloading nexus-jenkins-plugin-${_plugin_ver}.hpi ..."
         curl -Sf -o "${_jenkins_home%/}/tmp/nexus-jenkins-plugin-${_plugin_ver}.hpi" -L "https://download.sonatype.com/integrations/jenkins/nexus-jenkins-plugin-${_plugin_ver}.hpi" || return $?
     fi
+
     _log "INFO" "Waiting http://localhost:8080/ ..."
     if _wait_url "http://localhost:8080/" "30" "2"; then
         if ! grep -q -w "${_plugin_ver}" ${_jenkins_home%/}/plugins/nexus-jenkins-plugin/META-INF/MANIFEST.MF; then
@@ -486,14 +538,20 @@ EOF
             _log "INFO" "Installing nexus-jenkins-plugin-${_plugin_ver}.hpi and dependencies ..."
             $JAVA_HOME/bin/java -jar ${_jenkins_home%/}/tmp/jenkins-cli.jar -s http://localhost:8080/ -auth admin:admin123 install-plugin file://${_jenkins_home%/}/tmp/nexus-jenkins-plugin-${_plugin_ver}.hpi workflow-api plain-credentials structs credentials bouncycastle-api || return $?
             _log "INFO" "Restarting jenkins ..."
-            $JAVA_HOME/bin/java -jar ${_jenkins_home%/}/tmp/jenkins-cli.jar -s http://localhost:8080/ -auth admin:admin123 safe-restart || return $?
-            #docker restart jenkins || return $?
+            if [[ "${_use_docker}" =~ ^[yY] ]]; then
+                docker restart jenkins || return $?
+            else
+                $JAVA_HOME/bin/java -jar ${_jenkins_home%/}/tmp/jenkins-cli.jar -s http://localhost:8080/ -auth admin:admin123 safe-restart || return $?
+            fi
         fi
     fi
 
     _log "INFO" "Checking logs ..."
-    tail -f /tmp/jenkins.log
-    #docker logs -f jenkins
+    if [[ "${_use_docker}" =~ ^[yY] ]]; then
+        docker logs -f jenkins
+    else
+        tail -f /tmp/jenkins.log
+    fi
     cat << 'EOF'
 # To configure Nexus IQ Server (jenkins_home/org.sonatype.nexus.ci.config.GlobalNexusConfiguration.xml):
     http://localhost:8080/manage/configure

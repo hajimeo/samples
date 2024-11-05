@@ -155,9 +155,9 @@ function f_install_nexus3() {
         [ "${_port}" != "8081" ] && _dirpath="${_dirpath}_${_port}"
     fi
 
-    if [[ "${_RECREATE_ALL}" =~ [yY] ]]; then
+    if [[ "${_RECREATE_ALL-"Y"}" =~ [yY] ]]; then
         if [ -d "${_dirpath%/}" ]; then
-            _log "WARN" "As _RECREATE_ALL=${_RECREATE_ALL}, removing ${_dirpath%/}"; sleep 3
+            _log "WARN" "Removing ${_dirpath%/} (to avoid set _RECREATE_ALL)"; sleep 3
             rm -v -rf "${_dirpath%/}" || return $?
         fi
         _RECREATE_DB="Y"
@@ -399,7 +399,7 @@ function f_setup_npm() {
     # add some data for xxxx-proxy
     #_ASYNC_CURL="Y" f_get_asset "${_prefix}-proxy" "lodash/-/lodash-4.17.19.tgz"
     _ASYNC_CURL="Y" f_get_asset "${_prefix}-proxy" "es5-ext/-/es5-ext-0.10.62.tgz"
-    _ASYNC_CURL="Y" f_get_asset "${_prefix}-proxy" "@sonatype/policy-demo/-/policy-demo-2.0.0.tgz" # Good one
+    _ASYNC_CURL="Y" f_get_asset "${_prefix}-proxy" "@sonatype/policy-demo/-/policy-demo-2.0.0.tgz" # Good (normal) one
     #for i in {1..3}; do f_get_asset "npm-proxy" "@sonatype/policy-demo/-/policy-demo-2.$i.0.tgz"; done
 
     if [ -n "${_source_nexus_url}" ] && [ -n "${_extra_sto_opt}" ] && ! _is_repo_available "${_prefix}-repl-proxy"; then
@@ -411,15 +411,27 @@ function f_setup_npm() {
         _apiS '{"action":"coreui_Repository","method":"create","data":[{"attributes":{"storage":{"blobStoreName":"'${_bs_name}'","writePolicy":"ALLOW_ONCE","strictContentTypeValidation":true'${_extra_sto_opt}'},"cleanup":{"policyName":[]}},"name":"'${_prefix}'-hosted","format":"","type":"","url":"","online":true,"recipe":"npm-hosted"}],"type":"rpc"}' || return $?
     fi
     # add some data for xxxx-hosted
-    for i in {1..3}; do # 2.0.0 is used in npm-proxy
-        curl -sSf -o "${_TMP%/}/sonatype-policy-demo-2.${i}.0.tgz" -L "https://registry.npmjs.org/@sonatype/policy-demo/-/policy-demo-2.${i}.0.tgz" && _ASYNC_CURL="Y" f_upload_asset "${_prefix}-hosted" -F "npm.asset=@${_TMP%/}/sonatype-policy-demo-2.${i}.0.tgz"
+    for i in {1..3}; do # 2.0.0 is used in npm-proxy, 1.0.0 will be used in npm-prop-hosted
+        if [ ! -s "${_TMP%/}/sonatype-policy-demo-2.${i}.0.tgz" ]; then
+            curl -sSf -o "${_TMP%/}/sonatype-policy-demo-2.${i}.0.tgz" -L "https://registry.npmjs.org/@sonatype/policy-demo/-/policy-demo-2.${i}.0.tgz" || continue
+        fi
+        _ASYNC_CURL="Y" f_upload_asset "${_prefix}-hosted" -F "npm.asset=@${_TMP%/}/sonatype-policy-demo-2.${i}.0.tgz"
     done
 
-    # If no xxxx-prop-hosted (proprietary), create it (from 3.30)
+    # If no xxxx-prop-hosted (proprietary | namespace confusion protection), create it (from 3.30)
     # https://help.sonatype.com/integrations/iq-server-and-repository-management/iq-server-and-nxrm-3.x/preventing-namespace-confusion
     # https://help.sonatype.com/iqserver/managing/policy-management/reference-policy-set-v6
     if ! _is_repo_available "${_prefix}-prop-hosted"; then
         _apiS '{"action":"coreui_Repository","method":"create","data":[{"attributes":{"storage":{"blobStoreName":"'${_bs_name}'","writePolicy":"ALLOW_ONCE","strictContentTypeValidation":true'${_extra_sto_opt}'},"component":{"proprietaryComponents":true},"cleanup":{"policyName":[]}},"name":"'${_prefix}'-prop-hosted","format":"","type":"","url":"","online":true,"recipe":"npm-hosted"}],"type":"rpc"}' # || return $? # this would fail if version is not 3.30
+    fi
+    if [ ! -s "${_TMP%/}/sonatype-policy-demo-1.0.0.tgz" ]; then
+        curl -sSf -o "${_TMP%/}/sonatype-policy-demo-1.0.0.tgz" -L "https://registry.npmjs.org/@sonatype/policy-demo/-/policy-demo-1.0.0.tgz"
+    fi
+    if [ -s "${_TMP%/}/sonatype-policy-demo-1.0.0.tgz" ]; then
+        _ASYNC_CURL="Y" f_upload_asset "${_prefix}-prop-hosted" -F "npm.asset=@${_TMP%/}/sonatype-policy-demo-1.0.0.tgz"
+        #f_iq_quarantine "npm-proxy"
+        # Need to delete 2.0.0 (normal) from npm-proxy and restart Nexus to start firewall.proprietary.name.sync ...
+        #curl -sSf -D- -o/dev/null -L "${_NEXUS_URL%/}/repository/npm-proxy/@sonatype/policy-demo/-/policy-demo-2.0.0.tgz"
     fi
 
     # If no xxxx-group, create it
@@ -2028,6 +2040,7 @@ function f_create_cleanup_policy() {
     #{"name":"all","notes":"","format":"*","criteriaLastBlobUpdated":"1","criteriaLastDownloaded":"1","criteriaReleaseType":null,"criteriaAssetRegex":null,"retain":null,"sortBy":null}
     f_api "/service/rest/internal/cleanup-policies" "{\"name\":\"${_policy_name}\",\"notes\":\"\",\"format\":\"${_format:-"*"}\",\"criteriaLastBlobUpdated\":${_age_days:-"null"},\"criteriaLastDownloaded\":${_usage_days:-"null"},\"criteriaReleaseType\":null,\"criteriaAssetRegex\":${_asset_matcher:-"null"},\"retain\":null,\"sortBy\":null}" || return $?
 }
+#f_api "/service/rest/internal/cleanup-policies" "{\"name\":\"maven2-without-sort\",\"notes\":null,\"format\":\"maven2\",\"criteriaLastBlobUpdated\":1,\"criteriaReleaseType\":\"RELEASES\",\"retain\":\"10\"}"
 
 function f_create_csel() {
     local __doc__="Create/add a test content selector"
@@ -2216,7 +2229,7 @@ function f_setup_ldap_glauth() {
     local _name="${1:-"glauth"}"
     local _host="${2:-"localhost"}"
     local _port="${3:-"389"}"   # 636
-    [ -z "${_LDAP_PWD}" ] && _log "WARN" "Missing _LDAP_PWD" && sleep 3
+    #[ -z "${_LDAP_PWD}" ] && _log "WARN" "Missing _LDAP_PWD" && sleep 3
     #nc -z ${_host} ${_port} || return $?
     # Using 'mail' instead of 'uid' so that not confused with same 'admin' user between local and ldap
     _apiS '{"action":"ldap_LdapServer","method":"create","data":[{"id":"","name":"'${_name}'","protocol":"ldap","host":"'${_host}'","port":"'${_port}'","searchBase":"dc=standalone,dc=localdomain","authScheme":"simple","authUsername":"admin@standalone.localdomain","authPassword":"'${_LDAP_PWD:-"secret12"}'","connectionTimeout":"30","connectionRetryDelay":"300","maxIncidentsCount":"3","template":"Posix%20with%20Dynamic%20Groups","userBaseDn":"ou=users","userSubtree":true,"userObjectClass":"posixAccount","userLdapFilter":"","userIdAttribute":"mail","userRealNameAttribute":"cn","userEmailAddressAttribute":"mail","userPasswordAttribute":"","ldapGroupsAsRoles":true,"groupType":"dynamic","userMemberOfAttribute":"memberOf"}],"type":"rpc"}'
