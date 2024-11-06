@@ -949,7 +949,7 @@ function f_check_netstat() {
     if [ ! -f "${_file}" ]; then
         _file="-g ${_file}"
     fi
-    echo "# Large Receive / Send Q from netstat"
+    echo "# Large Receive / Send Q from netstat against ${_port}"
     rg "^(Proto|tcp\s+(\d{4,}\s+\d+|\d+\s+\d{4,})\s+[^ ]+:${_port}\s+.+/)" ${_file}
     echo ""
     echo "# Counting _WAIT|SYN_RECV"
