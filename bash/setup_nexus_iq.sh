@@ -74,10 +74,9 @@ Using previously saved response file and NO interviews:
 : ${_ADMIN_USER:="admin"}
 : ${_ADMIN_PWD:="admin123"}
 : ${_IQ_URL:="http://localhost:8070/"}
+: ${_IQ_TEST_URL:="https://nxiqha-k8s.standalone.localdomain/"}
 _TMP="/tmp"  # for downloading/uploading assets
 _DEBUG=false
-alias _curl="curl -sSf -u '${_ADMIN_USER}:${_ADMIN_PWD}'"
-
 
 
 # To upgrade (from ${_dirname}/): mv -f -v ./config.yml{,.tmp} && tar -xvf $HOME/.nexus_executable_cache/nexus-iq-server-1.179.0-04-bundle.tar.gz && cp -p -v ./config.yml{.tmp,}
@@ -200,17 +199,12 @@ function f_api_orgId() {
     local __doc__="Get organization Internal ID from /api/v2/organizations (or create)"
     local _org_name="${1:-"Sandbox Organization"}"
     local _create="${2}"
-    local _org_result="$(_curl "${_IQ_URL%/}/api/v2/organizations" --get --data-urlencode "organizationName=${_org_name}")"
-    [ -z "${_org_result}" ] && return 12
-    local _org_int_id="$(echo "${_org_result}" | python -c "import sys,json
-a=json.loads(sys.stdin.read())
-if len(a['organizations']) > 0:
-    print(a['organizations'][0]['id'])")"
+    local _parent_org="${3:-"Root Organization"}"
+    [ -z "${_org_name}" ] && return 11
+    local _parent_org_id="$(_curl "${_IQ_URL%/}/api/v2/organizations" --get --data-urlencode "organizationName=${_parent_org}" | _sortjson | sed -nE 's/^            "id": "(.+)",$/\1/p')"
+    local _org_int_id="$(_curl "${_IQ_URL%/}/api/v2/organizations" --get --data-urlencode "organizationName=${_org_name}" | _sortjson | sed -nE 's/^            "id": "(.+)",$/\1/p')"
     if [ -z "${_org_int_id}" ] && [[ "${_create}" =~ ^[yY] ]]; then
-        _org_int_id="$(_curl "${_IQ_URL%/}/api/v2/organizations" -H "Content-Type: application/json" -d "{\"name\":\"${_org_name}\"}" | python -c "import sys,json
-a=json.loads(sys.stdin.read())
-if 'id' in a:
-    print(a['id'])")"
+        _org_int_id="$(_curl "${_IQ_URL%/}/api/v2/organizations" -H "Content-Type: application/json" -d "{\"name\":\"${_org_name}\",\"parentOrganizationId\": \"${_parent_org_id}\"}" | JSON_SEARCH_KEY="id" _sortjson)"
     fi
     echo "${_org_int_id}"
 }
@@ -280,6 +274,17 @@ function f_api_eval_gav() {
     local _app_int_id="$(f_api_appIntId "${_app_pub_id}")" || return $?
 
     _curl "${_IQ_URL%/}/api/v2/evaluation/applications/${_app_int_id}" -H "Content-Type: application/json" -d '{"components": [{"hash": null,"componentIdentifier": {"format": "maven","coordinates": {"artifactId": "'${_a}'","groupId": "'${_g}'","version": "'${_v}'","extension":"jar"}}}]}'
+}
+
+function f_api_audit() {
+    local __doc__="/api/v2/auditLogs?startUtcDate=&endUtcDate="
+    local _startUtcDate="${1}"
+    local _endUtcDate="${2}"
+    local _saveTo="${3}"
+    [ -z "${_startUtcDate}" ] && _startUtcDate="$(date -u "+%Y-%m-%d")"
+    [ -z "${_endUtcDate}" ] && _endUtcDate="$(date -u "+%Y-%m-%d")"
+    [ -z "${_saveTo}" ] && _saveTo="./audit-${_startUtcDate}.log"
+    _curl "${_IQ_URL%/}/api/v2/auditLogs?startUtcDate=${_startUtcDate}&endUtcDate=${_endUtcDate}" -o "${_saveTo}"
 }
 
 
@@ -422,34 +427,52 @@ function f_setup_ldap_freeipa() {
 
 ### Integration setup related ###
 
-# NOTE: Do not forget export IQ_GIT_TOKEN or GIT_TOKEN:
-#   export IQ_GIT_TOKEN="*******************"
-# Setup Org only: f_setup_scm   # this will create 'github-org' with token
-# Setup Org&app for github: f_setup_scm "github-org" "https://github.com/hajimeo/private-repo2"
-# Setup Org&app for gitlab: f_setup_scm "gitlab-org" "https://gitlab.com/emijah/private-repo.git" "gitlab" "master"
-#  vs. CLI scan : iqCli . "private-repo" "source"
+# NOTE: Do not forget export _IQ_GIT_TOKEN or GIT_TOKEN:
+#   export _IQ_GIT_TOKEN="*******************"
+# To setup Org only: f_setup_scm   # this will create 'github-org' with token
+# To setup Org&app for github: f_setup_scm "github-org" "https://github.com/hajimeo/private-repo2"
+# To setup Org&app for gitlab: f_setup_scm "gitlab-org" "https://gitlab.com/emijah/private-repo.git" "gitlab" "master"
+#
+### Another way with Automatic Application Creation and Automatic Source Control Configuration
+# - Setup an IQ organization's SCM configuration (which is specified in the Automatic Application Creation)
+# - Create a git repository with just pom.xml file, and push to "main" branch
+# - Modify the pom.xml to add a vulnerable dependency, and push to a new branch (eg. "vul-branch"), then create a PR
+# - Scan the "main" branch with "build" stage
+#   export _IQ_URL="$_IQ_SAAS_URL" _IQ_CRED="$_IQ_SAAS_USER:$_IQ_SAAS_PWD"
+#   export GIT_URL="https://hajimeo:${_IQ_GIT_TOKEN}@github.com/hajimeo/private-repo2"
+#   _IQ_CLI_VER="1.183.0-01" _IQ_APP_ID="private-repo2" _IQ_STAGE="build" f_cli
+# - Switch to the new branch, then scan with "develop" stage
+#   _IQ_CLI_VER="1.183.0-01" _IQ_APP_ID="private-repo2" _IQ_STAGE="develop" f_cli
+#
+# Not so useful, but to check the result:
+#    f_api_audit    # but it contains only `"domain":"governance.evaluation.application","type":"evaluate" ... "stageId":"develop"'
 function f_setup_scm() {
     local __doc__="Setup IQ SCM on the Organisation and app if _git_url is specified"
     local _org_name="${1}"
     local _git_url="${2}"   # https://github.com/sonatype/support-apac-scm-test https://github.com/hajimeo/private-repo
     local _provider="${3:-"github"}"
     local _branch="${4:-"main"}"
-    local _token="${5:-"${IQ_GIT_TOKEN:-"${GIT_TOKEN}"}"}"
+    local _token="${5:-"${_IQ_GIT_TOKEN:-"${GIT_TOKEN}"}"}"
+    local _parent_org="${6:-"${_IQ_PARENT_ORG}"}"
     [ -z "${_org_name}" ] && _org_name="${_provider:-"scmtest"}-org"
 
     # Automatic Source Control Configuration. It's OK if fails
-    _apiS "/rest/config/automaticScmConfiguration" '{"enabled":true}' "PUT" &>/dev/null
+    _log "INFO" "Enabling Automatic Source Control Configuration ..."
+    _apiS "/rest/config/automaticScmConfiguration" '{"enabled":true}' "PUT"
 
-    local _org_int_id
-    if [ -n "${_org_name}" ]; then
-        # Check if org exist, and if not, create
-        _org_int_id="$(f_api_orgId "${_org_name}" "Y")"
-        [ -n "${_org_int_id}" ] || return 11
-        # If would like to enable automatic application
-        #_apiS "/rest/config/automaticApplications" '{"enabled":true,"parentOrganizationId":"'${_org_int_id}'"}' "PUT" || return $?
+    # Check if org exist, and if not, create
+    local _org_int_id="$(f_api_orgId "${_org_name}" "Y")"
+    [ -n "${_org_int_id}" ] || return 11
+    # If would like to enable automatic application
+    #_apiS "/rest/config/automaticApplications" '{"enabled":true,"parentOrganizationId":"'${_org_int_id}'"}' "PUT" || return $?
+
+    local _parent_org_int_id
+    if [ -n "${_parent_org}" ]; then
+        _parent_org_int_id="$(f_api_orgId "${_parent_org}" "Y")"
+        [ -n "${_parent_org_int_id}" ] || return 11
     else
-        _org_name="Root Organization"
-        _org_int_id="ROOT_ORGANIZATION_ID"
+        _parent_org="Root Organization"
+        _parent_org_int_id="ROOT_ORGANIZATION_ID"
     fi
 
     local _existing_config="$(_curl "${_IQ_URL%/}/api/v2/sourceControl/organization/${_org_int_id}" 2>/dev/null)"
@@ -458,7 +481,7 @@ function f_setup_scm() {
         echo "${_existing_config}" | _sortjson
     else
         if [ -z "${_token}" ]; then # and provider and default branch are required
-            _log "ERROR" "No token specified. Please specify _token or IQ_GIT_TOKEN or GITHUB_TOKEN."
+            _log "ERROR" "No token specified. Please specify _token or _IQ_GIT_TOKEN or GITHUB_TOKEN."
             return 1
         fi
 
@@ -673,6 +696,10 @@ function f_prep_yum_meta_for_scan() {
     echo "expat.x86_64                   2.5.0-2.el9                  @nexusiq-test" >> ./yum-packages.txt
 }
 
+function _curl() {
+   curl -sSf -u "${_IQ_CRED:-"${_ADMIN_USER}:${_ADMIN_PWD}"}" "$@"
+}
+
 function _apiS() {
     local _path="${1}"
     local _data="${2}"
@@ -712,8 +739,9 @@ function _get_iq_url() {
             return
         fi
     fi
-    for _url in "http://localhost:8070/" "https://nxiqha-k8s.standalone.localdomain/" "http://dh1:8070/"; do
-        if curl -m1 -f -s -I "${_url%/}/" &>/dev/null; then
+    # if curl is failing, silently replacing with
+    for _url in "http://localhost:8070/" "${_IQ_TEST_URL%/}/"; do
+        if [ "${_iq_url%/}" != "${_url%/}" ] && curl -m1 -f -s -I "${_url%/}/" &>/dev/null; then
             echo "${_url%/}/"
             return
         fi
