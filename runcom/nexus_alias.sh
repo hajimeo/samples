@@ -255,13 +255,11 @@ database:
   username: ${_dbusr}
   password: ${_dbpwd}
 EOF
-        fi
-        if grep 'database:' -A5 ${_config_yml} | grep -v password; then
             return 0
         fi
     fi
 
-    echo "ERROR: failed to update the config file for database config." >&2
+    echo "WARN: Did not update the config yaml for database config." >&2
     return 1
     # If no config file is set, can use JAVA_TOOL_OPTIONS, but not doing it for now
     #local _java_opts="-Dnexus.datastore.enabled=true -Dnexus.datastore.nexus.jdbcUrl=\"jdbc:postgresql://$(hostname -f):5432/${_dbname}\" -Dnexus.datastore.nexus.username=\"${_dbusr}\" -Dnexus.datastore.nexus.password=\"${_dbpwd}\" -Dnexus.datastore.nexus.schema=${_dbschema} -Dnexus.datastore.nexus.advanced=maxLifetime=600000 -Dnexus.datastore.nexus.maximumPoolSize=10"
