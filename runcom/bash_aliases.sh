@@ -30,6 +30,7 @@ function count_char() {
 # Sum integer in a column by using paste (which concatenates files or characters(+))
 #alias sum_cols="gpaste -sd+ | bc"
 alias sum_cols="paste -sd+ - | bc"
+alias sum_and_count="awk '{ c+=1;s+=\$1 }; END { print \"sum:\"s\", count:\"c\"\" }'"
 # diff side-by-side ignoring whitespace diff
 alias diffY="diff -wy --suppress-common-lines"
 type mdfind &>/dev/null && alias mdfindN="mdfind kMDItemFSName="
