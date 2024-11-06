@@ -67,6 +67,8 @@ Read one file and output only necessary lines.
     find ./threads -type f -name '[0-9]*_*.out' | xargs -P3 -t -I{} bash -c '_d="$(basename "{}" ".out")";echolines "{}" "^\".+" "" "./threads_per_thread/${_d}"'
 
 ## Get duration of each line of a thread #with thread+username+classnames:
+	export ELAPSED_REGEX="^\d\d\d\d-\d\d-\d\d.(\d\d:\d\d:\d\d.\d\d\d)"
+	rg 'FelixStartLevel' ./log/nexus.log | echolines "" "^\d\d\d\d-\d\d-\d\d.\d\d:\d\d:\d\d.\d\d\d" "^\d\d\d\d-\d\d-\d\d.\d\d:\d\d:\d\d.\d\d\d" | rg '^# '
     export ELAPSED_REGEX="^\d\d\d\d-\d\d-\d\d.(\d\d:\d\d:\d\d.\d\d\d)" ASCII_DISABLED=Y ELAPSED_KEY_REGEX="(\[qtp\S+\s\S*\s\S+)"
     rg 'qtp1529377038-106' ./nexus.log | echolines "" "^\d\d\d\d-\d\d-\d\d.\d\d:\d\d:\d\d.\d\d\d" "^\d\d\d\d-\d\d-\d\d.\d\d:\d\d:\d\d.\d\d\d" | rg '^# ' | sort -t'|' -k3n
 ### (Not so useful but) similar to the above but excluding empty username:
