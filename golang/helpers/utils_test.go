@@ -56,6 +56,10 @@ func TestDatetimeStrToInt(t *testing.T) {
 	if result != 1697803920 {
 		t.Errorf("Result should be timestanmp (int64) but got %v", result)
 	}
+	result = DatetimeStrToInt("1730246400")
+	if result != 1730246400 {
+		t.Errorf("Result should be timestanmp (int64) but got %v", result)
+	}
 	//result = datetimeStrToTs("aaaaa")
 }
 

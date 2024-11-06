@@ -92,6 +92,13 @@ func DatetimeStrToInt(datetimeStr string) int64 {
 	if len(datetimeStr) == 0 {
 		panic("datetimeStr is empty")
 	}
+	if IsNumeric(datetimeStr) {
+		i64, err := strconv.ParseInt(datetimeStr, 10, 64)
+		if err != nil {
+			panic(err)
+		}
+		return i64
+	}
 	if len(datetimeStr) <= 10 {
 		datetimeStr = datetimeStr + " 00:00:00"
 	}
