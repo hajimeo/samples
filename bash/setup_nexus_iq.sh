@@ -487,8 +487,9 @@ function f_setup_scm() {
 
         # https://help.sonatype.com/iqserver/automating/rest-apis/source-control-rest-api---v2
         # NOTE: It seems the remediationPullRequestsEnabled is false for default (if null UI may not show as Inherited)
+        #       Also, do we need to set "sshEnabled" to false?
         _log "INFO" 'Configuring organization: '${_org_int_id}' with "token":"********","provider":"'${_provider}'","baseBranch":"'${_branch}' ...'
-        _curl "${_IQ_URL%/}/api/v2/sourceControl/organization/${_org_int_id}" -H "Content-Type: application/json" -d '{"token":"'${_token}'","provider":"'${_provider}'","baseBranch":"'${_branch}'","remediationPullRequestsEnabled":true,"statusChecksEnabled":true,"pullRequestCommentingEnabled":true,"sourceControlEvaluationsEnabled":true}' || return $?
+        _curl "${_IQ_URL%/}/api/v2/sourceControl/organization/${_org_int_id}" -H "Content-Type: application/json" -d '{"token":"'${_token}'","provider":"'${_provider}'","baseBranch":"'${_branch}'","remediationPullRequestsEnabled":true,"statusChecksEnabled":true,"pullRequestCommentingEnabled":true,"sourceControlEvaluationsEnabled":true,"sshEnabled":false}' || return $?
     fi
 
     if [ "${_git_url}" ]; then
