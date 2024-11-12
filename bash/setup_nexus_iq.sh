@@ -79,7 +79,7 @@ _TMP="/tmp"  # for downloading/uploading assets
 _DEBUG=false
 
 
-# To upgrade (from ${_dirname}/): mv -f -v ./config.yml{,.tmp} && tar -xvf $HOME/.nexus_executable_cache/nexus-iq-server-1.179.0-04-bundle.tar.gz && cp -p -v ./config.yml{.tmp,}
+# To upgrade (from ${_dirname}/): mv -f -v ./config.yml{,.tmp} && tar -xvf $HOME/.nexus_executable_cache/nexus-iq-server-1.183.0-01-bundle.tar.gz && cp -p -v ./config.yml{.tmp,}
 function f_install_iq() {
     local __doc__="Install specific IQ version (to recreate sonatype-work and DB, _RECREATE_ALL=Y)"
     local _ver="${1}"     # 'latest'
@@ -432,6 +432,7 @@ function f_setup_ldap_freeipa() {
 # To setup Org only: f_setup_scm   # this will create 'github-org' with token
 # To setup Org&app for github: f_setup_scm "github-org" "https://github.com/hajimeo/private-repo2"
 # To setup Org&app for gitlab: f_setup_scm "gitlab-org" "https://gitlab.com/emijah/private-repo.git" "gitlab" "master"
+# To setup Org&app for azure : f_setup_scm "azdevop-org" "https://dev.azure.com/hosako/_git/private-repo" "azure" "master"
 #
 ### Another way with Automatic Application Creation and Automatic Source Control Configuration
 # - Setup an IQ organization's SCM configuration (which is specified in the Automatic Application Creation)
@@ -452,9 +453,17 @@ function f_setup_scm() {
     local _git_url="${2}"   # https://github.com/sonatype/support-apac-scm-test https://github.com/hajimeo/private-repo
     local _provider="${3:-"github"}"
     local _branch="${4:-"main"}"
-    local _token="${5:-"${_IQ_GIT_TOKEN:-"${GIT_TOKEN}"}"}"
-    local _parent_org="${6:-"${_IQ_PARENT_ORG}"}"
+    local _username="${5}"
+    local _token="${6:-"${_IQ_GIT_TOKEN:-"${GIT_TOKEN}"}"}"
+    local _parent_org="${7:-"${_IQ_PARENT_ORG}"}"
     [ -z "${_org_name}" ] && _org_name="${_provider:-"scmtest"}-org"
+    if [ -z "${_username}" ]; then
+        if [[ "${_provider}" =~ ^(azure|bitbucket)$ ]]; then
+            _username="${_IQ_GIT_USER:-"${GIT_USER}"}"
+        fi
+        _username="${_IQ_GIT_USER:-"${GIT_USER}"}"
+        [ -z "${_username}" ] && _username="${_IQ_GIT_USER:-"${GIT_USER}"}"
+    fi
 
     # Automatic Source Control Configuration. It's OK if fails
     _log "INFO" "Enabling Automatic Source Control Configuration ..."
@@ -507,7 +516,7 @@ function f_setup_scm() {
 
         _curl "${_IQ_URL%/}/api/v2/sourceControl/application/${_app_int_id}" -H "Content-Type: application/json" -d '{"remediationPullRequestsEnabled":true,"statusChecksEnabled":true,"pullRequestCommentingEnabled":true,"sourceControlEvaluationsEnabled":true,"baseBranch":"'${_branch}'","repositoryUrl":"'${_git_url}'"}' | _sortjson || return $?
 
-        _log "INFO" "If application is manually created, may need to scan the repository with 'source' stage, so evaluating ..."; sleep 3
+        _log "INFO" "If application is manually created, may need to scan the repository with 'source' stage, so evaluating ${_app_int_id} ..."; sleep 3
         _curl "${_IQ_URL%/}/api/v2/evaluation/applications/${_app_int_id}/sourceControlEvaluation" -H "Content-Type: application/json" -d '{"stageId":"source","branchName":"'${_branch}'"}' | _sortjson
         echo "NOTE: if you face some strange SCM issue, try restarting IQ service."
         #TODO: not sure if this is needed: curl -u admin:admin123 -sSf -X POST 'http://localhost:8070/api/v2/config/features/scan-pom-files-in-meta-inf-directory'
@@ -515,7 +524,7 @@ function f_setup_scm() {
 }
 
 function f_setup_jenkins() {
-    local __doc__="Setup Jenkins with Docker"
+    local __doc__="Setup Jenkins, with Docker if _JENKINS_USE_DOCKER=Y"
     # @see: https://abrahamntd.medium.com/automating-jenkins-setup-using-docker-and-jenkins-configuration-as-code-897e6640af9d
     local _plugin_ver="${1:-"3.20.6-01"}"
     local _jenkins_ver="${2:-"2.462.3"}"
@@ -526,6 +535,16 @@ function f_setup_jenkins() {
         mkdir -v -p -m 777 "${_jenkins_home%/}/tmp" || return $?
         chmod 777 ${_jenkins_home} || return $?
     fi
+
+    local _jave="java"
+    if [ -n "${JAVA_HOME}" ]; then
+        _java="${JAVA_HOME%/}/bin/java"
+    fi
+    if ! ${_java} -version 2>&1 | grep -q 'build 17.'; then
+        _log "ERROR" "Java is not found or not 17. Please export JAVA_HOME to Java 17."
+        return 1
+    fi
+
     cat << 'EOF' > "${_jenkins_home%/}/jenkins-configuration.yaml"
 jenkins:
  securityRealm:
@@ -535,18 +554,19 @@ jenkins:
     — id: admin
      password: admin123
 EOF
-    _log "INFO" "Downloading and starting jenkins (may require Java17 in JAVA_HOME) ..."
-    if [ ! -s "${_jenkins_home%/}/tmp/jenkins-${_jenkins_ver}.war" ]; then
-        _log "INFO" "Downloading jenkins.war (${_jenkins_ver}) ..."
-        curl -Sf -o "${_jenkins_home%/}/tmp/jenkins-${_jenkins_ver}.war" -L "https://get.jenkins.io/war-stable/${_jenkins_ver}/jenkins.war" || return $?
-    fi
     if [[ "${_use_docker}" =~ ^[yY] ]]; then
+        # Jenkins Docker could be a bit tedious to setup IQ because of the network setting in Docker
+        _log "INFO" "Starting jenkins with Docker ..."
         docker run --rm -d -p 8080:8080 -p 50000:50000 -e JAVA_OPTS="-Djenkins.install.runSetupWizard=false" -e CASC_JENKINS_CONFIG="/var/jenkins_home/jenkins-configuration.yaml" -v ${_jenkins_home}:/var/jenkins_home --name=jenkins jenkins/jenkins:lts-jdk17 || return $?
         # If password is not set: docker exec jenkins cat /var/jenkins_home/secrets/initialAdminPassword
     else
+        if [ ! -s "${_jenkins_home%/}/tmp/jenkins-${_jenkins_ver}.war" ]; then
+            _log "INFO" "Downloading jenkins.war (${_jenkins_ver}) ..."
+            curl -Sf -o "${_jenkins_home%/}/tmp/jenkins-${_jenkins_ver}.war" -L "https://get.jenkins.io/war-stable/${_jenkins_ver}/jenkins.war" || return $?
+        fi
         export JENKINS_HOME="${_jenkins_home%/}" CASC_JENKINS_CONFIG="${_jenkins_home%/}/jenkins-configuration.yaml"
         #-Djava.util.logging.config.file=$HOME/Apps/jenkins-logging.properties
-        $JAVA_HOME/bin/java -Djenkins.install.runSetupWizard=false -jar ${_jenkins_home%/}/tmp/jenkins-${_jenkins_ver}.war &> /tmp/jenkins.log &
+        eval "${_java} -Djenkins.install.runSetupWizard=false -jar ${_jenkins_home%/}/tmp/jenkins-${_jenkins_ver}.war &> /tmp/jenkins.log &"
     fi
 
     # NOTE: Creating ${_jenkins_home%/}/plugins and copying .hpi may fail with "Plugin is missing" errors
@@ -557,20 +577,22 @@ EOF
 
     _log "INFO" "Waiting http://localhost:8080/ ..."
     if _wait_url "http://localhost:8080/" "30" "2"; then
-        if ! grep -q -w "${_plugin_ver}" ${_jenkins_home%/}/plugins/nexus-jenkins-plugin/META-INF/MANIFEST.MF; then
+        if grep -q -w "${_plugin_ver}" ${_jenkins_home%/}/plugins/nexus-jenkins-plugin/META-INF/MANIFEST.MF; then
+            _log "INFO" "nexus-jenkins-plugin-${_plugin_ver}.hpi was probably installed in ${_jenkins_home%/}/plugins/nexus-jenkins-plugin/ ..."
+        else
             curl -sSf -o "${_jenkins_home%/}/tmp/jenkins-cli.jar" -L http://localhost:8080/jnlpJars/jenkins-cli.jar || return $?
             _log "INFO" "Installing nexus-jenkins-plugin-${_plugin_ver}.hpi and dependencies ..."
-            $JAVA_HOME/bin/java -jar ${_jenkins_home%/}/tmp/jenkins-cli.jar -s http://localhost:8080/ -auth admin:admin123 install-plugin file://${_jenkins_home%/}/tmp/nexus-jenkins-plugin-${_plugin_ver}.hpi workflow-api plain-credentials structs credentials bouncycastle-api || return $?
+            ${_java} -jar ${_jenkins_home%/}/tmp/jenkins-cli.jar -s http://localhost:8080/ -auth admin:admin123 install-plugin file://${_jenkins_home%/}/tmp/nexus-jenkins-plugin-${_plugin_ver}.hpi workflow-api plain-credentials structs credentials bouncycastle-api || return $?
             _log "INFO" "Restarting jenkins ..."
             if [[ "${_use_docker}" =~ ^[yY] ]]; then
                 docker restart jenkins || return $?
             else
-                $JAVA_HOME/bin/java -jar ${_jenkins_home%/}/tmp/jenkins-cli.jar -s http://localhost:8080/ -auth admin:admin123 safe-restart || return $?
+                ${_java} -jar ${_jenkins_home%/}/tmp/jenkins-cli.jar -s http://localhost:8080/ -auth admin:admin123 safe-restart || return $?
             fi
         fi
     fi
 
-    _log "INFO" "Checking logs ..."
+    _log "INFO" "Checking logs (press Ctrl+C if looks OK)..."
     if [[ "${_use_docker}" =~ ^[yY] ]]; then
         docker logs -f jenkins
     else
@@ -581,6 +603,7 @@ EOF
     http://localhost:8080/manage/configure
 # To configure maven / java:
     http://localhost:8080/configureTools/
+
 EOF
     jobs -l
 }

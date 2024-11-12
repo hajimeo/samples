@@ -256,6 +256,7 @@ EOF
     fi
 }
 
+#f_setup_python "https://nxrm3pg-k8s.standalone.localdomain/repository/pypi-proxy/" "${HOME%/}/.pyvenv_new"
 function f_setup_python() {
     local _pypi_proxy_url="$1"
     local _venv_path="${2-"${HOME%/}/.pyvenv"}"
@@ -271,15 +272,17 @@ function f_setup_python() {
         #echo "Activating virtualenv: ${_venv_path%/} (https://virtualenv.pypa.io/en/latest/user_guide.html) ..."
         #if ! python3 -m virtualenv -p python3 ${_venv_path%/}; then
             #python3 -m venv --upgrade ${_venv_path%/}
-            python3 -m venv ${_venv_path%/} || return $?
         #fi
+        if [ ! -s "${_venv_path%/}/bin/activate" ]; then
+            python3 -m venv ${_venv_path%/} || return $?
+        fi
         source ${_venv_path%/}/bin/activate || return $?
         _log "INFO" "Using venv: ${_venv_path%/}"
     fi
 
     ### pip3 (not pip) from here ############################################################
     #python3 -m pip install -U pip ${_i_opt} &>/dev/null
-    # outdated list
+    _log "INFO" "Generating outdated list"
     python3 -m pip list -o ${_i_opt} | tee /tmp/pip_$$.log
     # NOTE: -o with --format=freeze no longer works from pip v22.3
     #python -m pip list -o --format=json ${_i_opt} | python -c 'import sys,json;js=json.load(sys.stdin);[print(o["name"]+"=="+o["version"]) for o in js]' > /tmp/requirements.txt && python3 -m pip install -U ${_i_opt} -r /tmp/requirements.txt

@@ -137,6 +137,7 @@ Host nexus-client
     fi
 }
 
+# TODO: add `--config` to specify the directory of the config.json (stores the credentials)
 function _docker_login() {
     local _host_port="${1}"
     local _backup_ports="${2}"

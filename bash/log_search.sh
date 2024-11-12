@@ -1254,7 +1254,9 @@ function f_threads() {
 
     echo "## Checking 'parking to wait for' qtp threads, because it may indicate the pool exhaustion issue (eg:NEXUS-17896 / NEXUS-10372) (excluding smaller than 2k size threads)"
     #rg '\bparking to wait for\b' -l `find ${_save_dir%/} -type f -size +2k -name 'qtp*.out'` | wc -l
-    rg '\bparking to wait for\s+<([^>]+)>.+\(([^\)]+)\)' -o -r '$1 $2' --no-filename `find ${_save_dir%/} -type f -size +2k \( -name 'qtp*.out' -o -name 'dw-*.out' \)` | sort | uniq -c | sort -nr | head -n10
+    find ${_save_dir%/} -type f -size +2k \( -name 'qtp*.out' -o -name 'dw-*.out' \) -print | while read -r _f; do
+        rg '\bparking to wait for\s+<([^>]+)>.+\(([^\)]+)\)' -o -r '$1 $2' "${_f}"
+    done | sort | uniq -c | sort -nr | head -n10
     # NOTE: probably java.util.concurrent.SynchronousQueue can be ignored
     echo " "
 
@@ -1311,7 +1313,8 @@ function f_threads() {
     fi
 
     echo "## Counting thread types excluding WAITING (top 20)"
-    rg '^[^\s]' ${_file} | rg -v WAITING | _replace_number 1 | sort | uniq -c | sort -nr | head -n 20
+    # java 17 has the lines starting with 0x
+    rg '^[^\s]...' ${_file} | rg -v -i WAITING | rg -v '^0x' | _replace_number 1 | sort | uniq -c | sort -nr | head -n 20
     echo " "
 
     echo "### Counting thread states"
@@ -2024,7 +2027,9 @@ function _replace_number() {
     _sed -r -e "s/[0-9a-fA-F]{20,}/___SHA*___/g" \
      -e "s/\b[0-9a-fA-F]{32}\b/___UUID___/g" \
      -e "s/\b[0-9a-fA-F]{8}-[0-9a-fA-F]{4,8}-[0-9a-fA-F]{4,8}-[0-9a-fA-F]{4,8}-[0-9a-fA-F]{8,12}\b/___U-U-I-D___/g" \
-     -e "s/0x[0-9a-f]{2,}/0x_HEX_/g" \
+     -e "s/\b[0-9\.]+ ?ms\b/_MSEC_/g" \
+     -e "s/\b[0-9\.]+ ?s\b/_SEC_/g" \
+     -e "s/\b0x[0-9a-f]{2,}\b/0x_HEX_/g" \
      -e "s/\b[0-9a-f]{6,8}\b/__HEX__/g" \
      -e "s/20[0-9][0-9][-/][0-9][0-9][-/][0-9][0-9][ T]/___DATE___./g" \
      -e "s/[0-2]?[0-9]:[0-6][0-9]:[0-6][0-9][.,0-9]*/__TIME__/g" \
@@ -2032,10 +2037,10 @@ function _replace_number() {
      -e "s/[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}/__IP_ADDRESS__/g" \
      -e "s/[0-9]{8,10}-[0-9]+\b/__THREAD_ID__/g" \
      -e "s/\b(CVE|sonatype|SONATYPE)-[0-9]{4}-[0-9]{3,}\b/__CVE__/g" \
-     -e "s/:[0-9]{1,5}/:_PORT_/g" \
-     -e "s/#[0-9]+/#_N_/g" \
-     -e "s/-[0-9]+\] /-_N_] /g" \
-     -e "s/-[0-9]+\//-_N_\//g" \
+     -e "s/:[0-9]{2,5}/:_PORT_/g" \
+     -e "s/#[0-9]{${_min},}+/#_N_/g" \
+     -e "s/-[0-9]{${_min},}+\] /-_N_] /g" \
+     -e "s/-[0-9]{${_min},}+\//-_N_\//g" \
      -e "s/[0-9]{${_min},}+\b/${_N_}/g"
 }
 

@@ -113,8 +113,8 @@ _RESP_FILE=""
 
 
 ### Nexus installation functions ##############################################################################
-# To install HA instances (port is automatic): _NEXUS_ENABLE_HA=Y f_install_nexus3 "" "nxrmha"
-# To upgrade (from ${_dirpath}/): tar -xvf $HOME/.nexus_executable_cache/nexus-3.72.0-04-mac.tgz
+# To install HA instances (port is automatic): _NEXUS_ENABLE_HA=Y f_install_nexus3 "" "nxrm3740ha"
+# To upgrade (from ${_dirpath}/): tar -xvf $HOME/.nexus_executable_cache/nexus-3.74.0-05-mac.tgz
 function f_install_nexus3() {
     local __doc__="Install specific NXRM3 version (to recreate sonatype-work and DB, _RECREATE_ALL=Y)"
     local _ver="${1:-"${r_NEXUS_VERSION}"}"     # 'latest' or '3.71.0-03-java17'
@@ -155,7 +155,7 @@ function f_install_nexus3() {
         [ "${_port}" != "8081" ] && _dirpath="${_dirpath}_${_port}"
     fi
 
-    if [[ "${_RECREATE_ALL-"Y"}" =~ [yY] ]]; then
+    if [[ "${_RECREATE_ALL}" =~ [yY] ]] || ([ -z "${_RECREATE_ALL}" ] && ! _isYes "${_NEXUS_ENABLE_HA:-"${r_NEXUS_ENABLE_HA}"}"); then
         if [ -d "${_dirpath%/}" ]; then
             _log "WARN" "Removing ${_dirpath%/} (to avoid set _RECREATE_ALL)"; sleep 3
             rm -v -rf "${_dirpath%/}" || return $?
@@ -589,7 +589,7 @@ function _populate_docker_proxy() {
 function _populate_docker_hosted() {
     local _base_img="${1:-"alpine:latest"}"    # dh1.standalone.localdomain:15000/alpine:3.7
     local _host_port="${2:-"${r_DOCKER_PROXY:-"${r_DOCKER_GROUP:-"${r_NEXUS_URL:-"${_NEXUS_URL}"}"}"}"}"
-    local _tag_to="${3:-"${_TAG_TO:-"dummyimg:latest"}"}"
+    local _tag_to="${3:-"${_TAG_TO}"}"
     local _num_layers="${4:-"${_NUM_LAYERS:-"1"}"}" # Can be used to test overwriting image
     local _backup_ports="${5-"18182 18181 15000 443"}"
     local _cmd="${6-"${r_DOCKER_CMD}"}"
@@ -603,6 +603,9 @@ function _populate_docker_hosted() {
         _host_port="$(_docker_login "${_host_port}" "${_backup_ports}" "${_usr}" "${_pwd}" "${_cmd}")" || return $?
     fi
 
+    if [ -z "${_tag_to}" ]; then
+        _tag_to="dummy-img-n${_num_layers}:latest"
+    fi
     if ${_cmd} images --format "{{.Repository}}:{{.Tag}}" | grep -qE "^${_host_port%/}/${_tag_to}$"; then
         _log "INFO" "'${_host_port%/}/${_tag_to}' already exists. Skipping the build ..."
     else
