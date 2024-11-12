@@ -1,4 +1,4 @@
-# https://github.com/sonatype/nxrm3-ha-repository/tree/main/nxrm-ha-helm
+# https://github.com/sonatype/nxrm3-ha-repository/tree/main/nxrm-ha
 # https://help.sonatype.com/repomanager3/planning-your-implementation/resiliency-and-high-availability/high-availability-deployment-options/option-2---on-premises-high-availability-deployment-using-kubernetes#Option2OnPremisesHighAvailabilityDeploymentUsingKubernetes-helmlic
 
 # LIMITATION:
@@ -43,6 +43,11 @@ statefulset:
   name: nxrm-statefulset
   serviceName: nxrm-statefulset-service
   replicaCount: 1
+  hostAliases:
+   - ip: "192.168.4.31"
+     hostnames:
+     - "nxiqha-k8s.standalone.localdomain"
+     - "nxiqha-admin-k8s.standalone.localdomain"
   clustered: true
   additionalVolumeMounts:
     - name: nexus-deploy-volume
@@ -150,7 +155,7 @@ secret:
       mountPath: /var/nexus-repo-license
 
 nexus:
-  # This seems to be working even "Ingress.networking.k8s.io "nxrm3ha-nxrm-ha-docker-5000" is invalid:..."
+  # This seems to work after 'uninstall' even "Ingress.networking.k8s.io "nxrm3ha-nxrm-ha-docker-5000" is invalid:..."
   docker:
     enabled: true
     type: NodePort

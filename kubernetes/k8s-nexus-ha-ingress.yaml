@@ -1,3 +1,5 @@
+# *** OLD ingress example used by manual HA deployment ***
+#
 # kubectl create secret tls nexus-tls -n sonatype-ha --key ~/IdeaProjects/samples/misc/standalone.localdomain.key --cert ~/IdeaProjects/samples/misc/standalone.localdomain.crt
 # kubectl apply -n sonatype-ha -f ./k8s-nexus-ha-ingress.yaml
 # To check: kubectl cp -n ingress nginx-ingress-microk8s-controller-22p79:/etc/nginx/nginx.conf ./ingress-nginx.conf
