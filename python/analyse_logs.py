@@ -56,9 +56,8 @@ def _gen_regex_for_request_logs(filepath="request.log"):
     partern_str = '^([^ ]+) ([^ ]+) \[([^\]]+)\] "([^"]+)" http_status=([^ ]+) http_content_length=([^ ]+) latency=([^ ]+) user=([^ ]+) (.+)'
     if re.search(partern_str, checking_line):
         return (columns, partern_str)
-    else:
-        ju._info("Can not determine the log format for %s . Using default one." % (str(filepath)))
-        return (columns, partern_str)
+    ju._info("Can not determine the log format for %s . Using default one." % (str(filepath)))
+    return (columns, partern_str)
 
 
 def _gen_regex_for_app_logs(filepath=""):
@@ -240,6 +239,16 @@ def req2table_post(tablename="t_request", add_startTime=True, datetime_col="date
 
 def applog2table(filepath, tablename="t_applog", max_file_size=(1024 * 1024 * 100), time_from_regex=None,
                  time_until_regex=None):
+    """
+    Convert application log file to DB table
+    applog2table(filepath="clm-server.log", tablename="t_iq_logs", max_file_size=1294748262)
+    :param filepath: a path or a glob pattern
+    :param tablename: DB table name
+    :param max_file_size:
+    :param time_from_regex:
+    :param time_until_regex:
+    :return:
+    """
     log_path = ju._get_file(filepath)
     if bool(log_path) is False:
         return False
@@ -255,15 +264,15 @@ def applog2table(filepath, tablename="t_applog", max_file_size=(1024 * 1024 * 10
 
 
 def etl_request(log_suffix=".log", max_file_size=(1024 * 1024 * 100), add_startTime=True, tablename="t_request"):
-    if ju.exists(tablename):
-        ju._info("%s already exists." % tablename)
-        return True
-    # If request.*csv* exists, use that. if not, logs2table, which is slower.
-    _ = ju.load_csvs(src="./_filtered/", include_ptn="request.csv", max_file_size=(max_file_size * 5),
-                     conn=ju.connect())
+    if ju.exists(tablename) is False:
+        # If request.*csv* exists, use that. if not, logs2table, which is slower.
+        _ = ju.load_csvs(src="./_filtered/", include_ptn="request.csv", max_file_size=(max_file_size * 5),
+                         conn=ju.connect())
+    # If no csv file, then try to load request.log
     if ju.exists(tablename) is False:
         _ = request2table("request" + log_suffix)
     if ju.exists(tablename):
+        ju._info("Executing req2table_post for %s with add_startTime %s" % (tablename, add_startTime))
         req2table_post(tablename=tablename, add_startTime=add_startTime)
         global isHeaderContentLength
         # non NXRM3 request.log wouldn't have headerContentLength

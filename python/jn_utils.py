@@ -1448,7 +1448,7 @@ def gantt(df, index_col="", start_col="min_dt", end_col="max_dt", width=8, name=
     :param index_col: index column name. default: df.index
     :param start_col: start column name. default: 'min_dt'
     :param end_col: end column name. default: 'max_dt'
-    :param width: This is Inch and default is 16 inch.
+    :param width: This is Inch and default is 8 inch.
     :param name: When saving to file.
     :param tail: To return some sample rows.
     :return: DF (use .tail() or .head() to limit the rows)
