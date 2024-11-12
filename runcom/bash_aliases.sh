@@ -783,6 +783,74 @@ function goBuild() {
     echo "Completed at $(date)" >&2
 }
 
+function cleanOldDirs() {
+    # Currently assuming the directory name starts with nxrm_ or nxiq_
+    # Also deleting directory if log file newer than 60 days does not exist
+    local _test_dir="${1:-"$HOME/Documents/tests"}"
+    local _days="${2:-"90"}"
+    local _find="find"
+    type gfind &>/dev/null && _find="gfind"
+    find ${_test_dir%/} -maxdepth 1 -type d -name 'nxrm_*' | while read -r _d; do
+        local _dir_name="$(basename "${_d}")"
+        if [ -d "${_d%/}/sonatype-work/nexus3/log" ]; then
+            local _log_file="$(${_find} "${_d%/}/sonatype-work/nexus3/log" -maxdepth 1 -type f -name '*.log' -mtime -${_days} 2>/dev/null | head -n1)"
+            if [ -z "${_log_file}" ]; then
+                mv -v ${_d%/} ${_test_dir%/}/to_be_deleted_${_dir_name%/} || return $?    # this may fail if to_be_deleted_${_d%/} exists
+            fi
+        fi
+    done
+    find ${_test_dir%/} -maxdepth 1 -type d -name 'nxiq_*' | while read -r _d; do
+        local _dir_name="$(basename "${_d}")"
+        local _log_dir="$(${_find} "${_d%/}" -maxdepth 3 -type d -name 'log' 2>/dev/null | head -n1)"
+        if [ -d "${_log_dir}" ]; then
+            local _log_file="$(${_find} "${_log_dir%/}" -maxdepth 1 -type f -name '*.log' -mtime -${_days} 2>/dev/null | head -n1)"
+            if [ -z "${_log_file}" ]; then
+                mv -v ${_d%/} ${_test_dir%/}/to_be_deleted_${_dir_name%/} || return $?    # this may fail if to_be_deleted_${_d%/} exists
+            fi
+        fi
+    done
+    #find ${_test_dir%/} -maxdepth 1 -type d -name 'to_be_deleted_*' | while read -r _d; do
+    #    [[ "${_d}" =~ /to_be_deleted_(.+)$ ]] || continue
+    #    mv -v ${_d%/} ${_test_dir%/}/${BASH_REMATCH[1]} || return $?
+    #done
+}
+
+function cleanOldDBs() {
+    # requires rg (ripgrep)
+    # Currently assuming the directory name starts with nxrm or nxiq
+    local _test_dir="${1:-"$HOME/Documents/tests"}"
+    local _check_db_pfx="${2:-"nx(rm|iq)"}"
+    psql --csv -t -l | rg "^${_check_db_pfx}[^,]+" -o > /tmp/${FUNCNAME[0]}_in_db_$$.out || return $?
+    rg '^jdbcUrl=.+/(rm|nxrm)([^/\?]+)' -o -r '$1$2' --no-filename ${_test_dir%/}/nxrm*/sonatype-work/nexus3/etc/fabric/nexus-store.properties > /tmp/${FUNCNAME[0]}_nxrm_$$.out || return $?
+    if [ ! -s "/tmp/${FUNCNAME[0]}_nxrm_$$.out" ]; then
+        echo "ERROR /tmp/${FUNCNAME[0]}_nxrm_$$.out can't be empty" >&2
+        return 1
+    fi
+    rg '^database:' -A6 --no-filename ${_test_dir%/}/nxiq*/config.yml | rg '^\s+name:\s*(iq|nxiq)([^/\?]+)' -o -r '$1$2' >> /tmp/${FUNCNAME[0]}_nxiq_$$.out || return $?
+    if [ ! -s "/tmp/${FUNCNAME[0]}_nxiq_$$.out" ]; then
+        echo "ERROR /tmp/${FUNCNAME[0]}_nxiq_$$.out can't be empty" >&2
+        return 1
+    fi
+    grep -vxFf <(cat /tmp/${FUNCNAME[0]}_nxrm_$$.out /tmp/${FUNCNAME[0]}_nxiq_$$.out) /tmp/${FUNCNAME[0]}_in_db_$$.out | while read -r _db; do
+        # Currently hard-coded to skip some databases
+        if [[ "${_db}" =~ (sptboot|filelisttest|large) ]]; then
+            continue
+        fi
+        local _sql="ALTER DATABASE ${_db} RENAME TO to_be_deleted_${_db}"
+        echo "# Executing ${_sql}" >&2
+        psql -c "${_sql}" || return $?
+    done
+    # To restore
+    #psql --csv -t -l | rg -i "^to_be_deleted_([^,]+)" -o -r '$1' | xargs -I{} -t psql -c "ALTER DATABASE to_be_deleted_{} RENAME TO {}"
+
+    # Blow is bad because extracted files may have old dates
+    #${_find} "${_test_dir%/}" -type f -mtime +120 -delete 2>/dev/null
+    #${_find} ${_test_dir%/}/* -type d -mtime +2 -empty -print -delete
+    echo "# DELETE statements for Not updated databases and above databases:" >&2
+    psql -d template1 -tAc "SELECT 'DROP DATABASE '||datname||';    -- '||pg_database_size(datname)||' bytes' FROM pg_stat_database WHERE datname NOT IN ('', 'template0', 'template1', 'postgres', CURRENT_USER) AND stats_reset < (now() - interval '60 days') ORDER BY stats_reset"
+    psql -d template1 -tAc "SELECT 'DROP DATABASE '||datname||';    -- '||pg_database_size(datname)||' bytes' FROM pg_stat_database WHERE datname ilike 'to_be_deleted_%' ORDER BY datname"
+}
+
 # backup & cleanup Cases (backing up files smaller than 10MB only)
 function backupC() {
     local _src="${1:-"/Volumes/Samsung_T5/hajime/cases"}"
@@ -826,15 +894,11 @@ function backupC() {
     fi
 
     echo ""
-    echo "#### Cleaning up old temp/test data ####" >&2
+    echo "#### Cleaning up old temp/test data (120 days) ####" >&2
     echo ""
     if [ -d "$HOME/Documents/tests" ]; then
-        # Blow is bad because extracted files may have old dates
-        #${_find} "$HOME/Documents/tests" -type f -mtime +120 -delete 2>/dev/null
-        #${_find} $HOME/Documents/tests/* -type d -mtime +2 -empty -print -delete
-        ${_find} "$HOME/Documents/tests" -maxdepth 1 -type d -mtime +120 | rg '(nxrm|nxiq)_[0-9.-]+_([^_]+)' -o -r '$2' | rg -v -i -w 'h2' | xargs -I{} -t psql -c "DROP DATABASE {}"
-        ${_find} "$HOME/Documents/tests" -maxdepth 1 -type d -mtime +120 -name 'nx??_[0-9]*' -print0 | xargs -0 -I{} -t rm -rf {}
-        #psql -d template1 -tAc "SELECT 'DROP DATABASE '||datname||';    -- '||pg_database_size(datname)||' bytes' FROM pg_stat_database WHERE datname NOT IN ('', 'template0', 'template1', 'postgres', CURRENT_USER) AND stats_reset < (now() - interval '60 days') ORDER BY stats_reset"
+        cleanOldDirs "$HOME/Documents/tests" 60
+        cleanOldDBs "$HOME/Documents/tests"
      fi
 
     [ ! -d "${_src}" ] && return 11
