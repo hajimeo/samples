@@ -43,6 +43,7 @@ var BsType = "" // 'file' for File, 's3' for AWS S3, (TODO) 'az' for Azure, 'g' 
 var BlobIDFIle = ""
 var RemoveDeleted bool
 var RepoNames = ""
+var WriteIntoStr = ""
 
 // Database related
 var DbConnStr = ""

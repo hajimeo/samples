@@ -7,8 +7,14 @@
 #
 # HOW TO RUN EXAMPLE:
 #   ./filelistv2_test.sh <blobstore> <path/prefix>
-#   $HOME/IdeaProjects/samples/golang/FileListV2/filelistv2_test.sh $HOME/Documents/tests/nxrm_3.70.1-02_nxrm3791ha/sonatype-work/nexus3/blobs/default
+# If File type blobstore:
+#   $HOME/IdeaProjects/samples/golang/FileListV2/filelistv2_test.sh $HOME/Documents/tests/nxrm_3.70.3-01/sonatype-work/nexus3/blobs/default
 #
+# Prepare the test data using setup_nexus3_repos.sh:
+#   _AUTO=true main
+#   f_upload_dummies_all_hosted
+#   f_delete_all_assets
+#   #f_run_tasks_by_type "assetBlob.cleanup" # if Postgresql with nexus.assetBlobCleanupTask.blobCreatedDelayMinute=0
 
 ### Global variables
 : ${_TEST_BLOBSTORE:=""} #./sonatype-work/nexus3/blobs/default
@@ -25,7 +31,7 @@ function test_1_First10FilesForSpecificRepo() {
     _find_sample_repo_name "${_b}" "${_p}" || return 1
 
     local _out_file="/tmp/test_finding-${_TEST_REPO_NAME}-n10.tsv"
-    _exec_filelist "filelist2 -b '${_b}' -p '${_p}' -pRx '@Bucket\.repo-name=${_TEST_REPO_NAME},' -n 10 -P -c 10" "${_out_file}"
+    _exec_filelist "filelist2 -b '${_b}' -p '${_p}' -pRx '@Bucket\.repo-name=${_TEST_REPO_NAME},' -P -c 40" "${_out_file}"
     if [ "$?" == "0" ] && rg -q "${_TEST_BLOB_ID}" ${_out_file}; then
         echo "TEST=OK Found ${_TEST_BLOB_ID} in ${_out_file}"
     else
@@ -57,10 +63,10 @@ function test_3_FindFromTextFile() {
     local _out_file="/tmp/test_from-textfile.tsv"
     _exec_filelist "filelist2 -b '${_b}' -p '${_p}' -rF /tmp/test_finding-${_TEST_REPO_NAME}-n10.tsv -P" "${_out_file}"
     if [ "$?" == "0" ] && rg -q "${_TEST_BLOB_ID}" ${_out_file}; then
-        echo "TEST=OK : Found ${_TEST_BLOB_ID} in ${_out_file}"
+        #echo "TEST=OK : Found ${_TEST_BLOB_ID} in ${_out_file}"
         local _orig_num="$(wc -l /tmp/test_finding-${_TEST_REPO_NAME}-n10.tsv | awk '{print $1}')"
         local _result_num="$(wc -l ${_out_file} | awk '{print $1}')"
-        if [ ${_result_num:-"0"} -le 11 ] && [ "${_orig_num}" -eq "${_result_num}" ]; then
+        if [ ${_result_num:-"0"} -gt 0 ] && [ "${_orig_num}" -eq "${_result_num}" ]; then
             echo "TEST=OK : The number of lines in the original file and the result file are the same (${_result_num})"
         else
             echo "TEST=ERR: The number of lines in /tmp/test_finding-${_TEST_REPO_NAME}-n10.tsv (${_orig_num}) and ${_out_file} (${_result_num}) are different"
@@ -102,6 +108,31 @@ function test_4_SizeAndCount() {
     fi
 }
 
+function test_5_Undelete() {
+    local _b="${1:-"${_TEST_BLOBSTORE}"}"
+    local _p="${2:-"${_TEST_FILTER_PATH}"}"
+    _find_sample_repo_name "${_b}" "${_p}" || return 1
+
+    local _prep_file="/tmp/test_soft-deleted-${_TEST_REPO_NAME}-n10.tsv"
+    # Just first 10 and no header
+    _exec_filelist "filelist2 -b '${_b}' -p '${_p}' -pRx '@Bucket\.repo-name=${_TEST_REPO_NAME},.+deleted=true' -n 10 -P -H -c 10" "${_prep_file}"
+    if [ ! -s "${_prep_file}" ]; then
+        echo "No soft-deleted files found in ${_prep_file}, so skipping ${FUNCNAME[0]}"
+        return 0
+    fi
+
+    local _out_file="/tmp/test_undeleted-${_TEST_REPO_NAME}.tsv"
+    _exec_filelist "filelist2 -b '${_b}' -rF ${_prep_file} -RDel -P -H -c 10" "${_out_file}"
+    if [ "$?" == "0" ]; then
+        echo "TEST=OK Found ${_TEST_BLOB_ID} in ${_out_file} (compare with ${_prep_file})"
+        # Reverting the undeleted
+        _exec_filelist "filelist2 -b '${_b}' -rF ${_prep_file} -wStr \"deleted=true\" -c 10" "/tmp/test_re-soft-deleted-${_TEST_REPO_NAME}.tsv"
+    else
+        echo "TEST=ERROR: Could not undelete ${_prep_file} result: ${_out_file} (check /tmp/test_last.*)"
+        return 1
+    fi
+}
+
 
 ### Utility functions
 function _log_duration() {
@@ -111,7 +142,7 @@ function _log_duration() {
     local _ended="$(date +%s)"
     local _diff=$((${_ended} - ${_started}))
     local _log_level="DEBUG"
-    if [ ${_diff} -ge ${_threshold} ]; then
+    if [ ${_diff:-0} -ge 3 ]; then
         _log_level="INFO"
     fi
     echo "[${_log_level}] ${_log_msg} in ${_diff}s" >&2
@@ -142,12 +173,13 @@ function _find_sample_repo_name() {
     [ -z "${_TEST_FILTER_PATH}" ] && export _TEST_FILTER_PATH="${_p}"
     [ -n "${_TEST_REPO_NAME}" ] && return 0
 
-    _log "INFO" "Finding a sample .properties file in the blobstore: ${_b} ..."
-    local _prop="$(find ${_b%/} -maxdepth 4 -name '*.properties' -path '*'${_p}'*' -print | head -n1)"
+    #_log "INFO" "Finding a sample .properties file in the blobstore: ${_b} ..."
+    local _prop="$(find ${_b%/} -maxdepth 4 -name '*.properties' -path '*/content/vol*' -print | head -n1)"
     if [ -z "${_prop}" ]; then
         _log "WARN" "No .properties file found in ${_b} and ${_p}"
         return 1
     fi
+    _log "INFO" "Found a sample .properties file: ${_prop}"
     local _blob_id="$(basename "${_prop}" ".properties")"
     if [ -z "${_blob_id}" ]; then
         _log "WARN" "No blob-id found in ${_prop}"

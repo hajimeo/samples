@@ -53,6 +53,7 @@ func setGlobals() {
 	flag.StringVar(&common.BsName, "bsName", "", "eg. 'default'. If provided, the SQL query will be faster. 3.47 and higher only")
 	flag.StringVar(&common.RepoNames, "repos", "", "Repository names. eg. 'maven-central,raw-hosted,npm-proxy', only with -src=DB")
 	flag.BoolVar(&common.RemoveDeleted, "RDel", false, "TODO: Remove 'deleted=true' from .properties. Requires -dF")
+	flag.StringVar(&common.WriteIntoStr, "wStr", "", "For testing. Write the string into the file (eg. deleted=true) NOTE: not updating S3 tag")
 	flag.StringVar(&common.DelDateFromStr, "dDF", "", "Deleted date YYYY-MM-DD (from). Used to search deletedDateTime")
 	flag.StringVar(&common.DelDateToStr, "dDT", "", "Deleted date YYYY-MM-DD (to). To exclude newly deleted assets")
 	flag.StringVar(&common.ModDateFromStr, "mDF", "", "File modification date YYYY-MM-DD (from). For DB, this is used against <format>_asset_blob.blob_created")
@@ -271,7 +272,7 @@ func isExtraInfoNeeded(path string, modTimestamp int64) bool {
 		return false
 	}
 	// no need to open the properties file if no _REMOVE_DEL, no _WITH_PROPS, and no _DEL_DATE_FROM/TO
-	if common.RemoveDeleted || common.WithProps || len(common.Filter4FileName) > 0 || len(common.Filter4PropsIncl) > 0 || len(common.Filter4PropsExcl) > 0 || common.DelDateFromTS > 0 || common.DelDateToTS > 0 {
+	if common.RemoveDeleted || common.WithProps || len(common.WriteIntoStr) > 0 || len(common.Filter4FileName) > 0 || len(common.Filter4PropsIncl) > 0 || len(common.Filter4PropsExcl) > 0 || common.DelDateFromTS > 0 || common.DelDateToTS > 0 {
 		return true
 	}
 	return false
@@ -300,6 +301,10 @@ func extraInfo(path string, db *sql.DB, client bs_clients.Client) (string, error
 				h.Log("ERROR", "Blob ID: "+blobId+" may not exist in the DB")
 			}
 		}
+	}
+
+	if len(common.WriteIntoStr) > 0 {
+		_ = appendStr(common.WriteIntoStr, contents, path, client)
 	}
 
 	// Finally, generate the properties output
@@ -375,6 +380,25 @@ func removeDel(contents string, path string, client bs_clients.Client) bool {
 	}
 	if len(contents) == len(updatedContents) {
 		h.Log("WARN", fmt.Sprintf("Removed 'deleted=true' from path:%s but size is same (%d => %d)", path, len(contents), len(updatedContents)))
+		return false
+	}
+	return true
+}
+
+func appendStr(appending string, contents string, path string, client bs_clients.Client) bool {
+	var updatedContents string
+	if strings.HasSuffix(contents, "\n") {
+		updatedContents = fmt.Sprintf("%s%s\n", contents, appending)
+	} else {
+		updatedContents = fmt.Sprintf("%s\n%s\n", contents, appending)
+	}
+	err := client.WriteToPath(path, updatedContents)
+	if err != nil {
+		h.Log("ERROR", fmt.Sprintf("Apeending '%s' into path:%s failed with %s", appending, path, err))
+		return false
+	}
+	if len(contents) == len(updatedContents) {
+		h.Log("WARN", fmt.Sprintf("Appended '%s' into path:%s but size is same (%d => %d)", appending, path, len(contents), len(updatedContents)))
 		return false
 	}
 	return true

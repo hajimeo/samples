@@ -144,7 +144,7 @@ func (c *FileClient) ListObjects(dir string, fileFilter string, db *sql.DB, perL
 		} else {
 			if common.MaxDepth > 1 && dir != path {
 				//TODO: Because GetDirs for "File" type returns all directories, this should not recursively check sub-directories. But if other blob store types will implement GetDirs differently, may need to change this line.
-				h.Log("INFO", fmt.Sprintf("Skipping directory: %s, %s", dir, path))
+				h.Log("DEBUG", fmt.Sprintf("Skipping directory: %s, %s", dir, path))
 				return filepath.SkipDir
 			}
 		}

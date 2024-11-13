@@ -73,12 +73,20 @@ file-list -b "$BLOB_STORE" -p 'vol-' -pRx "@Bucket\.repo-name=npm-proxy" -P -s .
 rg -o -r '$1' ',size=(\d+)' ./npm-proxy_all.tsv | awk '{ c+=1;s+=$1 }; END { print "blobCount:"c", totalSize:"s" bytes" }'
 ```
 
-# TODO: The following usage examples are not rewritten yet
-### Find missing blobs in blob store (Orphaned Blobs)
-
-### Find missing blobs in database (Dead Blobs)
-
 ### Remove `deleted=true` lines from the specified files in a text file or while listing
+```
+# Like dry-run
+filelist2 -b "$BLOB_STORE" -p "vol-" -pRx "@Bucket\.repo-name=docker-proxy,.+deleted=true" -P -c 80 -s ./docker-proxy_soft_deleted.tsv
+filelist2 -b "$BLOB_STORE" -rF ./docker-proxy_soft_deleted.tsv -RDel -P -c 80 -s docker-proxy_soft_deleted_undeleted.tsv 
+```
+
+
+
+TODO: The following usage examples are not rewritten yet
+
+### Find blobs which exist in DB but not in Blob store (Dead Blobs)
+
+### Find blobs which exist in Blob store but not in database (Orphaned Blobs)
 ```
 file-list -b "$BLOB_STORE" -p 'vol-' -pRx "@Bucket\.repo-name=npm-proxy" -P -s ./npm-proxy_all.tsv
 rg -o -r '$1' ',size=(\d+)' ./npm-proxy_all.tsv | awk '{ c+=1;s+=$1 }; END { print "blobCount:"c", totalSize:"s" bytes" }'
@@ -116,7 +124,7 @@ file-list -bsType S -b "${S3_BUCKET}" -p "${S3_PREFIX}/content/vol-" -R -fP "@Bu
 ```
 file-list -RDel -dF "$(date +%Y-%m-%d)" -b ./content -p "vol-" -R -fP "@BlobStore\.blob-name=/test/test_1k.img,.+@Bucket\.repo-name=raw-hosted,.+deleted=true" -P -c 10 -s ./undelete_raw-hosted.tsv
 ```
-### Check orphaned files by querying against PostgreSQL (-db "\<conn string or nexus-store.properties file path) with max 10 DB connections (-c 10), and using -P as it's faster because of generating better SQL query, and checking only *.properties files with -f (excluding .bytes files)
+### Check orphaned files by querying against PostgresSQL (-db "conn string or nexus-store.properties file path") with max 10 DB connections (-c 10), and using -P as it's faster because of generating better SQL query, and checking only *.properties files with -f (excluding .bytes files)
 ```
 file-list -b ./content -p vol- -c 10 -db "host=localhost port=5432 user=nxrm3pg password=******** dbname=nxrm3pg" -P -f ".properties"
 # or
@@ -145,7 +153,7 @@ In above example, `filelist_test` is the S3 bucket prefix and `-X` is for debug 
 ### For OrientDB
 ```
 cd ./sonatype-work/nexus3/
-echo "select blob_ref from asset" | orient-console ./db/component/ | file-list -b ./blobs/default/content -p vol- -c 10 -src DB -bF "-" -bsName default -X -s ./dead-list_fromOrient.tsv 2>./dead-list_fromOrient.log
+echo "select blob_ref from asset where bucket.repository_name = 'xxxxxxx'" | orient-console ./db/component/ | file-list -b ./blobs/default/content -p vol- -c 10 -src DB -bF "-" -bsName default -X -s ./dead-list_fromOrient.tsv 2>./dead-list_fromOrient.log
 ```
 ---------------------------------------------------------------------------
 
