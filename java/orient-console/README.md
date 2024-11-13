@@ -20,9 +20,14 @@ java -DextractDir=./component -jar ./orient-console.jar ./component-2021-08-07-0
 ### Start as a server
 ```
 java -Dserver=true -jar ./orient-console.jar "./sonatype-work/nexus3/db/component"
+# or
+export JAVA_TOOL_OPTIONS="-Dserver=true"
+java -jar ./orient-console.jar "./sonatype-work/nexus3/db/component"
 
 # Then connect from another PC
 java -jar ./orient-console.jar "remote:node-nxrm-ha1.standalone.localdomain/component"
+# Or execute SQL with curl (note: 'format=prretyPrint' is not pretty)
+curl -sSf -u "admin:admin" -X POST -d "SELECT repository_name FROM bucket" "http://localhost:2480/command/component/sql"
 ```
 ### Execute SQL statement(s)
 ```

@@ -12,15 +12,10 @@ import com.orientechnologies.orient.core.record.impl.ORecordBytes;
 import com.orientechnologies.orient.core.sql.OCommandSQL;
 import com.orientechnologies.orient.core.sql.OCommandSQLParsingException;
 import com.orientechnologies.orient.server.OServer;
-import com.orientechnologies.orient.server.config.OServerConfiguration;
-import com.orientechnologies.orient.server.config.OServerEntryConfiguration;
-import com.orientechnologies.orient.server.config.OServerNetworkConfiguration;
-import com.orientechnologies.orient.server.config.OServerNetworkListenerConfiguration;
-import com.orientechnologies.orient.server.config.OServerNetworkProtocolConfiguration;
-import com.orientechnologies.orient.server.config.OServerSecurityConfiguration;
-import com.orientechnologies.orient.server.config.OServerStorageConfiguration;
-import com.orientechnologies.orient.server.config.OServerUserConfiguration;
+import com.orientechnologies.orient.server.config.*;
 import com.orientechnologies.orient.server.network.protocol.binary.ONetworkProtocolBinary;
+import com.orientechnologies.orient.server.network.protocol.http.ONetworkProtocolHttpDb;
+import com.orientechnologies.orient.server.network.protocol.http.command.get.OServerCommandGetStaticContent;
 import net.lingala.zip4j.ZipFile;
 import org.jline.reader.*;
 import org.jline.reader.impl.DefaultHighlighter;
@@ -650,6 +645,13 @@ public class Main {
         config.location = "DYNAMIC-CONFIGURATION";  // Not sure about this, just took from OrientDbEmbeddedTrial
         // TODO: Still couldn't avoid 'SEVER ODefaultServerSecurity.loadConfig() Could not access the security JSON file'
         File securityFile = new File(databaseDir, "orient-console-security.json");
+        FileWriter writer = new FileWriter(securityFile);
+        writer.write("{\n" +
+                "  \"enabled\": false\n" +
+                "}");
+        writer.close();
+
+        // https://gist.github.com/gokhankuyucak/b966d41426a08d3335826643f2305757
         config.properties = new OServerEntryConfiguration[]{
                 new OServerEntryConfiguration("server.database.path", databaseDir.getPath()),
                 new OServerEntryConfiguration("server.security.file", securityFile.getPath())
@@ -658,15 +660,36 @@ public class Main {
         config.hooks = Lists.newArrayList();
         config.network = new OServerNetworkConfiguration();
         config.network.protocols = Lists.newArrayList(
-                new OServerNetworkProtocolConfiguration("binary", ONetworkProtocolBinary.class.getName())
+                new OServerNetworkProtocolConfiguration("binary", ONetworkProtocolBinary.class.getName()),
+                new OServerNetworkProtocolConfiguration("http", ONetworkProtocolHttpDb.class.getName())
         );
         OServerNetworkListenerConfiguration binaryListener = new OServerNetworkListenerConfiguration();
         binaryListener.ipAddress = "0.0.0.0";
         binaryListener.portRange = "2424-2430";
         binaryListener.protocol = "binary";
         binaryListener.socket = "default";
+        OServerNetworkListenerConfiguration httpListener = new OServerNetworkListenerConfiguration();
+        httpListener.ipAddress = "0.0.0.0";
+        httpListener.portRange = "2480";
+        httpListener.protocol = "http";
+        httpListener.socket = "default";
+        httpListener.parameters = new OServerParameterConfiguration[] {
+                new OServerParameterConfiguration("network.http.charset", "UTF-8"),
+                new OServerParameterConfiguration("network.http.jsonResponseError", "true")
+        };
+        OServerCommandConfiguration getCommand = new OServerCommandConfiguration();
+        getCommand.implementation = OServerCommandGetStaticContent.class.getName();
+        getCommand.pattern = "GET|www GET|studio/ GET| GET|*.htm GET|*.html GET|*.xml GET|*.jpeg GET|*.jpg GET|*.png GET|*.gif GET|*.js GET|*.css GET|*.swf GET|*.ico GET|*.txt GET|*.otf GET|*.pjs GET|*.svg GET|*.json GET|*.woff GET|*.ttf GET|*.svgz";
+        getCommand.parameters = new OServerEntryConfiguration[] {
+                new OServerEntryConfiguration("http.cache:*.htm *.html", "Cache-Control: no-cache, no-store, max-age=0, must-revalidate\\r\\nPragma: no-cache"),
+                new OServerEntryConfiguration("http.cache:default", "Cache-Control: max-age=120")
+        };
+        httpListener.commands = new OServerCommandConfiguration[] {
+                getCommand
+        };
+
         config.network.listeners = Lists.newArrayList(
-                binaryListener
+                binaryListener, httpListener
         );
 
         config.storages = new OServerStorageConfiguration[]{};
@@ -790,18 +813,20 @@ public class Main {
         } catch (Exception e) {
             e.printStackTrace();
         } finally {
-            log("Exiting.");
             // If not closing or proper shutdown, OrientDB rebuilds indexes at next connect...
-            if (db != null) {
+            if (db != null && !db.isClosed()) {
+                log("Closing " + db.getName() + " ...");
                 db.close();
             }
-            if (server != null) {
+            if (server != null && server.isActive()) {
+                log("Shutting down server ...");
                 server.shutdown();
             }
             if (tmpDir != null) {
                 log("Clearing temp directory: " + tmpDir + " ...");
                 delR(tmpDir);
             }
+            log("Exiting ... (may require 'Ctrl + C')");
         }
     }
 }
