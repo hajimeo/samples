@@ -171,13 +171,17 @@ function takeDumps() {
             local _curl_m="$((${_interval} + 3))"   # for IQ admin port, wait a bit longer
             date --rfc-3339=seconds >> "${_outPfx}000.log"
             if ! curl -m${_curl_m:-"5"} -sSf -k "${_admin_url%/}/threads" >> "${_outPfx}000.log"; then
-                kill -3 "${_pid}"   # Need to use 'docker logs' or 'kubectl logs'
+                if [ -n "${_pid}" ]; then
+                    kill -3 "${_pid}"   # Need to use 'docker logs' or 'kubectl logs'
+                else
+                    echo "[$(date +'%Y-%m-%d %H:%M:%S')] ERROR ${_admin_url%/} is unreachable" >&2
+                fi
             fi
         elif [ -n "${_pid}" ]; then
             echo "[$(date +'%Y-%m-%d %H:%M:%S')] WARN  No 'jstack' and no admin url (so best effort)" >&2
             kill -3 "${_pid}"
         else
-            echo "[$(date +'%Y-%m-%d %H:%M:%S')] ERROR  No 'jstack' and no admin url and no PID" >&2
+            echo "[$(date +'%Y-%m-%d %H:%M:%S')] ERROR No 'jstack' and no admin url and no PID" >&2
         fi
         (date +"%Y-%m-%d %H:%M:%S"; top -H -b -n1 2>/dev/null | head -n60) >> "${_outPfx}001.log"
         (date +"%Y-%m-%d %H:%M:%S"; netstat -topen 2>/dev/null || cat /proc/net/tcp* 2>/dev/null) >> "${_outPfx}002.log"
