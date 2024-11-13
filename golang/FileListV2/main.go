@@ -36,11 +36,11 @@ func setGlobals() {
 	common.StartTimestamp = time.Now().Unix()
 
 	flag.StringVar(&common.BaseDir, "b", ".", "Blob store directory or URI (eg. 's3://s3-test-bucket/s3-test-prefix/'), which location contains 'content' directory (default: '.')")
-	flag.StringVar(&common.Filter4Path, "p", "", "Filter for directory / file *path* (eg 'vol-'), or S3 prefix.")
-	flag.StringVar(&common.Filter4FileName, "f", "", "Filter for the file *name* (eg: '.properties' to include only this extension)")
+	flag.StringVar(&common.Filter4Path, "p", "", "Regular Expression for directory *path* (eg 'vol-'), or S3 prefix.")
+	flag.StringVar(&common.Filter4FileName, "f", "", "Regular Expression for the file *name* (eg: '\\.properties' to include only this extension)")
 	flag.BoolVar(&common.WithProps, "P", false, "If true, the .properties file content is included in the output")
-	flag.StringVar(&common.Filter4PropsIncl, "pRx", "", "Filter for the content of the .properties files (eg: 'deleted=true')")
-	flag.StringVar(&common.Filter4PropsExcl, "pRxNot", "", "Excluding Filter for .properties (eg: 'BlobStore.blob-name=.+/maven-metadata.xml.*')")
+	flag.StringVar(&common.Filter4PropsIncl, "pRx", "", "Regular Expression for the content of the .properties files (eg: 'deleted=true')")
+	flag.StringVar(&common.Filter4PropsExcl, "pRxNot", "", "Excluding Regular Expression for .properties (eg: 'BlobStore.blob-name=.+/maven-metadata.xml.*')")
 	flag.StringVar(&common.SaveToFile, "s", "", "Save the output (TSV text) into the specified path")
 	flag.Int64Var(&common.TopN, "n", 0, "Return first N lines (0 = no limit). (TODO: may return more than N because of concurrency)")
 	flag.IntVar(&common.Conc1, "c", 1, "Concurrent number for reading directories")
@@ -87,14 +87,17 @@ func setGlobals() {
 
 	// If _FILTER_P is given, automatically populate other related variables
 	if len(common.Filter4PropsIncl) > 0 || len(common.Filter4PropsExcl) > 0 {
+		// TODO: currently this script can not include .bytes when the .properties is included or excluded
 		common.Filter4FileName = common.PROP_EXT
-		//*_WITH_PROPS = true
 		if len(common.Filter4PropsIncl) > 0 {
 			common.RxIncl, _ = regexp.Compile(common.Filter4PropsIncl)
 		}
 		if len(common.Filter4PropsExcl) > 0 {
 			common.RxExcl, _ = regexp.Compile(common.Filter4PropsExcl)
 		}
+	}
+	if len(common.Filter4FileName) > 0 {
+		common.RxFilter4FileName, _ = regexp.Compile(common.Filter4FileName)
 	}
 
 	if len(common.DbConnStr) > 0 {
@@ -136,6 +139,7 @@ func setGlobals() {
 	}
 
 	if common.RemoveDeleted {
+		// If RDel, probably want to check .properties files only
 		common.Filter4FileName = common.PROP_EXT
 		if len(common.Filter4PropsIncl) == 0 {
 			common.Filter4PropsIncl = "deleted=true"
@@ -234,6 +238,10 @@ func genBlobPath(blobId string, extension string) string {
 func genOutput(path string, bi bs_clients.BlobInfo, db *sql.DB, client bs_clients.Client) string {
 	// Increment checked number counter synchronously
 	atomic.AddInt64(&common.CheckedNum, 1)
+	if common.RxFilter4FileName != nil && !common.RxFilter4FileName.MatchString(path) {
+		h.Log("DEBUG", fmt.Sprintf("path:%s does not match with the filter %s", path, common.RxFilter4FileName.String()))
+		return ""
+	}
 
 	modTimestamp := bi.ModTime.Unix()
 	if !isTsMSecBetweenTs(modTimestamp*1000, common.ModDateFromTS, common.ModDateToTS) {
@@ -280,6 +288,7 @@ func isExtraInfoNeeded(path string, modTimestamp int64) bool {
 
 func extraInfo(path string, db *sql.DB, client bs_clients.Client) (string, error) {
 	// This function returns the extra information, and also does extra checks.
+	// Returns the error only when RxIncl or RxExcl filtered the contents
 	contents, err := client.ReadPath(path)
 	if err != nil {
 		h.Log("ERROR", "extraInfo for "+path+" returned error:"+err.Error())
@@ -308,22 +317,23 @@ func extraInfo(path string, db *sql.DB, client bs_clients.Client) (string, error
 	}
 
 	// Finally, generate the properties output
-	props, skipReason := genOutputFromProp(contents)
+	props, skipReason := genOutputFromContents(contents)
 	if skipReason != nil {
 		return props, skipReason
 	}
 	// If With Properties output is specified, return the contents
 	if common.WithProps && len(props) > 0 {
-		return props, skipReason
+		return props, nil
 	}
 	return "", nil
 }
 
-func genOutputFromProp(contents string) (string, error) {
+func genOutputFromContents(contents string) (string, error) {
+	// Returns error only when RxIncl or RxExcl filtered the contents
 	sortedContents := lib.SortToSingleLine(contents)
 
 	// Exclude check first
-	if common.RxExcl != nil && len(common.RxExcl.String()) > 0 && common.RxExcl.MatchString(sortedContents) {
+	if common.RxExcl != nil && common.RxExcl.MatchString(sortedContents) {
 		return "", errors.New(fmt.Sprintf("Matched with the exclude regex: %s. Skipping.", common.RxExcl.String()))
 	}
 	if common.RxIncl != nil && len(common.RxIncl.String()) > 0 {
@@ -333,15 +343,6 @@ func genOutputFromProp(contents string) (string, error) {
 			//h.Log("DEBUG", fmt.Sprintf("Sorted content: '%s'", sortedContents))
 			return "", errors.New(fmt.Sprintf("Does NOT match with the regex: %s. Skipping.", common.RxIncl.String()))
 		}
-	}
-
-	// If RxExcl is empty, this excluding fileter is not a regex
-	if common.RxExcl == nil && len(common.Filter4PropsExcl) > 0 && strings.Contains(sortedContents, common.Filter4PropsExcl) {
-		return "", errors.New(fmt.Sprintf("Contains excluding string '%s'. Skipping.", common.Filter4PropsExcl))
-	}
-	// If RxIncl is empty, this fileter is not a regex
-	if common.RxIncl == nil && len(common.Filter4PropsIncl) > 0 && !strings.Contains(sortedContents, common.Filter4PropsIncl) {
-		return "", errors.New(fmt.Sprintf("Does not contain '%s'. Skipping.", common.Filter4PropsIncl))
 	}
 
 	// As the text didn't match with any filters, just return the contents as single line
@@ -433,7 +434,7 @@ func printOrSave(line string) {
 
 func listObjects(dir string, db *sql.DB, client bs_clients.Client) {
 	startMs := time.Now().UnixMilli()
-	subTtl := client.ListObjects(dir, common.Filter4FileName, db, printLine)
+	subTtl := client.ListObjects(dir, db, printLine)
 	// Always log this elapsed time by using 0 thresholdMs
 	h.Elapsed(startMs, fmt.Sprintf("Checked %s for %d files (current total: %d)", dir, subTtl, common.CheckedNum), 0)
 }
@@ -443,11 +444,17 @@ func printObjectByBlobId(blobId string, db *sql.DB, client bs_clients.Client) {
 		h.Log("DEBUG", fmt.Sprintf("Empty blobId"))
 		return
 	}
-	path := h.AppendSlash(common.ContentPath) + genBlobPath(blobId, common.PROP_EXT)
-	h.Log("DEBUG", path)
+	basePath := h.AppendSlash(common.ContentPath) + genBlobPath(blobId, "")
+	h.Log("DEBUG", basePath+".*")
 	// TODO: populate blobInfo with client
 	var blobInfo bs_clients.BlobInfo
-	printLine(path, blobInfo, db, client)
+	// TODO: this is not accurate as it should be checking the file name, not the path
+	if common.RxFilter4FileName == nil || common.RxFilter4FileName.MatchString(basePath+common.PROP_EXT) {
+		printLine(basePath+common.PROP_EXT, blobInfo, db, client)
+	}
+	if common.RxFilter4FileName == nil || common.RxFilter4FileName.MatchString(basePath+common.BYTES_EXT) {
+		printLine(basePath+common.BYTES_EXT, blobInfo, db, client)
+	}
 }
 
 func runParallel(chunks [][]string, client bs_clients.Client, f func(string, *sql.DB, bs_clients.Client), conc int) {

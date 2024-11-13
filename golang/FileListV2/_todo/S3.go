@@ -124,6 +124,7 @@ func (c *S3Client) ListObjects(dir string, db *sql.DB, printLine func(interface{
 		wgTags := sync.WaitGroup{}                     // *
 		guardTags := make(chan struct{}, common.Conc2) // **
 		for _, item := range resp.Contents {
+			// TODO: this should check the name, not path
 			if len(common.Filter4FileName) == 0 || strings.Contains(*item.Key, common.Filter4FileName) {
 				subTtl++
 				guardTags <- struct{}{}                                     // **

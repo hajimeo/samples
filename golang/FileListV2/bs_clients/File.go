@@ -122,10 +122,10 @@ func (c *FileClient) Convert2BlobInfo(f interface{}) BlobInfo {
 	return blobInfo
 }
 
-func (c *FileClient) ListObjects(dir string, fileFilter string, db *sql.DB, perLineFunc func(interface{}, BlobInfo, *sql.DB, Client)) int64 {
-	// ListObjects: List all files in the dir directory. Include only common.Filter4FileName if set.
+func (c *FileClient) ListObjects(dir string, db *sql.DB, perLineFunc func(interface{}, BlobInfo, *sql.DB, Client)) int64 {
+	// ListObjects: List all files in the dir directory.
+	// Should use the common.xxxxx as LESS as possible
 	var subTtl int64
-	filterRegex := regexp.MustCompile(fileFilter)
 	// NOTE: `filepath.Glob` does not work because currently Glob does not support ./**/*
 	//       Also, somehow filepath.WalkDir is slower in this code
 	err := filepath.Walk(dir, func(path string, f os.FileInfo, err error) error {
@@ -137,10 +137,8 @@ func (c *FileClient) ListObjects(dir string, fileFilter string, db *sql.DB, perL
 			return err
 		}
 		if !f.IsDir() {
-			if len(fileFilter) == 0 || filterRegex.MatchString(f.Name()) {
-				subTtl++
-				perLineFunc(path, c.Convert2BlobInfo(f), db, c)
-			}
+			subTtl++
+			perLineFunc(path, c.Convert2BlobInfo(f), db, c)
 		} else {
 			if common.MaxDepth > 1 && dir != path {
 				//TODO: Because GetDirs for "File" type returns all directories, this should not recursively check sub-directories. But if other blob store types will implement GetDirs differently, may need to change this line.
@@ -151,7 +149,7 @@ func (c *FileClient) ListObjects(dir string, fileFilter string, db *sql.DB, perL
 		return nil
 	})
 	if err != nil && err != io.EOF {
-		h.Log("ERROR", "Got error: "+err.Error()+" from "+dir+" with filter: "+fileFilter)
+		h.Log("ERROR", "Got error: "+err.Error()+" from "+dir)
 	}
 	return subTtl
 }

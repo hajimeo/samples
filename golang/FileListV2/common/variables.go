@@ -18,6 +18,8 @@ var Debug2 bool // For AWS SDK
 const CONTENT = "content"
 const PROPERTIES = "properties"
 const PROP_EXT = "." + PROPERTIES
+const BYTES = "bytes"
+const BYTES_EXT = "." + BYTES
 const SEP = "	" // Tab separator (should this be changeable?)
 
 // Display / output related
@@ -51,6 +53,7 @@ var Truth = ""
 
 // Search related
 var Filter4FileName = ""
+var RxFilter4FileName *regexp.Regexp
 var Filter4PropsIncl = ""
 var Filter4PropsExcl = ""
 

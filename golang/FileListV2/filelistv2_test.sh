@@ -8,7 +8,7 @@
 # HOW TO RUN EXAMPLE:
 #   ./filelistv2_test.sh <blobstore> <path/prefix>
 # If File type blobstore:
-#   $HOME/IdeaProjects/samples/golang/FileListV2/filelistv2_test.sh $HOME/Documents/tests/nxrm_3.70.3-01/sonatype-work/nexus3/blobs/default
+#   $HOME/IdeaProjects/samples/golang/FileListV2/filelistv2_test.sh $HOME/Documents/tests/nxrm_for_filelistv2_test/sonatype-work/nexus3/blobs/default
 #
 # Prepare the test data using setup_nexus3_repos.sh:
 #   _AUTO=true main
@@ -50,7 +50,7 @@ function test_2_ShouldNotFindAny() {
     if [ "$?" == "0" ] && ! rg -q "${_TEST_BLOB_ID}" ${_out_file}; then
         echo "TEST=OK : Did not find ${_TEST_BLOB_ID} in ${_out_file}"
     else
-        echo "TEST=ERR: May find ${_TEST_BLOB_ID} in ${_out_file} (check /tmp/test_last.*)"
+        echo "TEST=ERR: Should not have found ${_TEST_BLOB_ID} in ${_out_file} (check /tmp/test_last.*)"
         return 1
     fi
 }
@@ -61,7 +61,7 @@ function test_3_FindFromTextFile() {
     _find_sample_repo_name "${_b}" "${_p}" || return 1
 
     local _out_file="/tmp/test_from-textfile.tsv"
-    _exec_filelist "filelist2 -b '${_b}' -p '${_p}' -rF /tmp/test_finding-${_TEST_REPO_NAME}-n10.tsv -P" "${_out_file}"
+    _exec_filelist "filelist2 -b '${_b}' -p '${_p}' -rF /tmp/test_finding-${_TEST_REPO_NAME}-n10.tsv -P -f '\.properties' " "${_out_file}"
     if [ "$?" == "0" ] && rg -q "${_TEST_BLOB_ID}" ${_out_file}; then
         #echo "TEST=OK : Found ${_TEST_BLOB_ID} in ${_out_file}"
         local _orig_num="$(wc -l /tmp/test_finding-${_TEST_REPO_NAME}-n10.tsv | awk '{print $1}')"
@@ -99,7 +99,8 @@ function test_4_SizeAndCount() {
     # TODO: if not File type, return in here
     local _find="find"
     type gfind &>/dev/null && _find="gfind"
-    local _expect="$(${_find} ${_b} -type f -name '*.bytes*' -path "*${_p}*" -printf '%s\n' | awk '{ c+=1;s+=$1 }; END { print "Listed: "c" (checked: "c"), Size: "s" bytes" }')"
+    # "c*2" is because the filelist2 checks both .properties and .bytes files
+    local _expect="$(${_find} ${_b} -type f -name '*.bytes*' -path "*${_p}*" -printf '%s\n' | awk '{ c+=1;s+=$1 }; END { print "Listed: "c" (checked: "c*2"), Size: "s" bytes" }')"
     if [ "${_result}" == "${_expect}" ]; then
         echo "TEST=OK : ${_result}"
     else
