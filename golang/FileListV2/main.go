@@ -211,11 +211,11 @@ func isTsMSecBetweenTs(tMsec int64, fromTs int64, toTs int64) bool {
 }
 
 func myHashCode(s string) int32 {
-	h := int32(0)
+	i := int32(0)
 	for _, c := range s {
-		h = (31 * h) + int32(c)
+		i = (31 * i) + int32(c)
 	}
-	return h
+	return i
 }
 
 func genBlobPath(blobId string, extension string) string {
@@ -419,15 +419,16 @@ func printLine(path interface{}, blobInfo bs_clients.BlobInfo, db *sql.DB, clien
 	printOrSave(output)
 }
 
-func printOrSave(line string) (n int, err error) {
+func printOrSave(line string) {
 	// At this moment, excluding empty line
 	if len(line) == 0 {
 		return
 	}
 	if len(common.SaveToFile) > 0 {
-		return fmt.Fprintln(common.SaveToPointer, line)
+		_, _ = fmt.Fprintln(common.SaveToPointer, line)
+		return
 	}
-	return fmt.Println(line)
+	_, _ = fmt.Println(line)
 }
 
 func listObjects(dir string, db *sql.DB, client bs_clients.Client) {
