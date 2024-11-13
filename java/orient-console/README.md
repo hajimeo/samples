@@ -27,7 +27,7 @@ java -jar ./orient-console.jar "./sonatype-work/nexus3/db/component"
 # Then connect from another PC
 java -jar ./orient-console.jar "remote:node-nxrm-ha1.standalone.localdomain/component"
 # Or execute SQL with curl (note: 'format=prretyPrint' is not pretty)
-curl -sSf -u "admin:admin" -X POST -d "SELECT repository_name FROM bucket" "http://localhost:2480/command/component/sql"
+curl -sSf -u "admin" -X POST -d "SELECT repository_name FROM bucket" "http://localhost:2480/command/component/sql"
 ```
 ### Execute SQL statement(s)
 ```
