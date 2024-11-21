@@ -6,6 +6,7 @@ import (
 	"database/sql"
 	"fmt"
 	h "github.com/hajimeo/samples/golang/helpers"
+	_ "github.com/lib/pq"
 	"regexp"
 	"strings"
 	"time"
@@ -31,9 +32,12 @@ func GenDbConnStrFromFile(filePath string) string {
 		// NOTE: probably need to escape the 'params'?
 		params = " " + strings.ReplaceAll(matches[4], "&", " ")
 	}
+	// Check if props has password
+	if len(props["password"]) == 0 {
+		props["password"] = h.GetEnv("PGPASSWORD", "")
+	}
 	connStr := fmt.Sprintf("host=%s port=%s user=%s password=%s dbname=%s%s", hostname, port, props["username"], props["password"], database, params)
-	props["password"] = "********"
-	h.Log("INFO", fmt.Sprintf("host=%s port=%s user=%s password=%s dbname=%s%s", hostname, port, props["username"], props["password"], database, params))
+	h.Log("INFO", fmt.Sprintf("host=%s port=%s user=%s password=******** dbname=%s%s", hostname, port, props["username"], database, params))
 	return connStr
 }
 
@@ -60,7 +64,7 @@ func Query(query string, db *sql.DB, slowMs int64) *sql.Rows {
 	if common.Debug || slowMs == 0 {
 		// If debug mode or slowMs is 0, always log as DEBUG
 		slowMs = 0
-		slowMsg = h.TruncateStr("DEBUG query: "+query, 1000)
+		slowMsg = h.TruncateStr("DEBUG query: "+query, 400)
 	}
 	defer h.Elapsed(time.Now().UnixMilli(), slowMsg, slowMs)
 	if db == nil { // For unit tests

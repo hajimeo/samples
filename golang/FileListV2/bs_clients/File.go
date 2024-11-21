@@ -102,7 +102,11 @@ func (c *FileClient) GetDirs(baseDir string, pathFilter string, maxDepth int) ([
 	if err != nil {
 		h.Log("ERROR", fmt.Sprintf("%s (base dir: %s, depth: %d)\n", err, baseDir, depth))
 	}
-	h.Log("DEBUG", fmt.Sprintf("Matched directory: %s", matchingDirs))
+	if len(matchingDirs) < 10 {
+		h.Log("DEBUG", fmt.Sprintf("Matched directories: %v", matchingDirs))
+	} else {
+		h.Log("DEBUG", fmt.Sprintf("Matched %d directories", len(matchingDirs)))
+	}
 	// Sorting would make resuming easier, I think
 	sort.Strings(matchingDirs)
 	return matchingDirs, err
@@ -122,9 +126,9 @@ func (c *FileClient) Convert2BlobInfo(f interface{}) BlobInfo {
 	return blobInfo
 }
 
-func (c *FileClient) ListObjects(dir string, db *sql.DB, perLineFunc func(interface{}, BlobInfo, *sql.DB, Client)) int64 {
-	// ListObjects: List all files in the dir directory.
-	// Should use the common.xxxxx as LESS as possible
+func (c *FileClient) ListObjects(dir string, db *sql.DB, perLineFunc func(interface{}, BlobInfo, *sql.DB)) int64 {
+	// ListObjects: List all files in one directory.
+	// Global variables should be only TopN, PrintedNum, MaxDepth
 	var subTtl int64
 	// NOTE: `filepath.Glob` does not work because currently Glob does not support ./**/*
 	//       Also, somehow filepath.WalkDir is slower in this code
@@ -138,11 +142,11 @@ func (c *FileClient) ListObjects(dir string, db *sql.DB, perLineFunc func(interf
 		}
 		if !f.IsDir() {
 			subTtl++
-			perLineFunc(path, c.Convert2BlobInfo(f), db, c)
+			perLineFunc(path, c.Convert2BlobInfo(f), db)
 		} else {
 			if common.MaxDepth > 1 && dir != path {
 				//TODO: Because GetDirs for "File" type returns all directories, this should not recursively check sub-directories. But if other blob store types will implement GetDirs differently, may need to change this line.
-				h.Log("DEBUG", fmt.Sprintf("Skipping directory: %s, %s", dir, path))
+				h.Log("DEBUG", fmt.Sprintf("Skipping sub directory: %s as it will be checked from the parent dir.", path))
 				return filepath.SkipDir
 			}
 		}

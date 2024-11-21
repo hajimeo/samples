@@ -80,82 +80,39 @@ filelist2 -b "$BLOB_STORE" -p "vol-" -pRx "@Bucket\.repo-name=docker-proxy,.+del
 filelist2 -b "$BLOB_STORE" -rF ./docker-proxy_soft_deleted.tsv -RDel -P -c 80 -s docker-proxy_soft_deleted_undeleted.tsv 
 ```
 
+### Find blobs which exist in Blob store but not in database (Orphaned Blobs)
+NOTE: Cleanup unused asset blob tasks should be run before this script. `-c` is also for DB connections, so if DB will be used, shouldn't be too high.  
+```
+# Accessing DB by using the connection string and check all formats for orphaned blobs
+export PGPASSWORD="*******"
+filelist2 -b "$BLOB_STORE" -p 'vol-' -c 10 -src BS -db "host=localhost user=nexus dbname=nexus" -s ./orphaned_blobs_Src-BS.tsv
+```
 
 
-TODO: The following usage examples are not rewritten yet
+
+# TODO: The following usage examples are not rewritten yet
+
+Using Blob IDs file:
+```
+# Source is BS (blob store), but using the previous tsv result to check the database
+filelist2 -src BS -rF ./docker-proxy_blob_ids.tsv -bsName default -db "host=localhost user=nexus dbname=nexus" -s ./orphaned_blobs_Src-file_for_default.tsv
+# Source is BS but NOT checking the *DB*, instead using the Blob IDs file as the DB result
+filelist2 -b "$BLOB_STORE" -p 'vol-' -c 80 -src BS -rF ./docker-proxy_blob_ids_from_DB.txt -s ./orphaned_blobs_Src-file_for_default.tsv
+```
 
 ### Find blobs which exist in DB but not in Blob store (Dead Blobs)
+NOTE: `-c` is also for DB connections, so if DB will be used, shouldn't be too high.
+```
+# Source is DB but NOT accessing DB and using the Blob IDs in the file
+filelist2 -b "$BLOB_STORE" -p 'vol-' -c 80 -src DB -rF ./docker-proxy_blob_ids_from_DB.txt -s ./missing_blobs_Src-file.tsv
 
-### Find blobs which exist in Blob store but not in database (Orphaned Blobs)
-```
-file-list -b "$BLOB_STORE" -p 'vol-' -pRx "@Bucket\.repo-name=npm-proxy" -P -s ./npm-proxy_all.tsv
-rg -o -r '$1' ',size=(\d+)' ./npm-proxy_all.tsv | awk '{ c+=1;s+=$1 }; END { print "blobCount:"c", totalSize:"s" bytes" }'
-```
-
-
-
----------------------------------------------------------------------------
-### (**DANGEROUS**) Remove 'deleted=true' (-RDel and -dF "YYYY-MM-DD") from all or only for 'raw-hosted' repository for undeleting with Reconcile 
-NOTE: If using -RDel to remove "deleted=true", recommend to save the STDERR into a file (like above) in case of reverting.
-```
-file-list -b ./content -p "vol-" -c 10 -RDel -mF "$(date +%Y-%m-%d)" -s ./undelete_all_$(date +"%Y%m%d%H%M%S").tsv 2>./undelete_all.log
-```
-```
-file-list -b ./content -p "vol-" -c 10 -P -R -fP "@Bucket.repo-name=raw-hosted,.+deleted=true" -dF "$(date -d "1 day ago" +%Y-%m-%d)" -RDel -s ./undelete_raw-hosted_$(date +"%Y%m%d%H%M%S").tsv 2>./undelete_raw-hosted.log
-```
-Create a text file for the Reconcile Task with **Since 0 day** (if S3, Since 1 day)
-```
-sed -n -E 's/.+([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})\..+([0-9]{4}.[0-9]{2}.[0-9]{2}.[0-9]{2}:[0-9]{2}:[0-9]{2}).+/\2,\1/p' ./$(date +"%Y%m%d%H%M%S").tsv > "./reconciliation/$(date '+%Y-%m-%d')"
+# Accessing DB with the connection string and check all formats as no query
+export PGPASSWORD="*******"
+filelist2 -b "$BLOB_STORE" -p 'vol-' -c 10 -src DB -db "host=localhost port=5432 user=nexus dbname=nexus" -s ./missing_blobs_Src-DB.tsv
+# Accessing DB with the connection string and check blobIDs reurned by the SELECT query
+filelist2 -b "$BLOB_STORE" -p 'vol-' -c 10 -src DB -db "host=localhost user=nexus dbname=nexus" -query "SELECT ..." -s ./missing_blobs_Src-DB_with_query.tsv
 ```
 
-### Remove 'deleted=true' (-RDel) which soft-deleted within 1 day (-dF <YYYY-MM-DD>) against S3 (-bsType S -b <bucket> -p <prefix>/content/vol-) but only "raw-s3-hosted" (-R -fP <regex>) , and outputs the contents of .properties (-P) to check, but *Dry Run* (-Dry)
-```
-export AWS_REGION=us-east-1 AWS_ACCESS_KEY_ID="xxxxxxxxxxx" AWS_SECRET_ACCESS_KEY="yyyyyyyyyyyyy" #AWS_ENDPOINT_URL="http://127.0.0.1:9000"
-S3_BUCKET="apac-support-bucket" S3_PREFIX="$(hostname -s)_s3-test"
-file-list -RDel -dF "$(date -d "1 day ago" +%Y-%m-%d)" -bsType S -b "${S3_BUCKET}" -p "${S3_PREFIX}/content/vol-" -R -fP "@Bucket\.repo-name=raw-s3-hosted,.+deleted=true" -P -c 10 -s ./undelete_raw-s3-hosted.tsv -Dry
-```
-Just get the list
-```
-S3_BUCKET="apac-support-bucket" S3_PREFIX="$(hostname -s)_s3-test"
-file-list -bsType S -b "${S3_BUCKET}" -p "${S3_PREFIX}/content/vol-" -R -fP "@Bucket\.repo-name=raw-s3-hosted,.+deleted=true" -P -c 10 -s ./raw-s3-hosted_deleted.tsv
-```
-
-### Remove 'deleted=true' (-RDel) which @BlobStore.blob-name=/test/test_1k.img but only "raw-hosted" (-R -fP <regex>) , and outputs the contents of .properties (-P) to check, but *Dry Run* (-Dry)
-```
-file-list -RDel -dF "$(date +%Y-%m-%d)" -b ./content -p "vol-" -R -fP "@BlobStore\.blob-name=/test/test_1k.img,.+@Bucket\.repo-name=raw-hosted,.+deleted=true" -P -c 10 -s ./undelete_raw-hosted.tsv
-```
-### Check orphaned files by querying against PostgresSQL (-db "conn string or nexus-store.properties file path") with max 10 DB connections (-c 10), and using -P as it's faster because of generating better SQL query, and checking only *.properties files with -f (excluding .bytes files)
-```
-file-list -b ./content -p vol- -c 10 -db "host=localhost port=5432 user=nxrm3pg password=******** dbname=nxrm3pg" -P -f ".properties"
-# or
-file-list -b ./content -p vol- -c 10 -db /nexus-data/etc/fabric/nexus-store.properties -P -f ".properties"
-```
-NOTE: the above outputs blobs with properties content, which are not in <format>_asset table, which means it doesn't check the asset_blobs which are soft-deleted by Cleanup unused asset blobs task.
-
-### Check orphaned files from the text file (-bF ./blobIds.txt), which contains Blob IDs, instead of walking blobs directory, against 'default' blob store (-bsName 'default')
-```
-file-list -b ./content -p vol- -c 10 -db "host=localhost port=5432 user=nxrm3pg password=******** dbname=nxrm3pg" -bF ./blobIds.txt -bsName "default" -s ./orphaned_list.tsv 2>./orphaned_verify.log
-# If the file contains unnecessary lines (eg: .bytes), use '-bf -'
-cat ./blobIds.txt | grep -v '.bytes' | file-list -b ./content -p vol- -c 10 -db "host=localhost port=5432 user=nxrm3pg password=******** dbname=nxrm3pg" -bsName default -bF - -s ./orphaned.tsv
-```
-Above /tmp/result.err contains the line `17:58:13.814063 WARN  blobId:81ab5a69-e099-44a1-af1a-7a406bc305e9 does not exist in database.`, or `INFO` if the blobId exists in the DB.
-
-### Check dead files from the database (-src DB -db <connection>), which contains Blob IDs, against 'default' blob store (-bsName 'default')
-```
-cd ./sonatype-work/nexus3/
-file-list -b ./blobs/default/content -p vol- -c 10 -src DB -db ./etc/fabric/nexus-store.properties -repos "raw-hosted" -X -s ./dead-list.tsv 2>./dead-list.log 
-file-list -b ./blobs/default/content -p vol- -c 10 -src DB -db "host=localhost port=5432 user=nxrm3pg dbname=nxrm3pg password=********" -bsName default -X -s ./dead-list.tsv 2>./dead-list.log 
-```
-```
-file-list -bsType S -b "apac-support-bucket" -p "filelist_test/content/vol-" -c 10 -src DB -db ./etc/fabric/nexus-store.properties -bsName "s3-test" -s ./dead-list_s3.tsv -X 2>./dead-list_s3.log 
-```
-In above example, `filelist_test` is the S3 bucket prefix and `-X` is for debug (verbose) output.
-### For OrientDB
-```
-cd ./sonatype-work/nexus3/
-echo "select blob_ref from asset where bucket.repository_name = 'xxxxxxx'" | orient-console ./db/component/ | file-list -b ./blobs/default/content -p vol- -c 10 -src DB -bF "-" -bsName default -X -s ./dead-list_fromOrient.tsv 2>./dead-list_fromOrient.log
-```
----------------------------------------------------------------------------
 
 
 
@@ -164,12 +121,21 @@ NOTE: For more accurate performance testing, may want to clear the Linux file ca
 ```
 echo 3 > /proc/sys/vm/drop_caches
 ```
-#### Generate blobIDs with comma separated from the saved result file:
+### Generate blobIDs with comma separated from the saved result file:
 ```
-sed -n -E 's/.+([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})\..+/\1/p' ./docker-proxy_soft_deleted.tsv | tr '\n', ','
+sed -n -E 's/.+([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})\..+/\1/p' ./docker-proxy_soft_deleted.tsv | paste -sd, -
+# Example for the Reconcile Task, get datetime and blobId
+sed -n -E 's/.+([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})\..+([0-9]{4}.[0-9]{2}.[0-9]{2}.[0-9]{2}:[0-9]{2}:[0-9]{2}).+/\2,\1/p' ./$(date +"%Y%m%d%H%M%S").tsv > "./reconciliation/$(date '+%Y-%m-%d')"
 ```
-#### If File type blob store, re-use the saved file to delete the matching files with xargs + rm:
+### Hard-delete files
+If File type blob store, re-use the saved file to delete the matching files with xargs + rm:
 ```
 cat ./docker-proxy_soft_deleted.tsv | cut -d '.' -f1 | xargs -I{} -t rm -v -f {}.{properties,bytes}
 ```
 Expecting the strings up to the first `.` is the full or relative path of the target files, then deleting both .properties and .bytes files.
+
+### For OrientDB
+```
+cd ./sonatype-work/nexus3/
+echo "select blob_ref from asset where bucket.repository_name = 'xxxxxxx'" | orient-console ./db/component/
+```

@@ -12,7 +12,7 @@ type Client interface {
 	WriteToPath(string, string) error
 	RemoveDeleted(string, string) error
 	GetDirs(string, string, int) ([]string, error)
-	ListObjects(string, *sql.DB, func(interface{}, BlobInfo, *sql.DB, Client)) int64
+	ListObjects(string, *sql.DB, func(interface{}, BlobInfo, *sql.DB)) int64
 	Convert2BlobInfo(interface{}) BlobInfo
 }
 
