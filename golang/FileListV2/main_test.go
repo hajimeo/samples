@@ -78,7 +78,7 @@ func TestGenBlobPath_EmptyBlobId_ReturnsCorrectPath(t *testing.T) {
 }
 
 func TestGenAssetBlobUnionQuery_NoAssetTableNames_UsesDefaultAssetTables(t *testing.T) {
-	result := genAssetBlobUnionQuery(nil, "", "", "", false)
+	result := genAssetBlobUnionQuery(nil, "", "", "", "", false)
 	if common.AseetTables == nil || len(common.AseetTables) == 0 {
 		assert.Contains(t, result, "")
 		return
@@ -88,40 +88,40 @@ func TestGenAssetBlobUnionQuery_NoAssetTableNames_UsesDefaultAssetTables(t *test
 
 func TestGenAssetBlobUnionQuery_WithAssetTableNames_UsesProvidedAssetTables(t *testing.T) {
 	assetTableNames := []string{"table1", "table2"}
-	result := genAssetBlobUnionQuery(assetTableNames, "", "", "", false)
+	result := genAssetBlobUnionQuery(assetTableNames, "", "", "", "", false)
 	assert.Contains(t, result, "FROM table1_blob")
 	assert.Contains(t, result, "FROM table2_blob")
 }
 
 func TestGenAssetBlobUnionQuery_WithColumns_UsesProvidedColumns(t *testing.T) {
 	columns := "a.asset_id, a.path"
-	result := genAssetBlobUnionQuery([]string{"table1"}, columns, "", "", false)
+	result := genAssetBlobUnionQuery([]string{"table1"}, columns, "", "", "", false)
 	assert.Contains(t, result, "SELECT a.asset_id, a.path")
 }
 
 func TestGenAssetBlobUnionQuery_WithAfterWhere_AddsCondition(t *testing.T) {
 	afterWhere := "a.kind = 'blob'"
-	result := genAssetBlobUnionQuery([]string{"table1"}, "", afterWhere, "", false)
+	result := genAssetBlobUnionQuery([]string{"table1"}, "", afterWhere, "", "", false)
 	assert.Contains(t, result, "WHERE 1=1 AND a.kind = 'blob'")
 }
 
 func TestGenAssetBlobUnionQuery_WithRepoName_AddsRepoNameCondition(t *testing.T) {
 	repoName := "repo1"
-	result := genAssetBlobUnionQuery([]string{"table1"}, "", "", repoName, false)
-	assert.Contains(t, result, "AND (r.name = 'repo1' or r.name is NULL)")
+	result := genAssetBlobUnionQuery([]string{"table1"}, "", "", repoName, "test", false)
+	assert.Contains(t, result, "AND (r.name = 'repo1'")
 }
 
 func TestGenAssetBlobUnionQuery_IncludeTableName_AddsTableNameColumn(t *testing.T) {
-	result := genAssetBlobUnionQuery([]string{"table1"}, "", "", "", true)
+	result := genAssetBlobUnionQuery([]string{"table1"}, "", "", "", "", true)
 	assert.Contains(t, result, ", 'table1' as tableName")
 }
 
 func TestGenAssetBlobUnionQuery_SingleTable_ReturnsSingleQuery(t *testing.T) {
-	result := genAssetBlobUnionQuery([]string{"table1"}, "", "", "", false)
+	result := genAssetBlobUnionQuery([]string{"table1"}, "", "", "", "", false)
 	assert.NotContains(t, result, "UNION ALL")
 }
 
 func TestGenAssetBlobUnionQuery_MultipleTables_ReturnsUnionQuery(t *testing.T) {
-	result := genAssetBlobUnionQuery([]string{"table1", "table2"}, "", "", "", false)
+	result := genAssetBlobUnionQuery([]string{"table1", "table2"}, "", "", "", "", false)
 	assert.Contains(t, result, "UNION ALL")
 }

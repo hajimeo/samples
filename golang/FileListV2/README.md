@@ -81,11 +81,11 @@ filelist2 -b "$BLOB_STORE" -rF ./docker-proxy_soft_deleted.tsv -RDel -P -c 80 -s
 ```
 
 ### Find blobs which exist in Blob store but not in database (Orphaned Blobs)
-NOTE: Cleanup unused asset blob tasks should be run before this script. `-c` is also for DB connections, so if DB will be used, shouldn't be too high.  
+NOTE: Cleanup unused asset blob tasks should be run before this script. Also, `-c` shouldn't be too high with `-db`.  
 ```
 # Accessing DB by using the connection string and check all formats for orphaned blobs
 export PGPASSWORD="*******"
-filelist2 -b "$BLOB_STORE" -p 'vol-' -c 10 -src BS -db "host=localhost user=nexus dbname=nexus" -s ./orphaned_blobs_Src-BS.tsv
+filelist2 -b "$BLOB_STORE" -p 'vol-' -c 10 -src BS -db "host=localhost user=nexus dbname=nexus" -pRxNot "deleted=true" -s ./orphaned_blobs.tsv
 ```
 
 

@@ -3,12 +3,18 @@
 #
 # REQUIREMENTS:
 #   'filelist2' in the $PATH
-#   rg
+#   'blobpath' in the $PATH
+#       curl -o /usr/local/bin/blobpath -L "https://github.com/hajimeo/samples/raw/master/misc/blobpath_$(uname)_$(uname -m)"
+#       chmod a+x /usr/local/bin/blobpath
+#   rg (ripgrep)
+#   uuidgen
 #
 # HOW TO RUN EXAMPLE:
 #   ./filelistv2_test.sh <blobstore> <path/prefix>
 # If File type blobstore:
-#   $HOME/IdeaProjects/samples/golang/FileListV2/filelistv2_test.sh $HOME/Documents/tests/nxrm_for_filelistv2_test/sonatype-work/nexus3/blobs/default
+#   export _TEST_WORKDIR="$HOME/Documents/tests/nxrm_3.70.3-01_rmfilelisttest/sonatype-work/nexus3"
+#   export _TEST_BLOBSTORE="${_TEST_WORKDIR%/}/blobs/default"
+#   $HOME/IdeaProjects/samples/golang/FileListV2/filelistv2_test.sh
 #
 # Prepare the test data using setup_nexus3_repos.sh:
 #   _AUTO=true main
@@ -17,8 +23,11 @@
 #   #f_run_tasks_by_type "assetBlob.cleanup" # if Postgresql with nexus.assetBlobCleanupTask.blobCreatedDelayMinute=0
 
 ### Global variables
-: ${_TEST_BLOBSTORE:=""} #./sonatype-work/nexus3/blobs/default
+: ${_TEST_WORKDIR:=""}      #./sonatype-work/nexus3
+: ${_TEST_BLOBSTORE:=""}    #./sonatype-work/nexus3/blobs/default
 : ${_TEST_FILTER_PATH:="vol-"}
+: ${_TEST_DB_CONN:=""}      #host=localhost user=nexus dbname=nxrm
+: ${_TEST_DB_CONN_PWD:="nexus123"}
 : ${_TEST_STOP_ERROR:=true}
 : ${_TEST_REPO_NAME:=""}
 : ${_TEST_BLOB_ID:=""}
@@ -130,6 +139,25 @@ function test_5_Undelete() {
         _exec_filelist "filelist2 -b '${_b}' -rF ${_prep_file} -wStr \"deleted=true\" -c 10" "/tmp/test_re-soft-deleted-${_TEST_REPO_NAME}.tsv"
     else
         echo "TEST=ERROR: Could not undelete ${_prep_file} result: ${_out_file} (check /tmp/test_last.*)"
+        return 1
+    fi
+}
+
+function test_6_orphaned() {
+    local _b="${1:-"${_TEST_BLOBSTORE}"}"
+    local _p="${2:-"${_TEST_FILTER_PATH}"}"
+    local _work_dir="${3:-"${_TEST_WORKDIR}"}"
+    #local _blob_id="$(uuidgen)"
+    #filelist2 -b "$BLOB_STORE" -p 'vol-' -c 10 -src BS -db "host=localhost user=nexus dbname=nexus" -s ./orphaned_blobs_Src-BS.tsv
+    local _nexus_store="$(find ${_work_dir%/} -maxdepth 3 -name 'nexus-store.properties' -path '*/etc/fabric/*' -print | head -n1)"
+
+    local _out_file="/tmp/test_orphaned.tsv"
+    export PGPASSWORD="${_TEST_DB_CONN_PWD}"
+    _exec_filelist "filelist2 -b '${_b}' -p '${_p}' -c 10 -src BS -db ${_nexus_store} -pRxNot \"deleted=true\"" "${_out_file}"
+    if [ "$?" == "0" ]; then
+        echo "TEST=OK (${_out_file})"
+    else
+        echo "TEST=ERROR: Could not generate ${_out_file} (check /tmp/test_last.*)"
         return 1
     fi
 }

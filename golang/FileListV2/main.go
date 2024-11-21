@@ -544,7 +544,7 @@ func getRepoName(contents string) string {
 	return ""
 }
 
-func genAssetBlobUnionQuery(assetTableNames []string, columns string, afterWhere string, repoName string, includeTableName bool) string {
+func genAssetBlobUnionQuery(assetTableNames []string, columns string, afterWhere string, repoName string, format string, includeTableName bool) string {
 	cte := ""
 	cteJoin := ""
 	if len(assetTableNames) == 0 {
@@ -558,9 +558,14 @@ func genAssetBlobUnionQuery(assetTableNames []string, columns string, afterWhere
 		afterWhere = "AND " + afterWhere
 	}
 	if len(repoName) > 0 {
-		cte = "WITH r AS (select r.name, cr.repository_id from npm_content_repository cr join repository r on r.id = cr.config_repository_id) "
-		cteJoin = "JOIN r USING (repository_id)"
-		afterWhere = " AND (r.name = '" + repoName + "' or r.name is NULL) " + afterWhere
+		if len(format) == 0 {
+			h.Log("WARN", fmt.Sprintf("No format found from DB for Reository: %s", repoName))
+		} else {
+			cte = "WITH r AS (select r.name, cr.repository_id from " + format + "_content_repository cr join repository r on r.id = cr.config_repository_id) "
+			cteJoin = "JOIN r USING (repository_id)"
+			// As not using LEFT JOIN, no need to use ` or r.name is NULL`
+			afterWhere = " AND (r.name = '" + repoName + "') " + afterWhere
+		}
 	}
 	elements := make([]string, 0)
 	for _, tableName := range assetTableNames {
@@ -587,6 +592,7 @@ func isOrphanedBlob(contents string, blobId string, db *sql.DB) bool {
 	// Orphaned blob is the blob which is in the blob store but not in the DB
 	// UNION ALL query against many tables is slow. so if contents is given, using specific table
 	repoName := getRepoName(contents)
+	format := getFmtFromRepName(repoName)
 	tableNames := getAssetTableNamesFromRepoNames(repoName)
 	if len(repoName) > 0 && len(tableNames) == 0 {
 		h.Log("WARN", fmt.Sprintf("Repsitory: %s does not exist in the database, so assuming %s as orphan", repoName, blobId))
@@ -595,7 +601,7 @@ func isOrphanedBlob(contents string, blobId string, db *sql.DB) bool {
 	// Generating query to search the blobId from the blob_ref, and returning only asset_id column
 	// Supporting only 3.47 and higher for performance (was adding ending %) (NEXUS-35934)
 	// Not using common.BsName as can't trust blob store name in blob_ref, and may not work with group blob stores
-	query := genAssetBlobUnionQuery(tableNames, "asset_id", "blob_ref LIKE '%"+blobId+"' LIMIT 1", repoName, false)
+	query := genAssetBlobUnionQuery(tableNames, "asset_id", "blob_ref LIKE '%"+blobId+"' LIMIT 1", repoName, format, false)
 	if len(query) == 0 { // Mainly for unit test
 		h.Log("WARN", fmt.Sprintf("query is empty for blobId: %s and tableNames: %v", blobId, tableNames))
 		return false
