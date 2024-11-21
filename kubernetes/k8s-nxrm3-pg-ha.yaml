@@ -1,3 +1,5 @@
+# DEPRECATED: Ingress for manual HA. Now using Helm chart for HA so using k8s-nexus-helmha-ingress.yml
+
 # NOTE:
 #   This script uses the node's hostPath for sharing blobs, instead of the recommended NFS.
 #

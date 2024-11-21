@@ -62,6 +62,7 @@ spec:
                   number: 4999 # httpPort
                   #number: 8081
             pathType: Prefix
+   # For subdomain test for docker repositories
     - host: docker-proxy.standalone.localdomain
       http:
         paths:
