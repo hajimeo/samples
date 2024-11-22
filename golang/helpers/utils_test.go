@@ -222,3 +222,44 @@ func TestPrintErr_StringError_PrintsString(t *testing.T) {
 	})
 	assert.Contains(t, output, "string error")
 }
+
+func TestIsEmpty_NilInput_ReturnsTrue(t *testing.T) {
+	result := IsEmpty(nil)
+	assert.True(t, result)
+}
+
+func TestIsEmpty_EmptyString_ReturnsTrue(t *testing.T) {
+	result := IsEmpty("")
+	assert.True(t, result)
+}
+
+func TestIsEmpty_WhitespaceString_ReturnsTrue(t *testing.T) {
+	result := IsEmpty("   ")
+	assert.True(t, result)
+}
+
+func TestIsEmpty_NonEmptyString_ReturnsFalse(t *testing.T) {
+	result := IsEmpty("non-empty")
+	assert.False(t, result)
+}
+
+func TestIsEmpty_ZeroValueInt_ReturnsTrue(t *testing.T) {
+	result := IsEmpty(0)
+	assert.True(t, result)
+}
+
+func TestIsEmpty_ZeroValueFloat_ReturnsTrue(t *testing.T) {
+	result := IsEmpty(0.0)
+	// Not sure why this works
+	assert.True(t, result)
+}
+
+func TestIsEmpty_EmptySlice_ReturnsTrue(t *testing.T) {
+	result := IsEmpty([]string{})
+	assert.True(t, result)
+}
+
+func TestIsEmpty_EmptyMap_ReturnsTrue(t *testing.T) {
+	result := IsEmpty(map[string]string{})
+	assert.True(t, result)
+}

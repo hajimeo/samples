@@ -69,7 +69,7 @@ func TruncateStr(s string, maxLength int) string {
 	if len(s) <= maxLength {
 		return s
 	}
-	return s[:maxLength]
+	return s[:maxLength] + "..."
 }
 
 func AppendSlash(dirPath string) string {
@@ -159,6 +159,19 @@ func IsNumeric(obj interface{}) bool {
 	s := fmt.Sprintf("%v", obj)
 	_, err := strconv.ParseFloat(s, 64)
 	return err == nil
+}
+
+func IsEmpty(obj interface{}) bool {
+	if obj == nil {
+		return true
+	}
+	s := fmt.Sprintf("%v", obj)
+	s = strings.TrimSpace(s)
+	if s == "" || s == "0" || s == "[]" || s == "map[]" {
+		// currently 0 is treated as empty, but somehow 0.0 works
+		return true
+	}
+	return false
 }
 
 func DeferPanic() {
