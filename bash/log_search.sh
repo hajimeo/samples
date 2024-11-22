@@ -1393,7 +1393,8 @@ function _long_running() {
     local _size="${4:-"1k"}"
     find ${_search_dir%/} -type f -iname '*run*.out' -size +${_size} -print | while read -r _f; do
         if rg -q "${_search_re}" ${_f}; then
-            md5sum ${_f}
+            # Just md5sum ${_f} won't work with Java 17 because of CPU time and memory usage
+            tail -n +2 ${_f} | md5
         fi
     done | rg '([0-9a-z]+)\s+.+/([^/]+)$' -o -r '$1 $2' | sort | uniq -c | rg "^\s*([${_min_count}-9]|\d\d+)\s+" | sort -nr
 }
@@ -1404,7 +1405,7 @@ function _long_blocked() {
     local _size="${4:-"1k"}"
     find ${_search_dir%/} -type f -iname '*wait*.out' -size +${_size} -print | while read -r _f; do
         if rg -q --multiline --multiline-dotall " BLOCKED .+${_search_re}" ${_f}; then
-            md5sum ${_f}
+            tail -n +2 ${_f} | md5
         fi
     done | rg '([0-9a-z]+)\s+.+/([^/]+)$' -o -r '$1 $2' | sort | uniq -c | rg "^\s*([${_min_count}-9]|\d\d+)\s+" | sort -nr
 }

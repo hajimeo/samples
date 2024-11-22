@@ -159,9 +159,9 @@ EOF
         fi
     fi
 
-    [ ! -d ./log ] && mkdir -m 777 ./log
+    [ ! -d "${_dirpath%/}/log" ] && mkdir -v -m 777 "${_dirpath%/}/log"
     if _isYes "${_starting}"; then
-        echo "Starting with: java -jar ${_jar_file} server ${_cfg_file} >./log/iq-server.out 2>./log/iq-server.err &"; sleep 3
+        echo "Starting with: java -jar ${_jar_file} server ${_cfg_file} >${_dirpath%/}/log/iq-server.out 2>${_dirpath%/}/log/iq-server.err &"; sleep 3
         eval "java -jar ${_jar_file} server ${_cfg_file} >./log/iq-server.out 2>./log/iq-server.err &"
     else
         cd "${_dirpath%/}" || return $?
@@ -265,8 +265,8 @@ for r in a['memberMappings']:
 
 function f_api_eval_gav() {
     local __doc__="/api/v2/evaluation/applications/\${_app_int_id} with Maven GAV"
-    local _gav="${1}"
-    local _app_pub_id="${2:-"sandbox-application"}"
+    local _app_pub_id="${1:-"sandbox-application"}"
+    local _gav="${2}"
     [[ "${_gav}" =~ ^" "*([^: ]+)" "*:" "*([^: ]+)" "*:" "*([^: ]+)" "*$ ]] || return 11
     local _g="${BASH_REMATCH[1]}"
     local _a="${BASH_REMATCH[2]}"
@@ -274,6 +274,15 @@ function f_api_eval_gav() {
     local _app_int_id="$(f_api_appIntId "${_app_pub_id}")" || return $?
 
     _curl "${_IQ_URL%/}/api/v2/evaluation/applications/${_app_int_id}" -H "Content-Type: application/json" -d '{"components": [{"hash": null,"componentIdentifier": {"format": "maven","coordinates": {"artifactId": "'${_a}'","groupId": "'${_g}'","version": "'${_v}'","extension":"jar"}}}]}'
+}
+
+function f_api_eval_scm() {
+    local __doc__="/api/v2/evaluation/applications/\${_app_int_id} with Maven GAV"
+    local _app_pub_id="${1}"
+    local _branch="${2}"
+    local _stage="${3:-"source"}"
+    local _app_int_id="$(f_api_appIntId "${_app_pub_id}")" || return $?
+    _curl "${_IQ_URL%/}/api/v2/evaluation/applications/${_app_int_id}/sourceControlEvaluation" -H "Content-Type: application/json" -d '{"stageId":"'${_stage}'","branchName":"'${_branch}'"}' | _sortjson
 }
 
 function f_api_audit() {
@@ -516,8 +525,8 @@ function f_setup_scm() {
 
         _curl "${_IQ_URL%/}/api/v2/sourceControl/application/${_app_int_id}" -H "Content-Type: application/json" -d '{"remediationPullRequestsEnabled":true,"statusChecksEnabled":true,"pullRequestCommentingEnabled":true,"sourceControlEvaluationsEnabled":true,"baseBranch":"'${_branch}'","repositoryUrl":"'${_git_url}'"}' | _sortjson || return $?
 
-        _log "INFO" "If application is manually created, may need to scan the repository with 'source' stage, so evaluating ${_app_int_id} ..."; sleep 3
-        _curl "${_IQ_URL%/}/api/v2/evaluation/applications/${_app_int_id}/sourceControlEvaluation" -H "Content-Type: application/json" -d '{"stageId":"source","branchName":"'${_branch}'"}' | _sortjson
+        _log "INFO" "If application is manually created, may need to scan the repository with 'source' stage (but may not work due to CLM-20570)"
+        echo "    f_api_eval_scm \"${_app_pub_id}\" \"${_branch}\" \"source\""
         echo "NOTE: if you face some strange SCM issue, try restarting IQ service."
         #TODO: not sure if this is needed: curl -u admin:admin123 -sSf -X POST 'http://localhost:8070/api/v2/config/features/scan-pom-files-in-meta-inf-directory'
     fi

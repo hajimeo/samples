@@ -1545,7 +1545,7 @@ function _apiS() {
             _log "ERROR" "No session id in '${_c}'"
             return 1
         fi
-        _sess_key="NXJWT"   # Seems this was no longer used
+        _sess_key="NXJWT"   # It's unclear if this is still used.
     fi
     local _H_sess="${_sess_key}: ${_sess}"
     local _H_anti="NX-ANTI-CSRF-TOKEN: test"
@@ -1690,6 +1690,7 @@ function p_client_container() {
     _log "INFO" "Completed $FUNCNAME .
 To save : docker stop ${_name}; docker commit ${_name} ${_name}
 To login: ssh testuser@${_name}"
+    # To save more space: https://github.com/goldmann/docker-squash
 }
 
 # Setup (reset) client configs "from" a CentOS container and as "root"

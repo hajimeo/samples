@@ -64,20 +64,24 @@ function f_upload_download_tests() {
     done
 }
 
-#tar --diff -f /tmp/nexus-3.62.0-01-unix.tar.gz nexus-3.62.0-01/system -C ./nexus-3.62.0-01/system | grep -vE '(Uid|Gid) differs'
+# TO check 'system' only
+#   tar --diff -f /tmp/nexus-3.62.0-01-unix.tar.gz nexus-3.62.0-01/system -C ./nexus-3.62.0-01/system | grep -vE '(Uid|Gid) differs'
 function f_verify_install() {
     local __doc__="Compare files with the original tar installer file"
-    local _ver="$1" # "3.38.1-01"
-    local _installDir="$2" # directory which contains "system" directory
+    local _ver="$1"         # "3.74.0-05"
+    local _installDir="$2"  # Directory which contains "nexus-${_ver}". Does not work with Symlink
     local _downloadDir="${3:-"/tmp"}"
-    if [ ! -d "${_installDir%/}/system" ]; then
-        echo "${_installDir%/}/system does not exist.";
+    if [ ! -d "${_installDir%/}" ]; then
+        echo "${_installDir%/} does not exist.";
         return 1
     fi
     if [ ! -s "${_downloadDir%/}/nexus-${_ver}-unix.tar.gz" ]; then
         curl -o "${_downloadDir%/}/nexus-${_ver}-unix.tar.gz" -L "https://download.sonatype.com/nexus/3/nexus-${_ver}-unix.tar.gz" || return $?
     fi
-    tar --diff -f "${_downloadDir%/}/nexus-${_ver}-unix.tar.gz" nexus-${_ver}/system -C "${_installDir%/}/system" | grep -vE '(Uid|Gid) differs'   #|Mod time
+    cd "${_installDir%/}" || return $?
+    # `gtar` if Mac. Also `-C "${_installDir%/}"` didn't realiabllly work.
+    tar --diff -f "${_downloadDir%/}/nexus-${_ver}-unix.tar.gz" nexus-${_ver} | grep -vE '(Uid|Gid) differs' | grep -vE '/(\.install4j|etc/karaf|replicator/bin)/'  #|Mod time
+    cd - >/dev/null
 }
 
 #find . -type f -printf '%s\n' | awk '{ c+=1;s+=$1/1024/1024 }; END { print "count:"c", size:"s" MB" }'

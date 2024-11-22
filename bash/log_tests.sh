@@ -577,10 +577,13 @@ for key in fsDicts['system-filestores']:
 # TODO: For this one, checking without size limit (not _rg)?
 function t_oome() {
     # audit.log can contains `attribute.changes` which contains large test and some Nuget package mentions OutOfMemoryError
-    _test_template "$(_RG_MAX_FILESIZE="6G" _rg 'java.lang.OutOfMemoryError:.+' -m1 -B1 -g "${_LOG_GLOB}" -g '*.log*' -g '\!jvm.log' -g '\!audit*log*' | sort | uniq)" "ERROR" "OutOfMemoryError detected from ${_LOG_GLOB} (Xms is too small?)"
+    _test_template "$(_RG_MAX_FILESIZE="6G" _rg 'java.lang.OutOfMemoryError:.+' -m1 -B1 -g "${_LOG_GLOB}" -g '*.log.gz' -g '\!jvm.log' -g '\!audit*log*' | sort | uniq)" "ERROR" "OutOfMemoryError detected from ${_LOG_GLOB} (Xms is too small?)"
 }
 function t_sofe() {
-    _test_template "$(_RG_MAX_FILESIZE="6G" _rg 'java.lang.StackOverflowError:.+' -m1 -B1 -g "${_LOG_GLOB}" -g '*.log*' -g '\!jvm.log' -g '\!audit*log*' | sort | uniq)" "ERROR" "StackOverflowError detected from ${_LOG_GLOB}"
+    _test_template "$(_RG_MAX_FILESIZE="6G" _rg 'java.lang.StackOverflowError:.+' -m1 -B1 -g "${_LOG_GLOB}" -g '*.log.gz' -g '\!jvm.log' -g '\!audit*log*' | sort | uniq)" "ERROR" "StackOverflowError detected from ${_LOG_GLOB}"
+}
+function t_psqlexception() {
+    _test_template "$(_RG_MAX_FILESIZE="6G" _rg '^Caused by: org\.postgresql\.util\.PSQLException.+' -o -g "${_LOG_GLOB}" -g '*.log.gz' -g '\!jvm.log' -g '\!audit*log*'| sort | uniq -c | sort -nr | rg '^\s*\d\d+')" "WARN" "Many 'PSQLException' detected from ${_LOG_GLOB}"
 }
 function t_fips() {
     _test_template "$(_rg -m1 '(KeyStore must be from provider SunPKCS11-NSS-FIPS|PBE AlgorithmParameters not available)' -g "${_LOG_GLOB}")" "WARN" "FIPS mode might be detected from ${_LOG_GLOB}" "-Dcom.redhat.fips=false"

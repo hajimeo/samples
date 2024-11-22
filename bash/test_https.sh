@@ -16,6 +16,11 @@
 #   -Djavax.net.debug=ssl,keymanager
 #   -Djavax.net.debug=ssl:handshake:verbose
 #
+# Typical troubleshooting command for "PKIX path building failed" error:
+#   keytool -list -keystore $JAVA_HOME/lib/security/cacerts -storepass changeit > cacerts_sha256.out
+#   keytool -printcert -rfc -sslserver ${_host}:${_port} > server.pem
+#   keytool -printcert -file server.pem | grep -o -E 'SHA256:.+'
+
 
 # port number used by a test web server
 _TEST_PORT=34443
@@ -349,8 +354,6 @@ function keytool_v() {
     eval "${_cmd} ${_pwd_opts}"
 }
 
-#$ keytool -printcert -rfc -sslserver ${_host}:${_port} > server.pem
-#$ keytool -printcert -file server.pem
 # If HTTP*S* proxy with username and password: -J-Dhttps.proxyUser="proxyuser" -J-Dshttp.proxyPassword="proxypwd"
 #$ keytool -J-Djavax.net.debug=all -J-Dhttps.proxyHost=dh1.standalone.localdomain -J-Dhttps.proxyPort=28080 -printcert -rfc -sslserver ${_host}:${_port}
 # NOTE: openssl might be better and easier for troubleshooting as it also shows depth etc.
