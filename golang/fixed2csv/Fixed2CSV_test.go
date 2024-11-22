@@ -1,6 +1,8 @@
 package main
 
 import (
+	"github.com/stretchr/testify/assert"
+	"os"
 	"testing"
 )
 
@@ -26,4 +28,27 @@ func TestLine2CSV(t *testing.T) {
 		t.Errorf("csvStr from line2CSV is empty")
 	}
 	t.Logf("%v", csvStr)
+}
+
+func TestProcessJson_InvalidJsonFile_ReturnsError(t *testing.T) {
+	// TODO: need more tests
+	inFile := "testdata/invalid.json"
+	outFile, _ := os.CreateTemp("", "output.csv")
+	defer os.Remove(outFile.Name())
+	jsonKey := ""
+
+	result := processJson(inFile, outFile, jsonKey)
+	//contents, err := os.ReadFile(outFile.Name())
+	assert.Equal(t, false, result)
+}
+
+func TestProcessFile_ValidFixedWidthFile_WritesCsv(t *testing.T) {
+	inFile := "testdata/invalid.log"
+	//inFile := "/Volumes/Samsung_T5/hajime/cases/97139/support-20241105-144306-2/log/request.log"
+	outFile, _ := os.CreateTemp("", "output.csv")
+	defer os.Remove(outFile.Name())
+	lineRegex := `(\S+) (\S+) (\S+) \[([^\]]+)\] "([^"]+)" (\S+) (\S+) (\S+) (\S+) "([^"]+)" \[([^\]]+)\]`
+	result := processFile(inFile, outFile, lineRegex)
+	//_, err := os.ReadFile(outFile.Name())
+	assert.Equal(t, false, result)
 }
