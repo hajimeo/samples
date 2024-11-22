@@ -2337,7 +2337,7 @@ function f_upload_dummies() {
     echo "test at $(date +'%Y-%m-%d %H:%M:%S')" > ${_TMP%/}/${FUNCNAME[0]}_$$.txt || return $?
     for i in $(eval "${_seq}"); do
       echo "${_file_prefix}${i}${_file_suffix}"
-    done | xargs -I{} -P${_parallel} curl -sSf -u "${_usr}:${_pwd}" -w '%{http_code} {} (%{time_total}s)\n' -T ${_TMP%/}/${FUNCNAME[0]}_$$.txt -L -k "${_repo_path%/}/{}"
+    done | xargs -I{} -P${_parallel} curl -sf -u "${_usr}:${_pwd}" -w '%{http_code} {} (%{time_total}s)\n' -T ${_TMP%/}/${FUNCNAME[0]}_$$.txt -L -k "${_repo_path%/}/{}"
     # NOTE: xargs only stops if exit code is 255
 }
 function f_upload_dummies_raw() {
@@ -2468,7 +2468,7 @@ function f_upload_dummies_maven() {
     #export -f f_upload_asset
     for i in $(eval "${_seq}"); do
       echo "$i${_ver_sfx}"
-    done | xargs -I{} -P${_parallel} curl -sSf -u "${_usr}:${_pwd}" -w "%{http_code} ${_g}:${_a}:{} (%{time_total}s)\n" -H "accept: application/json" -H "Content-Type: multipart/form-data" -X POST -k "${_NEXUS_URL%/}/service/rest/v1/components?repository=${_repo_name}" -F maven2.groupId=${_g} -F maven2.artifactId=${_a} -F maven2.version={} -F maven2.asset1=@${_TMP%/}/dummy.jar -F maven2.asset1.extension=jar
+    done | xargs -I{} -P${_parallel} curl -sf -u "${_usr}:${_pwd}" -w "%{http_code} ${_g}:${_a}:{} (%{time_total}s)\n" -H "accept: application/json" -H "Content-Type: multipart/form-data" -X POST -k "${_NEXUS_URL%/}/service/rest/v1/components?repository=${_repo_name}" -F maven2.groupId=${_g} -F maven2.artifactId=${_a} -F maven2.version={} -F maven2.asset1=@${_TMP%/}/dummy.jar -F maven2.asset1.extension=jar
     # NOTE: xargs only stops if exit code is 255
 }
 
@@ -2515,28 +2515,60 @@ function f_upload_dummies_maven_snapshot() {
     done
 }
 
-function f_upload_dummies_npm() {
-    local __doc__="Upload dummy tgz into npm hosted repository"
-    local _repo_name="${1:-"npm-hosted"}"
+function f_download_dummies_npm() {
+    local __doc__="Download random tgz via npm proxy repository"
+    local _repo_name="${1:-"npm-proxy"}"
     local _how_many="${2:-"10"}"
-    local _dummy_tzg_name="${3:-"dummy-policy-demo"}"
+    local _parallel="${3:-"3"}"
+    local _dummy_pkg_name="${4}"
+    local _usr="${5:-"${_ADMIN_USER}"}"
+    local _pwd="${6:-"${_ADMIN_PWD}"}"
+
     local _repo_url="${_NEXUS_URL%/}/repository/${_repo_name}/"
     local _seq_start="${_SEQ_START:-1}"
     local _seq_end="$((${_seq_start} + ${_how_many} - 1))"
     local _seq="seq ${_seq_start} ${_seq_end}"
-    if [ ! -s "${_TMP%/}/policy-demo-2.0.0.tgz.tgz" ]; then
-        curl -sSf -o "${_TMP%/}/policy-demo-2.0.0.tgz.tgz" -L "https://registry.npmjs.org/@sonatype/policy-demo/-/policy-demo-2.0.0.tgz" || return $?
+    if [ -z "${_dummy_pkg_name}" ]; then
+        _dummy_pkg_name="*$(echo $((RANDOM % 26 + 65)) | tr -d '\n' | awk '{printf "%c", $0}' | tr '[:upper:]' '[:lower:]')*"
+    fi
+    _log "INFO" "Searching ${_repo_url%/} for ${_dummy_pkg_name} (${_how_many})..."
+    curl -sSf -u "${_usr}:${_pwd}" -o "${_TMP%/}/${_repo_name}_search_$$.json" -L "${_repo_url%/}/-/v1/search?text=${_dummy_pkg_name}&size=${_how_many}" || return $?
+    cat ${_TMP%/}/${_repo_name}_search_$$.json | JSON_SEARCH_KEY="objects.package" _sortjson | IS_NDJSON="Y" OUTPUT_DELIMITER=" " JSON_SEARCH_KEY="name,version" _sortjson | while IFS=" " read -r _name _ver; do
+        if [ -z "${_name}" ] || [ -z "${_ver}" ]; then
+            _log "ERROR" "Invalid name or version: ${_name}, ${_ver}"
+            continue
+        fi
+        local _filename="${_name}"
+        if [[ "${_name}" =~ ^([^/]+)/([^/]+)$ ]]; then
+            #_scope="${BASH_REMATCH[1]}"
+            _filename="${BASH_REMATCH[2]}"
+        fi
+        echo "${_repo_url%/}/${_name}/-/${_filename}-${_ver}.tgz"
+    done | xargs -I{} -P${_parallel} curl -sf -u "${_usr}:${_pwd}" -w '%{http_code} {} (%{time_total}s)\n' -L -k "{}" -o/dev/null
+}
+
+function f_upload_dummies_npm() {
+    local __doc__="Upload dummy tgz into npm hosted repository"
+    local _repo_name="${1:-"npm-hosted"}"
+    local _how_many="${2:-"10"}"
+    local _dummy_pkg_name="${3:-"dummy-policy-demo"}"
+    local _repo_url="${_NEXUS_URL%/}/repository/${_repo_name}/"
+    local _seq_start="${_SEQ_START:-1}"
+    local _seq_end="$((${_seq_start} + ${_how_many} - 1))"
+    local _seq="seq ${_seq_start} ${_seq_end}"
+    if [ ! -s "${_TMP%/}/policy-demo-2.0.0.tgz" ]; then
+        curl -sSf -o "${_TMP%/}/policy-demo-2.0.0.tgz" -L "https://registry.npmjs.org/@sonatype/policy-demo/-/policy-demo-2.0.0.tgz" || return $?
     fi
     # TODO: replace with _update_npm_tgz()
     # TODO: upload concurrently with some limit (not only using _ASYNC_CURL="Y")
     for i in $(eval "${_seq}"); do
-        local _uploading_file="$(_update_npm_tgz "${_TMP%/}/policy-demo-2.0.0.tgz.tgz" "${_dummy_tzg_name}" "9.${i}.0")" || return $?
+        local _uploading_file="$(_update_npm_tgz "${_TMP%/}/policy-demo-2.0.0.tgz" "${_dummy_pkg_name}" "9.${i}.0")" || return $?
         if [ -z "${_uploading_file}" ]; then
-            _log "ERROR" "Failed to generate a new upload tgz file with ${_TMP%/}/policy-demo-2.0.0.tgz.tgz, ${_dummy_tzg_name}, 9.${i}.0"
+            _log "ERROR" "Failed to generate a new upload tgz file with ${_TMP%/}/policy-demo-2.0.0.tgz, ${_dummy_pkg_name}, 9.${i}.0"
             return 1
         fi
         f_upload_asset "${_repo_name}" -F "npm.asset=@${_uploading_file}" || return $?
-        rm -v -f ${_TMP%/}/${_dummy_tzg_name}-9.${i}.0.tgz
+        rm -v -f ${_TMP%/}/${_dummy_pkg_name}-9.${i}.0.tgz
     done
 }
 function _update_npm_tgz() {
@@ -2665,7 +2697,7 @@ function f_upload_dummies_rubygem() {
         local _pkg="${BASH_REMATCH[1]}"
         local _ver="${BASH_REMATCH[2]}"
         local _url="https://rubygems.org/gems/${_pkg}-${_ver}.gem"
-        curl -sf -w "Download: %{http_code} ${_url} (%{time_total}s)\n" "${_url}" -o ${_tmpdir%/}/${_pkg}-${_ver}.gem || continue
+        curl -sSf -w "Download: %{http_code} ${_url} (%{time_total}s)\n" "${_url}" -o ${_tmpdir%/}/${_pkg}-${_ver}.gem || continue
         f_upload_asset "${_repo_name}" -F rubygem.asset=@${_tmpdir%/}/${_pkg}-${_ver}.gem || return $?
         #curl -sSf -w "Download: %{http_code} specs.4.8.gz (%{time_total}s | %{size_download}b)\n" -o/dev/null "${_repo_url%/}/specs.4.8.gz"
     done
@@ -2736,9 +2768,9 @@ function f_upload_dummies_helm() {
             continue
         fi
         # Helm doesn't care about the file name
-        curl -sf -w "Download: %{http_code} ${_name} (%{time_total}s)\n" "${_url}" -o ${_tmpdir%/}/helm-cart_tmp.tgz || continue
-        curl -sf -w "Upload  : %{http_code} ${_name} (%{time_total}s)\n" -T ${_tmpdir%/}/helm-cart_tmp.tgz -u "${_usr}:${_pwd}" "${_repo_url%/}/${_name}" || return $?
-        #curl -sf -w "Download: %{http_code} index.yaml (%{time_total}s | %{size_download}b)\n" -o/dev/null "${_repo_url%/}/index.yaml"
+        curl -sSf -w "Download: %{http_code} ${_name} (%{time_total}s)\n" "${_url}" -o ${_tmpdir%/}/helm-cart_tmp.tgz || continue
+        curl -sSf -w "Upload  : %{http_code} ${_name} (%{time_total}s)\n" -T ${_tmpdir%/}/helm-cart_tmp.tgz -u "${_usr}:${_pwd}" "${_repo_url%/}/${_name}" || return $?
+        #curl -sSf -w "Download: %{http_code} index.yaml (%{time_total}s | %{size_download}b)\n" -o/dev/null "${_repo_url%/}/index.yaml"
     done
 }
 
@@ -2784,7 +2816,7 @@ function f_upload_dummies_yum() {
             curl -sSf -w "Upload  : %{http_code} ${_name} (%{time_total} secs, %{size_download} bytes)\n" -T ${_tmpdir%/}/${_name} -u "${_usr}:${_pwd}" "${_repo_url%/}/${_yum_upload_path%/}/Packages/${_name}" || return $?
             rm -f ${_tmpdir%/}/${_name}
             #sleep 60
-            #curl -sf -w "Download: %{http_code} ${_YUM_GROUP_REPO} repomd.xml (%{time_total} secs, %{size_download} bytes)\n" -o/dev/null "${_NEXUS_URL%/}/repository/${_YUM_GROUP_REPO}/${_yum_upload_path%/}/repodata/repomd.xml"
+            #curl -sSf -w "Download: %{http_code} ${_YUM_GROUP_REPO} repomd.xml (%{time_total} secs, %{size_download} bytes)\n" -o/dev/null "${_NEXUS_URL%/}/repository/${_YUM_GROUP_REPO}/${_yum_upload_path%/}/repodata/repomd.xml"
         done
     elif [[ "${_upload_method}" =~ ^[bB] ]]; then
         for i in $(eval "${_seq}"); do
@@ -2903,7 +2935,7 @@ function f_check_all_assets() {
         if [[ "${_l}" =~ \"downloadUrl\"[[:space:]]*:[[:space:]]*\"(http.?://[^/]+)(.*)\" ]]; then
             echo "${BASH_REMATCH[1]}${BASH_REMATCH[2]}"
         fi
-    done | xargs -I{} -P${_parallel} curl -sSf -u "${_usr}:${_pwd}" -w '%{http_code} {} (%{time_total}s)\n' -L -k "{}" -o/dev/null
+    done | xargs -I{} -P${_parallel} curl -sf -u "${_usr}:${_pwd}" -w '%{http_code} {} (%{time_total}s)\n' -L -k "{}" -o/dev/null
     _log "INFO" "Checked ${_line_num} assets"
 }
 function f_delete_all_assets() {
@@ -2927,7 +2959,7 @@ function f_delete_all_assets() {
         if [[ "${_l}" =~ \"id\"[[:space:]]*:[[:space:]]*\"([^\"]+)\" ]]; then
             echo "/service/rest/v1/assets/${BASH_REMATCH[1]}"
         fi
-    done | xargs -I{} -P${_parallel} curl -sSf -u "${_usr}:${_pwd}" -w '%{http_code} {} (%{time_total}s)\n' -X DELETE -L -k "${_nexus_url%/}{}"
+    done | xargs -I{} -P${_parallel} curl -sf -u "${_usr}:${_pwd}" -w '%{http_code} {} (%{time_total}s)\n' -X DELETE -L -k "${_nexus_url%/}{}"
     # To make this function faster, not using f_api "/service/rest/v1/assets/${BASH_REMATCH[1]}" "" "DELETE" (but now can't stop at the first error...)
     _log "INFO" "Deleted ${_line_num} assets. 'Cleanup unused <format> blobs from <datastore> task' (assetBlob.cleanup) may need to be run."
 }
