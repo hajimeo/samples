@@ -2,13 +2,12 @@
 #source /dev/stdin <<< "$(curl https://raw.githubusercontent.com/hajimeo/samples/master/bash/utils.sh --compressed)"
 #source /dev/stdin <<< "$(curl https://raw.githubusercontent.com/hajimeo/samples/master/bash/utils_container.sh --compressed)"
 
-_DOCKER_CMD=${_DOCKER_CMD:-"docker"}    # To support podman, skopeo etc.
+_DOCKER_CMD=${_DOCKER_CMD:-"docker"} # To support podman, skopeo etc.
 _KUBECTL_CMD=${_KUBECTL_CMD:-"kubectl"}
 _DOMAIN="${_DOMAIN:-"standalone.localdomain"}"
 _DNS_RELOAD="sudo systemctl reload dnsmasq >/dev/null"
 __TMP=${__TMP:-"/tmp"}
 #_LOG_FILE_PATH=""
-
 
 function _docker_cmd() {
     # Checking in my preferred order
@@ -24,7 +23,7 @@ function _docker_cmd() {
 function _docker_add_network() {
     local _network_name="${1}"
     local _subnet_16="${2:-"172.100"}"
-    local _cmd="${3-"${_DOCKER_CMD}"}"  # blank means auto-detect
+    local _cmd="${3-"${_DOCKER_CMD}"}" # blank means auto-detect
     [ -z "${_cmd}" ] && _cmd="$(_docker_cmd)"
     [ -z "${_cmd}" ] && return 1
 
@@ -38,7 +37,7 @@ function _container_add_NIC() {
     local _name="${1}"
     local _network="${2:-"bridge"}"
     local _keep_gw="${3}"
-    local _cmd="${4-"${_DOCKER_CMD}"}"  # blank means auto-detect
+    local _cmd="${4-"${_DOCKER_CMD}"}" # blank means auto-detect
     [ -z "${_cmd}" ] && _cmd="$(_docker_cmd)"
     [ -z "${_cmd}" ] && return 1
 
@@ -61,21 +60,21 @@ function _container_add_NIC() {
 }
 
 function _container_available_ip() {
-    local _hostname="${1}"      # optional
-    local _check_file="${2}"    # /etc/hosts or /etc/banner_add_hosts
-    local _subnet="${3}"        # 172.18.0.0
+    local _hostname="${1}"   # optional
+    local _check_file="${2}" # /etc/hosts or /etc/banner_add_hosts
+    local _subnet="${3}"     # 172.18.0.0
     local _network_name="${4:-${_DOCKER_NETWORK_NAME:-"bridge"}}"
-    local _cmd="${5-"${_DOCKER_CMD}"}"  # blank means auto-detect
+    local _cmd="${5-"${_DOCKER_CMD}"}" # blank means auto-detect
     [ -z "${_cmd}" ] && _cmd="$(_docker_cmd)"
     [ -z "${_cmd}" ] && return 1
 
     local _ip=""
     [ -z "${_subnet}" ] && _subnet="$(${_cmd} inspect ${_network_name} | python -c "import sys,json;a=json.loads(sys.stdin.read());print(a[0]['IPAM']['Config'][0]['Subnet'])" | grep -oE '^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+')"
     local _subnet_24="$(echo "${_subnet}" | grep -oE '^[0-9]+\.[0-9]+\.[0-9]+')"
-    ${_cmd} network inspect ${_network_name} | grep '"IPv4Address"' > ${__TMP%/}/${FUNCNAME}.list
+    ${_cmd} network inspect ${_network_name} | grep '"IPv4Address"' >${__TMP%/}/${FUNCNAME}.list
 
     if [ -n "${_hostname}" ]; then
-        local _short_name="`echo "${_hostname}" | cut -d"." -f1`"
+        local _short_name="$(echo "${_hostname}" | cut -d"." -f1)"
         [ "${_short_name}" == "${_hostname}" ] && _hostname="${_short_name}.${_DOMAIN#.}"
         # Not perfect but... if the IP is in the /etc/hosts, then reuse it
         [ -s "${_check_file}" ] && _ip="$(grep -E "^${_subnet_24%.}\.[0-9]+\s+${_hostname}\s*" ${_check_file} | awk '{print $1}' | tail -n1)"
@@ -110,7 +109,7 @@ function _container_available_ip() {
 function _container_ip() {
     local _container_name="$1"
     local _cmd="${2:-"${_DOCKER_CMD}"}"
-    ${_cmd} exec -it ${_container_name} hostname -i | grep -E '^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+' -m1 -o | tr -cd "[:print:]"   # remove unnecessary control characters
+    ${_cmd} exec -it ${_container_name} hostname -i | grep -E '^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+' -m1 -o | tr -cd "[:print:]" # remove unnecessary control characters
 }
 
 function _container_useradd() {
@@ -118,7 +117,7 @@ function _container_useradd() {
     local _user="${2:-"$USER"}"
     local _password="${3:-"${_user}123"}"
     local _sudoer="${4}"
-    local _cmd="${5-"${_DOCKER_CMD}"}"  # blank means auto-detect
+    local _cmd="${5-"${_DOCKER_CMD}"}" # blank means auto-detect
     [ -z "${_cmd}" ] && _cmd="$(_docker_cmd)"
     [ -z "${_cmd}" ] && return 1
 
@@ -133,7 +132,7 @@ function _container_useradd() {
 Host nexus-client
   StrictHostKeyChecking no
   UserKnownHostsFile /dev/null
-  User '${_user} >> $HOME/.ssh/config
+  User '${_user} >>$HOME/.ssh/config
     fi
 }
 
@@ -143,7 +142,7 @@ function _docker_login() {
     local _backup_ports="${2}"
     local _user="${3}"
     local _pwd="${4}"
-    local _cmd="${5-"${_DOCKER_CMD}"}"  # blank means auto-detect
+    local _cmd="${5-"${_DOCKER_CMD}"}" # blank means auto-detect
     [ -z "${_cmd}" ] && _cmd="$(_docker_cmd)"
     [ -z "${_cmd}" ] && return 1
 
@@ -165,6 +164,9 @@ function _docker_login() {
     fi
 
     _log "DEBUG" "${_cmd} login ${_host_port} --username ${_user} --password ********"
+    if type timeout &>/dev/null; then
+        _cmd="timeout 2 ${_cmd}"
+    fi
     if ! ${_cmd} login ${_host_port} --username ${_user} --password ${_pwd} &>${__TMP%/}/${FUNCNAME}.tmp; then
         cat ${__TMP%/}/${FUNCNAME}.tmp
         return 1
@@ -180,7 +182,7 @@ function _docker_run_or_start() {
     local _name="$1"
     local _ext_opts="$2"
     local _image_name="$3"
-    local _cmd="${4-"${_DOCKER_CMD}"}"  # blank means auto-detect
+    local _cmd="${4-"${_DOCKER_CMD}"}" # blank means auto-detect
     [ -z "${_cmd}" ] && _cmd="$(_docker_cmd)"
     [ -z "${_cmd}" ] && return 1
 
@@ -203,13 +205,13 @@ function _docker_run() {
     local _name="$1"
     local _ext_opts="$2"
     local _image_name="${3}"
-    local _cmd="${4-"${_DOCKER_CMD}"}"  # blank means auto-detect
+    local _cmd="${4-"${_DOCKER_CMD}"}" # blank means auto-detect
     [ -z "${_cmd}" ] && _cmd="$(_docker_cmd)"
     [ -z "${_cmd}" ] && return 1
 
     # If dnsmasq or some dns is locally installed, assuming it's setup correctly
     if grep -qE '^nameserver\s+127\.' /etc/resolv.conf; then
-        _ext_opts="--dns=`hostname -I | cut -d " " -f1` ${_ext_opts}"
+        _ext_opts="--dns=$(hostname -I | cut -d " " -f1) ${_ext_opts}"
     fi
     # add one more if set
     local _another_dns="$(grep -m1 -E '^nameserver +[0-9]+\.' /etc/resolv.conf | grep -vE '^nameserver\s+127\.' | sed -E 's/^nameserver +//')"
@@ -231,16 +233,16 @@ function _docker_run() {
 # NOTE: To test name resolution as no nslookup,ping,nc, docker exec -ti nexus3240-1 curl -v -I http://nexus3240-3.standalone.localdomain:8081/
 function _update_hosts_for_container() {
     local _container_name="${1}"
-    local _fqdn="${2}"  # Optional
-    local _cmd="${3-"${_DOCKER_CMD}"}"  # blank means auto-detect
+    local _fqdn="${2}"                 # Optional
+    local _cmd="${3-"${_DOCKER_CMD}"}" # blank means auto-detect
     [ -z "${_cmd}" ] && _cmd="$(_docker_cmd)"
     [ -z "${_cmd}" ] && return 1
 
-    [ -z "${_container_name}" ] && _container_name="`echo "${_fqdn}" | cut -d"." -f1`"
+    [ -z "${_container_name}" ] && _container_name="$(echo "${_fqdn}" | cut -d"." -f1)"
     [ -z "${_container_name}" ] && return 1
     [ -z "${_fqdn}" ] && _fqdn="${_container_name}.${_DOMAIN#.}"
 
-    local _container_ip="`_container_ip "${_container_name}" "${_cmd}"`"
+    local _container_ip="$(_container_ip "${_container_name}" "${_cmd}")"
     if [ -z "${_container_ip}" ]; then
         _log "WARN" "${_container_name} is not returning IP. Please update hosts file manually."
         return 1
@@ -261,7 +263,7 @@ function _update_hosts_for_k8s() {
     local _k="${4:-"${_KUBECTL_CMD:-"kubectl"}"}"
     [ -f "${_host_file}" ] || return 11
     local _l="app.kubernetes.io/name=${_app_name}"
-    _k8s_exec 'echo $(hostname -f) $(hostname -i)' "${_l}" "${_namespace}" "3" | grep ".${_namespace}." > "${__TMP%/}/${FUNCNAME}.tmp" || return $?
+    _k8s_exec 'echo $(hostname -f) $(hostname -i)' "${_l}" "${_namespace}" "3" | grep ".${_namespace}." >"${__TMP%/}/${FUNCNAME}.tmp" || return $?
     cat "${__TMP%/}/${FUNCNAME}.tmp" | while read -r _line; do
         if ! _update_hosts_file ${_line} ${_host_file}; then
             _log "WARN" "Please update ${_host_file} file to add ${_line}"
@@ -269,7 +271,7 @@ function _update_hosts_for_k8s() {
         [ "${_host_file}" -nt "${__TMP%/}/${FUNCNAME}.last" ] && _log "INFO" "${_host_file} was updated with ${_line}"
     done
     [ -n "${_DNS_RELOAD}" ] && [ "${_host_file}" -nt "${__TMP%/}/${FUNCNAME}.last" ] && eval "${_DNS_RELOAD}" 2>/dev/null
-    date > "${__TMP%/}/${FUNCNAME}.last"
+    date >"${__TMP%/}/${FUNCNAME}.last"
 }
 
 # NOTE: If docker-desktop: docker run --rm -it --privileged --pid=host debian nsenter -t 1 -m -u -n -i sh
@@ -283,10 +285,10 @@ function _k8s_nsenters() {
     local _container_cmd="${4:-"${_CONTAINER_CMD:-"ctr containers"}"}"
 
     [ -z "${_filter}" ] && return 1
-    : > ${__TMP%/}/${FUNCNAME}.list
+    : >${__TMP%/}/${FUNCNAME}.list
     # | python -c "import sys,json;a=json.loads(sys.stdin.read());print(json.dumps(a['Spec']['linux']['namespaces']))"
     ${_container_cmd} ls | grep -E "${_filter}" | awk '{print $1}' | while read -r _i; do
-        ${_container_cmd} info ${_i} | sed -n -r 's@.+/proc/([0-9]+)/ns/.+@\1@p' | head -n1 >> ${__TMP%/}/${FUNCNAME}.list
+        ${_container_cmd} info ${_i} | sed -n -r 's@.+/proc/([0-9]+)/ns/.+@\1@p' | head -n1 >>${__TMP%/}/${FUNCNAME}.list
     done 2>/dev/null
     cat ${__TMP%/}/${FUNCNAME}.list | xargs -I{} -t -P${_parallel:-"1"} nsenter -t {} -n sh -c "${_cmd}"
 }
@@ -320,7 +322,7 @@ function _k8s_exec() {
 }
 
 function _k8s_shell() {
-    local _pod_name="${1}"  # accept wildcard
+    local _pod_name="${1}" # accept wildcard
     local _shell="${2:-"bash"}"
     local _ns="${3:-"${_NAMESPACE:-"default"}"}"
     local _k="${4:-"${_KUBECTL_CMD:-"kubectl"}"}"
