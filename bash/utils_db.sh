@@ -4,6 +4,13 @@
 
 _DB_ADMIN="${_DB_ADMIN:-"postgres"}"
 _CMD_PREFIX="${_CMD_PREFIX:-""}"  # "docker exec -ti name" or "ssh postgres@host"
+# https://www.postgresql.org/docs/14/libpq-envars.html
+#PGHOST=localhost
+#PGPORT=5432
+#PGUSER=postgres
+#PGPASSWORD=postgres
+#PGDATABASE=template1
+# DB conn str "host=localhost dbname=template1 user=postgres" or postgresql://user:pass@localhost:5432/template1
 
 function _as_dbadmin() {
     if [ -n "${_CMD_PREFIX}" ]; then
@@ -112,7 +119,7 @@ function _postgresql_configure() {
         _psql_adm "ALTER SYSTEM SET log_line_prefix TO ''%t [%p]: db=%d,user=%u,app=%a,client=%h ''"
         # NOTE: Below stays after restarting and requires superuser
         # ALTER system RESET ALL;
-        # ALTER system SET log_min_duration_statement = 0;SELECT pg_reload_conf(); -- 'DATABASE :DBNAME' doesn't work?
+        # ALTER system SET log_min_duration_statement = 1000;SELECT pg_reload_conf(); -- 'DATABASE :DBNAME' doesn't work?
         # ALTER system SET log_statement = 'mod';SELECT pg_reload_conf();
         _psql_adm "ALTER SYSTEM SET log_min_duration_statement TO '0'"
         _psql_adm "ALTER SYSTEM SET log_checkpoints TO 'on'"
@@ -122,7 +129,7 @@ function _postgresql_configure() {
         _psql_adm "ALTER SYSTEM SET log_line_prefix TO ''%m [%p-%c]: db=%d,user=%u,app=%a,client=%h ''"
         # ALTER system RESET ALL;
         # ALTER system SET log_statement = 'mod';SELECT pg_reload_conf();
-        _psql_adm "ALTER SYSTEM SET log_statement TO ''mod''"
+        _psql_adm "ALTER SYSTEM SET log_statement TO 'mod'"
         _psql_adm "ALTER SYSTEM SET log_min_duration_statement TO '100'"
         _psql_adm "ALTER SYSTEM SET log_autovacuum_min_duration TO '600000'"
     fi
@@ -317,8 +324,9 @@ function _postgresql_create_role_and_db() {
     local _dbpwd="${2:-"${_dbusr}"}"
     local _dbname="${3-"${_dbusr}"}"    # If explicitly "", not creating DB but user/role only
     local _schema="${4}"
-    local _port="${5:-"5432"}"
+    local _port="${5:-"${PGPORT:-"5432"}"}"
     local _force="${6-"${_RECREATE_DB}"}"
+    local _ts_location="${5:-"${_DB_TS_LOCATION}"}"       # tablespace location, and name is generated from this path
 
     # NOTE: need to be superuser. 'usename' (no 'r') is correct. options: -t --tuples-only, -A --no-align, -F --field-separator
     #       Also, double-quote for case sensitivity but not using for now.
@@ -328,13 +336,24 @@ function _postgresql_create_role_and_db() {
         _psql_adm "GRANT \"${_dbusr}\" TO \"${_DB_ADMIN%@*}\";"
     fi
 
+    local _create_option="ENCODING 'UTF8'"
+    if [ -n "${_ts_location}" ]; then
+        local _ts_name="$(echo "${_ts_location}" | sed -e 's/[^a-zA-Z0-9]/_/g')_ts"
+        if _as_dbadmin psql -d template1 -tA  -F',' -c "select spcname, pg_tablespace_location(oid) from pg_tablespace" | grep -qE "(^${_ts_name},|,${_ts_location}$)"; then
+            _log "WARN" "${_ts_name} or ${_ts_location} already exists. Adding ${_dbname} in this TS ..."; sleep 3
+        else
+            _psql_adm "CREATE TABLESPACE ${_ts_name} LOCATION '${_ts_location}';" || return $?
+        fi
+        _create_option="TABLESPACE ${_ts_name} ${_create_option}"
+    fi
+
     if [ -n "${_dbname}" ]; then
         local _create_db=true
         if _as_dbadmin psql -d template1 -ltA  -F',' | grep -q "^${_dbname},"; then
             if [[ "${_force}" =~ ^[yY] ]]; then
                 _log "WARN" "${_dbname} already exists. As force is specified, dropping ${_dbname} ..."
                 sleep 5
-                _psql_adm "DROP DATABASE \"${_dbname}\";"
+                _psql_adm "DROP DATABASE \"${_dbname}\";" || return $?
             else
                 _log "WARN" "${_dbname} already exists. May need to run below first (or _RECREATE_DB=Y):
                 psql -d ${_dbname} -c \"DROP SCHEMA ${_schema:-"public"} CASCADE;CREATE SCHEMA ${_schema:-"public"} AUTHORIZATION ${_dbusr};GRANT ALL ON SCHEMA ${_schema:-"public"} TO ${_dbusr};\""
@@ -344,11 +363,11 @@ function _postgresql_create_role_and_db() {
         fi
         if ${_create_db}; then
             # NOTE: to copy a database locally 'WITH TEMPLATE another_db OWNER ${_dbusr}'
-            _psql_adm "CREATE DATABASE \"${_dbname}\" WITH OWNER \"${_dbusr}\" ENCODING 'UTF8';"
+            _psql_adm "CREATE DATABASE \"${_dbname}\" WITH OWNER \"${_dbusr}\" ${_create_option};" || return $?
         else
             _psql_adm "GRANT ALL ON DATABASE \"${_dbname}\" TO \"${_dbusr}\";" >/dev/null || return $?
         fi
-        # NOTE: For postgresql v15 change.
+        # NOTE: For postgresql v15 and higher 'public' schema change.
         _as_dbadmin psql -d ${_dbname} -c "GRANT ALL ON SCHEMA public TO \"${_dbusr}\";" >/dev/null
         # To delete user: DROP OWNED BY ${_dbusr}; DROP USER ${_dbusr};
 
@@ -363,7 +382,8 @@ function _postgresql_create_role_and_db() {
     fi
 
     # test
-    local _cmd="psql -h $(hostname -f) -p 5432 -U ${_dbusr} -d ${_dbname} -c \"\l ${_dbname}\""
+    local _hostname="${PGHOST:-"${PGHOSTADDR:-"$(hostname -f)"}"}"
+    local _cmd="psql -h ${_hostname} -p ${_port} -U ${_dbusr} -d ${_dbname} -c \"\l ${_dbname}\""
     _log "INFO" "Testing the connection with \"${_cmd}\" ..."
     eval "${_CMD_PREFIX} PGPASSWORD=\"${_dbpwd}\" ${_cmd}" || return $?
 }
