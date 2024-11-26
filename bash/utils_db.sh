@@ -326,7 +326,7 @@ function _postgresql_create_role_and_db() {
     local _schema="${4}"
     local _port="${5:-"${PGPORT:-"5432"}"}"
     local _force="${6-"${_RECREATE_DB}"}"
-    local _ts_location="${5:-"${_DB_TS_LOCATION}"}"       # tablespace location, and name is generated from this path
+    local _ts_location="${7:-"${_DB_TS_LOCATION}"}"       # tablespace location, and name is generated from this path
 
     # NOTE: need to be superuser. 'usename' (no 'r') is correct. options: -t --tuples-only, -A --no-align, -F --field-separator
     #       Also, double-quote for case sensitivity but not using for now.
