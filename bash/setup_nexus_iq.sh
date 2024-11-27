@@ -391,23 +391,7 @@ Also update _IQ_URL. For example: export _IQ_URL=\"https://${_fqdn}:${_port}/\""
     _log "INFO" "To trust this certificate, _trust_ca \"\${_ca_pem}\""
 }
 
-function f_start_ldap_server() {
-    local __doc__="Install and start a dummy LDAP server with glauth"
-    local _fname="$(uname | tr '[:upper:]' '[:lower:]')$(uname -m).zip"
-    local _download_dir="/tmp"
-    if [ ! -s "${_download_dir%/}/${_fname}" ]; then
-        curl -o "${_download_dir%/}/${_fname}" -L "https://github.com/glauth/glauth/releases/download/v2.1.0/${_fname}" --compressed || return $?
-    fi
-    if [ ! -s ./glauth/glauth ]; then
-        unzip -d ./glauth "${_download_dir%/}/${_fname}"
-        chmod u+x ./glauth/glauth || return $?
-    fi
-    if [ ! -s ./glauth/glauth-simple.cfg ]; then
-        curl -o ./glauth/glauth-simple.cfg -L "https://raw.githubusercontent.com/hajimeo/samples/master/misc/glauth-simple.cfg" --compressed || return $?
-    fi
-    # listening 0.0.0.0:389
-    ./glauth/glauth -c ./glauth/glauth-simple.cfg
-}
+# NOTE: use start_nexus3_repo.sh f_start_ldap_server
 function f_setup_ldap_glauth() {
     local __doc__="Setup LDAP for GLAuth server."
     local _name="${1:-"glauth"}"
@@ -417,12 +401,14 @@ function f_setup_ldap_glauth() {
     local _id="$(_apiS "/rest/config/ldap" '{"id":null,"name":"'${_name}'"}' | python -c "import sys,json;a=json.loads(sys.stdin.read());print(a['id'])")" || return $?
     [ -z "${_id}" ] && return 111
     #nc -z ${_host} ${_port} || return $?
-    # Using 'mail' instead of 'uid' so that not confused with same 'admin' user between local and ldap
     _apiS "/rest/config/ldap/${_id}/connection" '{"id":null,"serverId":"'${_id}'","protocol":"LDAP","hostname":"'${_host}'","port":'${_port}',"searchBase":"dc=standalone,dc=localdomain","authenticationMethod":"SIMPLE","saslRealm":null,"systemUsername":"admin@standalone.localdomain","systemPassword":"'${_LDAP_PWD:-"secret12"}'","connectionTimeout":30,"retryDelay":30}' "PUT" | python -m json.tool || return $?
-    _apiS "/rest/config/ldap/${_id}/userMapping" '{"id":null,"serverId":"'${_id}'","userBaseDN":"ou=users","userSubtree":true,"userObjectClass":"posixAccount","userFilter":"","userIDAttribute":"mail","userRealNameAttribute":"cn","userEmailAttribute":"mail","userPasswordAttribute":"","groupMappingType":"DYNAMIC","groupBaseDN":"","groupSubtree":false,"groupObjectClass":null,"groupIDAttribute":null,"groupMemberAttribute":null,"groupMemberFormat":null,"userMemberOfGroupAttribute":"memberOf","dynamicGroupSearchEnabled":true}' "PUT" | python -m json.tool
+    _apiS "/rest/config/ldap/${_id}/userMapping" '{"id":null,"serverId":"'${_id}'","userBaseDN":"ou=users","userSubtree":true,"userObjectClass":"posixAccount","userFilter":"","userIDAttribute":"uid","userRealNameAttribute":"cn","userEmailAttribute":"mail","userPasswordAttribute":"","groupMappingType":"DYNAMIC","groupBaseDN":"","groupSubtree":true,"groupObjectClass":null,"groupIDAttribute":null,"groupMemberAttribute":null,"groupMemberFormat":null,"userMemberOfGroupAttribute":"memberOf","dynamicGroupSearchEnabled":true}' "PUT" | python -m json.tool || return $?
+    echo "To start glauth, execute f_start_ldap_server from setup_nexus3_repo.sh"
+    echo "To test: LDAPTLS_REQCERT=never ldapsearch -H ldap://${_host}:${_port} -b 'dc=standalone,dc=localdomain' -D 'admin@standalone.localdomain' -w '${_LDAP_PWD:-"secret12"}' -s sub"
 }
+
 function f_setup_ldap_freeipa() {
-    local __doc__="Setup LDAP. Currently using my freeIPA server."
+    local __doc__="Deprecated: Setup LDAP with freeIPA server"
     local _name="${1:-"freeIPA"}"
     local _host="${2:-"dh1.standalone.localdomain"}"
     local _port="${3:-"389"}"
@@ -433,6 +419,18 @@ function f_setup_ldap_freeipa() {
     _apiS "/rest/config/ldap/${_id}/userMapping" '{"id":null,"serverId":"'${_id}'","userBaseDN":"cn=users","userSubtree":true,"userObjectClass":"person","userFilter":"","userIDAttribute":"uid","userRealNameAttribute":"cn","userEmailAttribute":"mail","userPasswordAttribute":"","groupMappingType":"DYNAMIC","groupBaseDN":"","groupSubtree":false,"groupObjectClass":null,"groupIDAttribute":null,"groupMemberAttribute":null,"groupMemberFormat":null,"userMemberOfGroupAttribute":"memberOf","dynamicGroupSearchEnabled":true}' "PUT" | python -m json.tool
 }
 
+function f_setup_webhook() {
+    local __doc__="Setup Webhook for IQ"
+    local _url="${1}"
+    local _name="${2:-"webhook-test"}"
+    [ -z "${_url}" ] && return 11
+    _apiS "/rest/config/webhook" "{\"eventTypes\":[\"Application Evaluation\",\"License Override Management\",\"Organization and Application Management\",\"Policy Management\",\"Security Vulnerability Override Management\",\"Violation Alert\",\"Waiver Request\"],\"url\":\"${_url}\",\"description\":\"${_name}\",\"secretKey\":\"\"}" || return $?
+    echo ""
+    if [[ "${_url}" =~ ^http://localhost:([0-9]+) ]]; then
+        _log "INFO" "To test: nc -v -v -n -l ${BASH_REMATCH[1]}"
+    fi
+    _log "NOTE" "webhook uses HTTP proxy configured in IQ."
+}
 
 ### Integration setup related ###
 
@@ -527,7 +525,8 @@ function f_setup_scm() {
 
         _log "INFO" "If application is manually created, may need to scan the repository with 'source' stage (but may not work due to CLM-20570)"
         echo "    f_api_eval_scm \"${_app_pub_id}\" \"${_branch}\" \"source\""
-        echo "NOTE: if you face some strange SCM issue, try restarting IQ service."
+        echo "NOTE: Form Maven, if scanner detects a. jar file, pom.xml is not utilised."
+        echo "NOTE: if you face some strange SCM issue, try restarting IQ service or check 'git' config."
         #TODO: not sure if this is needed: curl -u admin:admin123 -sSf -X POST 'http://localhost:8070/api/v2/config/features/scan-pom-files-in-meta-inf-directory'
     fi
 }
@@ -749,9 +748,9 @@ function _apiS() {
     if [ "${_data:0:5}" == "file=" ]; then
         _cmd="${_cmd} -F ${_data}"
     elif [ -n "${_data}" ] && [ "${_data:0:1}" != "{" ]; then
-        _cmd="${_cmd} -H 'Content-Type: text/plain' -d ${_data}"    # TODO: should use quotes?
+        _cmd="${_cmd} -H 'Content-Type: text/plain' --d ${_data}"    # TODO: should use quotes?
     elif [ -n "${_data}" ]; then
-        _cmd="${_cmd} -H 'Content-Type: application/json' -d '${_data}'"
+        _cmd="${_cmd} -H 'Content-Type: application/json' --data-raw '${_data}'"
     fi
     eval ${_cmd}
 }
@@ -767,8 +766,8 @@ function _get_iq_url() {
                 _iq_url="http://${_iq_url%/}/"
             fi
         fi
-        if curl -m1 -f -s -I "${_url%/}/" &>/dev/null; then
-            echo "${_url%/}/"
+        if curl -m1 -f -s -I "${_iq_url%/}/" &>/dev/null; then
+            echo "${_iq_url%/}/"
             return
         fi
     fi
