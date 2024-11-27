@@ -37,11 +37,11 @@ print(\"Specs/%s/%s/%s/%s/%s/%s.podspec.json\" % (h[0],h[1],h[2],n,v,n))"
 
 _ORIG_JAVA_HOME=""
 function _java_home() {
-    local _check_path="${1}"
+    local _prod_ver="${1}"
     local _is_java17=false
-    if [[ "${_check_path}" =~ 3\.(7[1-9]\.|[89][0-9]\.|[1-9][0-9][0-9]).+ ]]; then
+    if [[ "${_prod_ver}" =~ 3\.(7[1-9]\.|[89][0-9]\.|[1-9][0-9][0-9]).+ ]]; then
         _is_java17=true
-    elif [[ "${_check_path}" =~ 1\.1[89][0-9]\. ]]; then
+    elif [[ "${_prod_ver}" =~ 1\.1[89][0-9]\. ]]; then
         _is_java17=true
     fi
     if ${_is_java17}; then
@@ -89,14 +89,14 @@ function _get_iq_url() {
                 _iq_url="http://${_iq_url%/}/"
             fi
         fi
-        if curl -m1 -f -s -I "${_url%/}/" &>/dev/null; then
-            echo "${_url%/}/"
+        if curl -m1 -f -s -I "${_iq_url%/}/" &>/dev/null; then
+            echo "${_iq_url%/}/"
             return
         fi
     fi
-    for _url in "http://localhost:8070/" "https://nxiqha-k8s.standalone.localdomain/" "http://dh1:8070/"; do
-        if curl -m1 -f -s -I "${_url%/}/" &>/dev/null; then
-            echo "${_url%/}/"
+    for _iq_url in "http://localhost:8070/" "https://nxiqha-k8s.standalone.localdomain/" "http://dh1:8070/"; do
+        if curl -m1 -f -s -I "${_iq_url%/}/" &>/dev/null; then
+            echo "${_iq_url%/}/"
             return
         fi
     done
@@ -137,6 +137,7 @@ function nxrmStart() {
         _java_opts="${_java_opts} -Dsun.net.spi.nameservice.nameservers=${_CUSTOM_DNS} -Dsun.net.spi.nameservice.provider.1=dns,sun"
     fi
     if [ -n "${_LOG_LEVEL}" ]; then
+        # Another way if PostgresSQL is 'INSERT INTO logging_overrides values (1, 'ROOT', 'DEBUG');'
         _java_opts="${_java_opts} -Droot.level=${_LOG_LEVEL} "
     fi
 
@@ -266,37 +267,7 @@ EOF
     #_java_opts="-Ddw.database.type=postgresql -Ddw.database.hostname=$(hostname -f) -Ddw.database.port=5432 -Ddw.database.name=${_dbname%/} -Ddw.database.username=${_dbusr} -Ddw.database.password=${_dbpwd} ${_java_opts}"
 }
 
-
-function _updateNexusProps() {
-    local _cfg_file="$1"
-    if [ -s "${_cfg_file}" ] && [ ! -f "${_cfg_file}.orig" ]; then
-        cp -p "${_cfg_file}" "${_cfg_file}.orig"
-    fi
-    touch "${_cfg_file}" || return $?
-    grep -qE '^#?nexus.security.randompassword' "${_cfg_file}" || echo "nexus.security.randompassword=false" >> "${_cfg_file}"
-    grep -qE '^#?nexus.onboarding.enabled' "${_cfg_file}" || echo "nexus.onboarding.enabled=false" >> "${_cfg_file}"
-    grep -qE '^#?nexus.scripts.allowCreation' "${_cfg_file}" || echo "nexus.scripts.allowCreation=true" >> "${_cfg_file}"
-    grep -qE '^#?nexus.browse.component.tree.automaticRebuild' "${_cfg_file}" || echo "nexus.browse.component.tree.automaticRebuild=false" >> "${_cfg_file}"
-    # NOTE: this would not work if elasticsearch directory is empty
-    #       or if upgraded from older than 3.39 due to https://sonatype.atlassian.net/browse/NEXUS-31285
-    grep -qE '^#?nexus.elasticsearch.autoRebuild' "${_cfg_file}" || echo "nexus.elasticsearch.autoRebuild=false" >> "${_cfg_file}"
-    grep -qE '^#?nexus.assetBlobCleanupTask.blobCreatedDelayMinute' "${_cfg_file}" || echo "nexus.assetBlobCleanupTask.blobCreatedDelayMinute=0" >> "${_cfg_file}"
-
-    # ${nexus.h2.httpListenerPort:-8082} jdbc:h2:file:./nexus (no username)
-    grep -qE '^#?nexus.h2.httpListenerEnabled' "${_cfg_file}" || echo "nexus.h2.httpListenerEnabled=true" >> "${_cfg_file}"
-    # Binary (or HA-C) for 'connect remote:hostname/component admin admin'
-    grep -qE '^#?nexus.orient.binaryListenerEnabled' "${_cfg_file}" || echo "nexus.orient.binaryListenerEnabled=true" >> "${_cfg_file}"
-    # For OrientDB studio (hostname:2480/studio/index.html) (removed)
-    #grep -qE '^#?nexus.orient.httpListenerEnabled' "${_cfg_file}" || echo "nexus.orient.httpListenerEnabled=true" >> "${_cfg_file}"
-    #grep -qE '^#?nexus.orient.dynamicPlugins' "${_cfg_file}" || echo "nexus.orient.dynamicPlugins=true" >> "${_cfg_file}"
-
-    #TODO: change the port automatically
-    #_port="$(_find_port "8081" "" "^8082$")"
-    #_upsert "${_prop}" "application-port" "${_port}" || return $?
-    #echo "INFO Using port: ${_port}" >&2; sleep 5
-}
-
-# https://issues.sonatype.org/browse/NEXUS-29730 java.lang.NoClassDefFoundError: com/sun/jna/Platform
+# NEXUS-29730 java.lang.NoClassDefFoundError: com/sun/jna/Platform
 # https://docs.oracle.com/javase/8/docs/technotes/guides/standards/#:~:text=endorsed.,endorsed.
 function _nexus29730() {
     local _base_dir="${1:-"."}"
@@ -507,7 +478,11 @@ $(sed -n "/^  loggers:/,\$p" ${_cfg_file} | grep -v '^  loggers:')" > "${_cfg_fi
         _cmd="${_java} ${_java_opts} -cp ${_jar_file}:${_h2_jar}:${_loader_jar} com.sonatype.insight.brain.supportloader.StartIqWithH2 ${_cfg_file}"
     fi
     echo "${_cmd}"; sleep 2
-    eval "${_cmd} 2>/tmp/iq-server.err" || echo "May need 'export JAVA_HOME=$JAVA_HOME_17'"
+    eval "${_cmd} 2>/tmp/iq-server.err" | tee /tmp/iq-server.out
+    if [ ${PIPESTATUS[0]} -ne 0 ]; then
+        echo "WARN: May need 'export JAVA_HOME=${JAVA_HOME_17}'"
+        return ${PIPESTATUS[0]}
+    fi
     [ "${_base_dir}" != "." ] && cd -
 }
 function _iqStartSQLs() {

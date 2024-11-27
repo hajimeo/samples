@@ -157,6 +157,8 @@ alias tabby_start='TABBY_DISABLE_USAGE_COLLECTION=1 tabby serve --device metal -
 ### Docker/K8s/VM related
 #alias rdocker="DOCKER_HOST='tcp://dh1:2375' docker"
 alias rdocker="ssh dh1 docker"
+alias docker_rmi_old="docker images | grep '(years|[0-9][0-9]+ months) ago' | awk '{print \$3}' | uniq | xargs -I{} docker rmi {}"
+alias docker_rm_old="docker ps -a | grep -E '(years|[0-9][0-9]+ months) ago\s+Exited' | awk '{print \$1}' | xargs -P2 -I{} docker rm {}"
 #dhTags "alpine" "library"
 function dhTags() { # docker list tags
     local _image="${1}"
@@ -784,13 +786,13 @@ function goBuild() {
 }
 
 function cleanOldDirs() {
-    # Currently assuming the directory name starts with nxrm_ or nxiq_
+    # Currently assuming the directory name starts with nxrm_[0-9] or nxiq_[0-9]
     # Also deleting directory if log file newer than 60 days does not exist
     local _test_dir="${1:-"$HOME/Documents/tests"}"
     local _days="${2:-"90"}"
     local _find="find"
     type gfind &>/dev/null && _find="gfind"
-    find ${_test_dir%/} -maxdepth 1 -type d -name 'nxrm_*' | while read -r _d; do
+    find ${_test_dir%/} -maxdepth 1 -type d -name 'nxrm_[0-9]*' | while read -r _d; do
         local _dir_name="$(basename "${_d}")"
         if [ -d "${_d%/}/sonatype-work/nexus3/log" ]; then
             local _log_file="$(${_find} "${_d%/}/sonatype-work/nexus3/log" -maxdepth 1 -type f -name '*.log' -mtime -${_days} 2>/dev/null | head -n1)"
@@ -799,7 +801,7 @@ function cleanOldDirs() {
             fi
         fi
     done
-    find ${_test_dir%/} -maxdepth 1 -type d -name 'nxiq_*' | while read -r _d; do
+    find ${_test_dir%/} -maxdepth 1 -type d -name 'nxiq_[0-9]*' | while read -r _d; do
         local _dir_name="$(basename "${_d}")"
         local _log_dir="$(${_find} "${_d%/}" -maxdepth 3 -type d -name 'log' 2>/dev/null | head -n1)"
         if [ -d "${_log_dir}" ]; then
@@ -817,16 +819,16 @@ function cleanOldDirs() {
 
 function cleanOldDBs() {
     # requires rg (ripgrep)
-    # Currently assuming the directory name starts with nxrm or nxiq
+    # Currently assuming the DB name starts with 'nxrm|nxiq|rm|iq' and the directory name starts with 'nxrm_[0-9]' or 'nxiq_[0-9]'
     local _test_dir="${1:-"$HOME/Documents/tests"}"
     local _check_db_pfx="${2:-"nx(rm|iq)"}"
     psql --csv -t -l | rg "^${_check_db_pfx}[^,]+" -o > /tmp/${FUNCNAME[0]}_in_db_$$.out || return $?
-    rg '^jdbcUrl=.+/(rm|nxrm)([^/\?]+)' -o -r '$1$2' --no-filename ${_test_dir%/}/nxrm*/sonatype-work/nexus3/etc/fabric/nexus-store.properties > /tmp/${FUNCNAME[0]}_nxrm_$$.out || return $?
+    rg '^jdbcUrl=.+/(rm|nxrm)([^/\?]+)' -o -r '$1$2' --no-filename ${_test_dir%/}/nxrm_[0-9]*/sonatype-work/nexus3/etc/fabric/nexus-store.properties > /tmp/${FUNCNAME[0]}_nxrm_$$.out || return $?
     if [ ! -s "/tmp/${FUNCNAME[0]}_nxrm_$$.out" ]; then
         echo "ERROR /tmp/${FUNCNAME[0]}_nxrm_$$.out can't be empty" >&2
         return 1
     fi
-    rg '^database:' -A6 --no-filename ${_test_dir%/}/nxiq*/config.yml | rg '^\s+name:\s*(iq|nxiq)([^/\?]+)' -o -r '$1$2' >> /tmp/${FUNCNAME[0]}_nxiq_$$.out || return $?
+    rg '^database:' -A6 --no-filename ${_test_dir%/}/nxiq_[0-9]*/config.yml | rg '^\s+name:\s*(iq|nxiq)([^/\?]+)' -o -r '$1$2' >> /tmp/${FUNCNAME[0]}_nxiq_$$.out || return $?
     if [ ! -s "/tmp/${FUNCNAME[0]}_nxiq_$$.out" ]; then
         echo "ERROR /tmp/${FUNCNAME[0]}_nxiq_$$.out can't be empty" >&2
         return 1
@@ -858,13 +860,14 @@ function backupC() {
     local _find="find"
     type gfind &>/dev/null && _find="gfind"
 
+    # vs code / codium extensions
     if which code && [ -d "$HOME/backup" ]; then
         code --list-extensions | xargs -L 1 echo code --install-extension >$HOME/backup/vscode_install_extensions.sh || return $?
     fi
-    # install codium
     if type codium &>/dev/null && [ -d "$HOME/backup" ]; then
         codium --list-extensions | xargs -L 1 echo codium --install-extension >$HOME/backup/vscodium_install_extensions.sh || return $?
     fi
+
     if type kubectl &>/dev/null && [ -d "$HOME/backup/kube" ]; then
         rsync -cav $HOME/.kube/*config* $HOME/backup/kube/
     fi
@@ -872,6 +875,7 @@ function backupC() {
         # Not backing up .aws/credentials
         cp -v -f $HOME/.aws/config $HOME/backup/aws_config || return $?
     fi
+
     if [ -s /etc/hosts ] && [ -d "$HOME/backup" ]; then
         cp -v -f /etc/hosts $HOME/backup/etc_hosts || return $?
     fi
@@ -883,6 +887,9 @@ function backupC() {
         cp -v -f $HOME/IdeaProjects/m2_settings*.xml $HOME/backup/IdeaProjects/ || return $?
     fi
 
+    echo ""
+    echo "#### Synchronising a few Github repositories into 'oldmac' ####" >&2
+    echo ""
     if ! ping -c1 -t1 oldmac >/dev/null; then
         echo "# Old Mac is not reachable. Skipping rsync." >&2
     else
@@ -901,40 +908,50 @@ function backupC() {
         cleanOldDBs "$HOME/Documents/tests"
      fi
 
-    [ ! -d "${_src}" ] && return 11
+    if [ -d "${_ext_backup}" ]; then
+        echo ""
+        echo "#### Cleaning up older than 30 days files from ${_ext_backup} ####" >&2
+        echo ""
+        # Should backup something to the external backup location?
+        #rsync -Pvaz --bwlimit=10240 --max-size=10000k --modify-window=1 --exclude '*_tmp' --exclude '_*' ${_src%/}/ ${_dst%/}/
+        ${_find} "${_ext_backup%/}" -maxdepth 1 -type d -name "*_wal" -print0 | xargs -0 -P4 -I{} -t ${_find} {} -type f -mtime +30 -delete
+    fi
+
+    if [ ! -d "${_src}" ]; then
+        echo "# Source ${_src} is not set nor directory. Ending this function." >&2
+        return 1
+    fi
+    echo ""
+    echo "#### Moving up old (90 days) directories from ${_src} into Trash ####" >&2
+    echo ""
     ## Special: support_tmp directory or .tmp or .out file wouldn't need to backup (not using atime as directory doesn't work)
     # NOTE: xargs may not work with very long file name 'mv: rename {} to /Users/hosako/.Trash/{}: No such file or directory', so not using.
     _src="$(realpath "${_src}")"    # because find -L ... -delete does not work
     [ -z "${_src%/}" ] && return 12
+    # Find directories from the src and if no files newer than 120 days, then move to trash (no background)
+    find ${_src%/} -mindepth 1 -maxdepth 1 -type d -print | xargs -I{} -t -P4 bash -c "find {} -type f -mtime -90 ! -name '.*' | head -n1 | grep -q -E '.+' || mv {} $HOME/.Trash/"
+    echo ""
+    echo "#### Cleaning up tmp and old+large files from ${_src} ####" >&2
+    echo ""
+    # Delete empty and tmp/log files/directories
     ${_find} ${_src%/} -type f -mtime +7 -size 0 \( ! -name "._*" \) -delete 2>/dev/null &
     ${_find} ${_src%/} -type d -mtime +14 -name '*_tmp' -delete 2>/dev/null &
     ${_find} ${_src%/} -type f -mtime +14 -name '*.tmp' -delete 2>/dev/null &
     ${_find} ${_src%/} -type f -mtime +60 -name "*.log" -delete 2>/dev/null &
+    # Delete large and old files
     ${_find} ${_src%/} -type f -mtime +90 -size +128000k -delete 2>/dev/null &
     ${_find} ${_src%/} -type f -mtime +180 -delete 2>/dev/null &
-
-    #[ ! -d "$HOME/.Trash" ] && return 13
-    #local _mv="mv --backup=t"
-    #[ "Darwin" = "$(uname)" ] && _mv="gmv --backup=t"
-    #${_find} ${_src%/} -type f -mtime +360 -size +100k -print0 | xargs -0 -n1 -I {} ${_mv} "{}" $HOME/.Trash/ &
-    #${_find} ${_src%/} -type f -mtime +270 -size +10240k -print0 | xargs -0 -n1 -I {} ${_mv} "{}" $HOME/.Trash/ &
-    #${_find} ${_src%/} -type f -mtime +180 -size +1024000k -print0 | xargs -0 -n1 -I {} ${_mv} "{}" $HOME/.Trash/ &
-    #${_find} ${_src%/} -type f -mtime +90  -size +2048000k -print0 | xargs -0 -n1 -I {} ${_mv} "{}" $HOME/.Trash/ &
-    #${_find} ${_src%/} -type f -mtime +45 -size +4048000k -print0 | xargs -0 -n1 -I {} ${_mv} "{}" $HOME/.Trash/ &
 
     jobs -l
     wait
 
     # Wait then deleting empty directories. NOTE: this find command requires "/*"
-    ${_find} ${_src%/}/* -type d -mtime +2 -empty -delete &
-
-    if [ -d "${_ext_backup}" ]; then
-        # Should backup something to the external backup location?
-        #rsync -Pvaz --bwlimit=10240 --max-size=10000k --modify-window=1 --exclude '*_tmp' --exclude '_*' ${_src%/}/ ${_dst%/}/
-        ${_find} "${_ext_backup%/}" -maxdepth 1 -type d -name "*_wal" -print0 | xargs -0 -P4 -I{} -t ${_find} {} -type f -mtime +30 -delete
-    fi
+    ${_find} ${_src%/}/* -type d -mtime +2 -empty -delete
     wait
 
+    echo ""
+    echo "#### Listing any large directories ####" >&2
+    echo ""
     if [ "Darwin" = "$(uname)" ]; then
         if type gdu &>/dev/null; then
             gdu -Shx ${_src} | sort -h | tail -n40
@@ -946,10 +963,13 @@ function backupC() {
         echo "# du -Shx ${_src} | sort -h | tail -n40" >&2
         du -Shx ${_src} | sort -h | tail -n40
     fi
+
     # Currently updatedb may not index external drive (maybe because exFat?)
     if type updatedb &>/dev/null; then
         #alias of 'updatedb' = sudo FILESYSTEMS="hfs ufs apfs exfat" /usr/libexec/locate.updatedb
-        echo "# executing updatedb (may ask sudo password)" >&2 # this means can't run in background...
+        echo ""
+        echo "#### Executing updatedb (may ask sudo password) ####" >&2
+        echo ""
         updatedb && ls -lh /var/db/locate.database
     fi
 }
