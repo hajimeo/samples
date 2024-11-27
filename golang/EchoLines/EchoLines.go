@@ -57,16 +57,19 @@ Read one file and output only necessary lines.
 ## Read the result with 'q' (after "rg '^# (.+)' -o -r '$1' > ./durations.out"):
     q -O -d"|" -T "SELECT c1 as start_time, c2 as end_time, CAST(c3 as INT) as ms, c4 as key FROM ./durations.out WHERE ms > 10000"
 
-## NXRM2 thread dumps (not perfect. still contains some junk lines):
+## Thread dumps
+### NXRM2 thread dumps (not perfect. still contains some junk lines):
     EXCL_REGEX="^jvm 1\s+\|\s+\d\d\d\d-\d\d-\d\d \d\d:\d\d:\d\d.+" echolines "wrapper.log.2,wrapper.log.1,wrapper.log" "^jvm 1\s+\|\s+\d\d\d\d-\d\d-\d\d \d\d:\d\d:\d\d$" "(^\s+class space.+)" | sed 's/^jvm 1    | //' > threads.txt
-## NXRM3 thread dumps:
+### NXRM3 thread dumps:
     HTML_REMOVE=Y echolines "./jvm.log" "^\d\d\d\d-\d\d-\d\d \d\d:\d\d:\d\d$" "(^\s+class space.+|^\s+Metaspace\s+.+)" "threads"
     _THREAD_FILE_GLOB="0*.out" f_threads ./threads/
     # If would like to split per thread:
-    echolines "threads.txt" "^\".+" "" "./threads_per_thread"
-    find ./threads -type f -name '[0-9]*_*.out' | xargs -P3 -t -I{} bash -c '_d="$(basename "{}" ".out")";echolines "{}" "^\".+" "" "./threads_per_thread/${_d}"'
+    echolines ./threads.txt '^20\d\d-\d\d-\d\d.\d\d:\d\d:\d\d$' '' "threads_per_dump"
+    #echolines "threads.txt" "^\".+" "" "./threads_per_thread"
+    find ./threads_per_dump -type f -name '[0-9]*_*.out' | xargs -P3 -t -I{} bash -c '_d="$(basename "{}" ".out")";echolines "{}" "^\".+" "" "./threads_per_thread/${_d}"'
 
-## Get duration of each line of a thread #with thread+username+classnames:
+## Durations
+### For each line per thread #with thread+username+classnames:
 	export ELAPSED_REGEX="^\d\d\d\d-\d\d-\d\d.(\d\d:\d\d:\d\d.\d\d\d)"
 	rg 'FelixStartLevel' ./log/nexus.log | echolines "" "^\d\d\d\d-\d\d-\d\d.\d\d:\d\d:\d\d.\d\d\d" "^\d\d\d\d-\d\d-\d\d.\d\d:\d\d:\d\d.\d\d\d" | rg '^# '
     export ELAPSED_REGEX="^\d\d\d\d-\d\d-\d\d.(\d\d:\d\d:\d\d.\d\d\d)" ASCII_DISABLED=Y ELAPSED_KEY_REGEX="(\[qtp\S+\s\S*\s\S+)"
@@ -74,36 +77,39 @@ Read one file and output only necessary lines.
 ### (Not so useful but) similar to the above but excluding empty username:
     export ELAPSED_REGEX="^\d\d\d\d-\d\d-\d\d.(\d\d:\d\d:\d\d.\d\d\d)" ASCII_DISABLED=Y ELAPSED_KEY_REGEX="(\[dw\-[^\]]+\]\s\S+\s\S+)"
     echolines "_hourly_logs/clm-server_2024-09-13_16.out" "^\d\d\d\d-\d\d-\d\d.\d\d:\d\d:\d\d.\d\d\d" "^\d\d\d\d-\d\d-\d\d.\d\d:\d\d:\d\d.\d\d\d" | rg '^# ' | sort -t'|' -k3n
-## Get duration of NXRM3 SQL queries, and sort by the longest:
+### NXRM3: SQL queries, and sort by the longest:
     export ELAPSED_REGEX="^\d\d\d\d-\d\d-\d\d.(\d\d:\d\d:\d\d.\d\d\d)" ASCII_DISABLED=Y ELAPSED_KEY_REGEX="(\[qtp\S+\s+\S+\s+\S+)"
     echolines "./log/nexus.log" " - ==>  Preparing:" "(^.+ - <== .+)" | rg '^# (.+)' -o -r '$1'    #| sort -t'|' -k3n
-### Get durations of specific method, which stops if 0 update, and related log lines:
+### NXRM3: Specific method, which stops if 0 update, and related log lines:
     echolines "./log/nexus.log" "trimBrowseNodes - ==>  Preparing:" "(^.+Updates: 0)" | tee trimBrowseNodes.log | rg '^# (.+)' -o -r '$1' > trimBrowseNodes_dur.out
-## Get duration of the first 30 S3 pool requests (with org.apache.http = DEBUG. This example also checks 'Connection leased'):
+### NXRM3: the first 30 S3 pool requests (with org.apache.http = DEBUG. This example also checks 'Connection leased'):
     export ELAPSED_REGEX="^\d\d\d\d-\d\d-\d\d.(\d\d:\d\d:\d\d.\d\d\d)" ELAPSED_KEY_REGEX="\[(s3-parallel-[^\]]+)"
     rg -m30 '\[s3-parallel-.+ Connection (request|leased|released):' ./log/nexus.log > connections.out
     sed -n "1,30p" connections.out | echolines "" " leased:" "(^.+ released:.+)" | rg '^# '
-## Get duration of Tasks
+### NXRM3: Tasks
     export ELAPSED_REGEX="^\d\d\d\d-\d\d-\d\d.(\d\d:\d\d:\d\d.\d\d\d)" ELAPSED_KEY_REGEX="Task '([^']+)'" ASCII_DISABLED=Y
     echolines "./log/nexus.log" "QuartzTaskInfo .+ -> RUNNING" "(^.+QuartzTaskInfo .+ RUNNING -> .+)" | rg '^# (.+)' -o -r '$1' | sort -t'|' -k2
     export ELAPSED_REGEX="^\d\d\d\d-\d\d-\d\d.(\d\d:\d\d:\d\d.\d\d\d)" ELAPSED_KEY_REGEX="\[([^\]]+)" ASCII_DISABLED=Y
     echolines "./log/tasks/allTasks.log" " - Task information:" "(^.+ - Task complete)" "per_thread" | rg '^# (.+)' -o -r '$1' | sort -t'|' -k2
-## Get duration of blob-store-group-removal-\d+ .bytes files, with ASCII
+### NXRM3: blob-store-group-removal-\d+ .bytes files, with ASCII
     export ELAPSED_REGEX="^\d\d\d\d-\d\d-\d\d.(\d\d:\d\d:\d\d.\d\d\d)" ELAPSED_KEY_REGEX="(blob-store-group-removal-\d+)"
     rg 'blob-store-group-removal-\d+' -m2000 nexus.log | echolines "" "Writing blob" "(^.+Finished upload to key.+)" | rg '^# (.+)' -o -r '$1' > bytes_duration_summary.tsv
-## Get duration of DEBUG cooperation2.datastore.internal.CooperatingFuture
+### NXRM3: DEBUG cooperation2.datastore.internal.CooperatingFuture
     export ELAPSED_REGEX="\d\d\d\d-\d\d-\d\d.(\d\d:\d\d:\d\d.\d\d\d)" ELAPSED_KEY_REGEX="\[(qtp[^\]]+)"
     rg -F '/dotenv?null' -m2000 nexus.log | echolines "" "Requesting" "(^.+Completing.+)" | rg '^# (.+)' -o -r '$1' > bytes_duration_summary.tsv
 
-## Get duration of IQ Evaluate a File, and sort by threadId and time
+### IQ: Evaluating a File, and sort by threadId and time
     rg 'POST /rest/scan/.+Scheduling scan task (\S+)' -o -r '$1' log/clm-server.log | xargs -I{} rg -w "{}" ./log/clm-server.log | sort | uniq > scan_tasks.log
-    export ELAPSED_REGEX="^\d\d\d\d-\d\d-\d\d.(\d\d:\d\d:\d\d.\d\d\d)"
-    ELAPSED_KEY_REGEX="\[([^ \]]+)" echolines ./scan_tasks.log "Running scan task" "(^.+Completed scan task.+)" | rg '^# (.+)' -o -r '$1' | sort -t'|' -k3,3 -k1,1
+    export ELAPSED_REGEX="^\d\d\d\d-\d\d-\d\d.(\d\d:\d\d:\d\d.\d\d\d)" ELAPSED_KEY_REGEX="\[([^ \]]+)"
+    echolines ./scan_tasks.log "Running scan task" "(^.+Completed scan task.+)" | rg '^# (.+)' -o -r '$1' | sort -t'|' -k3,3 -k1,1
+### IQ: Evaluation for Firewall
+    export ELAPSED_REGEX="^\d\d\d\d-\d\d-\d\d.(\d\d:\d\d:\d\d.\d\d\d)" ELAPSED_KEY_REGEX="\[(dw\-\d+ \- POST /rest/integration/artifactory/repositories[^ \]]+)" ASCII_DISABLED="Y"
+    echolines ./clm-server_mini.out "Evaluating components for repository" "(^.+ Evaluated .+)" | rg '^# (.+)' -o -r '$1' | sort -t'|' -k3,3 -k1,1
 
-## Get duration of Eclipse Memory Analyzer Tool (MAT) threads (<file-name>.threads)
+### Get duration of Eclipse Memory Analyzer Tool (MAT) threads (<file-name>.threads)
     echolines ./java_pid1404494.threads "^Thread 0x\S+" "" "./threads_per_thread"
 
-## Get duration of mvn download (need org.slf4j.simpleLogger.showDateTime=true org.slf4j.simpleLogger.dateTimeFormat=yyyy-MM-dd HH:mm:ss.SSS)
+### Get duration of mvn download (need org.slf4j.simpleLogger.showDateTime=true org.slf4j.simpleLogger.dateTimeFormat=yyyy-MM-dd HH:mm:ss.SSS)
     export ELAPSED_REGEX="^\d\d\d\d-\d\d-\d\d.(\d\d:\d\d:\d\d.\d\d\d)"
     export ELAPSED_KEY_REGEX="https?://\S+"
     ASCII_DISABLED=Y echolines ./mvn.log "Downloading from nexus: \S+" "(^.+Downloaded from nexus: \S+)"
@@ -111,6 +117,7 @@ END`)
 }
 
 var _DEBUG = helpers.GetBoolEnv("_DEBUG", false)
+var DEFAULT_START_REGEX = `^\d\d\d\d-\d\d-\d\d.\d\d:\d\d:\d\d.\d\d\d`
 var START_REGEXP *regexp.Regexp
 var END_REGEXP *regexp.Regexp
 var INCL_REGEX = os.Getenv("INCL_REGEX")
@@ -527,6 +534,13 @@ func main() {
 	}
 	if len(os.Args) > 2 && len(os.Args[2]) > 0 {
 		START_REGEXP = regexp.MustCompile(os.Args[2])
+	} else {
+		helpers.PrintErr("# No START_REGEXP. Compiling " + DEFAULT_START_REGEX)
+		START_REGEXP = regexp.MustCompile(DEFAULT_START_REGEX)
+		if len(ELAPSED_REGEX) == 0 {
+			helpers.PrintErr("# No ELAPSED_REGEX. Using " + DEFAULT_START_REGEX)
+			ELAPSED_REGEX = DEFAULT_START_REGEX
+		}
 	}
 	if len(os.Args) > 3 && len(os.Args[3]) > 0 {
 		END_REGEXP = regexp.MustCompile(os.Args[3])
