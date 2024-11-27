@@ -8,6 +8,7 @@ To get IdP metadata:
 	${IDP_BASE_URL%/}/metadata
 
 TODO: eduPersonAffiliation, eduPersonAffiliation etc. should be changeable.
+TODO: Support SingleLogoutService
 */
 
 package main
@@ -100,6 +101,7 @@ func main() {
 
 	// Loading (putting) users from the json file
 	addUsers(userJsonFilename, idpServer, logr)
+	// Currently only one service is supported
 	addService(idpServer, idpBaseURL, serviceUrlOrXml, logr)
 
 	flag.Set("bind", ":"+idpBaseURL.Port())
