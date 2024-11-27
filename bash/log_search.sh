@@ -1085,7 +1085,15 @@ function f_wrapper2threads() {
 function f_splitScriptLog() {
     local _script_log="$1"
     local _full_split="$2"
-    if head -n1 "${_script_log}" | rg -q '^20[0-9][0-9]-[0-9][0-9]-[0-9][0-9]'; then
+    rg -o '^(top - \d\d:\d\d:\d\d|Active Internet |20\d\d-\d\d-\d\d.\d\d:\d\d:\d\d$)' "${_script_log}" | tee /tmp/${FUNCNAME[0]}_$$.tmp
+    if head -n2 "/tmp/${FUNCNAME[0]}_$$.tmp" | paste - -  | rg -q 'top - \d\d:\d\d:\d\d\s+Active Internet'; then
+        # Assuming top, netstat, thread, repeat
+        echolines ${_script_log} '^top - ' '^Active .+' > ./tops.txt
+        echolines ${_script_log} '^Active .+' '^20\d\d-\d\d-\d\d.\d\d:\d\d:\d\d' > ./netstats.txt
+        HTML_REMOVE=Y echolines ${_script_log} '^20\d\d-\d\d-\d\d.\d\d:\d\d:\d\d$' '^top - ' > ./threads.txt
+        cat ./tops.txt ./netstats.txt > ./tops_netstats.txt
+    elif head -n1 "/tmp/${FUNCNAME[0]}_$$.tmp" | rg -q '^20[0-9][0-9]-[0-9][0-9]-[0-9][0-9]'; then
+        # Assuming threads are beginning of the file
         HTML_REMOVE=Y echolines ${_script_log} "^\d\d\d\d-\d\d-\d\d \d\d:\d\d:\d\d$" "" ./_tmp_script_log
         ls -1 _tmp_script_log/* | while read _f; do
             local _prefix=$(basename ${_f})
