@@ -2013,11 +2013,15 @@ function f_nexus_change_pwd() {
 
 function f_put_realms() {
     local __doc__="PUT some security realms"
+    local _append_realm="$1"    #SamlRealm
     local _realms="\"NexusAuthenticatingRealm\",\"User-Token-Realm\",\"rutauth-realm\",\"DockerToken\",\"ConanToken\",\"NpmToken\",\"NuGetApiKey\",\"LdapRealm\""
     # NOTE: ,\"NexusAuthorizingRealm\" was removed from 3.61
     f_api "/service/rest/v1/security/realms/available" | grep -q '"NexusAuthorizingRealm"' && _realms="\"NexusAuthenticatingRealm\",\"NexusAuthorizingRealm\",\"User-Token-Realm\",\"rutauth-realm\",\"DockerToken\",\"ConanToken\",\"NpmToken\",\"NuGetApiKey\",\"LdapRealm\""
     # Keep using SAML Realm only if it is already active (otherwise, "Sign in" always shows the SSO popup)
     f_api "/service/rest/v1/security/realms/active" | grep -q '"SamlRealm"' && _realms="${_realms},\"SamlRealm\""
+    if [ -n "${_append_realm}" ] && ! echo "${_realms}" | grep -q "${_append_realm}"; then
+        _realms="${_realms},\"${_append_realm}\""
+    fi
     f_api "/service/rest/v1/security/realms/active" "[${_realms}]" "PUT" || return $?
 }
 
@@ -2201,14 +2205,28 @@ function f_start_saml_server() {
     echo "       IdP metadata: ./idp_metadata.xml"
     #echo "       curl -D- -X PUT -u admin:admin123 http://localhost:8070/api/v2/roleMemberships/global/role/b9646757e98e486da7d730025f5245f8/group/ipausers"
     if [ ! -s "${_sp_meta_file}" ]; then
-        echo "       Example Attr: {uid=[samluser], eduPersonPrincipalName=[samluser@standalone.localdomain], eduPersonAffiliation=[users], givenName=[saml], sn=[user], cn=[Saml User]}"
-        echo "       So, eduPersonPrincipalName can be used for 'email', eduPersonAffiliation for 'groups'."
-        echo "[INFO] If some error, please save '${_sp_meta_url}' into ${_sp_meta_file}, then restart."
+        #echo "       Example Attr: {uid=[samluser], eduPersonPrincipalName=[samluser@standalone.localdomain], eduPersonAffiliation=[users], givenName=[saml], sn=[user], cn=[Saml User]}"
+        #echo "       So, eduPersonPrincipalName can be used for 'email', eduPersonAffiliation for 'groups'."
+        echo "[INFO] Execute 'f_setup_saml_for_simplesaml'"
+        echo "[INFO] Restart this IdP if some login issue."
+        echo "       If necessary, save '${_sp_meta_url}' into ${_sp_meta_file}:"
         echo "       curl -o ${_sp_meta_file} -u \"admin\" \"${_sp_meta_url}\""
     fi
 }
-function f_setup_saml() {
-    echo "TODO: use PUT /v1/security/saml"
+function f_setup_saml_for_simplesaml() {
+    local __doc__="Setup SAML for Nexus3 with PUT /v1/security/saml"
+    local _entityId="${1:-"${_NEXUS_URL%/}/service/rest/v1/security/saml/metadata"}"
+    local _idp_metadata="${2:-"./idp_metadata.xml"}"
+    if [ ! -s "${_idp_metadata}" ]; then
+        echo "Please specify _idp_metadata"; return 1
+    fi
+    # Escaping \n on Mac is complicated so just removing new lines
+    local _idp_meta_str="$(cat ${_idp_metadata} | sed 's/^[ \t]*//;s/[ \t]*$//;s/\"/\\"/g' | tr -d '\n')"
+    if ! f_api "/service/rest/v1/security/saml" "{\"entityId\":\"${_entityId}\",\"idpMetadata\":\"${_idp_meta_str}\",\"usernameAttribute\":\"uid\",\"firstNameAttribute\":\"givenName\",\"lastNameAttribute\":\"sn\",\"emailAttribute\":\"eduPersonPrincipalName\",\"groupsAttribute\":\"eduPersonAffiliation\",\"validateResponseSignature\":false,\"validateAssertionSignature\":false}" "PUT"; then
+        echo "If SAML is already configured, please try 'DELETE /service/rest/v1/security/saml' first."
+        return 1
+    fi
+    f_put_realms "SamlRealm"
 }
 
 function f_start_ldap_server() {
@@ -2235,13 +2253,13 @@ function f_setup_ldap_glauth() {
     local _port="${3:-"389"}"   # 636
     #[ -z "${_LDAP_PWD}" ] && _log "WARN" "Missing _LDAP_PWD" && sleep 3
     #nc -z ${_host} ${_port} || return $?
-    # Using 'mail' instead of 'uid' so that not confused with same 'admin' user between local and ldap
-    _apiS '{"action":"ldap_LdapServer","method":"create","data":[{"id":"","name":"'${_name}'","protocol":"ldap","host":"'${_host}'","port":"'${_port}'","searchBase":"dc=standalone,dc=localdomain","authScheme":"simple","authUsername":"admin@standalone.localdomain","authPassword":"'${_LDAP_PWD:-"secret12"}'","connectionTimeout":"30","connectionRetryDelay":"300","maxIncidentsCount":"3","template":"Posix%20with%20Dynamic%20Groups","userBaseDn":"ou=users","userSubtree":true,"userObjectClass":"posixAccount","userLdapFilter":"","userIdAttribute":"mail","userRealNameAttribute":"cn","userEmailAddressAttribute":"mail","userPasswordAttribute":"","ldapGroupsAsRoles":true,"groupType":"dynamic","userMemberOfAttribute":"memberOf"}],"type":"rpc"}'
+    _apiS '{"action":"ldap_LdapServer","method":"create","data":[{"id":"","name":"'${_name}'","protocol":"ldap","host":"'${_host}'","port":"'${_port}'","searchBase":"dc=standalone,dc=localdomain","authScheme":"simple","authUsername":"admin@standalone.localdomain","authPassword":"'${_LDAP_PWD:-"secret12"}'","connectionTimeout":"30","connectionRetryDelay":"300","maxIncidentsCount":"3","template":"Posix%20with%20Dynamic%20Groups","userBaseDn":"ou=users","userSubtree":true,"userObjectClass":"posixAccount","userLdapFilter":"","userIdAttribute":"uid","userRealNameAttribute":"cn","userEmailAddressAttribute":"mail","userPasswordAttribute":"","ldapGroupsAsRoles":true,"groupType":"dynamic","userMemberOfAttribute":"memberOf"}],"type":"rpc"}' #|| return $?
+    # RM3 doesn't have groupSubtree?
     _apiS '{"action":"coreui_Role","method":"create","data":[{"version":"","source":"LDAP","id":"ipausers","name":"ipausers-role","description":"ipausers-role-desc","privileges":["nx-repository-view-*-*-*","nx-search-read","nx-component-upload"],"roles":[]}],"type":"rpc"}'
 }
 
 function f_setup_ldap_freeipa() {
-    local __doc__="setup LDAP. TODO: currently using my freeIPA server."
+    local __doc__="Deprecated: setup LDAP with freeIPA server."
     local _name="${1:-"freeipa"}"
     local _host="${2:-"dh1.standalone.localdomain"}"
     local _port="${3:-"389"}"   # 636
