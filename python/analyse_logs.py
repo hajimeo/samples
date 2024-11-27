@@ -196,7 +196,7 @@ def request2table(filepath, tablename="t_request", max_file_size=(1024 * 1024 * 
                         max_file_size=max_file_size,
                         line_from=line_from, line_until=line_until)
     if ju.exists(tablename):
-        ju._info("%s has been created (may want to run 'al.req2table_post()')" % tablename)
+        ju._info("%s has been created (may want to run al.req2table_post('%s'))" % (tablename, tablename))
         return True
     return False
 
@@ -210,7 +210,7 @@ def req2table_post(tablename="t_request", add_startTime=True, datetime_col="date
     :param elapsed_col: Name of the column which stores elapsed time information
     :return: void
     """
-    if ju.exists("t_request", "headerContentLength"):
+    if ju.exists(tablename, "headerContentLength"):
         try:
             ju._info("Changing '-' in headerContentLength to 0 ...")
             _ = ju.execute(sql=f"UPDATE {tablename} SET headerContentLength = 0 WHERE headerContentLength = '-'")
