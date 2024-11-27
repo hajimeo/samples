@@ -12,6 +12,11 @@ Used Environment variables:
 - JSON_SEARCH_KEY: If set, it will print the value of the key. If the key is nested, use dot (.) as a separator.
 - JSON_NO_SORT: If set to "Y" or "y", it will not sort the keys.
 - OUTPUT_DELIMITER: Default is ","
+- IS_NDJSON: Default is false. Set to "Y" or "y" if the input is NDJSON.
+
+Advanced example:
+
+	curl -sSf "http://localhost:8081/repository/nodejs/-/v1/search?text=*a*&size=10" | JSON_SEARCH_KEY="objects.package" sortjson | IS_NDJSON="Y" OUTPUT_DELIMITER="@" JSON_SEARCH_KEY="name,version" sortjson
 */
 package main
 
@@ -36,6 +41,7 @@ var OUTPUT_DELIMITER = ","
 var NULL_VALUE = "<null>"
 var LINE_BREAK = "\n"
 var STRING_QUOTE = ""
+var IS_NDJSON = false
 var JSON_NO_SORT = ""
 var SaveToPointer *os.File
 var BracesRg = regexp.MustCompile(`[\[\](){}]`)
@@ -186,6 +192,7 @@ func readWithTimeout(r io.Reader, timeout time.Duration) ([]byte, error) {
 
 func setGlobals() {
 	JSON_SEARCH_KEY = helpers.GetEnv("JSON_SEARCH_KEY", JSON_SEARCH_KEY)
+	IS_NDJSON = helpers.GetEnvBool("IS_NDJSON", false)
 	JSON_NO_SORT = helpers.GetEnv("JSON_NO_SORT", JSON_NO_SORT)
 	OUTPUT_DELIMITER = helpers.GetEnv("OUTPUT_DELIMITER", OUTPUT_DELIMITER)
 	NULL_VALUE = helpers.GetEnv("NULL_VALUE", NULL_VALUE)
@@ -193,31 +200,7 @@ func setGlobals() {
 	STRING_QUOTE = helpers.GetEnv("STRING_QUOTE", STRING_QUOTE)
 }
 
-func main() {
-	setGlobals()
-
-	inFile := ""
-	var jsonBytes []byte
-	if len(os.Args) > 1 {
-		inFile = os.Args[1]
-		jsonBytes, _ = os.ReadFile(inFile)
-	} else {
-		jsonBytes, _ = readWithTimeout(os.Stdin, 10*time.Second)
-	}
-	outFile := ""
-	if len(os.Args) > 2 {
-		outFile = os.Args[2]
-	}
-	if len(outFile) > 0 {
-		var err error
-		SaveToPointer, err = os.Create(outFile)
-		if err != nil {
-			fmt.Println(err)
-			return
-		}
-		defer SaveToPointer.Close()
-	}
-
+func processOneJson(jsonBytes []byte, outFile string) {
 	if len(JSON_NO_SORT) == 0 || (JSON_NO_SORT != "Y" && JSON_NO_SORT != "y") {
 		jsonSorted, err := sortByKeys(jsonBytes)
 		if err != nil {
@@ -246,4 +229,43 @@ func main() {
 		fmt.Println(jsonSortedPP)
 	}
 	return
+}
+
+func main() {
+	setGlobals()
+
+	inFile := ""
+	var jsonBytes []byte
+	if len(os.Args) > 1 {
+		inFile = os.Args[1]
+		jsonBytes, _ = os.ReadFile(inFile)
+	} else {
+		jsonBytes, _ = readWithTimeout(os.Stdin, 10*time.Second)
+	}
+	outFile := ""
+	if len(os.Args) > 2 {
+		outFile = os.Args[2]
+	}
+	if len(outFile) > 0 {
+		var err error
+		SaveToPointer, err = os.Create(outFile)
+		if err != nil {
+			fmt.Println(err)
+			return
+		}
+		defer SaveToPointer.Close()
+	}
+
+	if IS_NDJSON {
+		// Split by line
+		lines := strings.Split(string(jsonBytes), LINE_BREAK)
+		for _, line := range lines {
+			if len(line) == 0 {
+				continue
+			}
+			processOneJson([]byte(line), outFile)
+		}
+	} else {
+		processOneJson(jsonBytes, outFile)
+	}
 }
