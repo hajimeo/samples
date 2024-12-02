@@ -109,7 +109,7 @@ function _container_available_ip() {
 function _container_ip() {
     local _container_name="$1"
     local _cmd="${2:-"${_DOCKER_CMD}"}"
-    ${_cmd} exec -it ${_container_name} hostname -i | grep -E '^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+' -m1 -o | tr -cd "[:print:]" # remove unnecessary control characters
+    ${_cmd} inspect -f '{{range.NetworkSettings.Networks}}{{.IPAddress}}{{end}}' | grep -E '^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+' -m1 -o | tr -cd "[:print:]" # remove unnecessary control characters
 }
 
 function _container_useradd() {
@@ -263,6 +263,7 @@ function _update_hosts_for_k8s() {
     local _k="${4:-"${_KUBECTL_CMD:-"kubectl"}"}"
     [ -f "${_host_file}" ] || return 11
     local _l="app.kubernetes.io/name=${_app_name}"
+    # TODO: this may not work if no `hostname` in the pod
     _k8s_exec 'echo $(hostname -f) $(hostname -i)' "${_l}" "${_namespace}" "3" | grep ".${_namespace}." >"${__TMP%/}/${FUNCNAME}.tmp" || return $?
     cat "${__TMP%/}/${FUNCNAME}.tmp" | while read -r _line; do
         if ! _update_hosts_file ${_line} ${_host_file}; then
