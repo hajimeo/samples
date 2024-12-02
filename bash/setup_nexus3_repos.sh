@@ -1626,7 +1626,7 @@ function p_client_container() {
     local __doc__="Process multiple functions to create a docker container to install various client commands"
     local _base_url="${1:-"${r_NEXUS_URL:-"${_NEXUS_URL}"}"}"
     local _name="${2:-"nexus-client"}"
-    local _centos_ver="${3:-"7.9.2009"}"
+    local _image_tag="${3:-"fedora:41"}"
     local _cmd="${4:-"${r_DOCKER_CMD:-"docker"}"}"
 
     local _image_name="${_name}:latest"
@@ -1634,24 +1634,27 @@ function p_client_container() {
     if [ -n "${_existing_id}" ]; then
         _log "INFO" "Image ${_image_name} (${_existing_id}) already exists. Running / Starting a container..."
     else
-        local _build_dir="$(mktemp -d)" || return $?
+        local _build_dir="./${FUNCNAME[0]}_$$"
+        if [ ! -d "${_build_dir}" ]; then
+            mkdir -p "${_build_dir}" || return $?
+        fi
         local _dockerfile="${_build_dir%/}/Dockerfile"
 
         # Expecting f_setup_yum and f_setup_docker have been run
         curl -s -f -m 7 --retry 2 "${_DL_URL%/}/docker/DockerFile_Nexus" -o ${_dockerfile} || return $?
 
-        local _os_and_ver="docker.io/centos:${_centos_ver}"
+        local _os_and_ver="docker.io/${_image_tag}"
         # If docker-group or docker-proxy host:port is provided, trying to use it.
         if [ -n "${r_DOCKER_GROUP:-"${r_DOCKER_PROXY}"}" ]; then
             if ! _docker_login "${r_DOCKER_GROUP}" "" "${r_ADMIN_USER:-"${_ADMIN_USER}"}" "${r_ADMIN_PWD:-"${_ADMIN_PWD}"}"; then
                 if _docker_login "${r_DOCKER_PROXY}" "" "${r_ADMIN_USER:-"${_ADMIN_USER}"}" "${r_ADMIN_PWD:-"${_ADMIN_PWD}"}"; then
-                    _os_and_ver="${r_DOCKER_PROXY}/centos:${_centos_ver}"
+                    _os_and_ver="${r_DOCKER_PROXY}/${_image_tag}"
                 fi
             else
-                _os_and_ver="${r_DOCKER_GROUP}/centos:${_centos_ver}"
+                _os_and_ver="${r_DOCKER_GROUP}/${_image_tag}"
             fi
         fi
-        _sed -i -r "s@^FROM centos.*@FROM ${_os_and_ver}@1" ${_dockerfile} || return $?
+        _sed -i -r "s@^FROM .+@FROM ${_os_and_ver}@1" ${_dockerfile} || return $?
         if [ -s $HOME/.ssh/id_rsa ]; then
             local _pkey="`_sed ':a;N;$!ba;s/\n/\\\\\\\n/g' $HOME/.ssh/id_rsa`"
             _sed -i "s@_REPLACE_WITH_YOUR_PRIVATE_KEY_@${_pkey}@1" ${_dockerfile} || return $?
@@ -1662,18 +1665,25 @@ function p_client_container() {
         _log "INFO" "Building ${_image_name} ... (outputs:${_LOG_FILE_PATH:-"/dev/null"})"
         ${_cmd} build --rm -t ${_image_name} . 2>&1 >>${_LOG_FILE_PATH:-"/dev/null"} || return $?
         cd -
+        if [ -n "${_build_dir}" ] && [ -d "${_build_dir}" ]; then
+            rm -rf ${_build_dir}
+        fi
     fi
 
     if [ -n "${_cmd}" ] && ! ${_cmd} network ls --format "{{.Name}}" | grep -q "^${_DOCKER_NETWORK_NAME}$"; then
         _docker_add_network "${_DOCKER_NETWORK_NAME}" "" "${_cmd}" || return $?
     fi
 
-    local _ext_opts="-v /sys/fs/cgroup:/sys/fs/cgroup:ro --privileged=true -v ${_WORK_DIR%/}:${_SHARE_DIR}"
+    # TODO: fedra doesn't work with `:ro`
+    local _ext_opts="-v /sys/fs/cgroup:/sys/fs/cgroup --privileged=true -v ${_WORK_DIR%/}:${_SHARE_DIR}"
     [ -n "${_DOCKER_NETWORK_NAME}" ] && _ext_opts="--network=${_DOCKER_NETWORK_NAME} ${_ext_opts}"
     _log "INFO" "Running or Starting '${_name}'"
     # TODO: not right way to use 3rd and 4th arguments. Also if two IPs are configured, below might update /etc/hosts with 2nd IP.
     _docker_run_or_start "${_name}" "${_ext_opts}" "${_image_name} /sbin/init" "${_cmd}" || return $?
     _container_add_NIC "${_name}" "bridge" "Y" "${_cmd}"
+
+    # Try updating /etc/resolv.conf of the container
+    _container_update_resolv_conf "${_name}"
 
     # Create a test user if hasn't created (testuser:testuser123)
     _container_useradd "${_name}" "testuser" "" "Y" "${_cmd}"
@@ -1860,12 +1870,12 @@ EOF
     fi
 
     _log "INFO" "Install packages with yum ..."
-    local _yum_install="yum install -y"
+    local _yum_install="yum install -y --skip-unavailable"
     if [ -s /etc/yum.repos.d/nexus-yum-test.repo ]; then
-        _yum_install="yum --disablerepo=base --enablerepo=nexusrepo-test install -y"
+        _yum_install="yum --disablerepo=base --enablerepo=nexusrepo-test install -y --skip-unavailable"
     fi
     if ! ${_yum_install} epel-release; then
-        _log "ERROR" "${_yum_install} epel-release failed. Stopping the installations."
+        _log "WARN" "${_yum_install} epel-release failed. but continuing ..."
         return 1
     fi
     curl -fL https://rpm.nodesource.com/setup_14.x --compressed | bash - || _log "ERROR" "Executing https://rpm.nodesource.com/setup_14.x failed"
