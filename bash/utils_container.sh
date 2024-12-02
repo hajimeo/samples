@@ -107,9 +107,20 @@ function _container_available_ip() {
 }
 
 function _container_ip() {
-    local _container_name="$1"
+    local _name="$1"
     local _cmd="${2:-"${_DOCKER_CMD}"}"
-    ${_cmd} inspect -f '{{range.NetworkSettings.Networks}}{{.IPAddress}}{{end}}' | grep -E '^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+' -m1 -o | tr -cd "[:print:]" # remove unnecessary control characters
+    ${_cmd} inspect -f '{{range.NetworkSettings.Networks}}{{.IPAddress}}{{end}}' "${_name}" | grep -E '^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+' -m1 -o | tr -cd "[:print:]" # remove unnecessary control characters
+}
+
+function _container_update_resolv_conf() {
+    local _name="$1"
+    local _dns="$2"
+    local _cmd="${3:-"${_DOCKER_CMD}"}"
+    if [ -z "${_dns}" ]; then
+        _dns="$(hostname -I | cut -d " " -f1)"
+        [ -z "${_dns}" ] && return 1
+    fi
+    ${_cmd} exec -it ${_name} bash -c 'sed "s/nameserver 127.0.0..+/nameserver '${_dns}'/" /etc/resolv.conf > /tmp/resolv.conf && cp -f /tmp/resolv.conf /etc/resolv.conf' || return $?
 }
 
 function _container_useradd() {
