@@ -1055,6 +1055,9 @@ function f_setup_apt() {
         # With http://archive.ubuntu.com/ubuntu/, 'apt install jq' didn't work
         _apiS '{"action":"coreui_Repository","method":"create","data":[{"attributes":{"apt":{"distribution":"ubuntu","flat":false},"proxy":{"remoteUrl":"http://ports.ubuntu.com/ubuntu-ports/","contentMaxAge":1440,"metadataMaxAge":1440},"httpclient":{"blocked":false,"autoBlock":true},"storage":{"blobStoreName":"'${_bs_name}'","strictContentTypeValidation":true'${_extra_sto_opt}'},"negativeCache":{"enabled":true,"timeToLive":1440},"cleanup":{"policyName":[]}},"name":"'${_prefix}'-proxy","format":"","type":"","url":"","online":true,"routingRuleId":"","authEnabled":false,"httpRequestSettings":false,"recipe":"apt-proxy"}],"type":"rpc"}' || return $?
     fi
+    if ! _is_repo_available "${_prefix}-sec-proxy"; then
+        _apiS '{"action":"coreui_Repository","method":"create","data":[{"attributes":{"apt":{"distribution":"ubuntu","flat":false},"proxy":{"remoteUrl":"http://security.ubuntu.com/ubuntu/","contentMaxAge":1440,"metadataMaxAge":1440},"httpclient":{"blocked":false,"autoBlock":true},"storage":{"blobStoreName":"'${_bs_name}'","strictContentTypeValidation":true'${_extra_sto_opt}'},"negativeCache":{"enabled":true,"timeToLive":1440},"cleanup":{"policyName":[]}},"name":"'${_prefix}'-sec-proxy","format":"","type":"","url":"","online":true,"routingRuleId":"","authEnabled":false,"httpRequestSettings":false,"recipe":"apt-proxy"}],"type":"rpc"}' || return $?
+    fi
     # add some data for xxxx-proxy
     _ASYNC_CURL="Y" f_get_asset "apt-proxy" "pool/main/a/appstream/appstream_0.9.4-1_amd64.deb"
 
@@ -1074,6 +1077,34 @@ function f_setup_apt() {
     if [ -s "${_TMP%/}/hello-world_1.0.0.deb" ] || curl -sf -o ${_TMP%/}/hello-world_1.0.0.deb -L "https://github.com/hajimeo/samples/raw/master/misc/hello-world_1.0.0_unsigned.deb"; then
         _ASYNC_CURL="Y" f_upload_asset "${_prefix}-hosted" -F apt.asset=@${_TMP%/}/hello-world_1.0.0.deb
     fi
+}
+function f_start_ubuntu_for_apt_test() {
+    local __doc__="Start Ubuntu container"
+    local _img_tag="${1:-"ubuntu:latest"}"  # ubuntu:16.04 nxrm3helmha-docker-k8s.standalone.localdomain/debian:12
+    local _repo_url="${2-"${_NEXUS_URL%/}/repository/apt-proxy/"}"
+    local _name="${3:-"apt-test-$$"}"
+    local _ca_pem="${4:-"${_CA_PEM}"}"
+    docker run --rm -t -d --name ${_name} ${_img_tag}
+    if [ -n "${_repo_url}" ]; then
+        sleep 1
+        if [[ "${_repo_url}" =~ ^https: ]]; then
+            docker exec -it ${_name} bash -c "apt update;apt install -y apt-transport-https ca-certificates" || return $?
+            # TODO: this seems not working and [trusted=yes] is not working
+            if [ -n "${_ca_pem}" ]; then
+                docker cp ${_ca_pem} ${_name}:/usr/local/share/ca-certificates/ && \
+                docker exec -it ${_name} /usr/sbin/update-ca-certificates || return $?
+            fi
+        fi
+        docker exec -it ${_name} bash -c "sed -i.bak -E \"s@http://(archive|ports).ubuntu.com/(ubuntu|ubuntu-ports)/@[trusted=yes] ${_repo_url%/}/@g\" /etc/apt/sources.list" || return $?
+        if ! _is_repo_available "apt-sec-proxy"; then
+            docker exec -it ${_name} bash -c "sed -i.bak2 -E \"s@http://security.ubuntu.com/ubuntu@[trusted=yes] ${_repo_url%/}@g\" /etc/apt/sources.list" || return $?
+        fi
+    fi
+    echo "Command examples (Verify-Peer=false is for https):
+    apt -o Acquire::https::Verify-Peer=false -o Debug::pkgProblemResolver=true -o Debug::pkgAcquire::Worker=true update
+    apt -o Acquire::https::Verify-Peer=false -o Debug::pkgProblemResolver=true -o Debug::pkgAcquire::Worker=true install strace
+    "
+    docker exec -it ${_name} bash
 }
 
 function f_setup_r() {
@@ -1332,6 +1363,30 @@ function f_create_azure_blobstore() {
         _log "INFO" "Created raw-az-hosted"
     fi
     _log "TODO" "Azure CLI command examples"
+}
+
+function f_create_google_blobstore() {
+    local __doc__="Create an Google blobstore. AZURE_ACCOUNT_NAME and AZURE_ACCOUNT_KEY are required"
+    #https://learn.microsoft.com/en-us/azure/active-directory/develop/howto-create-service-principal-portal#get-tenant-and-app-id-values-for-signing-in
+    local _bs_name="${1:-"ggl-test"}"
+    local _accountKeyFle="${2:-"${GOOGLE_ACCOUNT_KEY_FILE}"}"
+    local _bucket="${3-"${GOOGLE_BUCKET}"}"
+    local _prefix="${4:-"$(hostname -s)_${_bs_name}"}"
+    local _region="${5:-"${GOOGLE_REGION:-"australia-southeast1"}"}"
+    local _accountKeyFle_content="$(cat "${_accountKeyFle}" | JSON_ESCAPE=Y _sortjson)"
+    local _project_id="$(cat "${_accountKeyFle}" | JSON_SEARCH_KEY="project_id" _sortjson)"
+    echo '{"name":"'${_bs_name}'","bucketConfiguration":{"bucketSecurity":{"authenticationMethod":"accountKey","file":{"0":{}},"accountKey":"'${_accountKeyFle_content}'"},"bucket":{"projectId":"'${_project_id}'","name":"'${_bucket}'","prefix":"'${_prefix}'","region":"'${_region}'"}}}' > ${_TMP%/}/${FUNCNAME[0]}_$$.json
+    if ! f_api "/service/rest/v1/blobstores/google" "@${_TMP%/}/${FUNCNAME[0]}_$$.json" > ${_TMP%/}/f_api_last.out; then
+        _log "ERROR" "Failed to create blobstore: ${_bs_name} ."
+        _log "ERROR" "$(cat ${_TMP%/}/f_api_last.out)"
+        return 1
+    fi
+    _log "DEBUG" "$(cat ${_TMP%/}/f_api_last.out)"
+    if [[ ! "${_NO_REPO_CREATE}" =~ [yY] ]] && ! _is_repo_available "raw-ggl-hosted"; then
+        _apiS '{"action":"coreui_Repository","method":"create","data":[{"attributes":{"storage":{"blobStoreName":"'${_bs_name}'","writePolicy":"ALLOW","strictContentTypeValidation":false'$(_get_extra_sto_opt)'},"cleanup":{"policyName":[]}},"name":"raw-ggl-hosted","format":"","type":"","url":"","online":true,"recipe":"raw-hosted"}],"type":"rpc"}' || return $?
+        _log "INFO" "Created raw-ggl-hosted"
+    fi
+    _log "TODO" "Google CLI command examples"
 }
 
 function f_create_group_blobstore() {
@@ -1596,7 +1651,7 @@ function f_api() {
     [ -z "${_method}" ] && _method="GET"
     # TODO: check if GET and DELETE *can not* use Content-Type json?
     local _content_type="Content-Type: application/json"
-    [ "${_data:0:1}" != "{" ] && [ "${_data:0:1}" != "[" ] && _content_type="Content-Type: text/plain"
+    [ "${_data:0:1}" != "{" ] && [ "${_data:0:1}" != "[" ] && [[ ! "${_data}" =~ json ]] && _content_type="Content-Type: text/plain"
 
     local _curl="curl -sSf"
     ${_DEBUG} && _curl="curl -vf"
@@ -2266,6 +2321,7 @@ function f_setup_ldap_glauth() {
     _apiS '{"action":"ldap_LdapServer","method":"create","data":[{"id":"","name":"'${_name}'","protocol":"ldap","host":"'${_host}'","port":"'${_port}'","searchBase":"dc=standalone,dc=localdomain","authScheme":"simple","authUsername":"admin@standalone.localdomain","authPassword":"'${_LDAP_PWD:-"secret12"}'","connectionTimeout":"30","connectionRetryDelay":"300","maxIncidentsCount":"3","template":"Posix%20with%20Dynamic%20Groups","userBaseDn":"ou=users","userSubtree":true,"userObjectClass":"posixAccount","userLdapFilter":"","userIdAttribute":"uid","userRealNameAttribute":"cn","userEmailAddressAttribute":"mail","userPasswordAttribute":"","ldapGroupsAsRoles":true,"groupType":"dynamic","userMemberOfAttribute":"memberOf"}],"type":"rpc"}' #|| return $?
     # RM3 doesn't have groupSubtree?
     _apiS '{"action":"coreui_Role","method":"create","data":[{"version":"","source":"LDAP","id":"ipausers","name":"ipausers-role","description":"ipausers-role-desc","privileges":["nx-repository-view-*-*-*","nx-search-read","nx-component-upload"],"roles":[]}],"type":"rpc"}'
+    echo "To test: curl -v -u \"admin@standalone.localdomain\" -k \"ldap://${_host}:${_port}/ou=users,dc=standalone,dc=localdomain?uid,cn,mail,memberof?sub?(&(objectClass=posixAccount)(uid=*))\""   # + userFilter
 }
 
 function f_setup_ldap_freeipa() {
@@ -2337,8 +2393,9 @@ function f_register_script() {
     local _script_name="$2"
     [ -s "${_script_file%/}" ] || return 1
     [ -z "${_script_name}" ] && _script_name="$(basename ${_script_file} .groovy)"
-    python -c "import sys,json;print(json.dumps(open('${_script_file}').read()))" > ${_TMP%/}/${_script_name}_$$.out || return $?
-    echo "{\"name\":\"${_script_name}\",\"content\":$(cat ${_TMP%/}/${_script_name}_$$.out),\"type\":\"groovy\"}" > ${_TMP%/}/${_script_name}_$$.json
+    local _script_text="$(cat ${_script_file} | JSON_ESCAPE=Y _sortjson)"
+    #python -c "import sys,json;print(json.dumps(open('${_script_file}').read()))" > ${_TMP%/}/${_script_name}_$$.out || return $?
+    echo "{\"name\":\"${_script_name}\",\"content\":${_script_text},\"type\":\"groovy\"}" > ${_TMP%/}/${_script_name}_$$.json
     _log "INFO" "Delete ${_script_name} if exists (may return error if not exist)"
     f_api "/service/rest/v1/script/${_script_name}" "" "DELETE"
     f_api "/service/rest/v1/script" "$(cat ${_TMP%/}/${_script_name}_$$.json)" || return $?
