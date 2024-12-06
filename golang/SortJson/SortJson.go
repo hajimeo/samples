@@ -13,6 +13,7 @@ Used Environment variables:
 - JSON_NO_SORT: If set to "Y" or "y", it will not sort the keys.
 - OUTPUT_DELIMITER: Default is ","
 - IS_NDJSON: Default is false. Set to "Y" or "y" if the input is NDJSON.
+- JSON_ESCAPE: Convert JSON string to escaped string (e.g. " -> \")
 
 Advanced example:
 
@@ -42,6 +43,7 @@ var NULL_VALUE = "<null>"
 var LINE_BREAK = "\n"
 var STRING_QUOTE = ""
 var IS_NDJSON = false
+var JSON_ESCAPE = false
 var JSON_NO_SORT = ""
 var SaveToPointer *os.File
 var BracesRg = regexp.MustCompile(`[\[\](){}]`)
@@ -193,6 +195,7 @@ func readWithTimeout(r io.Reader, timeout time.Duration) ([]byte, error) {
 func setGlobals() {
 	JSON_SEARCH_KEY = helpers.GetEnv("JSON_SEARCH_KEY", JSON_SEARCH_KEY)
 	IS_NDJSON = helpers.GetEnvBool("IS_NDJSON", false)
+	JSON_ESCAPE = helpers.GetEnvBool("JSON_ESCAPE", false)
 	JSON_NO_SORT = helpers.GetEnv("JSON_NO_SORT", JSON_NO_SORT)
 	OUTPUT_DELIMITER = helpers.GetEnv("OUTPUT_DELIMITER", OUTPUT_DELIMITER)
 	NULL_VALUE = helpers.GetEnv("NULL_VALUE", NULL_VALUE)
@@ -210,10 +213,22 @@ func processOneJson(jsonBytes []byte, outFile string) {
 		jsonBytes = jsonSorted
 	}
 
-	jsonSortedPP, err := prettyBytes(jsonBytes)
-	if err != nil {
-		fmt.Println(err)
-		return
+	var jsonSortedPP string
+	var err error
+	if JSON_ESCAPE {
+		jsonSortedPP = string(jsonBytes)
+		// Somehow jsonEscape is not available, so manually escaping
+		jsonSortedPP = strings.ReplaceAll(jsonSortedPP, `"`, `\"`)
+		jsonSortedPP = strings.ReplaceAll(jsonSortedPP, "\t", `\\t"`)
+		jsonSortedPP = strings.ReplaceAll(jsonSortedPP, "\n", `\\n`)
+		// TODO: add more as per https://www.freeformatter.com/json-escape.html
+		//       Implement same as 'import sys,json;print(json.dumps(open('${_script_file}').read()))'
+	} else {
+		jsonSortedPP, err = prettyBytes(jsonBytes)
+		if err != nil {
+			fmt.Println(err)
+			return
+		}
 	}
 
 	if len(outFile) > 0 && len(jsonSortedPP) > 0 {

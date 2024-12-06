@@ -1,10 +1,10 @@
 module SortJson
 
-go 1.19
+go 1.23
 
 require (
-	github.com/hajimeo/samples/golang/helpers v0.0.0-20240816061319-1e4d5d5202fb
-	github.com/stretchr/testify v1.9.0
+	github.com/hajimeo/samples/golang/helpers v0.0.0-20241202031927-bd9957d72b04
+	github.com/stretchr/testify v1.10.0
 )
 
 require (
