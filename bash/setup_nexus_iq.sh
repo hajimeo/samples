@@ -404,7 +404,8 @@ function f_setup_ldap_glauth() {
     _apiS "/rest/config/ldap/${_id}/connection" '{"id":null,"serverId":"'${_id}'","protocol":"LDAP","hostname":"'${_host}'","port":'${_port}',"searchBase":"dc=standalone,dc=localdomain","authenticationMethod":"SIMPLE","saslRealm":null,"systemUsername":"admin@standalone.localdomain","systemPassword":"'${_LDAP_PWD:-"secret12"}'","connectionTimeout":30,"retryDelay":30}' "PUT" | python -m json.tool || return $?
     _apiS "/rest/config/ldap/${_id}/userMapping" '{"id":null,"serverId":"'${_id}'","userBaseDN":"ou=users","userSubtree":true,"userObjectClass":"posixAccount","userFilter":"","userIDAttribute":"uid","userRealNameAttribute":"cn","userEmailAttribute":"mail","userPasswordAttribute":"","groupMappingType":"DYNAMIC","groupBaseDN":"","groupSubtree":true,"groupObjectClass":null,"groupIDAttribute":null,"groupMemberAttribute":null,"groupMemberFormat":null,"userMemberOfGroupAttribute":"memberOf","dynamicGroupSearchEnabled":true}' "PUT" | python -m json.tool || return $?
     echo "To start glauth, execute f_start_ldap_server from setup_nexus3_repo.sh"
-    echo "To test: LDAPTLS_REQCERT=never ldapsearch -H ldap://${_host}:${_port} -b 'dc=standalone,dc=localdomain' -D 'admin@standalone.localdomain' -w '${_LDAP_PWD:-"secret12"}' -s sub"
+    echo "To test: curl -v -u \"admin@standalone.localdomain\" -k \"ldap://${_host}:${_port}/ou=users,dc=standalone,dc=localdomain?uid,cn,mail,memberof?sub?(&(objectClass=posixAccount)(uid=*))\""   # + userFilter
+   # echo "To test: LDAPTLS_REQCERT=never ldapsearch -H ldap://${_host}:${_port} -b 'dc=standalone,dc=localdomain' -D 'admin@standalone.localdomain' -w '${_LDAP_PWD:-"secret12"}' -s sub '(&(objectClass=posixAccount)(uid=*))'"
 }
 
 function f_setup_ldap_freeipa() {
@@ -614,6 +615,14 @@ EOF
 
 EOF
     jobs -l
+}
+
+function f_setup_gitlab() {
+    # TODO: @see: https://docs.gitlab.com/ee/install/docker/installation.html
+    docker pull gitlab/gitlab-ee:latest || return $?
+    GITLAB_HOME="${HOME%/}/share/gitlab"
+    mkdir -v -p ${GITLAB_HOME}/{config,logs,data} || return $?
+    # TODO: not completed
 }
 
 function f_setup_bitbucket() {
