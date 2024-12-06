@@ -863,6 +863,67 @@ function listLargeDirs() {
     done
 }
 
+#_RSYNC_DRY_RUN=Y syncGitReposWithRemotePC
+function syncGitReposWithRemotePC() {
+    local _remote_host="${1:-"oldmac"}"
+    local _remote_user="${2:-"${USER}"}"
+    local _repo_rel_path="${3:-"IdeaProjects/samples"}"
+    local _local_base_dir="${4:-"$HOME"}"
+    local _dry_run="${4:-"${_RSYNC_DRY_RUN}"}"
+
+    local _remote_user_host="${_remote_user}@${_remote_host}"
+    local _remote_home="$(ssh ${_remote_user_host} 'echo $HOME')"
+    if [ -z "${_remote_home%/}" ]; then
+        echo "# '${_remote_host}' is not reachable. Skipping rsync." >&2
+        return 1
+    fi
+    local _local_repo_path="${_local_base_dir%/}/${_repo_rel_path%/}"
+    local _remote_repo_path="${_remote_home%/}/${_repo_rel_path%/}"
+
+    if [ -n "${_dry_run}" ]; then
+        echo "# *** Dry run mode ***" >&2
+        _dry_run="-n"
+    fi
+
+    local _check_file="$HOME/.${_remote_host}_${_remote_user}_lastlist${_dry_run}.out"
+    local _diff_mins="1440" # default 24 hours
+    if [ -f "${_check_file}" ]; then
+        local _current_ts="$(date +%s)"
+        local _last_mod_ts="$(date -r "${_check_file}" +%s 2>/dev/null)"
+        _diff_mins="$(((_current_ts - _last_mod_ts) / 60))"
+    fi
+    echo "" >&2
+    echo "# Finding any '-mmin -${_diff_mins}' files in the remote and copy (just in case, excluding large files)" >&2
+    # Need relative path, so using cd. If dry run, shouldn't touch the previous list file.
+    ssh ${_remote_user_host} "cd ${_remote_repo_path} && find . -type f -mmin -${_diff_mins} -size -10M -not -path '*/.idea/*' -not -path '*/.git/*' -print" > "${_check_file}${_dry_run}" || return $?
+    if [ -s "${_check_file}${_dry_run}" ]; then
+        for _f in $(cat "${_check_file}${_dry_run}"); do
+            if [ ! -s "${_local_repo_path%/}/${_f}" ]; then
+                if [ -n "${_dry_run}" ]; then
+                    echo "# Found new file: ${_remote_user_host}:${_remote_repo_path%/}/${_f}"
+                else
+                    # Currently exiting if one file failed to copy
+                    scp -C ${_remote_user_host}:${_remote_repo_path%/}/${_f} ${_local_repo_path%/}/${_f} || return $?
+                fi
+            fi
+        done
+        if [ -n "${_dry_run}" ]; then
+            rm -f "${_check_file}${_dry_run}"
+        fi
+    fi
+
+    # may need to add more --exclude
+    echo "" >&2
+    echo "# Rsync ${_local_repo_path%/}/ ${_remote_user_host}:${_remote_repo_path%/}/ ${_dry_run}" >&2
+    rsync -Pzau --delete --modify-window=1 ${_local_repo_path%/}/ ${_remote_user_host}:${_remote_repo_path%/}/ ${_dry_run}
+    echo "" >&2
+    if [ -z "${_dry_run}" ]; then
+        # As the below may output misleading information, not running if dry run
+        echo "# Rsync ${_remote_user_host}:${_remote_repo_path%/}/ ${_local_repo_path%/}/ ${_dry_run}" >&2
+        rsync -Pzau --delete --modify-window=1 --exclude '.idea' --exclude '.git' ${_remote_user_host}:${_remote_repo_path%/}/ ${_local_repo_path%/}/ ${_dry_run}
+    fi
+}
+
 # backup & cleanup Cases (backing up files smaller than 10MB only)
 function backupC() {
     local _src="${1:-"/Volumes/Samsung_T5/hajime/cases"}"
@@ -900,15 +961,8 @@ function backupC() {
     echo ""
     echo "#### Synchronising a few Github repositories into 'oldmac' ####" >&2
     echo ""
-    if ! ping -c1 -t1 oldmac >/dev/null; then
-        echo "# Old Mac is not reachable. Skipping rsync." >&2
-    else
-        # may need to add more --exclude
-        rsync -Pzau --delete --modify-window=1 $HOME/IdeaProjects/samples/ hosako@oldmac:/Users/hosako/IdeaProjects/samples/ #-n
-        rsync -Pzau --delete --modify-window=1 --exclude '.idea' hosako@oldmac:/Users/hosako/IdeaProjects/samples/ $HOME/IdeaProjects/samples/ -n
-        rsync -Pzau --delete --modify-window=1 $HOME/IdeaProjects/work/ hosako@oldmac:/Users/hosako/IdeaProjects/work/ #-n
-        rsync -Pzau --delete --modify-window=1 --exclude '.idea' hosako@oldmac:/Users/hosako/IdeaProjects/work/ $HOME/IdeaProjects/work/ -n
-    fi
+    syncGitReposWithRemotePC "oldmac" "$USER" "IdeaProjects/samples" "$HOME" || return $?
+    syncGitReposWithRemotePC "oldmac" "$USER" "IdeaProjects/work" "$HOME" || return $?
 
     echo ""
     echo "#### Cleaning up old temp/test data (120 days) ####" >&2
