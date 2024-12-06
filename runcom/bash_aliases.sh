@@ -920,7 +920,7 @@ function syncGitReposWithRemotePC() {
     if [ -z "${_dry_run}" ]; then
         # As the below may output misleading information, not running if dry run
         local _backup_dir="/tmp/$(basename ${_local_repo_path%/})_$(date +%Y%m%d%H%M%S)"
-        echo "# Rsync ${_remote_user_host}:${_remote_repo_path%/}/ ${_local_repo_path%/}/ --backup-dir=${_backup_dir} ${_dry_run}" >&2
+        echo "# Rsync ${_remote_user_host}:${_remote_repo_path%/}/ ${_local_repo_path%/}/ --exclude '.idea' --exclude '.git' --backup-dir=${_backup_dir} ${_dry_run}" >&2
         rsync -Pzau --delete --backup --backup-dir=${_backup_dir} --modify-window=1 --exclude '.idea' --exclude '.git' ${_remote_user_host}:${_remote_repo_path%/}/ ${_local_repo_path%/}/ ${_dry_run}
     fi
 }
