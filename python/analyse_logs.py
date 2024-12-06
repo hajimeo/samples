@@ -24,38 +24,52 @@ def _gen_regex_for_request_logs(filepath="request.log"):
     partern_str = '^([^ ]+) ([^ ]+) ([^ ]+) \[([^\]]+)\] "([^"]+)" ([^ ]+) ([^ ]+) ([^ ]+) ([^ ]+) "([^"]+)" \[([^\]]+)\]'
     if re.search(partern_str, checking_line):
         return (columns, partern_str)
+
     columns = ["clientHost", "l", "user", "date", "requestURL", "statusCode", "headerContentLength", "bytesSent",
                "elapsedTime", "headerUserAgent", "thread", "misc"]
     partern_str = '^([^ ]+) ([^ ]+) ([^ ]+) \[([^\]]+)\] "([^"]+)" ([^ ]+) ([^ ]+) ([^ ]+) ([^ ]+) "([^"]+)" \[([^\]]+)\] (.+)'
     if re.search(partern_str, checking_line):
         return (columns, partern_str)
+
     columns = ["clientHost", "l", "user", "date", "requestURL", "statusCode", "bytesSent", "elapsedTime",
                "headerUserAgent", "thread"]
     partern_str = '^([^ ]+) ([^ ]+) ([^ ]+) \[([^\]]+)\] "([^"]+)" ([^ ]+) ([^ ]+) ([^ ]+) "([^"]+)" \[([^\]]+)\]'
     if re.search(partern_str, checking_line):
         return (columns, partern_str)
+
     columns = ["clientHost", "l", "user", "date", "requestURL", "statusCode", "headerContentLength", "bytesSent",
                "elapsedTime", "headerUserAgent"]
     partern_str = '^([^ ]+) ([^ ]+) ([^ ]+) \[([^\]]+)\] "([^"]+)" ([^ ]+) ([^ ]+) ([^ ]+) ([^ ]+) "([^"]+)"'
     if re.search(partern_str, checking_line):
         return (columns, partern_str)
+
     columns = ["clientHost", "l", "user", "date", "requestURL", "statusCode", "bytesSent", "elapsedTime",
                "headerUserAgent"]
     partern_str = '^([^ ]+) ([^ ]+) ([^ ]+) \[([^\]]+)\] "([^"]+)" ([^ ]+) ([^ ]+) ([^ ]+) "([^"]+)'
     if re.search(partern_str, checking_line):
         return (columns, partern_str)
+
     columns = ["clientHost", "l", "user", "date", "requestURL", "statusCode", "bytesSent", "elapsedTime"]
     partern_str = '^([^ ]+) ([^ ]+) ([^ ]+) \[([^\]]+)\] "([^"]+)" ([^ ]+) ([^ ]+) ([0-9]+)'
     if re.search(partern_str, checking_line):
         return (columns, partern_str)
+
     columns = ["clientHost", "l", "user", "date", "requestURL", "statusCode", "bytesSent", "elapsedTime", "misc"]
     partern_str = '^([^ ]+) ([^ ]+) ([^ ]+) \[([^\]]+)\] "([^"]+)" ([^ ]+) ([^ ]+) ([^ ]+) ([^ ]+)'
     if re.search(partern_str, checking_line):
         return (columns, partern_str)
+
     columns = ["clientHost", "l", "date", "requestURL", "statusCode", "bytesSent", "elapsedTime", "user", "misc"]
     partern_str = '^([^ ]+) ([^ ]+) \[([^\]]+)\] "([^"]+)" http_status=([^ ]+) http_content_length=([^ ]+) latency=([^ ]+) user=([^ ]+) (.+)'
     if re.search(partern_str, checking_line):
         return (columns, partern_str)
+
+    # Nexus outbound-request.log
+    columns = ["date", "user", "requestURL", "statusCode", "bytesSent", "elapsedTime", "misc"]
+    partern_str = '^\[([^\]]+)\] [^ ]+) "([^"]+)" ([^ ]+) ([^ ]+) ([^ ]+) ([^ ]+)'
+    if re.search(partern_str, checking_line):
+        return (columns, partern_str)
+
     ju._info("Can not determine the log format for %s . Using default one." % (str(filepath)))
     return (columns, partern_str)
 
