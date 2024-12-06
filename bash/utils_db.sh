@@ -113,6 +113,11 @@ function _postgresql_configure() {
     _psql_adm "ALTER SYSTEM SET log_lock_waits TO 'on'"
     _psql_adm "ALTER SYSTEM SET log_temp_files TO '1kB'"    # -1
 
+    # To improve "Parallel Seq Scan" (but probably better increasing shared_buffers and work_mem)
+    #_psql_adm "ALTER SYSTEM SET max_worker_processes TO 8"
+    #_psql_adm "ALTER SYSTEM SET max_parallel_workers TO 8"
+    #_psql_adm "ALTER SYSTEM SET max_parallel_workers_per_gather TO 2"
+
     # @see: https://github.com/darold/pgbadger#POSTGRESQL-CONFIGURATION (brew install pgbadger)
     if [[ "${_verbose_logging}" =~ (y|Y) ]]; then
         # @see: https://www.eversql.com/enable-slow-query-log-postgresql/ for AWS RDS to log SQL
