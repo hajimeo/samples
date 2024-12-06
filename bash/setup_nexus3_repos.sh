@@ -162,8 +162,11 @@ function f_install_nexus3() {
         fi
         _RECREATE_DB="Y"
     fi
-    local _tgz_name="nexus-${_ver}-unix.tar.gz"
-    [ "`uname`" = "Darwin" ] && _tgz_name="nexus-${_ver}-mac.tgz"
+    # If no `-\d\d`, appending the wildcard
+    local _tgz_ver="${_ver}"
+    [[ "${_ver}" =~ ^3\.[0-9]+\.[0-9]+$ ]] && _tgz_ver="${_ver}-*"
+    local _tgz_name="nexus-${_tgz_ver}-unix.tar.gz"
+    [ "`uname`" = "Darwin" ] && _tgz_name="nexus-${_tgz_ver}-mac.tgz"
     # download-staging.sonatype.com
     _prepare_install "${_dirpath}" "https://download.sonatype.com/nexus/${_ver%%.*}/${_tgz_name}" "${r_NEXUS_LICENSE_FILE}" || return $?
     local _license_path="${_LICENSE_PATH}"
