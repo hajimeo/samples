@@ -853,6 +853,16 @@ function cleanOldDBs() {
     psql -d template1 -tAc "SELECT 'DROP DATABASE '||datname||';    -- '||pg_database_size(datname)||' bytes' FROM pg_stat_database WHERE datname ilike 'to_be_deleted_%' ORDER BY datname"
 }
 
+function listLargeDirs() {
+    local _src="${1:-"/Volumes/Samsung_T5/hajime/cases"}"
+    local _n="${2:-"20"}"
+    gdu -ahx -d1 ${_src} | sort -hr | head -n "${_n}" | while read -r _size_dir; do
+        if [[ "${_size_dir}" =~ ^[[:space:]]*([0-9\.]+G)[[:space:]]+(.+) ]]; then
+            echo "${BASH_REMATCH[1]} $(ls -dl "${BASH_REMATCH[2]}" | cut -d' ' -f9-)"
+        fi
+    done
+}
+
 # backup & cleanup Cases (backing up files smaller than 10MB only)
 function backupC() {
     local _src="${1:-"/Volumes/Samsung_T5/hajime/cases"}"
@@ -954,7 +964,8 @@ function backupC() {
     echo ""
     if [ "Darwin" = "$(uname)" ]; then
         if type gdu &>/dev/null; then
-            gdu -Shx ${_src} | sort -h | tail -n40
+            #gdu -Shx ${_src} | sort -h | tail -n40
+            listLargeDirs "${_src}" 20
         else
             echo "# mdfind 'kMDItemFSSize > 209715200 && kMDItemContentModificationDate < \$time.now(-2419200)' | LC_ALL=C sort" >&2   # -onlyin "${_src}"
             mdfind 'kMDItemFSSize > 209715200 && kMDItemContentModificationDate < $time.now(-2419200)' | LC_ALL=C sort | rg -v -w 'cases_local' | while read -r _l;do ls -lh "${_l}"; done | sort -k5 -h | tail -n40
