@@ -388,7 +388,9 @@ function get_cert_from_https() {
             fi
         else
             # NOTE: very old openssl version may fail with -proxy (Mac and modern Linux works), so workaround:
-            # curl -sfv -p -x dh1.standalone.localdomain:28080 --proxy-basic -U proxyuser:proxypwd -k -L https://${_host}:${_port}/ 2>&1 | grep 'Server certificate:' -A10"
+            # This may not work: -p -x dh1.standalone.localdomain:28080 --proxy-basic -U proxyuser:proxypwd
+            # export HTTPS_PROXY="http://proxyuser:proxypwd@192.168.4.31:28080/"
+            # curl -sfv -k -L https://${_host}:${_port}/ 2>&1 | grep 'Server certificate:' -A10"
             _proxy_opt="-proxy ${_PROXY_HOST_PORT}"
             if [ -n "${_PROXY_USER_PWD}" ]; then
                 # TODO: Not sure if below works, and not sure '-proxy_user proxyuser -proxy_pass proxypwd'
