@@ -31,7 +31,7 @@
 #: ${_TOKEN_SERVER_URL:="${_DOCKER_REGISTRY_URL%/}/v2/token"}
 : ${_DOCKER_REGISTRY_URL:="https://registry-1.docker.io"}                           # Basically 'remoteUrl'
 : ${_TOKEN_SERVER_URL:="https://auth.docker.io/token?service=registry.docker.io"}   #www-authenticate: Bearer realm="https://auth.docker.io/token",service="registry.docker.io"
-: ${_CURL_OPTS:="-D /dev/stderr"}   # or -v -p -x http://proxyhost:port --proxy-basic -U proxyuser:proxypwd
+: ${_CURL_OPTS:="-D /dev/stderr"}   # if proxy is required, use export HTTPS_PROXY
 
 _CURL="curl -sfLk --compressed ${_CURL_OPTS}"
 _TMP="/tmp"
