@@ -342,6 +342,9 @@ function _split() {
     local _delimiter="${2:-","}"
     echo "${_string}" | sed "s/${_delimiter}/ /g"
 }
+# Another way with 'for'
+#IFS="," read -ra repos <<< "$_string"
+#for repo in "${repos[@]}"; do echo "Processing repository: $repo"; done
 
 function _escape() {
     local _string="$1"
@@ -838,11 +841,17 @@ function _prepare_install() {
         echo "WARN ${_extract_path} exists, so not extracting ${_tgz}"
         return
     fi
-    if [ ! -s "${_tgz}" ]; then
+    # In case the path contains wildcards
+    local _local_tgz="$(ls -1 ${_tgz} | tail -n1)"
+    if [ -z "${_local_tgz}" ]; then
+        # This will fail if it contains wildcards but it's ok
         echo "no ${_tgz}. Downloading from ${_url} ..."
         curl -sf -o "/tmp/${_tgz_name}" -L "${_url}" || return $?
         [ -s "/tmp/${_tgz_name}" ] || return 101
         mv -v -f /tmp/${_tgz_name} ${_tgz} || return $?
+    elif [ "${_local_tgz}" != "${_tgz}" ]; then
+        echo "Extracting ${_local_tgz} ..."
+        _tgz="${_local_tgz}"
     fi
     mkdir -v -p "${_extract_path}" || return $?
     tar -C ${_extract_path%/} -xf ${_tgz} || return $?
