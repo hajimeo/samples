@@ -35,10 +35,12 @@ echo "<*SIMPLE* SELECT statement which returns so many rows>" | java -Dpaging=10
 export yum_asset to .;
 export public.* to ./export_dir;
 ```
+NOTE: To compare with the PostgreSQL table dump, use `--column-inserts` in pg_dump, then `rg 'VALUES\s*\((.+)\);' -o -r '$1'`
 ```shell
 echo -e "export *.yum_* to .;\nexport *.repository to .;\nexport *.tag to ." | java -jar ./h2-console_v200.jar ./nexus.mv.db
 tar -czvf ./component_db_yum_$(date +"%Y%m%d%H%M%S").tgz ./tbl_public_*
 ```
+
 ```
 echo "TRUNCATE TABLE REPOSITORY" | java -jar ./h2-console_v200.jar ./nexus.mv.db
 rg '^INSERT ' tbl_public_repository.sql | java -jar ./h2-console_v200.jar ./nexus.mv.db
