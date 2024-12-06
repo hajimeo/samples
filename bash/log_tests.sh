@@ -600,12 +600,12 @@ function t_errors() {
         local _num="$(ls -1 ${_dir%/}/ | _line_num)"
         if [ 2 -lt "${_num}" ]; then
             # TODO: some important issue uses WARN.
-            _test_template "$(_rg -m1 "^${_DATE_FORMAT}.+ (ERROR |WARN .+DataStoreManagerImpl)" ${_dir%/}/)" "WARN" "First ERRORs after multiple restart (${_dir%/} | ${_num})"
+            _test_template "$(_rg -m2 "^${_DATE_FORMAT}.+ (ERROR |WARN .+DataStoreManagerImpl)" ${_dir%/}/)" "WARN" "First two ERRORs after multiple restart (${_dir%/} | ${_num})"
         fi
     fi
 }
 function t_threads() {
-    _test_template "$(rg -g threads.txt -i -w "deadlock")" "ERROR" "deadlock found in threads.txt"
+    _test_template "$(rg -g threads.txt -i -w "deadlock" | rg -v 'New Relic Deadlock Detector')" "ERROR" "deadlock found in threads.txt"
     local _dir="$(find . -maxdepth 3 -type d -name "_threads" -print -quit)"
     if [ -z "${_dir}" ]; then
         _head "INFO" "Can not run ${FUNCNAME[0]} as no _threads directory."
