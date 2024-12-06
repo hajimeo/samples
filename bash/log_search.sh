@@ -1552,9 +1552,13 @@ function f_request2csv() {
                 _pattern_str='%clientHost %l %user [%date] "%requestURL" %statusCode %bytesSent %elapsedTime "%header{User-Agent}" "%misc"'
             elif echo "${_tmp_first_line}" | rg -q '^([^ ]+) ([^ ]+) ([^ ]+) \[([^\]]+)\] "([^"]+)" ([^ ]+) ([^ ]+) ([^ ]+) "([^"]*)"'; then
                 _pattern_str='%clientHost %l %user [%date] "%requestURL" %statusCode %bytesSent %elapsedTime "%header{User-Agent}"'
+            elif echo "${_tmp_first_line}" | rg -q '^\[([^\]]+)\] ([^ ]+) "([^"]+)" ([^ ]+) ([^ ]+) ([^ ]+) "([^"]*)"'; then
+                # Nexus outbound-request.log
+                _pattern_str='[%date] %user "%requestURL" %statusCode %bytesSent %elapsedTime "%header{User-Agent}"'
             else
                 _pattern_str="%clientHost %l %user [%date] \"%requestURL\" %statusCode %bytesSent %elapsedTime"
             fi
+            # NOTE: if the above is updated, also update analyse_logs._gen_regex_for_request_logs
         fi
         echo "# pattern_str: ${_pattern_str}" >&2
     fi
