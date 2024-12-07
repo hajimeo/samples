@@ -869,7 +869,8 @@ function syncGitReposWithRemotePC() {
     local _remote_user="${2:-"${USER}"}"
     local _repo_rel_path="${3:-"IdeaProjects/samples"}"
     local _local_base_dir="${4:-"$HOME"}"
-    local _dry_run="${4:-"${_RSYNC_DRY_RUN}"}"
+    local _rsync_exclude="${5:-"--exclude '.idea' --exclude '.git'"}"
+    local _dry_run="${6:-"${_RSYNC_DRY_RUN}"}"
 
     local _remote_user_host="${_remote_user}@${_remote_host}"
     local _remote_home="$(ssh ${_remote_user_host} 'echo $HOME')"
@@ -912,16 +913,16 @@ function syncGitReposWithRemotePC() {
         fi
     fi
 
-    # may need to add more --exclude
     echo "" >&2
-    echo "# Rsync ${_local_repo_path%/}/ ${_remote_user_host}:${_remote_repo_path%/}/ ${_dry_run}" >&2
-    rsync -Pzau --delete --modify-window=1 ${_local_repo_path%/}/ ${_remote_user_host}:${_remote_repo_path%/}/ ${_dry_run}
+    echo "# Rsync ${_local_repo_path%/}/ ${_remote_user_host}:${_remote_repo_path%/}/ ${_rsync_exclude} ${_dry_run}" >&2
+    # may need to add more --exclude
+    rsync -Pzau --delete --modify-window=1 ${_rsync_exclude} ${_local_repo_path%/}/ ${_remote_user_host}:${_remote_repo_path%/}/ ${_dry_run}
     echo "" >&2
     if [ -z "${_dry_run}" ]; then
         # As the below may output misleading information, not running if dry run
         local _backup_dir="/tmp/$(basename ${_local_repo_path%/})_$(date +%Y%m%d%H%M%S)"
-        echo "# Rsync ${_remote_user_host}:${_remote_repo_path%/}/ ${_local_repo_path%/}/ --exclude '.idea' --exclude '.git' --backup-dir=${_backup_dir} ${_dry_run}" >&2
-        rsync -Pzau --delete --backup --backup-dir=${_backup_dir} --modify-window=1 --exclude '.idea' --exclude '.git' ${_remote_user_host}:${_remote_repo_path%/}/ ${_local_repo_path%/}/ ${_dry_run}
+        echo "# Rsync ${_remote_user_host}:${_remote_repo_path%/}/ ${_local_repo_path%/}/ ${_rsync_exclude} --backup-dir=${_backup_dir} ${_dry_run}" >&2
+        rsync -Pzau --delete --backup --backup-dir=${_backup_dir} --modify-window=1 ${_rsync_exclude} ${_remote_user_host}:${_remote_repo_path%/}/ ${_local_repo_path%/}/ ${_dry_run}
     fi
 }
 
