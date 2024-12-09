@@ -124,7 +124,9 @@ function f_install_iq() {
     fi
 
     # This function sets _LICENSE_PATH
-    _prepare_install "${_dirpath}" "https://download.sonatype.com/clm/server/nexus-iq-server-${_ver}-bundle.tar.gz" || return $?
+    local _tgz_ver="${_ver}"
+    [[ "${_ver}" =~ ^1\.[0-9]+\.[0-9]+$ ]] && _tgz_ver="${_ver}-*"
+    _prepare_install "${_dirpath}" "https://download.sonatype.com/clm/server/nexus-iq-server-${_tgz_ver}-bundle.tar.gz" || return $?
     local _license_path="${_LICENSE_PATH}"
 
     local _jar_file="$(find ${_dirpath%/} -maxdepth 2 -type f -name 'nexus-iq-server*.jar' 2>/dev/null | sort | tail -n1)"
