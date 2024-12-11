@@ -254,11 +254,10 @@ func OpenStdInOrFIle(path string) *os.File {
 	return f
 }
 
-func StreamLines(path string, conc int, f func(string) string) []string {
-	Log("DEBUG", "StreamLines: Reading "+path)
+func StreamLines(path string, conc int, f func(string) interface{}) []interface{} {
 	fp := OpenStdInOrFIle(path)
 	defer fp.Close()
-	var returns []string
+	var returns []interface{}
 
 	scanner := bufio.NewScanner(fp)
 	input := make(chan string)
@@ -269,7 +268,6 @@ func StreamLines(path string, conc int, f func(string) string) []string {
 		}
 		close(input)
 	}()
-	Log("DEBUG", "StreamLines: Prepared input")
 
 	var wg sync.WaitGroup
 	for i := 0; i < conc; i++ {
@@ -282,7 +280,5 @@ func StreamLines(path string, conc int, f func(string) string) []string {
 		}()
 	}
 	wg.Wait()
-
-	Log("DEBUG", "StreamLines: Completed")
 	return returns
 }
