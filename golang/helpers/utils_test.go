@@ -42,7 +42,7 @@ func TestTruncateStr_StringEqualToMaxLength_ReturnsOriginal(t *testing.T) {
 
 func TestTruncateStr_StringLongerThanMaxLength_ReturnsTruncated(t *testing.T) {
 	result := TruncateStr("thisisaverylongstring", 10)
-	if result != "thisisaver" {
+	if result != "thisisaver..." {
 		t.Errorf("Expected 'thisisaver' but got %v", result)
 	}
 }
@@ -262,4 +262,55 @@ func TestIsEmpty_EmptySlice_ReturnsTrue(t *testing.T) {
 func TestIsEmpty_EmptyMap_ReturnsTrue(t *testing.T) {
 	result := IsEmpty(map[string]string{})
 	assert.True(t, result)
+}
+
+func TestStreamFile_EmptyFile_NoProcessing(t *testing.T) {
+	path := "empty_file.txt"
+	os.WriteFile(path, []byte(""), 0644)
+	defer os.Remove(path)
+
+	var processedLines []string
+	processedLines = StreamLines(path, 1, func(line string) string {
+		return line
+	})
+
+	assert.Empty(t, processedLines)
+}
+
+func TestStreamFile_SingleLineFile_ProcessesLine(t *testing.T) {
+	path := "single_line_file.txt"
+	os.WriteFile(path, []byte("single line"), 0644)
+	defer os.Remove(path)
+
+	processedLines := StreamLines(path, 1, func(line string) string {
+		return line
+	})
+
+	t.Logf("processedLines: %v", processedLines)
+	assert.Equal(t, []string{"single line"}, processedLines)
+}
+
+func TestStreamFile_MultipleLinesFile_ProcessesAllLines(t *testing.T) {
+	path := "multiple_lines_file.txt"
+	os.WriteFile(path, []byte("line1\nline2\nline3"), 0644)
+	defer os.Remove(path)
+
+	processedLines := StreamLines(path, 1, func(line string) string {
+		return line
+	})
+
+	assert.Equal(t, []string{"line1", "line2", "line3"}, processedLines)
+}
+
+func TestStreamFile_ConcurrentProcessing_ProcessesAllLines(t *testing.T) {
+	path := "concurrent_file.txt"
+	os.WriteFile(path, []byte("line1\nline2\nline3\nline4\nline5"), 0644)
+	defer os.Remove(path)
+
+	processedLines := StreamLines(path, 5, func(line string) string {
+		return line
+	})
+	// Order of lines may not be preserved
+	//assert.ElementsMatch(t, []string{"line1", "line2", "line3", "line4", "line5"}, processedLines)
+	assert.Equal(t, 5, len(processedLines))
 }

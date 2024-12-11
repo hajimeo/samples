@@ -10,6 +10,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 )
 
@@ -238,4 +239,50 @@ func ReadPropertiesFile(path string) (StoreProps, error) {
 		return nil, err
 	}
 	return props, nil
+}
+
+func OpenStdInOrFIle(path string) *os.File {
+	f := os.Stdin
+	if path != "-" {
+		var err error
+		f, err = os.Open(path)
+		if err != nil {
+			Log("ERROR", "path:"+path+" cannot be opened. "+err.Error())
+			return nil
+		}
+	}
+	return f
+}
+
+func StreamLines(path string, conc int, f func(string) string) []string {
+	Log("DEBUG", "StreamLines: Reading "+path)
+	fp := OpenStdInOrFIle(path)
+	defer fp.Close()
+	var returns []string
+
+	scanner := bufio.NewScanner(fp)
+	input := make(chan string)
+
+	go func() {
+		for scanner.Scan() {
+			input <- scanner.Text()
+		}
+		close(input)
+	}()
+	Log("DEBUG", "StreamLines: Prepared input")
+
+	var wg sync.WaitGroup
+	for i := 0; i < conc; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			for line := range input {
+				returns = append(returns, f(line))
+			}
+		}()
+	}
+	wg.Wait()
+
+	Log("DEBUG", "StreamLines: Completed")
+	return returns
 }
