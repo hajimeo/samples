@@ -3,7 +3,6 @@ package lib
 import (
 	"FileListV2/common"
 	"github.com/stretchr/testify/assert"
-	"os"
 	"testing"
 )
 
@@ -31,18 +30,6 @@ func TestGetContentPath_S3_ReturnsPrifixPlusContent(t *testing.T) {
 	// TODO: not sure if this is correct, but for now, returning relative path
 	result := GetContentPath("s3://s3-test-bucket/s3-test-prefix/")
 	assert.Equal(t, "content", result)
-}
-
-func TestOpenStdInOrFile_StdIn_ReturnsStdin(t *testing.T) {
-	result := OpenStdInOrFIle("-")
-	assert.Equal(t, os.Stdin, result)
-}
-
-func TestOpenStdInOrFile_InvalidFile_ReturnsNil(t *testing.T) {
-	f, _ := os.CreateTemp("", "TestOpenStdInOrFile_InvalidFile_ReturnsNil-")
-	result := OpenStdInOrFIle(f.Name())
-	//t.Logf("%v", f.Name())
-	assert.NotNil(t, result)
 }
 
 func TestSortToSingleLine_ValidContent_ReturnsSortedSingleLine(t *testing.T) {
@@ -114,4 +101,38 @@ func TestGetUpToContent_EmptyPath_ReturnsContent(t *testing.T) {
 func TestGetUpToContent_PathWithMultipleContentSubdirs_ReturnsLastContent(t *testing.T) {
 	result := GetUpToContent("sonatype-work/nexus3/content/blobs/default/content/vol-NN")
 	assert.Equal(t, "sonatype-work/nexus3/content/blobs/default/content", result)
+}
+func TestIsTsMSecBetweenTs_WithinRange_ReturnsTrue(t *testing.T) {
+	result := IsTsMSecBetweenTs(1609459200000, 1609455600, 1609462800)
+	assert.True(t, result)
+}
+
+func TestIsTsMSecBetweenTs_BelowRange_ReturnsFalse(t *testing.T) {
+	result := IsTsMSecBetweenTs(1609452000000, 1609455600, 1609462800)
+	assert.False(t, result)
+}
+
+func TestIsTsMSecBetweenTs_AboveRange_ReturnsFalse(t *testing.T) {
+	result := IsTsMSecBetweenTs(1609466400000, 1609455600, 1609462800)
+	assert.False(t, result)
+}
+
+func TestIsTsMSecBetweenTs_ZeroFromTs_ReturnsTrue(t *testing.T) {
+	result := IsTsMSecBetweenTs(1609459200000, 0, 1609462800)
+	assert.True(t, result)
+}
+
+func TestIsTsMSecBetweenTs_ZeroToTs_ReturnsTrue(t *testing.T) {
+	result := IsTsMSecBetweenTs(1609459200000, 1609455600, 0)
+	assert.True(t, result)
+}
+
+func TestMyHashCode_EmptyString_ReturnsZero(t *testing.T) {
+	result := HashCode("")
+	assert.Equal(t, int32(0), result)
+}
+
+func TestMyHashCode_NonEmptyString_ReturnsHash(t *testing.T) {
+	result := HashCode("test")
+	assert.Equal(t, int32(3556498), result)
 }

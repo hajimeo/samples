@@ -112,6 +112,14 @@ func (c *FileClient) GetDirs(baseDir string, pathFilter string, maxDepth int) ([
 	return matchingDirs, err
 }
 
+func (c *FileClient) GetFileInfo(path string) (BlobInfo, error) {
+	fileInfo, err := os.Stat(path)
+	if err != nil {
+		return BlobInfo{}, err
+	}
+	return c.Convert2BlobInfo(fileInfo), nil
+}
+
 func (c *FileClient) Convert2BlobInfo(f interface{}) BlobInfo {
 	fileInfo := f.(os.FileInfo)
 	// Below is for Unix only. Windows causes "undefined: syscall.Stat_t"

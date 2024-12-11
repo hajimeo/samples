@@ -13,6 +13,7 @@ type Client interface {
 	RemoveDeleted(string, string) error
 	GetDirs(string, string, int) ([]string, error)
 	ListObjects(string, *sql.DB, func(interface{}, BlobInfo, *sql.DB)) int64
+	GetFileInfo(string) (BlobInfo, error)
 	Convert2BlobInfo(interface{}) BlobInfo
 }
 

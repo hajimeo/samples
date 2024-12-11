@@ -3,9 +3,9 @@ module FileListV2
 go 1.22
 
 require (
-	github.com/hajimeo/samples/golang/helpers v0.0.0-20241022041553-48495634d353
+	github.com/hajimeo/samples/golang/helpers v0.0.0-20241211030624-487a2d19fc1c
 	github.com/lib/pq v1.10.9
-	github.com/stretchr/testify v1.9.0
+	github.com/stretchr/testify v1.10.0
 )
 
 require (

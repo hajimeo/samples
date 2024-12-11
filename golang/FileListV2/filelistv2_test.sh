@@ -143,21 +143,97 @@ function test_5_Undelete() {
     fi
 }
 
-function test_6_orphaned() {
+function test_6_Orphaned() {
     local _b="${1:-"${_TEST_BLOBSTORE}"}"
     local _p="${2:-"${_TEST_FILTER_PATH}"}"
     local _work_dir="${3:-"${_TEST_WORKDIR}"}"
     #local _blob_id="$(uuidgen)"
     #filelist2 -b "$BLOB_STORE" -p 'vol-' -c 10 -src BS -db "host=localhost user=nexus dbname=nexus" -s ./orphaned_blobs_Src-BS.tsv
     local _nexus_store="$(find ${_work_dir%/} -maxdepth 3 -name 'nexus-store.properties' -path '*/etc/fabric/*' -print | head -n1)"
+    if [ -z "${_nexus_store}" ]; then
+        echo "TEST=ERROR: Could not find nexus-store.properties in ${_work_dir}"
+        return 1
+    fi
+    [ -n "${_TEST_DB_CONN_PWD}" ] && export PGPASSWORD="${_TEST_DB_CONN_PWD}"
 
     local _out_file="/tmp/test_orphaned.tsv"
-    export PGPASSWORD="${_TEST_DB_CONN_PWD}"
     _exec_filelist "filelist2 -b '${_b}' -p '${_p}' -c 10 -src BS -db ${_nexus_store} -pRxNot \"deleted=true\"" "${_out_file}"
     if [ "$?" == "0" ]; then
         echo "TEST=OK (${_out_file})"
     else
         echo "TEST=ERROR: Could not generate ${_out_file} (check /tmp/test_last.*)"
+        return 1
+    fi
+}
+
+function test_7_TextFileToCheckBlobStore() {
+    local _b="${1:-"${_TEST_BLOBSTORE}"}"
+    local _p="${2:-"${_TEST_FILTER_PATH}"}"
+    local _work_dir="${3:-"${_TEST_WORKDIR}"}"
+
+    find ${_b%/} -maxdepth 4 -name '*.properties' -path '*/content/vol*' -print | head -n10 >/tmp/test_mock_blob_ids.txt
+    if [ ! -s "/tmp/test_mock_blob_ids.txt" ]; then
+        echo "TEST=ERROR: No mock .properties files found in ${_b}"
+        return 1    # Environment issue but return 1
+    fi
+
+    local _out_file="/tmp/test_blobs_in_BS.tsv"
+    _exec_filelist "filelist2 -b '${_b}' -p '${_p}' -c 10 -rF /tmp/test_mock_blob_ids.txt -H" "${_out_file}"
+    if [ "$?" != "0" ]; then
+        echo "TEST=ERROR: Could not generate ${_out_file} (check /tmp/test_last.*)"
+        return 1
+    fi
+    local _expected_num="$(wc -l /tmp/test_mock_blob_ids.txt | awk '{print $1}')"
+    local _result_num="$(wc -l ${_out_file} | awk '{print $1}')"
+    if [ ${_expected_num:-"0"} -gt 0 ] && [ "$((_expected_num * 2))" -eq "${_result_num}" ]; then
+        echo "TEST=OK (${_out_file})"
+    else
+        echo "TEST=ERROR: [ expected:${_expected_num}*2 -eq result:${_result_num} ] is false"
+        return 1
+    fi
+
+    local _out_file="/tmp/test_blobs_in_BS2.tsv"
+    _exec_filelist "filelist2 -b '${_b}' -p '${_p}' -c 10 -rF /tmp/test_mock_blob_ids.txt -H -P -f '\.properties'" "${_out_file}"
+    if [ "$?" != "0" ]; then
+        echo "TEST=ERROR: Could not generate ${_out_file} (check /tmp/test_last.*)"
+        return 1
+    fi
+    local _expected_num="$(wc -l /tmp/test_mock_blob_ids.txt | awk '{print $1}')"
+    local _result_num="$(wc -l ${_out_file} | awk '{print $1}')"
+    if [ ${_expected_num:-"0"} -gt 0 ] && [ "${_expected_num}" -eq "${_result_num}" ]; then
+        echo "TEST=OK (${_out_file})"
+    else
+        echo "TEST=ERROR: [ expected:${_expected_num} -eq result:${_result_num} ] is false"
+        return 1
+    fi
+}
+
+
+function test_8_TextFileToCheckDatabase() {
+    local _b="${1:-"${_TEST_BLOBSTORE}"}"
+    local _p="${2:-"${_TEST_FILTER_PATH}"}"
+    local _work_dir="${3:-"${_TEST_WORKDIR}"}"
+    local _nexus_store="$(find ${_work_dir%/} -maxdepth 3 -name 'nexus-store.properties' -path '*/etc/fabric/*' -print | head -n1)"
+    if [ -z "${_nexus_store}" ]; then
+        echo "TEST=ERROR: Could not find nexus-store.properties in ${_work_dir}"
+        return 1
+    fi
+    [ -n "${_TEST_DB_CONN_PWD}" ] && export PGPASSWORD="${_TEST_DB_CONN_PWD}"
+
+    find ${_b%/} -maxdepth 4 -name '*.properties' -path '*/content/vol*' -print | head -n10 >/tmp/test_mock_blob_ids.txt
+    if [ ! -s "/tmp/test_mock_blob_ids.txt" ]; then
+        echo "TEST=ERROR: No mock .properties files found in ${_b}"
+        return 1    # Environment issue but return 1
+    fi
+
+    local _out_file="/tmp/test_assets_from_db.tsv"
+    _exec_filelist "filelist2 -db ${_nexus_store} -bsName $(basename "${_b}") -c 10 -rF /tmp/test_mock_blob_ids.txt -H" "${_out_file}"
+    local _expected_num="$(wc -l /tmp/test_mock_blob_ids.txt | awk '{print $1}')"
+    local _result_num="$(wc -l ${_out_file} | awk '{print $1}')"
+    if [ ${_result_num:-"0"} -gt 0 ]; then
+        echo "TEST=OK (${_out_file}) expected:${_expected_num}, result:${_result_num}"
+    else
+        echo "TEST=ERROR: [ expected:${_expected_num} -eq result:${_result_num} ] is false (check /tmp/test_last.*)"
         return 1
     fi
 }

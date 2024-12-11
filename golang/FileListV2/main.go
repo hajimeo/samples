@@ -4,7 +4,6 @@ import (
 	"FileListV2/bs_clients"
 	"FileListV2/common"
 	"FileListV2/lib"
-	"bufio"
 	"database/sql"
 	"errors"
 	"flag"
@@ -16,6 +15,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"slices"
+	"sort"
 	"strconv"
 	"strings"
 	"sync"
@@ -23,7 +23,7 @@ import (
 	"time"
 )
 
-var client bs_clients.Client
+var Client bs_clients.Client
 
 func usage() {
 	fmt.Println(`
@@ -38,7 +38,8 @@ HOW TO and USAGE EXAMPLES:
 func setGlobals() {
 	common.StartTimestamp = time.Now().Unix()
 
-	flag.StringVar(&common.BaseDir, "b", ".", "Blob store directory or URI (eg. 's3://s3-test-bucket/s3-test-prefix/'), which location contains 'content' directory (default: '.')")
+	flag.StringVar(&common.BaseDir, "b", "", "Blob store directory or URI (eg. 's3://s3-test-bucket/s3-test-prefix/'), which location contains 'content' directory (default: '.')")
+	flag.BoolVar(&common.DateBsLayout, "DateBS", false, "Created Date based Blob Store layout")
 	flag.StringVar(&common.Filter4Path, "p", "", "Regular Expression for directory *path* (eg 'vol-'), or S3 prefix.")
 	flag.StringVar(&common.Filter4FileName, "f", "", "Regular Expression for the file *name* (eg: '\\.properties' to include only this extension)")
 	flag.BoolVar(&common.WithProps, "P", false, "If true, the .properties file content is included in the output")
@@ -53,7 +54,7 @@ func setGlobals() {
 	flag.StringVar(&common.Truth, "src", "", "Using database or blobstore as source [BS|DB|ALL] (if Blob ID file is provided, DB conn is not required)")
 	flag.StringVar(&common.DbConnStr, "db", "", "DB connection string or path to DB connection properties file")
 	flag.StringVar(&common.BlobIDFIle, "rF", "", "file path to read the blob IDs")
-	flag.StringVar(&common.BsName, "bsName", "", "eg. 'default'. If provided, the SQL query will be faster. 3.47 and higher only")
+	flag.StringVar(&common.BsName, "bsName", "", "eg. 'default'. If provided, the SQL query will be faster")
 	flag.StringVar(&common.Query, "query", "", "SQL statement (SELECT query only) to filter the data from the DB")
 	flag.BoolVar(&common.RemoveDeleted, "RDel", false, "TODO: Remove 'deleted=true' from .properties. Requires -dF")
 	flag.StringVar(&common.WriteIntoStr, "wStr", "", "For testing. Write the string into the file (eg. deleted=true) NOTE: not updating S3 tag")
@@ -86,6 +87,11 @@ func setGlobals() {
 	common.ContentPath = lib.GetContentPath(common.BaseDir)
 	h.Log("DEBUG", "common.ContentPath = "+common.ContentPath)
 
+	if common.Conc1 < 1 {
+		h.Log("ERROR", "-c is lower than 1.")
+		os.Exit(1)
+	}
+
 	// If _FILTER_P is given, automatically populate other related variables
 	if len(common.Filter4PropsIncl) > 0 || len(common.Filter4PropsExcl) > 0 {
 		// TODO: currently this script can not include .bytes when the .properties is included or excluded
@@ -99,31 +105,29 @@ func setGlobals() {
 	}
 
 	if len(common.DbConnStr) > 0 {
-		// If DB connection is provided but the source (src) is not specified, using BlobStore as the source of the truth (this works like DeadBlobsFInder)
-		if len(common.Truth) == 0 {
-			h.Log("WARN", "Data base connection is provided but no -src, so this DB connection won't be used.")
-			common.DbConnStr = ""
-		} else {
-			// If it's nexus-store.properties file, read the file and get the DB connection string
-			if _, err := os.Stat(common.DbConnStr); err == nil {
-				common.DbConnStr = lib.GenDbConnStrFromFile(common.DbConnStr)
-			}
-			if len(common.Filter4FileName) == 0 {
-				// If Truth is set and DB connection is provided, probably want to check only .properties files
-				common.Filter4FileName = `\.` + common.PROPERTIES + `$`
-				h.Log("INFO", "Set '-f' to '"+common.Filter4FileName+"' as DB connection is provided.")
-				//common.WithProps = false	// but probably wouldn't need to automatically output the content of .properties
-			}
-
-			// Try connecting to the DB to get the repository name and format
-			db := lib.OpenDb(common.DbConnStr)
-			if db == nil {
-				panic("-db is provided but cannot open the database.") // Can't output _DB_CON_STR as it may include password
-			}
-			initRepoFmtMap(db) // TODO: copy the function from FileList
-			db.Close()
+		// If it's nexus-store.properties file, read the file and get the DB connection string
+		if _, err := os.Stat(common.DbConnStr); err == nil {
+			common.DbConnStr = lib.GenDbConnStrFromFile(common.DbConnStr)
 		}
+		if len(common.Filter4FileName) == 0 {
+			// If Truth is set and DB connection is provided, probably want to check only .properties files
+			common.Filter4FileName = `\.` + common.PROPERTIES + `$`
+			h.Log("INFO", "Set '-f' to '"+common.Filter4FileName+"' as DB connection is provided.")
+			//common.WithProps = false	// but probably wouldn't need to automatically output the content of .properties
+		}
+
+		// Try connecting to the DB to get the repository name and format
+		common.DB = lib.OpenDb(common.DbConnStr)
+		if common.Conc1 > 0 {
+			common.DB.SetMaxOpenConns(common.Conc1 + 1)
+			common.DB.SetMaxIdleConns(common.Conc1 + 1)
+		}
+		if common.DB == nil {
+			panic("-db is provided but cannot open the database.") // Can't output _DB_CON_STR as it may include password
+		}
+		initRepoFmtMap(common.DB) // TODO: copy the function from FileList
 	}
+
 	if len(common.Query) > 0 {
 		if !common.RxSelect.MatchString(common.Query) {
 			panic("Query should start with 'SELECT'")
@@ -168,13 +172,43 @@ func setGlobals() {
 		common.RxFilter4FileName, _ = regexp.Compile(common.Filter4FileName)
 	}
 
+	// If Truth is not set but BlobIDFIle is given, needs to set Truth
+	if len(common.Truth) == 0 && len(common.BlobIDFIle) > 0 {
+		if len(common.BaseDir) > 0 {
+			h.Log("INFO", "-src is missing. Setting 'DB'")
+			common.Truth = "DB"
+		} else if len(common.DbConnStr) > 0 {
+			h.Log("INFO", "-src is missing. Setting 'BS'")
+			common.Truth = "BS"
+		}
+	}
+
+	if common.Truth == "BS" || common.Truth == "DB" {
+		if len(common.BlobIDFIle) == 0 && (len(common.DbConnStr) == 0 || len(common.BaseDir) == 0) {
+			panic("-src without -rF requires -b and -db")
+		}
+
+		// If BlobIDFIle is given, DB connection or BaseDir is required
+		if len(common.DbConnStr) == 0 && len(common.BaseDir) == 0 {
+			panic("-src with -rF requires -b or -db")
+		}
+		if len(common.BlobIDFIle) > 0 {
+			if len(common.DbConnStr) > 0 && len(common.BaseDir) > 0 {
+				h.Log("DEBUG", "-rF, -b, and -db are given, so using Blob IDs in -rF as if BS output.")
+				common.BlobIDFIleType = "BS"
+			} else if len(common.DbConnStr) > 0 && len(common.BaseDir) == 0 {
+				h.Log("DEBUG", "-rF and -db are given, so using Blob IDs in -rF as if BS output.")
+				common.BlobIDFIleType = "BS"
+			} else if len(common.DbConnStr) == 0 && len(common.BaseDir) > 0 {
+				h.Log("DEBUG", "-rF and -b are given, so using Blob IDs in -rF as if DB output.")
+				common.BlobIDFIleType = "DB"
+			}
+		}
+	}
+
 	// Validating some flags
 	if common.NoHeader && common.WithProps {
 		h.Log("WARN", "With Properties (-P), listing can be slower.")
-	}
-	if common.Conc1 < 1 {
-		h.Log("ERROR", "-c is lower than 1.")
-		os.Exit(1)
 	}
 }
 
@@ -206,8 +240,12 @@ func initRepoFmtMap(db *sql.DB) {
 			common.AseetTables = append(common.AseetTables, format+"_asset")
 		}
 	}
-	h.Log("INFO", fmt.Sprintf("Repo2Fmt = %v", common.Repo2Fmt))
-	h.Log("INFO", fmt.Sprintf("AseetTables = %v", common.AseetTables))
+	h.Log("DEBUG", fmt.Sprintf("Repo2Fmt = %v", common.Repo2Fmt))
+	logLevel := "DEBUG"
+	if len(common.BsName) > 0 {
+		logLevel = "INFO"
+	}
+	h.Log(logLevel, fmt.Sprintf("AseetTables = %v", common.AseetTables))
 }
 
 func getClient() bs_clients.Client {
@@ -235,28 +273,10 @@ func printHeader() {
 	}
 }
 
-func extractBlobIdFromString(path string) string {
-	//fileName := filepath.Base(path)
+func extractBlobIdFromString(line string) string {
+	//fileName := filepath.Base(line)
 	//return getPathWithoutExt(fileName)
-	return common.RxBlobId.FindString(path)
-}
-
-func isTsMSecBetweenTs(tMsec int64, fromTs int64, toTs int64) bool {
-	if fromTs > 0 && (fromTs*1000) > tMsec {
-		return false
-	}
-	if toTs > 0 && (toTs*1000) < tMsec {
-		return false
-	}
-	return true
-}
-
-func myHashCode(s string) int32 {
-	i := int32(0)
-	for _, c := range s {
-		i = (31 * i) + int32(c)
-	}
-	return i
+	return common.RxBlobId.FindString(line)
 }
 
 func genBlobPath(blobId string, extension string) string {
@@ -266,7 +286,7 @@ func genBlobPath(blobId string, extension string) string {
 		h.Log("WARN", "genBlobPath got empty blobId.")
 		return ""
 	}
-	hashInt := myHashCode(blobId)
+	hashInt := lib.HashCode(blobId)
 	vol := math.Abs(math.Mod(float64(hashInt), 43)) + 1
 	chap := math.Abs(math.Mod(float64(hashInt), 47)) + 1
 	return filepath.Join(fmt.Sprintf("vol-%02d", int(vol)), fmt.Sprintf("chap-%02d", int(chap)), blobId) + extension
@@ -281,7 +301,7 @@ func genOutput(path string, bi bs_clients.BlobInfo, db *sql.DB) string {
 	}
 
 	modTimestamp := bi.ModTime.Unix()
-	if !isTsMSecBetweenTs(modTimestamp*1000, common.ModDateFromTS, common.ModDateToTS) {
+	if !lib.IsTsMSecBetweenTs(modTimestamp*1000, common.ModDateFromTS, common.ModDateToTS) {
 		h.Log("DEBUG", fmt.Sprintf("path:%s modTime %d is outside of the range %d to %d", path, modTimestamp, common.ModDateFromTS, common.ModDateToTS))
 		return ""
 	}
@@ -358,7 +378,7 @@ func isExtraInfoNeeded(path string, modTimestamp int64) bool {
 func extraInfo(path string) (string, error) {
 	// This function returns the extra information, and also does extra checks.
 	// Returns the error only when RxIncl or RxExcl filtered the contents
-	contents, err := client.ReadPath(path)
+	contents, err := Client.ReadPath(path)
 	if err != nil {
 		h.Log("ERROR", "extraInfo for "+path+" returned error:"+err.Error())
 		// This is not skip reason, so returning nil
@@ -414,7 +434,7 @@ func shouldBeUndeleted(contents string, path string) bool {
 		return true
 	}
 
-	if isTsMSecBetweenTs(delTimeTs, common.DelDateFromTS, common.DelDateToTS) {
+	if lib.IsTsMSecBetweenTs(delTimeTs, common.DelDateFromTS, common.DelDateToTS) {
 		return true
 	}
 	h.Log("DEBUG", fmt.Sprintf("path:%s delTimeTs %d (msec) is NOT in the range %d (sec) to %d (sec)", path, delTimeTs, common.DelDateFromTS, common.DelDateToTS))
@@ -427,7 +447,7 @@ func removeDel(contents string, path string) bool {
 	}
 
 	updatedContents := removeLines(contents, common.RxDeleted)
-	err := client.WriteToPath(path, updatedContents)
+	err := Client.WriteToPath(path, updatedContents)
 	if err != nil {
 		h.Log("ERROR", fmt.Sprintf("Removing 'deleted=true' for path:%s failed with %s", path, err))
 		return false
@@ -446,7 +466,7 @@ func appendStr(appending string, contents string, path string) bool {
 	} else {
 		updatedContents = fmt.Sprintf("%s\n%s\n", contents, appending)
 	}
-	err := client.WriteToPath(path, updatedContents)
+	err := Client.WriteToPath(path, updatedContents)
 	if err != nil {
 		h.Log("ERROR", fmt.Sprintf("Apeending '%s' into path:%s failed with %s", appending, path, err))
 		return false
@@ -463,7 +483,7 @@ func removeLines(contents string, rex *regexp.Regexp) string {
 	return rex.ReplaceAllString(contents, "")
 }
 
-func printLine(path interface{}, blobInfo bs_clients.BlobInfo, db *sql.DB) {
+func printLineFromPath(path interface{}, blobInfo bs_clients.BlobInfo, db *sql.DB) {
 	output := genOutput(path.(string), blobInfo, db)
 	printOrSave(output)
 }
@@ -482,26 +502,124 @@ func printOrSave(line string) {
 
 func listObjects(dir string, db *sql.DB) {
 	startMs := time.Now().UnixMilli()
-	subTtl := client.ListObjects(dir, db, printLine)
+	subTtl := Client.ListObjects(dir, db, printLineFromPath)
 	// Always log this elapsed time by using 0 thresholdMs
 	h.Elapsed(startMs, fmt.Sprintf("Checked %s for %d files (current total: %d)", dir, subTtl, common.CheckedNum), 0)
 }
 
-func printObjectByBlobId(blobId string, db *sql.DB) {
+func checkBlobIdDetailFromDB(maybeBlobId string) interface{} {
+	blobId := extractBlobIdFromString(maybeBlobId)
 	if len(blobId) == 0 {
-		h.Log("DEBUG", fmt.Sprintf("Empty blobId"))
-		return
+		h.Log("DEBUG", fmt.Sprintf("Empty blobId in '%s'", maybeBlobId))
+		return nil
 	}
+
+	// empty format returns all repository names in common.Repo2Fmt. The common.Repo2Fmt has all the repository names for the blob store.
+	formatRepoNames := getFormats(getRepNames(""))
+	foundInDB := false
+	for format, repoNames := range formatRepoNames {
+		output := getAssetWithBlobRefAsCsv(blobId, repoNames, format, common.DB)
+		if output != "" {
+			printOrSave(maybeBlobId + common.SEP + output)
+			foundInDB = true
+			break // Should I consider the blobId exists in multiple formats?
+		}
+	}
+	if !foundInDB {
+		// As this is the check function, if not exist report
+		h.Log("WARN", fmt.Sprintf("No blobId:%s for %s in DB (Orphaned)", blobId, maybeBlobId))
+	}
+	return nil
+}
+
+func checkBlobIdDetailFromBS(maybeBlobId string) interface{} {
+	blobId := extractBlobIdFromString(maybeBlobId)
+	if len(blobId) == 0 {
+		h.Log("DEBUG", fmt.Sprintf("Empty blobId in '%s'", maybeBlobId))
+		return nil
+	}
+
+	if common.DateBsLayout {
+		panic("Date Blob store layout is not implemented yet.")
+		// TODO: Probably need to find the created date from the database?
+	}
+
 	basePath := h.AppendSlash(common.ContentPath) + genBlobPath(blobId, "")
 	h.Log("DEBUG", basePath+".*")
-	var blobInfo bs_clients.BlobInfo
 	// TODO: this is not accurate as it should be checking the file name, not the path
 	if common.RxFilter4FileName == nil || common.RxFilter4FileName.MatchString(basePath+common.PROP_EXT) {
-		printLine(basePath+common.PROP_EXT, blobInfo, db)
+		blobInfo, err := Client.GetFileInfo(basePath + common.PROP_EXT)
+		if err != nil {
+			// As this is the check function, if not exist report
+			h.Log("WARN", fmt.Sprintf("No %s in BS (DeadBlob)", basePath+common.PROP_EXT))
+		} else {
+			printLineFromPath(basePath+common.PROP_EXT, blobInfo, common.DB)
+		}
 	}
 	if common.RxFilter4FileName == nil || common.RxFilter4FileName.MatchString(basePath+common.BYTES_EXT) {
-		printLine(basePath+common.BYTES_EXT, blobInfo, db)
+		blobInfo, err := Client.GetFileInfo(basePath + common.BYTES_EXT)
+		if err != nil {
+			h.Log("WARN", fmt.Sprintf("No %s in BS", basePath+common.BYTES_EXT))
+		} else {
+			printLineFromPath(basePath+common.BYTES_EXT, blobInfo, common.DB)
+		}
 	}
+	return nil
+}
+
+func getAssetWithBlobRefAsCsv(blobId string, rnPerFmt []string, format string, db *sql.DB) string {
+	var tableNames []string
+	query := genAssetBlobUnionQuery(tableNames, "", "blob_ref LIKE '%"+blobId+"' LIMIT 1", rnPerFmt, format)
+	rows := lib.Query(query, db, int64(len(rnPerFmt)*1000))
+	if rows == nil { // Mainly for unit test
+		h.Log("WARN", "rows is nil for query: "+query)
+		return ""
+	}
+	defer rows.Close()
+	var cols []string
+	var output string
+	for rows.Next() {
+		if cols == nil || len(cols) == 0 {
+			cols, _ = rows.Columns()
+			if cols == nil || len(cols) == 0 {
+				h.Log("ERROR", "No columns against query:"+query)
+				return ""
+			}
+			// sort cols to return always same order
+			sort.Strings(cols)
+		}
+		row := lib.GetRow(rows, cols)
+		for i := range cols {
+			if i > 0 {
+				output = fmt.Sprintf("%s%s", output, common.SEP)
+			}
+			output = fmt.Sprintf("%s%v", output, row[i])
+		}
+		// Should be only one row
+		return output
+	}
+	return ""
+}
+
+func getRepNames(format string) []string {
+	repNames := make([]string, 0)
+	for repoName, repoFmt := range common.Repo2Fmt {
+		if len(format) == 0 || repoFmt == format {
+			repNames = append(repNames, repoName)
+		}
+	}
+	return repNames
+}
+
+func getFormats(repoNames []string) map[string][]string {
+	formats := make(map[string][]string)
+	for _, repoName := range repoNames {
+		repoFmt := getFmtFromRepName(repoName)
+		if len(repoFmt) > 0 {
+			formats[repoFmt] = append(formats[repoFmt], repoName)
+		}
+	}
+	return formats
 }
 
 func getFmtFromRepName(repoName string) string {
@@ -544,7 +662,7 @@ func getRepoName(contents string) string {
 	return ""
 }
 
-func genAssetBlobUnionQuery(assetTableNames []string, columns string, afterWhere string, repoName string, format string, includeTableName bool) string {
+func genAssetBlobUnionQuery(assetTableNames []string, columns string, afterWhere string, repoNames []string, format string) string {
 	cte := ""
 	cteJoin := ""
 	if len(assetTableNames) == 0 {
@@ -552,27 +670,24 @@ func genAssetBlobUnionQuery(assetTableNames []string, columns string, afterWhere
 		assetTableNames = common.AseetTables
 	}
 	if len(columns) == 0 {
-		columns = "a.asset_id, a.repository_id, a.path, a.kind, a.component_id, a.last_downloaded, a.last_updated, ab.*"
+		columns = "a.repository_id, a.asset_id, a.path, a.kind, a.component_id, ab.blob_ref, ab.blob_size, ab.blob_created"
 	}
 	if !h.IsEmpty(afterWhere) && !common.RxAnd.MatchString(afterWhere) {
 		afterWhere = "AND " + afterWhere
 	}
-	if len(repoName) > 0 {
+	if len(repoNames) > 0 {
 		if len(format) == 0 {
-			h.Log("WARN", fmt.Sprintf("No format found from DB for Reository: %s", repoName))
-		} else {
-			cte = "WITH r AS (select r.name, cr.repository_id from " + format + "_content_repository cr join repository r on r.id = cr.config_repository_id) "
-			cteJoin = "JOIN r USING (repository_id)"
-			// As not using LEFT JOIN, no need to use ` or r.name is NULL`
-			afterWhere = " AND (r.name = '" + repoName + "') " + afterWhere
+			panic(fmt.Sprintf("No format provided for repositories: %s", repoNames))
 		}
+		repoIn := `'` + strings.Join(repoNames, `', '`) + `'`
+		// As not using LEFT JOIN, no need to use ` or r.name is NULL`
+		cte = "WITH r AS (select r.name, cr.repository_id from " + format + "_content_repository cr join repository r on r.id = cr.config_repository_id WHERE r.name IN (" + repoIn + ")) "
+		cteJoin = "JOIN r USING (repository_id)"
+		columns = "r.name as repo_name, " + columns
 	}
 	elements := make([]string, 0)
 	for _, tableName := range assetTableNames {
 		element := cte + "SELECT " + columns
-		if includeTableName {
-			element = element + ", '" + tableName + "' as tableName"
-		}
 		element = fmt.Sprintf("%s FROM %s_blob ab", element, tableName)
 		// NOTE: Due to the performance concern, NOT using LEFT JOIN even though this script may think orphaned when Cleanup unused asset blob task hadn't been run
 		element = fmt.Sprintf("%s JOIN %s a USING (asset_blob_id) %s", element, tableName, cteJoin)
@@ -598,10 +713,14 @@ func isOrphanedBlob(contents string, blobId string, db *sql.DB) bool {
 		h.Log("WARN", fmt.Sprintf("Repsitory: %s does not exist in the database, so assuming %s as orphan", repoName, blobId))
 		return true
 	}
+	var repoNames []string
+	if len(repoName) > 0 {
+		repoNames = []string{repoName}
+	}
 	// Generating query to search the blobId from the blob_ref, and returning only asset_id column
 	// Supporting only 3.47 and higher for performance (was adding ending %) (NEXUS-35934)
 	// Not using common.BsName as can't trust blob store name in blob_ref, and may not work with group blob stores
-	query := genAssetBlobUnionQuery(tableNames, "asset_id", "blob_ref LIKE '%"+blobId+"' LIMIT 1", repoName, format, false)
+	query := genAssetBlobUnionQuery(tableNames, "asset_id", "blob_ref LIKE '%"+blobId+"' LIMIT 1", repoNames, format)
 	if len(query) == 0 { // Mainly for unit test
 		h.Log("WARN", fmt.Sprintf("query is empty for blobId: %s and tableNames: %v", blobId, tableNames))
 		return false
@@ -623,6 +742,8 @@ func isOrphanedBlob(contents string, blobId string, db *sql.DB) bool {
 				if cols == nil || len(cols) == 0 {
 					panic("No columns against query:" + query)
 				}
+				// sort cols to return always same order
+				sort.Strings(cols)
 			}
 			vals := lib.GetRow(rows, cols)
 			// As using LEFT JOIN 'asset_id' can be NULL (nil), but rows size is not 0
@@ -635,8 +756,6 @@ func isOrphanedBlob(contents string, blobId string, db *sql.DB) bool {
 }
 
 func runParallel(chunks [][]string, f func(string, *sql.DB), conc int) {
-	startMs := time.Now().UnixMilli()
-
 	wg := sync.WaitGroup{}
 	guard := make(chan struct{}, conc)
 	for _, chunk := range chunks {
@@ -659,9 +778,6 @@ func runParallel(chunks [][]string, f func(string, *sql.DB), conc int) {
 		}(chunk)
 	}
 	wg.Wait()
-
-	// Always log this elapsed time by using 0 thresholdMs
-	h.Elapsed(startMs, fmt.Sprintf("Completed. Listed: %d (checked: %d), Size: %d bytes", common.PrintedNum, common.CheckedNum, common.TotalSize), 0)
 }
 
 func main() {
@@ -676,34 +792,45 @@ func main() {
 	log.SetFlags(log.Lmicroseconds)
 	log.SetPrefix(time.Now().Format("2006-01-02 15:04:05"))
 	setGlobals()
+	Client = getClient()
+	var db *sql.DB
+	if len(common.DbConnStr) > 0 {
+		db = lib.OpenDb(common.DbConnStr)
+		defer db.Close()
+	}
+
 	printHeader()
-	client = getClient()
 
 	// If the list of Blob IDs are provided, use it
 	if len(common.BlobIDFIle) > 0 {
-		f := lib.OpenStdInOrFIle(common.BlobIDFIle)
-		defer f.Close()
-
-		scanner := bufio.NewScanner(f)
-		var blobIds []string
-		for scanner.Scan() {
-			blobId := extractBlobIdFromString(scanner.Text())
-			blobIds = append(blobIds, blobId)
+		// If Truth (src) is not set or Truth and BlobIDFile type are the same, reading this file as source
+		if len(common.Truth) == 0 || (len(common.Truth) > 0 && common.Truth == common.BlobIDFIleType) {
+			h.Log("DEBUG", "'rf' is provided and 'rf' type matches with 'src', so reading 'rf' as "+common.Truth+" result.")
+			if common.BlobIDFIleType == "BS" {
+				_ = h.StreamLines(common.BlobIDFIle, common.Conc1, checkBlobIdDetailFromDB)
+				h.Log("INFO", "Completed 'checkBlobIdDetailFromDB' from "+common.BlobIDFIle+" ("+common.BlobIDFIleType+")")
+			} else if common.BlobIDFIleType == "DB" {
+				_ = h.StreamLines(common.BlobIDFIle, common.Conc1, checkBlobIdDetailFromBS)
+				h.Log("INFO", "Completed 'checkBlobIdDetailFromBS' from "+common.BlobIDFIle+" ("+common.BlobIDFIleType+")")
+			}
+			return
+		} else if len(common.Truth) > 0 && len(common.BlobIDFIleType) > 0 && common.Truth != common.BlobIDFIleType {
+			panic("TODO: 'rf' is provided but 'rf' type:" + common.BlobIDFIleType + " does not match with 'src' type:" + common.Truth + ", so this file will be used against filelist result.")
+			// TODO: implement this
 		}
-
-		chunks := h.Chunk(blobIds, common.Conc1)
-		runParallel(chunks, printObjectByBlobId, common.Conc1)
-		return
 	}
 
 	// If the Blob ID file is not provided, run per directory
-	subDirs, err := client.GetDirs(common.ContentPath, common.Filter4Path, common.MaxDepth)
+	subDirs, err := Client.GetDirs(common.ContentPath, common.Filter4Path, common.MaxDepth)
 	if err != nil {
 		h.Log("ERROR", "Failed to list directories in "+common.ContentPath+" with filter: "+common.Filter4Path)
 		panic(err)
 	}
+	startMs := time.Now().UnixMilli()
 	chunks := h.Chunk(subDirs, 1) // To check per chap-XX
 	runParallel(chunks, listObjects, common.Conc1)
+	// Always log this elapsed time by using 0 thresholdMs
+	h.Elapsed(startMs, fmt.Sprintf("Completed. Listed: %d (checked: %d), Size: %d bytes", common.PrintedNum, common.CheckedNum, common.TotalSize), 0)
 	return
 
 	// If Truth is DB, find unnecessary blobs from the Blob store (orphaned blobs)

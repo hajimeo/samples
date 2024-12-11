@@ -5,6 +5,7 @@ To store common variables
 package common
 
 import (
+	"database/sql"
 	"os"
 	"regexp"
 	"time"
@@ -25,6 +26,7 @@ const SEP = "	" // Tab separator (should this be changeable?)
 // Display / output related
 var NoHeader bool
 var WithProps bool
+var DateBsLayout = false // To support new created date based blobstore layout
 
 // var WithBlobSize bool
 var TopN int64
@@ -43,6 +45,7 @@ var MaxDepth = 3
 var BsName = ""
 var BsType = "" // 'file' for File, 's3' for AWS S3, (TODO) 'az' for Azure, 'g' for Google
 var BlobIDFIle = ""
+var BlobIDFIleType = ""
 var RemoveDeleted bool
 var WriteIntoStr = ""
 var Query = "" // Not in use yet
@@ -51,6 +54,7 @@ var RxAnd = regexp.MustCompile("(?i)^ *AND ")
 
 // Database related
 var DbConnStr = ""
+var DB *sql.DB
 var Truth = ""
 var Repo2Fmt map[string]string
 var AseetTables []string

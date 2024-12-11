@@ -8,6 +8,7 @@ import (
 	h "github.com/hajimeo/samples/golang/helpers"
 	_ "github.com/lib/pq"
 	"regexp"
+	"sort"
 	"strings"
 	"time"
 )
@@ -54,7 +55,6 @@ func OpenDb(dbConnStr string) *sql.DB {
 		// If DB connection issue, let's stop the script
 		panic(err.Error())
 	}
-	//db.SetMaxOpenConns(*_CONC_1)
 	//err = db.Ping()
 	return db
 }
@@ -70,6 +70,7 @@ func Query(query string, db *sql.DB, slowMs int64) *sql.Rows {
 	if db == nil { // For unit tests
 		return nil
 	}
+	// Should use Prepare()?
 	rows, err := db.Query(query)
 	if err != nil {
 		h.Log("ERROR", query)
@@ -93,4 +94,30 @@ func GetRow(rowCur *sql.Rows, cols []string) []interface{} {
 		return nil
 	}
 	return vals
+}
+
+func GetRows(query string, db *sql.DB, slowMs int64) [][]interface{} {
+	// NOTE: Not using this function, just an example, because do not want to store all results in memory
+	rows := Query(query, db, slowMs)
+	if rows == nil { // Mainly for unit test
+		h.Log("WARN", "rows is nil for query: "+query)
+		return nil
+	}
+	defer rows.Close()
+	var cols []string
+	var rowsData [][]interface{}
+	for rows.Next() {
+		if cols == nil || len(cols) == 0 {
+			cols, _ = rows.Columns()
+			if cols == nil || len(cols) == 0 {
+				h.Log("ERROR", "No columns against query:"+query)
+				return nil
+			}
+			// sort cols to return always same order
+			sort.Strings(cols)
+		}
+		vals := GetRow(rows, cols)
+		rowsData = append(rowsData, vals)
+	}
+	return rowsData
 }

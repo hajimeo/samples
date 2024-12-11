@@ -5,7 +5,6 @@ import (
 	"FileListV2/common"
 	h "github.com/hajimeo/samples/golang/helpers"
 	"net/url"
-	"os"
 	"path/filepath"
 	"sort"
 	"strings"
@@ -61,23 +60,28 @@ func GetUpToContent(path string) string {
 	}
 }
 
-func OpenStdInOrFIle(path string) *os.File {
-	f := os.Stdin
-	if path != "-" {
-		var err error
-		f, err = os.Open(path)
-		if err != nil {
-			h.Log("ERROR", "path:"+path+" cannot be opened. "+err.Error())
-			return nil
-		}
-	}
-	return f
-}
-
 func SortToSingleLine(contents string) string {
 	// To use simpler regex, sorting line and converting to single line first
 	lines := strings.Split(contents, "\n")
 	sort.Strings(lines)
 	// Trimming unnecessary `,` (if "deleted=true" is removed, the properties file may have empty line)
 	return strings.Trim(strings.Join(lines, ","), ",")
+}
+
+func HashCode(s string) int32 {
+	i := int32(0)
+	for _, c := range s {
+		i = (31 * i) + int32(c)
+	}
+	return i
+}
+
+func IsTsMSecBetweenTs(tMsec int64, fromTs int64, toTs int64) bool {
+	if fromTs > 0 && (fromTs*1000) > tMsec {
+		return false
+	}
+	if toTs > 0 && (toTs*1000) < tMsec {
+		return false
+	}
+	return true
 }

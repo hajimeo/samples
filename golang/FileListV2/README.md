@@ -88,16 +88,22 @@ export PGPASSWORD="*******"
 filelist2 -b "$BLOB_STORE" -p 'vol-' -c 10 -src BS -db "host=localhost user=nexus dbname=nexus" -pRxNot "deleted=true" -s ./orphaned_blobs.tsv
 ```
 
+Using Blob IDs file (TODO: confusing):
+```
+# Source is DB and no `-db`, so using -rF as if DB
+filelist2 -src DB -rF ./sql_output_from_DB.txt -b "$BLOB_STORE" -p 'vol-' -c 80 -s ./missing_blobs_no-DB-access.tsv
+# Source is BS and no `-b`, so using -rf as if BS (previous filelist) result
+filelist2 -src BS -rF ./docker-proxy_blob_ids.tsv -db "host=localhost user=nexus dbname=nexus" -bsName default -s ./orphaned_blobs_no-BS-access.tsv
+```
+
 
 
 # TODO: The following usage examples are not rewritten yet
-
-Using Blob IDs file:
 ```
-# Source is BS (blob store), but using the previous tsv result to check the database
-filelist2 -src BS -rF ./docker-proxy_blob_ids.tsv -bsName default -db "host=localhost user=nexus dbname=nexus" -s ./orphaned_blobs_Src-file_for_default.tsv
-# Source is BS but NOT checking the *DB*, instead using the Blob IDs file as the DB result
-filelist2 -b "$BLOB_STORE" -p 'vol-' -c 80 -src BS -rF ./docker-proxy_blob_ids_from_DB.txt -s ./orphaned_blobs_Src-file_for_default.tsv
+# Source is DB and no `-b`, so using -rf as if BS (previous filelist) result
+filelist2 -src DB -rF ./docker-proxy_blob_ids.tsv -db "host=localhost user=nexus dbname=nexus" -bsName default -s ./missing_blobs_no-BS-access.tsv
+# Source is BS and no `-db`, so using -rF as if DB
+filelist2 -src BS -rF ./sql_output_from_DB.txt -b "$BLOB_STORE" -p 'vol-' -c 80 -s ./orphaned_blobs_no-DB-acccess.tsv
 ```
 
 ### Find blobs which exist in DB but not in Blob store (Dead Blobs)
