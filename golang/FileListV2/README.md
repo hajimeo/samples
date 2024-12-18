@@ -97,31 +97,6 @@ filelist2 -src BS -rF ./docker-proxy_blob_ids.tsv -db "host=localhost user=nexus
 ```
 
 
-
-# TODO: The following usage examples are not rewritten yet
-```
-# Source is DB and no `-b`, so using -rf as if BS (previous filelist) result
-filelist2 -src DB -rF ./docker-proxy_blob_ids.tsv -db "host=localhost user=nexus dbname=nexus" -bsName default -s ./missing_blobs_no-BS-access.tsv
-# Source is BS and no `-db`, so using -rF as if DB
-filelist2 -src BS -rF ./sql_output_from_DB.txt -b "$BLOB_STORE" -p 'vol-' -c 80 -s ./orphaned_blobs_no-DB-acccess.tsv
-```
-
-### Find blobs which exist in DB but not in Blob store (Dead Blobs)
-NOTE: `-c` is also for DB connections, so if DB will be used, shouldn't be too high.
-```
-# Source is DB but NOT accessing DB and using the Blob IDs in the file
-filelist2 -b "$BLOB_STORE" -p 'vol-' -c 80 -src DB -rF ./docker-proxy_blob_ids_from_DB.txt -s ./missing_blobs_Src-file.tsv
-
-# Accessing DB with the connection string and check all formats as no query
-export PGPASSWORD="*******"
-filelist2 -b "$BLOB_STORE" -p 'vol-' -c 10 -src DB -db "host=localhost port=5432 user=nexus dbname=nexus" -s ./missing_blobs_Src-DB.tsv
-# Accessing DB with the connection string and check blobIDs reurned by the SELECT query
-filelist2 -b "$BLOB_STORE" -p 'vol-' -c 10 -src DB -db "host=localhost user=nexus dbname=nexus" -query "SELECT ..." -s ./missing_blobs_Src-DB_with_query.tsv
-```
-
-
-
-
 ## Misc.
 NOTE: For more accurate performance testing, may want to clear the Linux file cache (as 'root' user)
 ```

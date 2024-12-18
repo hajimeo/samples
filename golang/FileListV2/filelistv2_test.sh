@@ -124,21 +124,35 @@ function test_5_Undelete() {
     _find_sample_repo_name "${_b}" "${_p}" || return 1
 
     local _prep_file="/tmp/test_soft-deleted-${_TEST_REPO_NAME}-n10.tsv"
-    # Just first 10 and no header
-    _exec_filelist "filelist2 -b '${_b}' -p '${_p}' -pRx '@Bucket\.repo-name=${_TEST_REPO_NAME},.+deleted=true' -n 10 -P -H -c 10" "${_prep_file}"
+    # Find 10 NOT soft-deleted .properties files
+    _exec_filelist "filelist2 -b '${_b}' -p '${_p}' -pRx '@Bucket\.repo-name=${_TEST_REPO_NAME}' -pRxNot 'deleted=true' -n 10 -H -c 10" "${_prep_file}"
     if [ ! -s "${_prep_file}" ]; then
-        echo "No soft-deleted files found in ${_prep_file}, so skipping ${FUNCNAME[0]}"
+        echo "TEST=WARN: No non-soft-deleted (normal) files found for ${_TEST_REPO_NAME} in ${_prep_file}, so skipping ${FUNCNAME[0]}"
         return 0
     fi
+    # Append 'deleted=true' in each file in the tsv file
+    _exec_filelist "filelist2 -b '${_b}' -rF ${_prep_file} -wStr \"deleted=true\" -c 10" "/tmp/test_dummy-soft-deleted-${_TEST_REPO_NAME}.tsv"
+    if [ "$?" != "0" ]; then
+        echo "TEST=ERROR: Could not soft-delete ${_prep_file} (check /tmp/test_last.*)"
+        return 1
+    fi
 
-    local _out_file="/tmp/test_undeleted-${_TEST_REPO_NAME}.tsv"
+    local _out_file="/tmp/test_undeleting-${_TEST_REPO_NAME}.tsv"
     _exec_filelist "filelist2 -b '${_b}' -rF ${_prep_file} -RDel -P -H -c 10" "${_out_file}"
     if [ "$?" == "0" ]; then
+        if ! rg -q "deleted=true" ${_out_file}; then
+            echo "TEST=ERROR: Not found 'deleted=true' in ${_out_file} (check /tmp/test_last.*)"
+            return 1
+        fi
+        _out_file="/tmp/test_undeleted-${_TEST_REPO_NAME}.tsv"
+        _exec_filelist "filelist2 -b '${_b}' -rF ${_prep_file} -P -H -c 10" "${_out_file}"
+        if rg -q "deleted=true" ${_out_file}; then
+            echo "TEST=ERROR: Found 'deleted=true' in ${_out_file} (check /tmp/test_last.*)"
+            return 1
+        fi
         echo "TEST=OK Found ${_TEST_BLOB_ID} in ${_out_file} (compare with ${_prep_file})"
-        # Reverting the undeleted
-        _exec_filelist "filelist2 -b '${_b}' -rF ${_prep_file} -wStr \"deleted=true\" -c 10" "/tmp/test_re-soft-deleted-${_TEST_REPO_NAME}.tsv"
     else
-        echo "TEST=ERROR: Could not undelete ${_prep_file} result: ${_out_file} (check /tmp/test_last.*)"
+        echo "TEST=ERROR: Could not undelete ${_prep_file} result: /tmp/test_undeleted-${_TEST_REPO_NAME}.tsv (check /tmp/test_last.*)"
         return 1
     fi
 }
@@ -222,8 +236,8 @@ function test_8_TextFileToCheckDatabase() {
 
     find ${_b%/} -maxdepth 4 -name '*.properties' -path '*/content/vol*' -print | head -n10 >/tmp/test_mock_blob_ids.txt
     if [ ! -s "/tmp/test_mock_blob_ids.txt" ]; then
-        echo "TEST=ERROR: No mock .properties files found in ${_b}"
-        return 1    # Environment issue but return 1
+        echo "TEST=WARN: No mock .properties files found in ${_b}, so skipping"
+        return 0
     fi
 
     local _out_file="/tmp/test_assets_from_db.tsv"
@@ -278,25 +292,22 @@ function _find_sample_repo_name() {
     [ -z "${_TEST_FILTER_PATH}" ] && export _TEST_FILTER_PATH="${_p}"
     [ -n "${_TEST_REPO_NAME}" ] && return 0
 
-    #_log "INFO" "Finding a sample .properties file in the blobstore: ${_b} ..."
-    local _prop="$(find ${_b%/} -maxdepth 4 -name '*.properties' -path '*/content/vol*' -print | head -n1)"
-    if [ -z "${_prop}" ]; then
-        _log "WARN" "No .properties file found in ${_b} and ${_p}"
+    # Found _rn (repository name) which has at lest 10 .properties files
+    local _rn="$(rg --no-filename -d 4 -g '*.properties' "^@Bucket.repo-name=(\S+)$" -o -r '$1' ${_b%/} | head -n100 | sort | uniq -c | sort -nr | head -n1 | rg -o '^\s*\d+\s+(\S+)$' -r '$1')"
+    if [ -z "${_rn}" ]; then
+        _log "WARN" "No repo-name found in ${_prop}"
         return 1
     fi
+    export _TEST_REPO_NAME="${_rn}"
+
     _log "INFO" "Found a sample .properties file: ${_prop}"
+    local _prop="$(rg -l -d 4 -g '*.properties' "^@Bucket.repo-name=${_TEST_REPO_NAME}$" ${_b%/} | head -n1)"
     local _blob_id="$(basename "${_prop}" ".properties")"
     if [ -z "${_blob_id}" ]; then
         _log "WARN" "No blob-id found in ${_prop}"
         return 1
     fi
     export _TEST_BLOB_ID="${_blob_id}"
-    local _rn="$(rg '^@Bucket\.repo-name=(.+)' -o -r '$1' ${_prop})"
-    if [ -z "${_rn}" ]; then
-        _log "WARN" "No repo-name found in ${_prop}"
-        return 1
-    fi
-    export _TEST_REPO_NAME="${_rn}"
 }
 
 
