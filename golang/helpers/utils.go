@@ -282,3 +282,32 @@ func StreamLines(path string, conc int, f func(string) interface{}) []interface{
 	wg.Wait()
 	return returns
 }
+
+var (
+	_cachedObjects = make(map[string]interface{})
+	_mu            sync.RWMutex
+)
+
+func CacheGetObj(key string) interface{} {
+	_mu.RLock()
+	defer _mu.RUnlock()
+	value, exists := _cachedObjects[key]
+	if exists {
+		return value
+	}
+	return nil
+}
+
+func CacheAddObject(key string, value interface{}, maxSize int) {
+	_mu.Lock()
+	for k := range _cachedObjects {
+		// Because going to add one, using >= (to be safe, it should create a copy of _cachedObjects...)
+		if len(_cachedObjects) >= maxSize {
+			delete(_cachedObjects, k)
+		} else {
+			break
+		}
+	}
+	_cachedObjects[key] = value
+	_mu.Unlock()
+}

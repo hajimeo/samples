@@ -301,3 +301,35 @@ func TestStreamFile_ConcurrentProcessing_ProcessesAllLines(t *testing.T) {
 	//assert.ElementsMatch(t, []string{"line1", "line2", "line3", "line4", "line5"}, processedLines)
 	assert.Equal(t, 5, len(processedLines))
 }
+
+func TestCacheGetObj_KeyExists_ReturnsValue(t *testing.T) {
+	_cachedObjects["key1"] = "value1"
+	result := CacheGetObj("key1")
+	assert.Equal(t, "value1", result)
+}
+
+func TestCacheGetObj_KeyDoesNotExist_ReturnsNil(t *testing.T) {
+	result := CacheGetObj("nonexistent")
+	assert.Nil(t, result)
+}
+
+func TestCacheAddObject_AddsObjectToCache(t *testing.T) {
+	CacheAddObject("key2", "value2", 10)
+	result := CacheGetObj("key2")
+	assert.Equal(t, "value2", result)
+}
+
+func TestCacheAddObject_ExceedsMaxSize_RemovesOldestObject(t *testing.T) {
+	CacheAddObject("key3", "value3", 1)
+	CacheAddObject("key4", "value4", 1)
+	result := CacheGetObj("key3")
+	assert.Nil(t, result)
+	result = CacheGetObj("key4")
+	assert.Equal(t, "value4", result)
+}
+
+func TestCacheAddObject_MaxSizeZero_StillAddsObject(t *testing.T) {
+	CacheAddObject("key5", "value5", 0)
+	result := CacheGetObj("key5")
+	assert.Equal(t, "value5", result)
+}
