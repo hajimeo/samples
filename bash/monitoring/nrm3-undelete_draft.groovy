@@ -42,7 +42,12 @@ class RBSs {
             "org.sonatype.nexus.blobstore.restore.maven.internal.orient.OrientMavenRestoreBlobStrategy",
             "org.sonatype.nexus.blobstore.restore.orient.OrientBaseRestoreBlobStrategy",
             "org.sonatype.nexus.blobstore.restore.raw.internal.RawRestoreBlobStrategy",
-            "org.sonatype.nexus.blobstore.restore.raw.internal.orient.OrientRawRestoreBlobStrategy",]
+            "org.sonatype.nexus.blobstore.restore.raw.internal.orient.OrientRawRestoreBlobStrategy",
+            "com.sonatype.nexus.repository.cargo.internal.restore.CargoRestoreBlobStrategy",
+            "com.sonatype.nexus.repository.composer.internal.restore.ComposerRestoreBlobStrategy",
+            "com.sonatype.nexus.repository.golang.datastore.internal.restore.GoRestoreBlobStrategy",
+            "com.sonatype.nexus.repository.huggingface.restore.HuggingFaceRestoreBlobStrategy",
+    ]
 
     static String lookupRestoreBlobStrategy(formatName, isOrient) {
         def className = ""
