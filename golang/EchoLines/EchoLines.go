@@ -77,7 +77,7 @@ Read one file and output only necessary lines.
 ### (Not so useful but) similar to the above but excluding empty username:
     export ELAPSED_REGEX="^\d\d\d\d-\d\d-\d\d.(\d\d:\d\d:\d\d.\d\d\d)" ASCII_DISABLED=Y ELAPSED_KEY_REGEX="(\[dw\-[^\]]+\]\s\S+\s\S+)"
     echolines "_hourly_logs/clm-server_2024-09-13_16.out" "^\d\d\d\d-\d\d-\d\d.\d\d:\d\d:\d\d.\d\d\d" "^\d\d\d\d-\d\d-\d\d.\d\d:\d\d:\d\d.\d\d\d" | rg '^# ' | sort -t'|' -k3n
-### NXRM3: SQL queries, and sort by the longest:
+### NXRM3: SQL queries #and sort by the longest:
     export ELAPSED_REGEX="^\d\d\d\d-\d\d-\d\d.(\d\d:\d\d:\d\d.\d\d\d)" ASCII_DISABLED=Y ELAPSED_KEY_REGEX="(\[qtp\S+\s+\S+\s+\S+)"
     echolines "./log/nexus.log" " - ==>  Preparing:" "(^.+ - <== .+)" | rg '^# (.+)' -o -r '$1'    #| sort -t'|' -k3n
 ### NXRM3: Specific method, which stops if 0 update, and related log lines:
