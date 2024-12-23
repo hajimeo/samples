@@ -291,6 +291,14 @@ function namei_l() {
         _path="$(dirname "${_path}")"
     done
 }
+function iconv_utf8() {
+    # To cleanup/remove accent characters for UTF-8
+    local _file="${1}"
+    local _in_encoding="${2:-"ISO-8859-1"}"
+    [ ! -s "${_file}" ] && return 1
+    local _result="$(iconv -f ${_in_encoding} -t UTF-8 ${_file})" || return $?
+    echo "${_result}" > "${_file}"
+}
 function fcat() {
     local _name="$1"
     local _find_all="$2"
@@ -869,7 +877,7 @@ function syncGitReposWithRemotePC() {
     local _remote_user="${2:-"${USER}"}"
     local _repo_rel_path="${3:-"IdeaProjects/samples"}"
     local _local_base_dir="${4:-"$HOME"}"
-    local _rsync_exclude="${5:-"--exclude '.git'"}"
+    local _rsync_exclude="${5:-"--exclude .idea --exclude .git"}"
     local _dry_run="${6:-"${_RSYNC_DRY_RUN}"}"
 
     local _remote_user_host="${_remote_user}@${_remote_host}"
@@ -896,7 +904,7 @@ function syncGitReposWithRemotePC() {
     echo "" >&2
     echo "# Finding any '-mmin -${_diff_mins}' files in the remote and copy (just in case, excluding large files)" >&2
     # Need relative path, so using cd. If dry run, shouldn't touch the previous list file.
-    ssh ${_remote_user_host} "cd ${_remote_repo_path} && find . -type f -mmin -${_diff_mins} -size -10M -not -path '*/.idea/*' -not -path '*/.git/*' -print" > "${_check_file}${_dry_run}" || return $?
+    ssh ${_remote_user_host} "cd ${_remote_repo_path} && find . -type f -mmin -${_diff_mins} -size -10M -not -path \"*/.idea/*\" -not -path \"*/.git/*\" -print" > "${_check_file}${_dry_run}" || return $?
     if [ -s "${_check_file}${_dry_run}" ]; then
         for _f in $(cat "${_check_file}${_dry_run}"); do
             if [ ! -s "${_local_repo_path%/}/${_f}" ]; then
@@ -916,13 +924,13 @@ function syncGitReposWithRemotePC() {
     echo "" >&2
     echo "# Rsync ${_local_repo_path%/}/ ${_remote_user_host}:${_remote_repo_path%/}/ ${_rsync_exclude} ${_dry_run}" >&2
     # may need to add more --exclude
-    rsync -Pzau --delete --modify-window=1 ${_rsync_exclude} ${_local_repo_path%/}/ ${_remote_user_host}:${_remote_repo_path%/}/ ${_dry_run}
+    eval "rsync -Pzau --delete --modify-window=1 ${_rsync_exclude} ${_local_repo_path%/}/ ${_remote_user_host}:${_remote_repo_path%/}/ ${_dry_run}"
     echo "" >&2
     if [ -z "${_dry_run}" ]; then
         # As the below may output misleading information, not running if dry run
         local _backup_dir="/tmp/$(basename ${_local_repo_path%/})_$(date +%Y%m%d%H%M%S)"
-        echo "# Rsync ${_remote_user_host}:${_remote_repo_path%/}/ ${_local_repo_path%/}/ --exclude '.idea' ${_rsync_exclude} --backup-dir=${_backup_dir} ${_dry_run}" >&2
-        rsync -Pzau --delete --backup --backup-dir=${_backup_dir} --modify-window=1 --exclude '.idea' ${_rsync_exclude} ${_remote_user_host}:${_remote_repo_path%/}/ ${_local_repo_path%/}/ ${_dry_run}
+        echo "# Rsync ${_remote_user_host}:${_remote_repo_path%/}/ ${_local_repo_path%/}/ ${_rsync_exclude} --backup-dir=${_backup_dir} ${_dry_run}" >&2
+        eval "rsync -Pzau --delete --backup --backup-dir=${_backup_dir} --modify-window=1 ${_rsync_exclude}" ${_remote_user_host}:${_remote_repo_path%/}/ ${_local_repo_path%/}/ ${_dry_run}
     fi
 }
 
