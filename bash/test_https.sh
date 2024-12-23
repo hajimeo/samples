@@ -40,7 +40,7 @@ function list_ciphers() {
 
     # NOTE: Instead of nmap, *newer* curl also shows the cipher with -v -v -v (and also can specify ciphers)
     if [[ ! "${_no_nmap}" =~ ^(y|Y) ]] && which nmap &>/dev/null; then
-        # TODO: this doesn't work with TLSv1.3
+        # TODO: this doesn't work with TLSv1.3 (not sure if -sV is needed?)
         nmap --script ssl-enum-ciphers -p ${_port} ${_host}
         return $?
     fi
