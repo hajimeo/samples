@@ -576,6 +576,7 @@ EOF
 }
 
 function _apache_install() {
+    local _new_port="${1}"
     # NOTE: how to check loaded modules: apache2ctl -M and/or check mods-available/ and mods-enabled/
     apt-get install -y apache2 apache2-utils || return $?
     apt-get install -y php libapache2-mod-php
@@ -586,6 +587,8 @@ function _apache_install() {
     a2enmod headers rewrite auth_kerb || return $?
     service apache2 restart || return $? # Disabling proxy_connect needed restart, so just in case restarting
     apachectl -t -D DUMP_VHOSTS
+    grep -qi "^ServerName" /etc/apache2/apache2.conf || echo "ServerName localhost" >>/etc/apache2/apache2.conf
+    grep -qi "^Listen ${_new_port}" /etc/apache2/ports.conf || echo "Listen ${_new_port}" >>/etc/apache2/ports.conf
 }
 
 function f_apache_proxy() {
@@ -613,8 +616,7 @@ function f_apache_proxy() {
         return 0
     fi
 
-    _apache_install || return $?
-    grep -qi "^Listen ${_port}" /etc/apache2/ports.conf || echo "Listen ${_port}" >>/etc/apache2/ports.conf
+    _apache_install "${_port}" || return $?
 
     echo "<VirtualHost *:${_port}>
     DocumentRoot ${_proxy_dir}
@@ -697,6 +699,7 @@ function f_apache_reverse_proxy() {
     local _redirect="${1}" # http://hostname:port/path
     local _port="${2}"
     local _sever_host="${3:-$(hostname -f)}"
+    # NOTE: may need to run: f_gen_keytab "HTTP/$(hostname -f)@EXAMPLE.COM"
     local _keytab_file="${4}" # /etc/security/keytabs/HTTP.service.keytab   For RUT
     local _ssl_ca_file="${5}" # /var/tmp/share/cert/rootCA_standalone.crt
 
@@ -719,7 +722,7 @@ function f_apache_reverse_proxy() {
         #kadmin -p admin@\${_realm} -q 'add_principal -randkey HTTP/${_sever_host}'
         #kadmin -p admin@\${_realm} -q "xst -k ${_keytab_file} HTTP/$(hostname -f)"
         echo "Check /etc/krb5.conf for the correct Realm
-# If no FreeIPA, from KDC server
+# From (local) KDC server
     kadmin.local -q 'add_principal -randkey HTTP/${_sever_host}'
     kadmin.local -q 'xst -k ${_keytab_file} HTTP/${_sever_host}'
 # If freeIPA, after adding host and service from UI, 'kinit admin@\${_realm} && klist -eaf':
@@ -735,8 +738,7 @@ function f_apache_reverse_proxy() {
         return 0
     fi
 
-    _apache_install || return $?
-    grep -qi "^Listen ${_port}" /etc/apache2/ports.conf || echo "Listen ${_port}" >>/etc/apache2/ports.conf
+    _apache_install "${_port}" || return $?
 
     # Common settings
     echo "<VirtualHost *:${_port}>
@@ -831,7 +833,25 @@ function f_apache_reverse_proxy() {
     a2ensite rproxy${_port} || return $?
     # Due to 'ssl' module, using restart rather than reload
     _info "reloading ..."
-    service apache2 reload
+    service apache2 reload || return $?
+    if [ -s "${_keytab_file}" ]; then
+        cat <<'EOF'
+To test from a client PC:
+export KRB5_CONFIG=$HOME/krb5.conf
+----
+[libdefaults]
+  default_realm = EXAMPLE.COM
+  dns_lookup_realm = false
+  dns_lookup_kdc = false
+
+[realms]
+ EXAMPLE.COM = {
+  kdc = utm-ubuntu.standalone.localdomain
+  admin_server = utm-ubuntu.standalone.localdomain
+ }
+----
+EOF
+    fi
 }
 
 function f_apache_kdcproxy() {
@@ -1999,7 +2019,7 @@ function f_gen_keytab() {
     local __doc__="Generate keytab(s). NOTE: NOT for FreeIPA and also Mac's kadmin"
     local _principal="${1}" # HTTP/`hosntame -f`@REALM
     local _kadmin_usr="${2:-"admin/admin"}"
-    local _kadmin_pwd="${3:-${g_DEFAULT_PASSWORD:-"hadoop"}}"
+    local _kadmin_pwd="${3:-${g_OTHER_DEFAULT_PWD:-"hadoop"}}"
     local _keytab_dir="${4:-"/etc/security/keytabs"}"
     local _delete_first="${5-${_DELETE_FIRST}}" # default is just creating keytab if already exists
     local _tmp_dir="${_WORK_DIR:-"/tmp"}"
@@ -2226,6 +2246,22 @@ function f_tabby() {
     .tabby-client/agent/config.toml for anonymousUsageTracking (but may not be used)
     Also TABBY_DISABLE_USAGE_COLLECTION=1 for server
     "
+}
+
+function f_mount_remotes() {
+    if [ -z "${_CONN_TO}" ]; then
+        if [ -n "$SSH_CLIENT" ]; then
+            _CONN_TO="$(echo $SSH_CLIENT | cut -d' ' -f1)"
+        else
+            _CONN_TO="$(w -hi | sort -k2 | grep -oE '192\.[0-9]+\.[0-9]+\.[0-9]+')"
+        fi
+    fi
+    #sshfs -o uid=1000,gid=1000,umask=002,reconnect,follow_symlinks,transform_symlinks ${USER}@${_CONN_TO}:/Users/${USER}/share $HOME/share
+    sshfs -o uid=1000,gid=1000,umask=002,reconnect,follow_symlinks,transform_symlinks ${USER}@${_CONN_TO}:/Users/${USER}/utm-share /var/tmp/utm-share
+    sshfs -o uid=1000,gid=1000,umask=002,reconnect,follow_symlinks,transform_symlinks ${USER}@${_CONN_TO}:/Users/${USER}/IdeaProjects $HOME/IdeaProjects
+    sshfs -o uid=1000,gid=1000,umask=002,reconnect,follow_symlinks,transform_symlinks ${USER}@${_CONN_TO}:/Volumes/Samsung_T5/hajime/cases $HOME/Documents/cases
+    sshfs -o uid=1000,gid=1000,umask=002,reconnect,follow_symlinks,transform_symlinks ${USER}@${_CONN_TO}:/Volumes/Samsung_T5/hajime/nexus_executable_cache $HOME/.nexus_executable_cache
+    mount | grep "${USER}@${_CONN_TO}"
 }
 
 function p_basic_setup() {
