@@ -670,7 +670,7 @@ public class Main {
         binaryListener.socket = "default";
         OServerNetworkListenerConfiguration httpListener = new OServerNetworkListenerConfiguration();
         httpListener.ipAddress = "0.0.0.0";
-        httpListener.portRange = "2480";
+        httpListener.portRange = "2480-2486";
         httpListener.protocol = "http";
         httpListener.socket = "default";
         httpListener.parameters = new OServerParameterConfiguration[] {
