@@ -29,6 +29,7 @@ function f_start_web() {
         #python -m http.server ${_port} &>/dev/null &
         # if python2.x: python -m SimpleHTTPServer ${_port} &>/dev/null &
     elif type nc; then
+        # TODO: this one returns `nc: missing hostname and port`
         while true; do nc -v -nlp "${_port}" &>/dev/null; done
     else
         echo "No php or nc (netcat)"
@@ -300,20 +301,43 @@ function f_orientdb_checks() {
     grep 'wal' "${_db}"
     echo ""
     echo "# Checking size (Bytes) of index files (alphabetical order) ..."
-    grep '_idx.sbt' "${_db}" | awk '{printf("%12s %s\n",$'${_size_col}',$'${_file_col}')}' | sort -k2 | tee /tmp/f_orientdb_checks.out
+    grep '_idx.sbt' "${_db}" | awk '{print $'${_size_col:-5}'" "$'${_file_col:-9}'}' | while read -r _line; do
+        IFS=' ' read -r _size _table <<< "${_line}"
+        printf "%14s %s\n" $(_size_to_bytes "${_size}") ${_table}
+    done | sort -k2 | tee /tmp/f_orientdb_checks.out
     echo "Total: $(awk '{print $1}' /tmp/f_orientdb_checks.out | paste -sd+ - | bc) bytes / $(cat /tmp/f_orientdb_checks.out | wc -l) indexes (expecting 21 as of 3.61.0)"
     echo ""
-    echo "# Estimating table sizes (Bytes) from pcl files ..."
-    grep '.pcl' "${_db}" | awk '{print $'${_size_col}'" "$'${_file_col}'}' | sort -k2 | sed -E 's/_?[0-9]*\.pcl//' > /tmp/f_orientdb_checks.out
-    cat /tmp/f_orientdb_checks.out | uniq -f1 | while read -r _l; do
-        # NOTE: matching space in bash is a bit tricky
-        if [[ "${_l}" =~ ^[[:space:]]*[0-9]+[[:space:]]+(.+) ]]; then
-            local _table="${BASH_REMATCH[1]}"
-            local _total="$(grep -E "\s+${_table}$" /tmp/f_orientdb_checks.out | awk '{print $1}' | paste -sd+ - | bc)"
-            printf "%12s %s\n" ${_total} ${_table}
-        fi
+    echo "# Estimating table sizes (Bytes) from pcl files ..." # `sed` to get the class/table name
+    grep '.pcl$' "${_db}" | awk '{print $'${_size_col:-5}'" "$'${_file_col:-9}'}' | while read -r _line; do
+        IFS=' ' read -r _size _table <<< "${_line}"
+        echo "$(_size_to_bytes "${_size}") ${_table}"
+    done | sort -k2 | sed -E 's/_?[0-9]*\.pcl//' > /tmp/f_orientdb_checks.out
+    # uniq -f1 to get the Unique Lines by the table name
+    cat /tmp/f_orientdb_checks.out | uniq -f1 | cut -d' ' -f2 | while read -r _table; do
+        local _total="$(grep -E "\s+${_table}$" /tmp/f_orientdb_checks.out | cut -d' ' -f1 | paste -sd+ - | bc)"
+        printf "%14s %s\n" ${_total} ${_table}
     done | sort -k2
     echo "Total: $(awk '{print $1}' /tmp/f_orientdb_checks.out | paste -sd+ - | bc) bytes"
+}
+function _size_to_bytes() {
+    local __doc__="Convert size to bytes"
+    local _size="$1"
+    if [[ "${_size}" =~ ^([0-9\.]+)([KMG]?) ]]; then
+        local _number="${BASH_REMATCH[1]}"
+        local _unit="${BASH_REMATCH[2]}"
+        if [ -z "${_unit}" ]; then
+            echo "${_number}"
+        elif [ "${_unit}" == "K" ]; then
+            echo "scale=0; ${_number} * 1024 / 1" | bc
+        elif [ "${_unit}" == "M" ]; then
+            echo "scale=0; ${_number} * 1024 * 1024 / 1" | bc
+        elif [ "${_unit}" == "G" ]; then
+            echo "scale=0; ${_number} * 1024 * 1024 * 1024 / 1" | bc
+        else
+            echo "ERROR: Unknown unit: ${_unit}" >&2
+            return 1
+        fi
+    fi
 }
 #local _find="$(which gfind || echo "find")"
 #${_find} ${_db%/} -type f -name '*.wal' -printf '%k\t%P\t%t\n'
@@ -375,6 +399,7 @@ function f_find_missing() {
 }
 
 function f_deadBlobResult_summary() {
+    local __doc__="Output the summary information of the deadBlobResult json files (DeadBlobsFinder)"
     local _json="$1"
     python3 -c "import sys,json
 js=json.load(open('${_json}'))
@@ -391,6 +416,25 @@ print('# blob_ref:null, count')
 print(Counter(result).items())"
 }
 
+function f_regenerate_properties() {
+cat <<'EOF' >/dev/null
+    sha1sum ./blobs/default/content/vol-38/chap-32/6c79d484-63d7-49f5-b985-7cae7a1c70ef.bytes
+    # last modified time (not creation time)
+    stat --format=%Y ./blobs/default/content/vol-38/chap-32/6c79d484-63d7-49f5-b985-7cae7a1c70ef.bytes
+    # size in bytes
+    stat -c "%s" ./blobs/default/content/vol-38/chap-32/6c79d484-63d7-49f5-b985-7cae7a1c70ef.bytes
+    file --mime-type ./blobs/default/content/vol-38/chap-32/6c79d484-63d7-49f5-b985-7cae7a1c70ef.bytes
+
+    @BlobStore.created-by=system
+    size=<size>
+    @Bucket.repo-name=<repo>
+    creationTime=<time>
+    @BlobStore.created-by-ip=127.0.0.1
+    @BlobStore.content-type=<mime>
+    @BlobStore.blob-name=<name>
+    sha1=<checksum>
+EOF
+}
 
 
 if [ "$0" = "$BASH_SOURCE" ]; then
