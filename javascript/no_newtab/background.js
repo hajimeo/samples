@@ -1,3 +1,5 @@
+// Old example. No longer works.
+
 // "persistent": true is required for onBeforeRequest
 // Check https://developer.chrome.com/apps/match_patterns for url match pattern. Also '#' + '*' doesn't work as it is named alias
 chrome.webRequest.onBeforeRequest.addListener(noNewTab, {

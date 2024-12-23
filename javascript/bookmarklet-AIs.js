@@ -6,8 +6,8 @@ if (q != null) {
     (function (s) {
         q = encodeURIComponent(s);
         w.open("https://chatgpt.com/?q=" + q, "t_chatgpt");
-        w.open("https://www.perplexity.ai/search?q=" + q, "t_perplex");
         w.open("https://www.phind.com/search?q=" + q + "&ignoreSearchResults=false&allowMultiSearch=false", "t_phind");
+        w.open("https://www.perplexity.ai/search?q=" + q, "t_perplex");
     })(q)
 }
 void 1;
