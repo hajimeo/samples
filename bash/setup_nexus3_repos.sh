@@ -546,6 +546,13 @@ function f_setup_docker() {
             _populate_docker_hosted "" "${_NEXUS_DOCKER_HOSTNAME}:18182" || _log "WARN" "_populate_docker_hosted \"${_NEXUS_DOCKER_HOSTNAME}:18182\" also failed"
         fi
     fi
+    if type helm &>/dev/null; then
+        if [ -s "${_TMP%/}/helm-oci-demo-0.1.0.tgz" ] || curl -sf -o ${_TMP%/}/helm-oci-demo-0.1.0.tgz -L "https://github.com/hajimeo/samples/raw/refs/heads/master/misc/helm-oci-demo-0.1.0.tgz"; then
+            _log "INFO" "Populating ${_prefix}-hosted repository with demo helm chart (OCI) ..."
+            helm registry login ${_NEXUS_DOCKER_HOSTNAME}:18182 -u "${_ADMIN_USER}" -p "${_ADMIN_PWD}" && \
+            helm push ${_TMP%/}/helm-oci-demo-0.1.0.tgz oci://${_NEXUS_DOCKER_HOSTNAME}:18182/oci-demo #--debug
+        fi
+    fi
 
     # If no xxxx-group, create it
     if ! _is_repo_available "${_prefix}-group"; then
@@ -650,7 +657,7 @@ function f_setup_yum() {
     local _prefix="${1:-"yum"}"
     local _bs_name="${2:-"${r_BLOBSTORE_NAME:-"${_BLOBTORE_NAME}"}"}"
     local _ds_name="${3:-"${r_DATASTORE_NAME:-"${_DATASTORE_NAME}"}"}"
-    local _yum_upload_path="${_YUM_UPLOAD_PATH:-"dummy/os/any/Packages"}"
+    local _yum_upload_path="${_YUM_UPLOAD_PATH:-"Packages"}"
     [ -z "${_bs_name}" ] && _bs_name="$(_get_blobstore_name)"
     [ -z "${_ds_name}" ] && _ds_name="$(_get_datastore_name)"
     local _extra_sto_opt="$(_get_extra_sto_opt "${_ds_name}")"
@@ -659,21 +666,23 @@ function f_setup_yum() {
     # If no xxxx-proxy, create it
     if ! _is_repo_available "${_prefix}-proxy"; then
         # http://mirror.centos.org/centos/ is dead
-        _apiS '{"action":"coreui_Repository","method":"create","data":[{"attributes":{"proxy":{"remoteUrl":"https://vault.centos.org/","contentMaxAge":1440,"metadataMaxAge":1440},"httpclient":{"blocked":false,"autoBlock":true},"storage":{"blobStoreName":"'${_bs_name}'","strictContentTypeValidation":true'${_extra_sto_opt}'},"negativeCache":{"enabled":true,"timeToLive":1440},"cleanup":{"policyName":[]}},"name":"'${_prefix}'-proxy","format":"","type":"","url":"","online":true,"routingRuleId":"","authEnabled":false,"httpRequestSettings":false,"recipe":"yum-proxy"}],"type":"rpc"}' || return $?
+        _apiS '{"action":"coreui_Repository","method":"create","data":[{"attributes":{"proxy":{"remoteUrl":"https://vault.centos.org/7.9.2009/os/x86_64/","contentMaxAge":1440,"metadataMaxAge":1440},"httpclient":{"blocked":false,"autoBlock":true},"storage":{"blobStoreName":"'${_bs_name}'","strictContentTypeValidation":true'${_extra_sto_opt}'},"negativeCache":{"enabled":true,"timeToLive":1440},"cleanup":{"policyName":[]}},"name":"'${_prefix}'-proxy","format":"","type":"","url":"","online":true,"routingRuleId":"","authEnabled":false,"httpRequestSettings":false,"recipe":"yum-proxy"}],"type":"rpc"}' || return $?
     fi
     # Add some data for xxxx-proxy (Ubuntu has "yum" command)
     # NOTE: using 'yum' command is a bit too slow, so not using at this moment, but how to
     #   _echo_yum_repo_file "${_prefix}-proxy" > /etc/yum.repos.d/nexus-yum-test.repo
     #   yum --disablerepo="*" --enablerepo="nexusrepo-test" install --downloadonly --downloaddir=${_TMP%/} dos2unix
-    f_get_asset "${_prefix}-proxy" "7.9.2009/os/x86_64/Packages/dos2unix-6.0.3-7.el7.x86_64.rpm" "${_TMP%/}/dos2unix-6.0.3-7.el7.x86_64.rpm"
-    if ! _is_repo_available "${_prefix}-epel-proxy"; then
-        _apiS '{"action":"coreui_Repository","method":"create","data":[{"attributes":{"proxy":{"remoteUrl":"https://dl.fedoraproject.org/pub/epel/","contentMaxAge":1440,"metadataMaxAge":1440},"httpclient":{"blocked":false,"autoBlock":true},"storage":{"blobStoreName":"'${_bs_name}'","strictContentTypeValidation":true'${_extra_sto_opt}'},"negativeCache":{"enabled":true,"timeToLive":1440},"cleanup":{"policyName":[]}},"name":"'${_prefix}'-epel-proxy","format":"","type":"","url":"","online":true,"routingRuleId":"","authEnabled":false,"httpRequestSettings":false,"recipe":"yum-proxy"}],"type":"rpc"}' || return $?
-    fi
+    f_get_asset "${_prefix}-proxy" "Packages/dos2unix-6.0.3-7.el7.x86_64.rpm" "${_TMP%/}/dos2unix-6.0.3-7.el7.x86_64.rpm"
+
+    # This site is no longer working
+    #if ! _is_repo_available "${_prefix}-epel-proxy"; then
+    #    _apiS '{"action":"coreui_Repository","method":"create","data":[{"attributes":{"proxy":{"remoteUrl":"https://dl.fedoraproject.org/pub/epel/","contentMaxAge":1440,"metadataMaxAge":1440},"httpclient":{"blocked":false,"autoBlock":true},"storage":{"blobStoreName":"'${_bs_name}'","strictContentTypeValidation":true'${_extra_sto_opt}'},"negativeCache":{"enabled":true,"timeToLive":1440},"cleanup":{"policyName":[]}},"name":"'${_prefix}'-epel-proxy","format":"","type":"","url":"","online":true,"routingRuleId":"","authEnabled":false,"httpRequestSettings":false,"recipe":"yum-proxy"}],"type":"rpc"}' || return $?
+    #fi
 
     # If no xxxx-hosted, create it
     if ! _is_repo_available "${_prefix}-hosted"; then
         # NOTE: using '3' for repodataDepth because of using 7/os/x86_64/Packages (x86_64 is 3rd)
-        _apiS '{"action":"coreui_Repository","method":"create","data":[{"attributes":{"yum":{"repodataDepth":3,"deployPolicy":"PERMISSIVE"},"storage":{"blobStoreName":"'${_bs_name}'","writePolicy":"ALLOW","strictContentTypeValidation":true'${_extra_sto_opt}'},"cleanup":{"policyName":[]}},"name":"'${_prefix}'-hosted","format":"","type":"","url":"","online":true,"recipe":"yum-hosted"}],"type":"rpc"}' || return $?
+        _apiS '{"action":"coreui_Repository","method":"create","data":[{"attributes":{"yum":{"repodataDepth":0,"deployPolicy":"PERMISSIVE"},"storage":{"blobStoreName":"'${_bs_name}'","writePolicy":"ALLOW","strictContentTypeValidation":true'${_extra_sto_opt}'},"cleanup":{"policyName":[]}},"name":"'${_prefix}'-hosted","format":"","type":"","url":"","online":true,"recipe":"yum-hosted"}],"type":"rpc"}' || return $?
     fi
     # add some data for xxxx-hosted
     local _upload_file=""   #$(_rpm_build "test-rpm" "9.9.9" "1" 2>/dev/null)
@@ -690,7 +699,7 @@ function f_setup_yum() {
     fi
     if [ -s "${_upload_file}" ]; then
         # NOTE: curl also works
-        #curl -D/dev/stderr -u admin:admin123 "${_NEXUS_URL%/}/repository/${_prefix}-hosted/7/os/x86_64/Packages/" -T ${_upload_file}
+        #curl -D/dev/stderr -u admin:admin123 "${_NEXUS_URL%/}/repository/${_prefix}-hosted/Packages/" -T ${_upload_file}
         _ASYNC_CURL="Y" f_upload_asset "${_prefix}-hosted" -F "yum.asset=@${_upload_file}" -F "yum.asset.filename=$(basename ${_upload_file})" -F "yum.directory=${_yum_upload_path%/}"
     fi
     #curl -u 'admin:admin123' --upload-file /etc/pki/rpm-gpg/RPM-GPG-KEY-pmanager ${r_NEXUS_URL%/}/repository/yum-hosted/RPM-GPG-KEY-pmanager
@@ -1145,7 +1154,7 @@ function f_setup_r() {
             echo "# install.packages('bit', repos='${_NEXUS_URL%/}/repository/r${_prefix}-group/', type='binary')"
     fi
     # add some data for xxxx-group
-    #f_get_asset "${_prefix}-group" "test/test_1k.img"
+    #f_get_asset "${_prefix}-group" "test/test_1k.data"
 }
 
 function f_setup_gitlfs() {
@@ -1163,6 +1172,8 @@ function f_setup_gitlfs() {
     fi
 }
 
+#curl -D- -sSf -u 'admin:admin123' "http://localhost:8081/service/rest/v1/repositories/raw/hosted" -H "Content-Type: application/json" -d '{"name":"raw-hosted","online":true,"storage":{"blobStoreName":"default","strictContentTypeValidation":false,"writePolicy":"ALLOW"}}'
+#curl -D- -sSf -u 'admin:admin123' "http://localhost:8081/repository/raw-hosted/test/test.txt" -T <(echo 'test')
 function f_setup_raw() {
     local __doc__="Create Raw proxy/hosted/group repositories with dummy data"
     local _prefix="${1:-"raw"}"
@@ -1190,25 +1201,23 @@ function f_setup_raw() {
     #f_get_asset "${_prefix}-jenkins-proxy" "download/plugins/nexus-jenkins-plugin/3.9.20200722-164144.e3a1be0/nexus-jenkins-plugin.hpi"
 
     # Quicker way: NOTE --limit-rate=4k can be a handy option to test:
+    # *NOTE*: The following test does not work with different extensions with the Strict Content Validation enabled.
     #   time curl -D- -u 'admin:admin123' -T <(echo 'test') "${_NEXUS_URL%/}/repository/raw-hosted/test/test.txt"
-    # To create a dummy 1K file (not real 1K file), but not work with MacOS, and not much diff:
-    #   dd if=/dev/zero of=${_TMP%/}/test_1k.img bs=1024 count=1 oflag=dsync
-    dd if=/dev/zero of=${_TMP%/}/test_1k.img bs=1 count=0 seek=1024 && \
-    _ASYNC_CURL="Y" f_upload_asset "${_prefix}-hosted" -F raw.directory=test -F raw.asset1=@${_TMP%/}/test_1k.img -F raw.asset1.filename=test_1k.img
+    #   (Not working) Create a dummy 1K file: dd if=/dev/zero of=${_TMP%/}/test_1k.data bs=1024 count=1 oflag=dsync
+    dd if=/dev/zero of=${_TMP%/}/test_1k.data bs=1 count=0 seek=1024 && \
+    _ASYNC_CURL="Y" f_upload_asset "${_prefix}-hosted" -F raw.directory=test -F raw.asset1=@${_TMP%/}/test_1k.data -F raw.asset1.filename=test_1k.data
     # If real large size is required:
-    #   dd if=/dev/zero of=./test_100MB.img bs=1 count=0 seek=$((1024*1024*100))
+    #   dd if=/dev/zero of=./test_100m.data bs=1 count=0 seek=$((1024*1024*100))
     # Test by uploading and downloading:
-    #   time curl -D- -u 'admin:admin123' -T ${_TMP%/}/test_1k.img "${_NEXUS_URL%/}/repository/raw-hosted/test/test_1k.img"
-    #   time curl -D- -u 'admin:admin123' -o/dev/null "${_NEXUS_URL%/}/repository/raw-hosted/test/test_1k.img"
-    # Upload a large dummy file
-    #   dd if=/dev/zero of=${_TMP%/}/test_100m.img bs=1 count=0 seek=104857600 && curl -D- -u 'admin:admin123' -T ${_TMP%/}/test_100m.img "${_NEXUS_URL%/}/repository/raw-hosted/test/test_100m.img"
+    #   curl -u 'admin' -w "status:\t%{http_code}\nelapsed:\t%{time_total}\n" -T ${_TMP%/}/test_100m.data "${_NEXUS_URL%/}/repository/raw-hosted/test/test_100m.data"
+    #   curl -u 'admin' -w "status:\t%{http_code}\nnelapsed:\t%{time_total}\n" -o/dev/null "${_NEXUS_URL%/}/repository/raw-hosted/test/test_100m.data"
 
     # If no xxxx-group, create it
     if ! _is_repo_available "${_prefix}-group"; then
         _apiS '{"action":"coreui_Repository","method":"create","data":[{"attributes":{"storage":{"blobStoreName":"'${_bs_name}'","strictContentTypeValidation":false'${_extra_sto_opt}'},"group":{"memberNames":["'${_prefix}'-hosted"]}},"name":"'${_prefix}'-group","format":"","type":"","url":"","online":true,"recipe":"raw-group"}],"type":"rpc"}' || return $?
     fi
     # add some data for xxxx-group
-    #_ASYNC_CURL="Y" f_get_asset "${_prefix}-group" "test/test_1k.img"
+    #_ASYNC_CURL="Y" f_get_asset "${_prefix}-group" "test/test_1k.data"
 }
 
 function f_branding() {
@@ -1252,7 +1261,7 @@ function _get_blobstore_name() {
     if grep -qE "^${_bs_name}$" ${_TMP%/}/${FUNCNAME[0]}_$$.out; then
         _BLOBTORE_NAME="${_bs_name}"
     elif [ "${_line_num}" == "0" ]; then
-        _log "INFO" "No blobstore defined. Creating '${_bs_name}' file blobstore ..."; sleep 3
+        _log "INFO" "No blobstore defined. Creating '${_bs_name}' file blobstore ..."; sleep 1
         f_create_file_blobstore "${_bs_name}" || return $?
         _BLOBTORE_NAME="${_bs_name}"
     elif [ "${_line_num}" == "1" ]; then
@@ -2132,7 +2141,9 @@ function f_create_csel() {
 function f_create_testuser() {
     local __doc__="Create/add a test user with a test role"
     local _userid="${1:-"testuser"}"
-    local _privs="${2-"\"nx-repository-view-*-*-*\",\"nx-search-read\",\"nx-component-upload\""}" # NOTE: nx-usertoken-current does not work with OSS as no User Token
+    local _privs="${2-"\"nx-repository-view-*-*-*\",\"nx-search-read\",\"nx-component-upload\",\"nx-usertoken-current\",\"nx-apikey-all\""}"
+    # NOTE: nx-usertoken-current does not work with OSS because no User Token
+    #       nx-apikey-all is needed for Nuget AP key...
     local _role="${3-"test-role"}"
     if [ -n "${_role}" ]; then
         f_api "/service/rest/v1/security/roles" "{\"id\":\"${_role}\",\"name\":\"${_role} name\",\"description\":\"${_role} desc\",\"privileges\":[${_privs}],\"roles\":[]}"
@@ -2148,7 +2159,7 @@ function f_setup_https() {
     local _alias="${4}"
     local _work_dir="${5}"
     local _inst_dir="${6}"
-    local _usr="${7:-${_SERVICE}}"
+    local _usr="${7}"
 
     [ -z "${_inst_dir}" ] && _inst_dir="$(_get_inst_dir)"
     [ -z "${_inst_dir%/}" ] && return 10
@@ -2238,32 +2249,38 @@ Also update _NEXUS_URL. For example: export _NEXUS_URL=\"https://local.standalon
 function f_start_saml_server() {
     local __doc__="Install and start a dummy SAML service"
     local _idp_base_url="${1:-"http://localhost:2080/"}"
-    local _sp_meta_file="${2:-"./metadata.xml"}"
+    local _sp_meta_file="${2:-"/tmp/metadata.xml"}"
     local _sp_meta_url="${3-"http://localhost:8081/service/rest/v1/security/saml/metadata"}"
     local _sp_meta_cred="${4-"admin:admin123"}"
-    local _users_json="${5:-"./simple-saml-idp.json"}"
+    local _install_dir="${5:-"${_SHARE_DIR%/}/simplesaml"}"
+    local _users_json="${6:-"${_install_dir%/}/simple-saml-idp.json"}"
     if [ -z "${_sp_meta_file}" ]; then
         echo "Please specify _sp_meta_file"; return 1
     fi
-    local _cmd="simplesamlidp"
-    if ! type ${_cmd} &>/dev/null; then
-        if [ ! -s "${_SHARE_DIR%/}/simplesamlidp" ]; then
-            curl -o "${_SHARE_DIR%/}/simplesamlidp" -L "https://github.com/hajimeo/samples/raw/master/misc/simplesamlidp_$(uname)_$(uname -m)" --compressed || return $?
-            chmod u+x "${_SHARE_DIR%/}/simplesamlidp" || return $?
-        fi
-        _cmd="${_SHARE_DIR%/}/simplesamlidp"
+    if [ ! -d "${_install_dir%/}" ]; then
+        mkdir -v -p "${_install_dir%/}" || return $?
     fi
+
+    local _cmd="simplesamlidp"  # If not in the PATH, download it
+    if ! type ${_cmd} &>/dev/null; then
+        if [ ! -s "${_install_dir%/}/simplesamlidp" ]; then
+            curl -o "${_install_dir%/}/simplesamlidp" -L "https://github.com/hajimeo/samples/raw/master/misc/simplesamlidp_$(uname)_$(uname -m)" --compressed || return $?
+            chmod u+x "${_install_dir%/}/simplesamlidp" || return $?
+        fi
+        _cmd="${_install_dir%/}/simplesamlidp"
+    fi
+
     if [ ! -s "${_users_json}" ]; then
-        curl -o "${_users_json}" -L "https://raw.githubusercontent.com/hajimeo/samples/master/misc/simple-saml-idp.json" --compressed  || return $?
+        curl -sSf -o "${_users_json}" -L "https://raw.githubusercontent.com/hajimeo/samples/master/misc/simple-saml-idp.json" --compressed  || return $?
     fi
     # Not implemented to use credential, so for now using _sp_meta_file
     if [ -n "${_sp_meta_url}" ] && [ ! -s "${_sp_meta_file}" ]; then
-        curl -sSfL -o ${_sp_meta_file} -u "${_sp_meta_cred}" "${_sp_meta_url}"   # It's OK if fails
+        curl -sSf -L -o ${_sp_meta_file} -u "${_sp_meta_cred}" "${_sp_meta_url}"   # It's OK if fails
     fi
-    if [ ! -s ./myidp.key ]; then
-        openssl req -x509 -newkey rsa:2048 -keyout ./myidp.key -out ./myidp.crt -days 365 -nodes -subj "/CN=$(hostname -f)" || return $?
+    if [ ! -s ${_install_dir%/}/myidp.key ]; then
+        openssl req -x509 -newkey rsa:2048 -keyout ${_install_dir%/}/myidp.key -out ${_install_dir%/}/myidp.crt -days 3650 -nodes -subj "/CN=$(hostname -f)" || return $?
     fi
-    export IDP_KEY="./myidp.key" IDP_CERT="./myidp.crt" USER_JSON="${_users_json}" IDP_BASE_URL="${_idp_base_url}" SERVICE_METADATA_URL="${_sp_meta_file}"
+    export IDP_KEY="${_install_dir%/}/myidp.key" IDP_CERT="${_install_dir%/}/myidp.crt" USER_JSON="${_users_json}" IDP_BASE_URL="${_idp_base_url}" SERVICE_METADATA_URL="${_sp_meta_file}"
     eval "${_cmd}" &> ./simplesamlidp_$$.log &
     local _pid="$!"
     sleep 2
@@ -2299,20 +2316,29 @@ function f_setup_saml_for_simplesaml() {
 
 function f_start_ldap_server() {
     local __doc__="Install and start a dummy LDAP server with glauth"
-    local _fname="$(uname | tr '[:upper:]' '[:lower:]')$(uname -m).zip"
+    local _install_dir="${1:-"${_SHARE_DIR%/}/glauth"}"
     local _download_dir="/tmp"
-    if [ ! -s "${_download_dir%/}/${_fname}" ]; then
-        curl -o "${_download_dir%/}/${_fname}" -L "https://github.com/glauth/glauth/releases/download/v2.1.0/${_fname}" --compressed || return $?
+    if [ ! -d "${_install_dir%/}" ]; then
+        mkdir -v -p "${_install_dir%/}" || return $?
     fi
-    if [ ! -s ./glauth/glauth ]; then
-        unzip -d ./glauth "${_download_dir%/}/${_fname}"
-        chmod u+x ./glauth/glauth || return $?
+    local _fname="$(uname | tr '[:upper:]' '[:lower:]')$(uname -m).zip"
+    if [ ! -s "${_install_dir%/}/glauth" ]; then
+        if [ ! -s "${_download_dir%/}/${_fname}" ]; then
+            _log "INFO" "Downloading glauth v2.1.0 ..."
+            curl -sSf -o "${_download_dir%/}/${_fname}" -L "https://github.com/glauth/glauth/releases/download/v2.1.0/${_fname}" --compressed || return $?
+        fi
+        unzip -d "${_install_dir%/}" "${_download_dir%/}/${_fname}"
+        chmod u+x "${_install_dir%/}/glauth" || return $?
+    else
+        _log "INFO" "glauth already exists. Skipping download v2.1.0 / unzip ..."
     fi
-    if [ ! -s ./glauth/glauth-simple.cfg ]; then
-        curl -o ./glauth/glauth-simple.cfg -L "https://raw.githubusercontent.com/hajimeo/samples/master/misc/glauth-simple.cfg" --compressed || return $?
+    if [ ! -s ${_install_dir%/}/glauth-simple.cfg ]; then
+        _log "INFO" "Downloading the sample config into ${_install_dir%/}/glauth-simple.cfg ..."
+        curl -sSf -o ${_install_dir%/}/glauth-simple.cfg -L "https://raw.githubusercontent.com/hajimeo/samples/master/misc/glauth-simple.cfg" --compressed || return $?
     fi
+    _log "INFO" "Starting glauth with ${_install_dir%/}/glauth-simple.cfg ..."
     # listening 0.0.0.0:389
-    ./glauth/glauth -c ./glauth/glauth-simple.cfg
+    ${_install_dir%/}/glauth -c ${_install_dir%/}/glauth-simple.cfg
 }
 function f_setup_ldap_glauth() {
     local __doc__="Setup LDAP for GLAuth server."
@@ -2327,7 +2353,7 @@ function f_setup_ldap_glauth() {
     echo "To test: curl -v -u \"admin@standalone.localdomain\" -k \"ldap://${_host}:${_port}/ou=users,dc=standalone,dc=localdomain?uid,cn,mail,memberof?sub?(&(objectClass=posixAccount)(uid=*))\""   # + userFilter
 }
 
-function f_setup_ldap_freeipa() {
+function f_setup_ldap_freeipa_Deprecated() {
     local __doc__="Deprecated: setup LDAP with freeIPA server."
     local _name="${1:-"freeipa"}"
     local _host="${2:-"dh1.standalone.localdomain"}"
@@ -2411,11 +2437,12 @@ function f_upload_dummies() {
     local __doc__="Upload (PUT) text files into (raw) hosted repository"
     local _repo_path="${1:-"${_NEXUS_URL%/}/repository/raw-hosted/test"}"
     local _how_many="${2:-"10"}"
-    local _parallel="${3:-"3"}"
-    local _file_prefix="${4:-"test_"}"
+    local _parallel="${3:-"8"}"
+    local _file_prefix="${4}"
     local _file_suffix="${5:-".txt"}"
-    local _usr="${6:-"${_ADMIN_USER}"}"
-    local _pwd="${7:-"${_ADMIN_PWD}"}"
+    local _sub_dir_depth="${6:-"${_SUB_DIR_DEPTH:-3}"}"
+    local _usr="${7:-"${_ADMIN_USER}"}"
+    local _pwd="${8:-"${_ADMIN_PWD}"}"
     # _SEQ_START is for continuing
     local _seq_start="${_SEQ_START:-1}"
     local _seq_end="$((${_seq_start} + ${_how_many} - 1))"
@@ -2424,7 +2451,18 @@ function f_upload_dummies() {
     # -T<(echo "aaa") may not work with some old bash and somehow some of files become 0 byte, so creating a file
     echo "test at $(date +'%Y-%m-%d %H:%M:%S')" > ${_TMP%/}/${FUNCNAME[0]}_$$.txt || return $?
     for i in $(eval "${_seq}"); do
-      echo "${_file_prefix}${i}${_file_suffix}"
+        if [ -z "${_file_prefix}" ]; then
+            local _final_prefix=""
+            local _rand_depth=$((RANDOM % (${_sub_dir_depth:-3} + 1)))
+            if [ ${_rand_depth} -gt 0 ]; then
+                for j in $(seq 1 ${_rand_depth}); do
+                    local _k=$((RANDOM % ${_sub_dir_depth:-3} + 1))
+                    _final_prefix="${_final_prefix}test_subdir${_k}/"
+                done
+            fi
+            _final_prefix="${_final_prefix}test_"
+        fi
+        echo "${_final_prefix}${i}${_file_suffix}"
     done | xargs -I{} -P${_parallel} curl -sf -u "${_usr}:${_pwd}" -w '%{http_code} {} (%{time_total}s)\n' -T ${_TMP%/}/${FUNCNAME[0]}_$$.txt -L -k "${_repo_path%/}/{}"
     # NOTE: xargs only stops if exit code is 255
 }
@@ -2432,13 +2470,21 @@ function f_upload_dummies_raw() {
     local __doc__="Upload text files into raw hosted repository by using f_upload_dummies"
     local _repo_name="${1:-"raw-hosted"}"
     local _how_many="${2:-"10"}"
-    local _parallel="${3:-"3"}"
+    local _parallel="${3:-"8"}"
     local _path="${4:-"dummies"}"
-    local _file_prefix="${5:-"test_"}"
+    local _file_prefix="${5}"
     local _file_suffix="${6:-".txt"}"
     local _usr="${7:-"${_ADMIN_USER}"}"
     local _pwd="${8:-"${_ADMIN_PWD}"}"
-    f_upload_dummies "${_NEXUS_URL%/}/repository/${_repo_name}/${_path#/}" "${_how_many}" "${_parallel}" "${_file_prefix}" "${_file_suffix}" "${_usr}" "${_pwd}"
+
+    if ! _is_repo_available "${_repo_name}"; then
+        local _ds_name="$(_get_datastore_name)"
+        local _bs_name="$(_get_blobstore_name)"
+        local _extra_sto_opt="$(_get_extra_sto_opt "${_ds_name}")"
+        _apiS '{"action":"coreui_Repository","method":"create","data":[{"attributes":{"storage":{"blobStoreName":"'${_bs_name}'","writePolicy":"ALLOW","strictContentTypeValidation":false'${_extra_sto_opt}'},"cleanup":{"policyName":[]}},"name":"'${_repo_name}'","format":"","type":"","url":"","online":true,"recipe":"raw-hosted"}],"type":"rpc"}' || return $?
+    fi
+
+    f_upload_dummies "${_NEXUS_URL%/}/repository/${_repo_name}/${_path#/}" "${_how_many}" "${_parallel}" "${_file_prefix}" "${_file_suffix}" "" "${_usr}" "${_pwd}"
 }
 function f_upload_dummies_raw_with_api() {
     local __doc__="Upload text files into raw hosted repository with Upload API"
@@ -2878,7 +2924,7 @@ function f_upload_dummies_yum() {
 
     local _repo_url="${_NEXUS_URL%/}/repository/${_repo_name}/"
     local _yum_remote_url="${_YUM_REMOTE_URL:-"https://vault.centos.org/7.9.2009/os/x86_64/Packages/"}"
-    local _yum_upload_path="${_YUM_UPLOAD_PATH:-"dummy/os/any/Packages"}"
+    local _yum_upload_path="${_YUM_UPLOAD_PATH:-"Packages"}"
 
     if [[ "${_upload_method}" =~ ^[vV] ]]; then
         # not using _tmpdir for index, as don't want to download always
@@ -3054,9 +3100,10 @@ function f_delete_all_assets() {
 
 # 1. Create a new raw-test-hosted repo from Web UI (or API)
 #   f_api "/service/rest/v1/repositories/raw/hosted" '{"name":"raw-test-hosted","online":true,"storage":{"blobStoreName":"default","strictContentTypeValidation":false,"writePolicy":"ALLOW"}}'
-# 2. curl -D- -u "admin:admin123" -T<(echo "test for f_staging_move") -L -k "${_NEXUS_URL%/}/repository/raw-hosted/test/nxrm3Staging.txt"
+# 2. curl -D- -u "admin:admin123" -T<(echo "test for f_staging_move") -L -k "${_NEXUS_URL%/}/repository/raw-test-hosted/test/nxrm3Staging.txt"
 # 3. f_staging_move "raw-test-hosted" "raw-test-tag" "repository=raw-hosted&name=*test/nxrm3Staging*.txt"
-# ^ Tag is optional. Using "*" in name= as name|path in NewDB starts with "/"
+#    ^ Tag is optional. Using "*" in name= as name|path in NewDB starts with "/"
+#   If just associate: (TODO) f_associate_tag "repository=raw-test-hosted&name=*test/nxrm3Staging*.txt" "raw-test-tag"
 # 4. f_staging_move "raw-hosted" "raw-test-tag" "repository=raw-test-hosted&name=*test/nxrm3Staging*.txt"
 # With maven2:
 #   export _NEXUS_URL="https://nxrm3ha-k8s.standalone.localdomain/"
@@ -3093,7 +3140,7 @@ function f_staging_move() {
     echo ""
 }
 
-# Test associate only after f_setup_maven & f_upload_dummies_maven
+# Test associate, run f_setup_maven & f_upload_dummies_maven
 # search: repository=maven-hosted&maven.groupId=setup.nexus3.repos&maven.artifactId=dummy&maven.baseVersion=3
 function f_associate_tag() {
     local __doc__="Associate one tag to the search result"
@@ -3102,10 +3149,12 @@ function f_associate_tag() {
     # Ignore if tag association fails
     echo "# /service/rest/v1/tags -d '{\"name\":\"${_tag}\"}'"
     f_api "/service/rest/v1/tags" "{\"name\":\"${_tag}\"}"
-    echo "# /service/rest/v1/tags/associate/${_tag}?${_search}"
+    echo "# /service/rest/v1/tags/associate/${_tag}?${_search}" # wait=true for Elasticsearch to wait for calm down
     f_api "/service/rest/v1/tags/associate/${_tag}?${_search}" "" "POST" || return $?
     sleep 3 # Just in case waiting for elastic search
-    echo "To confirm: f_api \"/service/rest/v1/search?${_search}\" | grep '\"${_tag}\"' -c"
+    echo "To confirm:"
+    echo "    f_api \"/service/rest/v1/search?${_search}\" | grep '\"${_tag}\"' -c"
+    echo "    f_api \"/service/rest/v1/search?tag=${_tag}\""
 }
 # TODO: add `/service/rest/v1/staging/delete`
 
@@ -3137,12 +3186,12 @@ function f_test_download() {
     _log "INFO" "Crete a new repository "raw-test-hosted", which might already exist ..."
     curl -sSf -u "${USER_PWD}" -k "${_NEXUS_URL%/}/service/rest/v1/repositories/raw/hosted" -H "Content-Type: application/json" -d '{"name":"'${_repo}'","online":true,"storage":{"blobStoreName":"'${_bs_name}'","strictContentTypeValidation":false,"writePolicy":"ALLOW"}}'
 
-    _log "INFO" "Creating ${_tmpdir%/}/test_100MB.img, and check how fast this location is ..."
-    time dd if=/dev/zero of=${_tmpdir%/}/test_100MB.img bs=1 count=0 seek=$((1024*1024*100))
-    _log "INFO" "Uploading as ${_repo}/test/test_100MB.img, and check how fast ..."
-    time curl -D- -Sf -u "${USER_PWD}" -k "${_NEXUS_URL%/}/repository/${_repo}/test/test_100MB.img" -T ${_tmpdir%/}/test_100MB.img
-    _log "INFO" "Downloading ${_repo}/test/test_100MB.img, and check how fast ..."
-    time curl -D- -Sf -u "${USER_PWD}" -k "${NEXUS_URL%/}/repository/${_repo}/test/test_100MB.img" -o/dev/null
+    _log "INFO" "Creating ${_tmpdir%/}/test_100MB.data, and check how fast this location is ..."
+    time dd if=/dev/zero of=${_tmpdir%/}/test_100MB.data bs=1 count=0 seek=$((1024*1024*100))
+    _log "INFO" "Uploading as ${_repo}/test/test_100MB.data, and check how fast ..."
+    time curl -D- -Sf -u "${USER_PWD}" -k "${_NEXUS_URL%/}/repository/${_repo}/test/test_100MB.data" -T ${_tmpdir%/}/test_100MB.data
+    _log "INFO" "Downloading ${_repo}/test/test_100MB.data, and check how fast ..."
+    time curl -D- -Sf -u "${USER_PWD}" -k "${NEXUS_URL%/}/repository/${_repo}/test/test_100MB.data" -o/dev/null
 }
 
 # K8s related but not in use yet | any more
@@ -3241,6 +3290,17 @@ function f_restore_postgresql_component() {
     grep -w ERROR ./psql_restore.log | grep -v "cannot drop constraint"
 }
 
+function f_set_log_level() {
+    local __doc__="Set / Change some logger's log level"
+    local _log_class="${1}"
+    local _log_level="${2:-"DEBUG"}"
+    if [ -z "${_log_class}" ]; then
+        _log "ERROR" "No logger class name is given."
+        return 1
+    fi
+    f_api "/service/rest/internal/ui/loggingConfiguration/${_log_class}" "{\"name\":\"${_log_class}\",\"level\":\"${_log_level}\"}" "PUT"
+}
+
 #f_query_postgresql ./sonatype-work/nexus3 "SELECT blob_ref FROM %TABLE%" "%_asset_blob"
 function f_query_postgresql() {
     local __doc__="Query against all assets or components"
@@ -3254,6 +3314,53 @@ function f_query_postgresql() {
         echo "# ${_q}" >&2
         PGGSSENCMODE=disable psql -h ${_DBHOST} -p ${_DBPORT:-"5432"} -U ${_DBUSER} -d ${_DBNAME} ${_psql_opts} -c "${_q}"
     done
+}
+
+function f_setup_service() {
+    local __doc__="Setup NXRM as a service"
+    # https://help.sonatype.com/display/NXRM3/Run+as+a+Service
+    local _base_dir="${1:-"."}"
+    local _usr="${2:-"$USER"}"
+    local _num_of_files="${3:-4096}"    # Increase this if production
+    local _svc_file="/etc/systemd/system/nexus.service"
+    local _env="#env="
+    #_env="Environment=\"INSTALL4J_ADD_VM_PARAMS=-agentlib:jdwp=transport=dt_socket,server=y,suspend=n,address=5005\""
+    local _bin_nexus="$(find "${_base_dir%/}" -maxdepth 3 -type f -name "nexus" -path '*/bin/*' | head -n1)"
+    if [ -z "${_bin_nexus}" ]; then
+        _log "ERROR" "Nexus executable does not exist under ${_base_dir%/}"
+        return 1
+    fi
+    _bin_nexus="$(readlink -f "${_bin_nexus}")"
+
+    if [ -s ${_svc_file} ]; then
+        _log "WARN" "${_svc_file} already exists. Overwriting..."; sleep 3
+    fi
+    # NOTE: If OS is integrated with One Identity Authentication Service, use "After=vasd.target"
+    #       If needs to wait for (network) mount: https://unix.stackexchange.com/questions/246935/set-systemd-service-to-execute-after-fstab-mount
+    cat << EOF > /tmp/nexus.service || return $?
+[Unit]
+Description=nexus service
+After=network-online.target
+
+[Service]
+${_env}
+Type=forking
+LimitNOFILE=${_num_of_files}
+ExecStart=${_bin_nexus} start
+ExecStop=${_bin_nexus} stop
+User=${_usr}
+Restart=on-abort
+TimeoutSec=600
+
+[Install]
+WantedBy=multi-user.target
+EOF
+    sudo cp -f -v /tmp/nexus.service ${_svc_file} || return $?
+    sudo chmod a+x ${_svc_file}
+    sudo systemctl daemon-reload || return $?
+    sudo systemctl enable nexus.service
+    _log "INFO" "Service configured. If Nexus is currently running, please stop, then 'systemctl start nexus.service'"
+    # NOTE: for troubleshooting 'systemctl cat nexus'
 }
 
 

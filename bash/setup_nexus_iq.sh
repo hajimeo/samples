@@ -393,24 +393,43 @@ Also update _IQ_URL. For example: export _IQ_URL=\"https://${_fqdn}:${_port}/\""
     _log "INFO" "To trust this certificate, _trust_ca \"\${_ca_pem}\""
 }
 
-# NOTE: use start_nexus3_repo.sh f_start_ldap_server
+# NOTE: Use the setup_nexus3_repo.sh:f_start_ldap_server() to start GLAuth
+#_LDAP_GROUP_MAPPING_TYPE="STATIC" f_setup_ldap_glauth     # For STATIC group mapping
 function f_setup_ldap_glauth() {
     local __doc__="Setup LDAP for GLAuth server."
     local _name="${1:-"glauth"}"
     local _host="${2:-"localhost"}"
     local _port="${3:-"389"}"   # 636
     #[ -z "${_LDAP_PWD}" ] && _log "WARN" "Missing _LDAP_PWD" && sleep 3
-    local _id="$(_apiS "/rest/config/ldap" '{"id":null,"name":"'${_name}'"}' | python -c "import sys,json;a=json.loads(sys.stdin.read());print(a['id'])")" || return $?
-    [ -z "${_id}" ] && return 111
-    #nc -z ${_host} ${_port} || return $?
-    _apiS "/rest/config/ldap/${_id}/connection" '{"id":null,"serverId":"'${_id}'","protocol":"LDAP","hostname":"'${_host}'","port":'${_port}',"searchBase":"dc=standalone,dc=localdomain","authenticationMethod":"SIMPLE","saslRealm":null,"systemUsername":"admin@standalone.localdomain","systemPassword":"'${_LDAP_PWD:-"secret12"}'","connectionTimeout":30,"retryDelay":30}' "PUT" | python -m json.tool || return $?
-    _apiS "/rest/config/ldap/${_id}/userMapping" '{"id":null,"serverId":"'${_id}'","userBaseDN":"ou=users","userSubtree":true,"userObjectClass":"posixAccount","userFilter":"","userIDAttribute":"uid","userRealNameAttribute":"cn","userEmailAttribute":"mail","userPasswordAttribute":"","groupMappingType":"DYNAMIC","groupBaseDN":"","groupSubtree":true,"groupObjectClass":null,"groupIDAttribute":null,"groupMemberAttribute":null,"groupMemberFormat":null,"userMemberOfGroupAttribute":"memberOf","dynamicGroupSearchEnabled":true}' "PUT" | python -m json.tool || return $?
+    local _server_id="$(_apiS "/rest/config/ldap" | JSON_SEARCH_KEY="id,name" _sortjson | sed -nE 's/([^,]+),'${_name}'$/\1/p')"
+    local _um_id="null"
+    if [ -z "${_server_id}" ]; then
+        _server_id="$(_apiS "/rest/config/ldap" '{"id":null,"name":"'${_name}'"}' | JSON_SEARCH_KEY="id" _sortjson)" || return $?
+        [ -z "${_server_id}" ] && return 111
+        #nc -z ${_host} ${_port} || return $?
+        _apiS "/rest/config/ldap/${_server_id}/connection" '{"id":null,"serverId":"'${_server_id}'","protocol":"LDAP","hostname":"'${_host}'","port":'${_port}',"searchBase":"dc=standalone,dc=localdomain","authenticationMethod":"SIMPLE","saslRealm":null,"systemUsername":"admin@standalone.localdomain","systemPassword":"'${_LDAP_PWD:-"secret12"}'","connectionTimeout":30,"retryDelay":30}' "PUT" | _sortjson || return $?
+    else
+        _um_id="\"$(_apiS "/rest/config/ldap/${_server_id}/userMapping" | JSON_SEARCH_KEY="id" _sortjson)\""
+    fi
+
+    if [ "${_LDAP_GROUP_MAPPING_TYPE}" == "STATIC" ]; then
+        _apiS "/rest/config/ldap/${_server_id}/userMapping" '{"id":'${_um_id}',"serverId":"'${_server_id}'","userBaseDN":"ou=users","userObjectClass":"posixAccount","userFilter":"","userIDAttribute":"uid","userRealNameAttribute":"cn","userEmailAttribute":"mail","userPasswordAttribute":"","groupBaseDN":"ou=users","groupObjectClass":"posixGroup","groupIDAttribute":"cn","groupMemberAttribute":"memberUid","groupMemberFormat":"${username}","userMemberOfGroupAttribute":"memberOf","groupMappingType":"STATIC","userSubtree":true,"groupSubtree":true,"dynamicGroupSearchEnabled":true}' "PUT"
+    else
+        _apiS "/rest/config/ldap/${_server_id}/userMapping" '{"id":'${_um_id}',"serverId":"'${_server_id}'","userBaseDN":"ou=users","userSubtree":true,"userObjectClass":"posixAccount","userFilter":"","userIDAttribute":"uid","userRealNameAttribute":"cn","userEmailAttribute":"mail","userPasswordAttribute":"","groupMappingType":"DYNAMIC","groupBaseDN":"","groupSubtree":true,"groupObjectClass":null,"groupIDAttribute":null,"groupMemberAttribute":null,"groupMemberFormat":null,"userMemberOfGroupAttribute":"memberOf","dynamicGroupSearchEnabled":true}' "PUT"
+    fi | _sortjson || return $?
+    # Dynamic/Static use admin to check if the user exists
+    echo "To test group mappings (space may need to be changed to %20):"
+    echo "    curl -v -u \"cn=ldapadmin,dc=standalone,dc=localdomain\" -k \"ldap://${_host:-"localhost"}:${_port:-"389"}/ou=users,dc=standalone,dc=localdomain?dn,uid,cn,mail,memberof?sub?(&(objectClass=posixAccount)(uid=ldapuser))\""   # + userFilter
+    # TODO: Bind request: curl -v -u "cn=ldapuser,ou=ipausers,ou=users,dc=standalone,dc=localdomain:ldapuser" -k "ldap://${_host:-"localhost"}:${_port:-"389"}/dc=standalone,dc=localdomain""   # + userFilter
+    if [ "${_LDAP_GROUP_MAPPING_TYPE}" == "STATIC" ]; then
+        # groupIDAttribute is returned
+        echo "    curl -v -u \"cn=ldapadmin,dc=standalone,dc=localdomain\" -k \"ldap://${_host:-"localhost"}:${_port:-"389"}/ou=users,dc=standalone,dc=localdomain?cn?sub?(&(objectClass=posixGroup)(cn=*)(memberUid=ldapuser))\""   # + userFilter
+    fi
     echo "To start glauth, execute f_start_ldap_server from setup_nexus3_repo.sh"
-    echo "To test: curl -v -u \"admin@standalone.localdomain\" -k \"ldap://${_host}:${_port}/ou=users,dc=standalone,dc=localdomain?uid,cn,mail,memberof?sub?(&(objectClass=posixAccount)(uid=*))\""   # + userFilter
    # echo "To test: LDAPTLS_REQCERT=never ldapsearch -H ldap://${_host}:${_port} -b 'dc=standalone,dc=localdomain' -D 'admin@standalone.localdomain' -w '${_LDAP_PWD:-"secret12"}' -s sub '(&(objectClass=posixAccount)(uid=*))'"
 }
 
-function f_setup_ldap_freeipa() {
+function f_deprecated_setup_ldap_freeipa() {
     local __doc__="Deprecated: Setup LDAP with freeIPA server"
     local _name="${1:-"freeIPA"}"
     local _host="${2:-"dh1.standalone.localdomain"}"
@@ -739,57 +758,83 @@ function f_prep_yum_meta_for_scan() {
     echo "expat.x86_64                   2.5.0-2.el9                  @nexusiq-test" >> ./yum-packages.txt
 }
 
-function _curl() {
-   curl -sSf -u "${_IQ_CRED:-"${_ADMIN_USER}:${_ADMIN_PWD}"}" "$@"
+function f_prep_scan_target_for_proprietary_component(){
+    local __doc__="As scan-<reportId>.xml.gz file can't be used for this test, generating a dummy jar file"
+    local _path="${1:-"./"}"    # A/1/_work/8/s/all/target/some.class.com.all-1.0-SNAPSHOT.jar
+    local _gen_file_name="${2:-"test.zip"}" # not a path
+    local _dir="$(dirname "${_path}")"
+    local _cwd="$(pwd)"
+    local _tmpdir="$(mktemp -d)" || return $?
+    cd "${_tmpdir}" || return $?
+    # Not sure if mkdir is needed but just in case
+    mkdir -v -p "${_dir#/}" || return $?
+    _gen_dummy_jar "${_path#/}" || return $?
+    zip -r "${_cwd%/}/${_gen_file_name}" . || return $?
+    cd "${_cwd}" || return $?
 }
 
-function _apiS() {
-    local _path="${1}"
-    local _data="${2}"
-    local _method="${3}"
-    local _iq_url="${4:-"${_IQ_URL%/}"}"
-    local _c="${_TMP%/}/.nxiq_c_$$"
-    find ${_TMP%/}/ -type f -name .nxiq_c_$$ -mmin +10 -delete 2>/dev/null
-    if [ ! -s "${_c}" ]; then
-        _curl -b ${_c} -c ${_c} -o /dev/null "${_iq_url%/}/rest/user/session" || return $?
+#f_set_log_level "org.apache.http.headers"
+function f_set_log_level() {
+    local __doc__="Set / Change some logger's log level (TODO: currently only localhost:8071)"
+    local _log_class="${1}"
+    local _log_level="${2:-"DEBUG"}"
+    if [ -z "${_log_class}" ]; then
+        _log "ERROR" "No logger class name is given."
+        return 1
     fi
-    [ -n "${_data}" ] && [ -z "${_method}" ] && _method="POST"
-    [ -z "${_method}" ] && _method="GET"
-    local _cmd="curl -sSf -u '${_ADMIN_USER}:${_ADMIN_PWD}' -b ${_c} -c ${_c} -H 'X-CSRF-TOKEN: $(_sed -nr 's/.+\sCLM-CSRF-TOKEN\s+([0-9a-f]+)/\1/p' ${_c})' '${_iq_url%/}${_path}' -X ${_method}"
-    if [ "${_data:0:5}" == "file=" ]; then
-        _cmd="${_cmd} -F ${_data}"
-    elif [ -n "${_data}" ] && [ "${_data:0:1}" != "{" ]; then
-        _cmd="${_cmd} -H 'Content-Type: text/plain' --d ${_data}"    # TODO: should use quotes?
-    elif [ -n "${_data}" ]; then
-        _cmd="${_cmd} -H 'Content-Type: application/json' --data-raw '${_data}'"
-    fi
-    eval ${_cmd}
+    curl -sSf -X POST -d "logger=${_log_class}&level=${_log_level}" "http://localhost:8071/tasks/log-level" || return $?
 }
 
-# In case _IQ_URL is not specified, check my test servers
-function _get_iq_url() {
-    local _iq_url="${1-${_IQ_URL}}"
-    if [ -n "${_iq_url%/}" ]; then
-        if [[ ! "${_iq_url}" =~ ^https?://.+ ]]; then
-            if [[ ! "${_iq_url}" =~ .+:[0-9]+ ]]; then   # Provided hostname only
-                _iq_url="http://${_iq_url%/}:8070/"
-            else
-                _iq_url="http://${_iq_url%/}/"
-            fi
-        fi
-        if curl -m1 -f -s -I "${_iq_url%/}/" &>/dev/null; then
-            echo "${_iq_url%/}/"
-            return
-        fi
+function f_setup_service() {
+    local __doc__="Setup NXIQ as a service"
+    # https://help.sonatype.com/iqserver/installing/running-iq-server-as-a-service#RunningIQServerasaService-systemd
+    local _base_dir="${1:-"."}"
+    local _usr="${2:-"$USER"}"
+    local _num_of_files="${3:-4096}"
+    local _svc_file="/etc/systemd/system/nexusiq.service"
+    if [ ! -s ${_base_dir%/}/nexus-iq-server.sh ]; then
+        _download_and_extract "https://raw.githubusercontent.com/hajimeo/samples/master/misc/nexus-iq-server.sh" "" "${_base_dir%/}" "" "${_usr}" || return $?
+        chown ${_usr}: ${_base_dir%/}/nexus-iq-server.sh || return $?
+        chmod u+x ${_base_dir%/}/nexus-iq-server.sh || return $?
     fi
-    # if curl is failing, silently replacing with
-    for _url in "http://localhost:8070/" "${_IQ_TEST_URL%/}/"; do
-        if [ "${_iq_url%/}" != "${_url%/}" ] && curl -m1 -f -s -I "${_url%/}/" &>/dev/null; then
-            echo "${_url%/}/"
-            return
-        fi
-    done
-    return 1
+
+    # NOTE: expecting this symlink always exists
+    local _app_dir="${_base_dir%/}/nexus-iq-server"
+    if [ ! -d "${_app_dir}" ]; then
+        _log "ERROR" "App dir ${_app_dir} does not exist."
+        return 1
+    fi
+
+    if [ -s ${_svc_file} ]; then
+        _log "WARN" "${_svc_file} already exists. Overwriting..."; sleep 3
+    fi
+
+    local _env="#env="
+    #_env="Environment=\"INSTALL4J_ADD_VM_PARAMS=-agentlib:jdwp=transport=dt_socket,server=y,suspend=n,address=5005\""
+    cat << EOF > /tmp/nexusiq.service || return $?
+[Unit]
+Description=nexus iq service
+After=network-online.target
+
+[Service]
+${_env}
+Type=forking
+LimitNOFILE=${_num_of_files}
+ExecStart=${_base_dir%/}/nexus-iq-server.sh start
+ExecStop=${_base_dir%/}/nexus-iq-server.sh stop
+User=${_usr}
+Restart=on-abort
+TimeoutSec=600
+
+[Install]
+WantedBy=multi-user.target
+EOF
+    sudo cp -f -v /tmp/nexusiq.service ${_svc_file} || return $?
+    sudo chmod a+x ${_svc_file}
+    sudo systemctl daemon-reload || return $?
+    sudo systemctl enable nexusiq.service
+    _log "INFO" "Service configured. If Nexus is currently running, please stop, then 'systemctl start nexusiq'"
+    # NOTE: for troubleshooting 'systemctl cat nexusiq'
 }
 
 #JAVA_TOOL_OPTIONS="-agentlib:jdwp=transport=dt_socket,server=y,suspend=y,address=5007" f_cli
@@ -860,6 +905,74 @@ function f_mvn() {
     echo "[$(date +'%Y-%m-%d %H:%M:%S')] Executing: ${_cmd}" >&2
     eval "${_cmd}"
     echo "[$(date +'%Y-%m-%d %H:%M:%S')] Completed." >&2
+}
+
+
+## Utility functions
+function _curl() {
+   curl -sSf -u "${_IQ_CRED:-"${_ADMIN_USER}:${_ADMIN_PWD}"}" "$@"
+}
+
+function _gen_dummy_jar() {
+    local _filepath="${1:-"${_TMP%/}/dummy.jar"}"
+    if [ ! -s "${_filepath}" ]; then
+        if type jar &>/dev/null; then
+            echo "test at $(date +'%Y-%m-%d %H:%M:%S')" > dummy.txt
+            jar -cvf ${_filepath} dummy.txt || return $?
+        else
+            curl -o "${_filepath}" "https://repo1.maven.org/maven2/org/sonatype/goodies/goodies-i18n/2.3.4/goodies-i18n-2.3.4.jar" || return $?
+        fi
+    fi
+}
+
+function _apiS() {
+    local _path="${1}"
+    local _data="${2}"
+    local _method="${3}"
+    local _iq_url="${4:-"${_IQ_URL%/}"}"
+    local _c="${_TMP%/}/.nxiq_c_$$"
+    find ${_TMP%/}/ -type f -name .nxiq_c_$$ -mmin +10 -delete 2>/dev/null
+    if [ ! -s "${_c}" ]; then
+        _curl -b ${_c} -c ${_c} -o /dev/null "${_iq_url%/}/rest/user/session" || return $?
+    fi
+    [ -n "${_data}" ] && [ -z "${_method}" ] && _method="POST"
+    [ -z "${_method}" ] && _method="GET"
+    local _cmd="curl -sSf -u '${_ADMIN_USER}:${_ADMIN_PWD}' -b ${_c} -c ${_c} -H 'X-CSRF-TOKEN: $(_sed -nr 's/.+\sCLM-CSRF-TOKEN\s+([0-9a-f]+)/\1/p' ${_c})' '${_iq_url%/}${_path}' -X ${_method}"
+    local _stdout_when_err=""
+    if [ "${_data:0:5}" == "file=" ]; then
+        _cmd="${_cmd} -F ${_data}"
+    elif [ -n "${_data}" ] && [ "${_data:0:1}" != "{" ]; then
+        _cmd="${_cmd} -H 'Content-Type: text/plain' --d ${_data}"    # TODO: should use quotes?
+    elif [ -n "${_data}" ]; then
+        _cmd="${_cmd} -H 'Content-Type: application/json' --data-raw '${_data}'"
+    fi
+    eval ${_cmd}
+}
+
+# In case _IQ_URL is not specified, check my test servers
+function _get_iq_url() {
+    local _iq_url="${1-${_IQ_URL}}"
+    if [ -n "${_iq_url%/}" ]; then
+        if [[ ! "${_iq_url}" =~ ^https?://.+ ]]; then
+            if [[ ! "${_iq_url}" =~ .+:[0-9]+ ]]; then   # Provided hostname only
+                _iq_url="http://${_iq_url%/}:8070/"
+            else
+                _iq_url="http://${_iq_url%/}/"
+            fi
+        fi
+        if curl -m1 -f -s -I "${_iq_url%/}/" &>/dev/null; then
+            echo "${_iq_url%/}/"
+            return
+        fi
+    fi
+    # if curl is failing, silently replacing with
+    for _url in "http://localhost:8070/" "${_IQ_TEST_URL%/}/"; do
+        if [ "${_iq_url%/}" != "${_url%/}" ] && curl -m1 -f -s -I "${_url%/}/" &>/dev/null; then
+            echo "${_url%/}/"
+            return
+        fi
+    done
+    return 1
 }
 
 
