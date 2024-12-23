@@ -16,7 +16,7 @@ java -Xmx16g -jar ./h2-console_v200.jar <DB file path>
 ```
 Default H2 options:
 ```
-DATABASE_TO_UPPER=FALSE;LOCK_MODE=0;DEFAULT_LOCK_TIMEOUT=600000
+DATABASE_TO_UPPER=FALSE;DEFAULT_LOCK_TIMEOUT=600000
 ```
 If the DB file path end with ".h2.db", "MV_STORE=FALSE" is automatically added. Alternatively, set 'h2Opts' system property to overwrite the default or append some extra DB options in the end of file path if you do not want to overwrite the default:
 ```

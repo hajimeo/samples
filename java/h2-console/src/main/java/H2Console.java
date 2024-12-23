@@ -26,7 +26,7 @@ public class H2Console {
     static private Boolean isDebug;
     static final private List<String> numTypes = Arrays.asList("smallint", "integer", "int", "int4", "bigint", "decimal", "numeric", "real", "smallserial", "serial", "bigserial");
     static private String outputFormat = "csv";    // or json
-    static final private String H2_DEFAULT_OPTS = "DATABASE_TO_UPPER=FALSE;LOCK_MODE=0;DEFAULT_LOCK_TIMEOUT=600000";
+    static final private String H2_DEFAULT_OPTS = "DATABASE_TO_UPPER=FALSE;DEFAULT_LOCK_TIMEOUT=600000";
     static final private String PROMPT = "=> ";
     static private String h2Opts = "";
     static private String binaryField;
