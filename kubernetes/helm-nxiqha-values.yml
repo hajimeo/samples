@@ -6,13 +6,12 @@
 #$ helm install nxiqha sonatype/nexus-iq-server-ha -f ./helm-nxiqha-values.yml --set-file iq_server.license=$HOME/share/sonatype/sonatype-license.lic -n sonatype-ha
 
 # To upgrade:
-#$ helm repo update sonatype
-#$ helm search repo sonatype/nexus-iq-server-ha --versions | head
+#$ helm repo update sonatype && helm search repo sonatype/nexus-iq-server-ha --versions | head
 #$ helm upgrade -i nxiqha sonatype/nexus-iq-server-ha -f ./helm-nxiqha-values.yml -n sonatype-ha #--dry-run
 
 # Installing from github (eg: older versions due to CLM-28041)
 #$ git -C ~/IdeaProjects/nexus-iq-server-ha pull && git -C ~/IdeaProjects/nexus-iq-server-ha fetch
-#$ helm upgrade --install nxiqha ~/IdeaProjects/nexus-iq-server-ha/chart -f ~/IdeaProjects/samples/kubernetes/helm-nxiqha-values.yml -n sonatype-ha #--version 1.162.0 --dry-run
+#$ helm upgrade --install nxiqha ~/IdeaProjects/nexus-iq-server-ha/chart -f ~/IdeaProjects/samples/kubernetes/helm-nxiqha-values.yml -n sonatype-ha #--version 183.0.0 --dry-run
 # NOTE --version uses CHART VERSION not APP VERSION
 
 iq_server:
@@ -28,6 +27,9 @@ iq_server:
     limits:
       cpu: 1
       memory: 4Gi
+  #env:
+  # - name: NXIQ_DATABASE_MIGRATION
+  #   value: "false"
   # -XX:ActiveProcessorCount=1 -XX:+UseG1GC
   # -Dcom.sun.management.jmxremote=true -Dcom.sun.management.jmxremote.port=9000 -Dcom.sun.management.jmxremote.rmi.port=9000 -Dcom.sun.management.jmxremote.authenticate=false -Dcom.sun.management.jmxremote.ssl=false -Dcom.sun.management.jmxremote.local.only=true -Djava.rmi.server.hostname=127.0.0.1
   javaOpts: "-Xms2g -Xmx2g -XX:MaxDirectMemorySize=1g -Djdk.nio.maxCachedBufferSize=262144 -Dcom.redhat.fips=false -XX:-UsePerfData -Djava.io.tmpdir=/sonatype-work/clm-server/tmp"

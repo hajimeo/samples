@@ -7,7 +7,7 @@ iq_server:
   # Sonatype official public image
   imageRegistry: # Container image registry, if not specified the Docker public registry will be used
   image: "sonatype/nexus-iq-server"
-  tag: "1.165.0"
+  tag: "1.185.0"
   imagePullPolicy: "IfNotPresent"
 
   # We usually recommend not to specify default resources and to leave this as a conscious choice for the user.
@@ -20,6 +20,16 @@ iq_server:
     limits:
       cpu: #8
       memory: #8Gi
+
+  env:
+  # Add more environment variables as needed
+  # - name: ENV_VAR_1
+  #   value: value1
+  # - name: ENV_VAR_2
+  #   valueFrom:
+  #     secretKeyRef:
+  #       name: my-secret
+  #       key: secret-key
 
   # Value for the JAVA_OPTS environment variable to pass custom settings to the JVM
   javaOpts:
@@ -96,6 +106,8 @@ iq_server:
   applicationServiceAnnotations:
   # Annotations for the admin service
   adminServiceAnnotations:
+  # Annotations for the iq server pods
+  podAnnotations:
 
   # Number of pods to run
   replicas: 2
@@ -138,6 +150,9 @@ iq_server:
       name: ${NXIQ_DATABASE_NAME}
       username: ${NXIQ_DATABASE_USERNAME}
       password: ${NXIQ_DATABASE_PASSWORD}
+      ## optional key-value pairs to be appended to the database connection URL
+      #parameters:
+        #example-param-key-name: example-param-value
     # Pickup product license path from an environment variable
     licenseFile: ${NXIQ_LICENSE_FILE}
     server:
@@ -197,6 +212,42 @@ iq_server:
           archivedLogFilenamePattern: "/var/log/nexus-iq-server/clm-server-%d.log.gz"
           archivedFileCount: 50
     createSampleData: true
+  # Specify a custom 'chown' command to modify ownership of directories.
+  pvOwnershipOverride:  "chown -R 1000:1000 /sonatype-work/clm-cluster"
+  pvOwnershipOverrideResources:
+    requests:
+      cpu: #150m
+      memory: #200M
+    limits:
+      cpu: #300m
+      memory: #400M
+
+iq_server_jobs:
+  # We usually recommend not to specify default resources and to leave this as a conscious choice for the user.
+  # This also increases the chance that the chart runs on environments with little resources.
+  # The commented values below are the minimum recommended resources for production.
+  resources:
+    requests:
+      cpu: #500m
+      memory: #1Gi
+    limits:
+      cpu: #500m
+      memory: #1Gi
+  env:
+  # Add more environment variables as needed
+  # - name: ENV_VAR_1
+  #   value: value1
+  # - name: ENV_VAR_2
+  #   valueFrom:
+  #     secretKeyRef:
+  #       key: secret-key
+  #       name: my-secret
+
+global:
+  busybox: # Container image registry, if not specified the Docker public registry will be used
+    imageRegistry:
+    image: busybox
+    tag: 1.28
 
 # Horizontal pod auto-scaler
 hpa:
@@ -308,6 +359,13 @@ aggregateLogFileRetention:
 # fluentd configuration
 fluentd:
   enabled: true
+  resources:
+    requests:
+      cpu: #150m
+      memory: #200M
+    limits:
+      cpu: #300m
+      memory: #400M
   config:
     # Configuration for sidecar forwarder
     # Note that source parsing formats must correspond to the Nexus IQ Server log formats
@@ -333,10 +391,10 @@ fluentd:
           read_from_head: true
           parse:
             $type: regexp
-            expression: /^(?<host>[^ ]*) (?<ident>[^ ]*) (?<authuser>[^ ]*) \[(?<logtime>[^\]]*)\] "(?<method>[^ ]*) (?<path>[^ ]*) (?<protocol>[^"]*)" (?<status>[^ ]*) (?<bytes>[^ ]*) (?<time>[^ ]*) "(?<userAgent>[^"]*)"$/
+            expression: /^(?<host>[^ ]*) (?<ident>[^ ]*) (?<authuser>[^ ]*) \[(?<logtime>[^\]]*)\] "(?<method>[^ ]*) (?<path>[^ ]*) (?<protocol>[^"]*)" (?<status>[^ ]*) (?<bytes>[^ ]*) (?<elapsedTime>[^ ]*) "(?<userAgent>[^"]*)"$/
             time_key: logtime
             time_format: "%d/%b/%Y:%H:%M:%S %z"
-            types: "status:integer,bytes:integer,time:integer"
+            types: "status:integer,bytes:integer,elapsedTime:integer"
       # Get the audit log
       - source:
           $type: tail
@@ -371,8 +429,9 @@ fluentd:
           tag: iq_server.clm-server
           read_from_head: true
           parse:
-            $type: regexp
-            expression: /^((?<logtime>[^ ]* [^ ]*) (?<level>[^ ]*) \[(?<thread>[^\]]*)\] (?<username>[^ ]*) (?<logger>[^ ]*) - (?<message>.*))|(?<message>.*)$/
+            $type: multiline
+            format_firstline: /\d{4}-\d{1,2}-\d{1,2}/
+            format1: /^((?<logtime>[^ ]* [^ ]*) (?<level>[^ ]*) \[(?<thread>[^\]]*)\] (?<username>[^ ]*) (?<logger>[^ ]*) - (?<message>.*))|(?<message>.*)$/
             time_key: logtime
             time_format: "%Y-%m-%d %H:%M:%S,%L%z"
       # Get the stderr log
@@ -615,7 +674,7 @@ fluentd:
       privileged: true
     initContainers:
       - name: "{{ .Release.Name }}-set-fluentd-persistence-ownership"
-        image: busybox:1.28
+        image: "{{ tpl (include \"nexus-iq-server-ha.busyboxImage\" .) $}}"
         command: [ "sh", "-c", "chown -R 1000:1000 /opt/bitnami/fluentd/logs/nexus-iq-server" ]
         volumeMounts:
           - mountPath: "/opt/bitnami/fluentd/logs/nexus-iq-server"
@@ -624,3 +683,11 @@ fluentd:
     initScripts:
       # Plugin which can be configured to send logs to CloudWatch
       plugins.sh: "fluent-gem install fluent-plugin-cloudwatch-logs"
+
+  securityContext: {}
+  #   capabilities:
+  #     drop:
+  #     - ALL
+  #   readOnlyRootFilesystem: true
+  #   runAsNonRoot: true
+  #   runAsUser: 1000
