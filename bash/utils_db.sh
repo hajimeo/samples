@@ -125,7 +125,6 @@ function _postgresql_configure() {
         # NOTE: Below stays after restarting and requires superuser
         # ALTER system RESET ALL;
         # ALTER system SET log_min_duration_statement = 1000;SELECT pg_reload_conf(); -- 'DATABASE :DBNAME' doesn't work?
-        # ALTER system SET log_statement = 'mod';SELECT pg_reload_conf();
         _psql_adm "ALTER SYSTEM SET log_min_duration_statement TO '0'"
         _psql_adm "ALTER SYSTEM SET log_checkpoints TO 'on'"
         _psql_adm "ALTER SYSTEM SET log_autovacuum_min_duration TO '0'"
@@ -133,7 +132,7 @@ function _postgresql_configure() {
     else
         _psql_adm "ALTER SYSTEM SET log_line_prefix TO ''%m [%p-%c]: db=%d,user=%u,app=%a,client=%h ''"
         # ALTER system RESET ALL;
-        # ALTER system SET log_statement = 'mod';SELECT pg_reload_conf();
+        # ALTER system SET log_statement = 'all';SELECT pg_reload_conf();
         _psql_adm "ALTER SYSTEM SET log_statement TO 'mod'"
         _psql_adm "ALTER SYSTEM SET log_min_duration_statement TO '100'"
         _psql_adm "ALTER SYSTEM SET log_autovacuum_min_duration TO '600000'"
