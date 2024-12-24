@@ -706,7 +706,7 @@ function f_setup_yum() {
 
     # If no xxxx-group, create it
     if ! _is_repo_available "${_prefix}-group"; then
-        _apiS '{"action":"coreui_Repository","method":"create","data":[{"attributes":{"storage":{"blobStoreName":"'${_bs_name}'","strictContentTypeValidation":true'${_extra_sto_opt}'},"group":{"memberNames":["'${_prefix}'-hosted","'${_prefix}'-proxy","'${_prefix}'-epel-proxy"]}},"name":"'${_prefix}'-group","format":"","type":"","url":"","online":true,"recipe":"yum-group"}],"type":"rpc"}' || return $?
+        _apiS '{"action":"coreui_Repository","method":"create","data":[{"attributes":{"storage":{"blobStoreName":"'${_bs_name}'","strictContentTypeValidation":true'${_extra_sto_opt}'},"group":{"memberNames":["'${_prefix}'-hosted","'${_prefix}'-proxy"]}},"name":"'${_prefix}'-group","format":"","type":"","url":"","online":true,"recipe":"yum-group"}],"type":"rpc"}' || return $?
     fi
     # add some data for xxxx-group
     #f_get_asset "${_prefix}-group" "7/os/x86_64/Packages/$(basename ${_upload_file})"
@@ -1207,7 +1207,7 @@ function f_setup_raw() {
     dd if=/dev/zero of=${_TMP%/}/test_1k.data bs=1 count=0 seek=1024 && \
     _ASYNC_CURL="Y" f_upload_asset "${_prefix}-hosted" -F raw.directory=test -F raw.asset1=@${_TMP%/}/test_1k.data -F raw.asset1.filename=test_1k.data
     # If real large size is required:
-    #   dd if=/dev/zero of=./test_100m.data bs=1 count=0 seek=$((1024*1024*100))
+    #   dd if=/dev/zero of=./test_100m.data bs=1024 count=$((1024*100))
     # Test by uploading and downloading:
     #   curl -u 'admin' -w "status:\t%{http_code}\nelapsed:\t%{time_total}\n" -T ${_TMP%/}/test_100m.data "${_NEXUS_URL%/}/repository/raw-hosted/test/test_100m.data"
     #   curl -u 'admin' -w "status:\t%{http_code}\nnelapsed:\t%{time_total}\n" -o/dev/null "${_NEXUS_URL%/}/repository/raw-hosted/test/test_100m.data"
@@ -3174,8 +3174,8 @@ function f_run_tasks_by_type() {
 }
 
 function f_test_download() {
-    local __doc__="Test download with curl"
-    local _repo="${1:-"raw-test-hosted"}"
+    local __doc__="Test download with curl for checking performance"
+    local _repo="${1:-"raw-hosted"}"
     local _work_dir="${2}"
     local _bs_name="${3}"
     local _usr="${4:-"${_ADMIN_USER}"}"
@@ -3183,15 +3183,17 @@ function f_test_download() {
     [ -z "${_work_dir}" ] && _work_dir="$(_get_work_dir)"
     local _tmpdir="${_work_dir:-"."}/tmp"
     [ -z "${_bs_name}" ] && _bs_name="$(_get_blobstore_name)"
-    _log "INFO" "Crete a new repository "raw-test-hosted", which might already exist ..."
-    curl -sSf -u "${USER_PWD}" -k "${_NEXUS_URL%/}/service/rest/v1/repositories/raw/hosted" -H "Content-Type: application/json" -d '{"name":"'${_repo}'","online":true,"storage":{"blobStoreName":"'${_bs_name}'","strictContentTypeValidation":false,"writePolicy":"ALLOW"}}'
-
+    if ! _is_repo_available "${_repo}"; then
+        _log "INFO" "Crete a new repository ${_repo} ..."
+        curl -sSf -u "${_usr}:${_pwd}" -k "${_NEXUS_URL%/}/service/rest/v1/repositories/raw/hosted" -H "Content-Type: application/json" -d '{"name":"'${_repo}'","online":true,"storage":{"blobStoreName":"'${_bs_name}'","strictContentTypeValidation":false,"writePolicy":"ALLOW"}}'
+    fi
     _log "INFO" "Creating ${_tmpdir%/}/test_100MB.data, and check how fast this location is ..."
-    time dd if=/dev/zero of=${_tmpdir%/}/test_100MB.data bs=1 count=0 seek=$((1024*1024*100))
+    #time dd if=/dev/zero of=${_tmpdir%/}/test_100MB.data bs=1 count=0 seek=$((1024*1024*100))
+    time dd if=/dev/zero of=${_tmpdir%/}/test_100MB.data bs=1024 count=102400
     _log "INFO" "Uploading as ${_repo}/test/test_100MB.data, and check how fast ..."
-    time curl -D- -Sf -u "${USER_PWD}" -k "${_NEXUS_URL%/}/repository/${_repo}/test/test_100MB.data" -T ${_tmpdir%/}/test_100MB.data
+    curl -sSf -w 'Status: %{http_code}, Elapsed: %{time_total}s\n' -u "${_usr}:${_pwd}" -k "${_NEXUS_URL%/}/repository/${_repo}/test/test_100MB.data" -T ${_tmpdir%/}/test_100MB.data
     _log "INFO" "Downloading ${_repo}/test/test_100MB.data, and check how fast ..."
-    time curl -D- -Sf -u "${USER_PWD}" -k "${NEXUS_URL%/}/repository/${_repo}/test/test_100MB.data" -o/dev/null
+    curl -sSf -w 'Status: %{http_code}, Elapsed: %{time_total}s\n' -u "${_usr}:${_pwd}" -k "${_NEXUS_URL%/}/repository/${_repo}/test/test_100MB.data" -o/dev/null
 }
 
 # K8s related but not in use yet | any more
