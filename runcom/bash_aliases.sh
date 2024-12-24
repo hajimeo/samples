@@ -142,6 +142,7 @@ alias strip_tags='python3 -c "import sys,html,re;rx=re.compile(r\"<[^>]+>\");pri
 alias escape4json='python3 -c "import sys,json;print(json.dumps(sys.stdin.read()))"'
 alias jp='pyvN && jupyter-lab &> /tmp/jupyter-lab.out'   # not using & as i forget to stop
 alias jn='pyvN && jupyter-notebook &> /tmp/jupyter-notebook.out'
+# php -S 0.0.0.0:7999
 alias startWeb='python3 -m http.server' # specify port (default:8000) if python2: python -m SimpleHTTPServer 8000
 
 #type zsh &>/dev/null && alias zzhi='env /usr/bin/arch -x86_64 /bin/zsh —-login'
