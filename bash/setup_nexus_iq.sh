@@ -393,6 +393,28 @@ Also update _IQ_URL. For example: export _IQ_URL=\"https://${_fqdn}:${_port}/\""
     _log "INFO" "To trust this certificate, _trust_ca \"\${_ca_pem}\""
 }
 
+function f_setup_saml_simplesaml() {
+    local __doc__="Setup SAML for SimpleSAML server."
+    local _name="${1:-"simplesaml"}"
+    local _idp_metadata="${2:-"${_TMP%/}/idp_metadata.xml"}"
+    local _host="${3:-"localhost"}"
+    local _port="${4:-"2080"}"
+    # Check if it's already setup
+    _curl "${_IQ_URL%/}/api/v2/config/saml" 2>/dev/null
+    if [ $? -eq 0 ]; then
+        _log "INFO" "SAML is already setup."
+        return 0
+    fi
+    if [ ! -s "${_idp_metadata}" ]; then
+        _log "ERROR" "Missing IDP metadata file (_idp_metadata): ${_idp_metadata}"
+        return 1
+    fi
+    if ! _curl "${_IQ_URL%/}/api/v2/config/saml" -X PUT -F identityProviderXml=@${_idp_metadata} -F samlConfiguration="{\"identityProviderName\":\"${_name}\",\"entityId\":\"${_IQ_URL%/}/api/v2/config/saml/metadata\",\"usernameAttributeName\":\"uid\",\"firstNameAttributeName\":\"givenName\",\"lastNameAttributeName\":\"sn\",\"emailAttributeName\":\"eduPersonPrincipalName\",\"groupsAttributeName\":\"eduPersonAffiliation\",\"validateResponseSignature\":false,\"validateAssertionSignature\":false}"; then
+        echo "If SAML is already configured, please try 'DELETE /api/v2/config/saml' first."
+        return 1
+    fi
+}
+
 # NOTE: Use the setup_nexus3_repo.sh:f_start_ldap_server() to start GLAuth
 #_LDAP_GROUP_MAPPING_TYPE="STATIC" f_setup_ldap_glauth     # For STATIC group mapping
 function f_setup_ldap_glauth() {

@@ -2242,25 +2242,32 @@ Also update _NEXUS_URL. For example: export _NEXUS_URL=\"https://local.standalon
 
 
 
-# SAML server: https://github.com/hajimeo/samples/blob/master/golang/SamlTester/README.md
 # friendly attributes {uid=[samluser], eduPersonAffiliation=[users], givenName=[saml], eduPersonPrincipalName=[samluser@standalone.localdomain], cn=[Saml User], sn=[user]}
 # NXRM3 meta: curl -o ${_sp_meta_file} -u "admin:admin123" "http://localhost:8081/service/rest/v1/security/saml/metadata"
-# If IQ: f_start_saml_server "" "" "http://localhost:8070/api/v2/config/saml/metadata"
 function f_start_saml_server() {
+    # SAML server: https://github.com/hajimeo/samples/blob/master/golang/SamlTester/README.md
     local __doc__="Install and start a dummy SAML service"
     local _idp_base_url="${1:-"http://localhost:2080/"}"
     local _sp_meta_file="${2:-"/tmp/metadata.xml"}"
-    local _sp_meta_url="${3-"http://localhost:8081/service/rest/v1/security/saml/metadata"}"
+    local _sp_meta_url="${3}"   # If IQ: http://localhost:8070/api/v2/config/saml/metadata
     local _sp_meta_cred="${4-"admin:admin123"}"
     local _install_dir="${5:-"${_SHARE_DIR%/}/simplesaml"}"
     local _users_json="${6:-"${_install_dir%/}/simple-saml-idp.json"}"
     if [ -z "${_sp_meta_file}" ]; then
         echo "Please specify _sp_meta_file"; return 1
     fi
+    if [ -z "${_sp_meta_url}" ]; then
+        if [ -n "${_NEXUS_URL%/}" ] && _isUrl "${_NEXUS_URL%/}/service/rest/v1/status" "Y"; then
+            _sp_meta_url="${_NEXUS_URL%/}/service/rest/v1/security/saml/metadata"
+        elif [ -n "${_IQ_URL%/}" ] && _isUrl "${_IQ_URL%/}/ping" "Y"; then
+            _sp_meta_url="${_IQ_URL%/}/api/v2/config/saml/metadata"
+        fi
+    fi
     if [ ! -d "${_install_dir%/}" ]; then
         mkdir -v -p "${_install_dir%/}" || return $?
     fi
 
+    # Installing simplesamlidp
     local _cmd="simplesamlidp"  # If not in the PATH, download it
     if ! type ${_cmd} &>/dev/null; then
         if [ ! -s "${_install_dir%/}/simplesamlidp" ]; then
@@ -2269,25 +2276,27 @@ function f_start_saml_server() {
         fi
         _cmd="${_install_dir%/}/simplesamlidp"
     fi
-
     if [ ! -s "${_users_json}" ]; then
         curl -sSf -o "${_users_json}" -L "https://raw.githubusercontent.com/hajimeo/samples/master/misc/simple-saml-idp.json" --compressed  || return $?
     fi
-    # Not implemented to use credential, so for now using _sp_meta_file
+
+    # If SP metadata file does not exist, download it
     if [ -n "${_sp_meta_url}" ] && [ ! -s "${_sp_meta_file}" ]; then
-        curl -sSf -L -o ${_sp_meta_file} -u "${_sp_meta_cred}" "${_sp_meta_url}"   # It's OK if fails
+        curl -sS -L -o ${_sp_meta_file} -u "${_sp_meta_cred}" "${_sp_meta_url}"   # It's OK if fails
     fi
+    # If no key/cert, generate it
     if [ ! -s ${_install_dir%/}/myidp.key ]; then
         openssl req -x509 -newkey rsa:2048 -keyout ${_install_dir%/}/myidp.key -out ${_install_dir%/}/myidp.crt -days 3650 -nodes -subj "/CN=$(hostname -f)" || return $?
     fi
+
     export IDP_KEY="${_install_dir%/}/myidp.key" IDP_CERT="${_install_dir%/}/myidp.crt" USER_JSON="${_users_json}" IDP_BASE_URL="${_idp_base_url}" SERVICE_METADATA_URL="${_sp_meta_file}"
     eval "${_cmd}" &> ./simplesamlidp_$$.log &
     local _pid="$!"
     sleep 2
-    curl -sf -o ./idp_metadata.xml "${_idp_base_url%/}/metadata" || return $?
+    curl -sf -o ${_TMP%/}/idp_metadata.xml "${_idp_base_url%/}/metadata" || return $?
     echo "[INFO] Running simplesamlidp in background ..."
     echo "       PID: ${_pid}  Log: ./simplesamlidp_$$.log"
-    echo "       IdP metadata: ./idp_metadata.xml"
+    echo "       IdP metadata: ${_TMP%/}/idp_metadata.xml"
     #echo "       curl -D- -X PUT -u admin:admin123 http://localhost:8070/api/v2/roleMemberships/global/role/b9646757e98e486da7d730025f5245f8/group/ipausers"
     if [ ! -s "${_sp_meta_file}" ]; then
         #echo "       Example Attr: {uid=[samluser], eduPersonPrincipalName=[samluser@standalone.localdomain], eduPersonAffiliation=[users], givenName=[saml], sn=[user], cn=[Saml User]}"
@@ -2301,12 +2310,12 @@ function f_start_saml_server() {
 function f_setup_saml_for_simplesaml() {
     local __doc__="Setup SAML for Nexus3 with PUT /v1/security/saml"
     local _entityId="${1:-"${_NEXUS_URL%/}/service/rest/v1/security/saml/metadata"}"
-    local _idp_metadata="${2:-"./idp_metadata.xml"}"
+    local _idp_metadata="${2:-"${_TMP%/}/idp_metadata.xml"}"
     if [ ! -s "${_idp_metadata}" ]; then
         echo "Please specify _idp_metadata"; return 1
     fi
     # Escaping \n on Mac is complicated so just removing new lines
-    local _idp_meta_str="$(cat ${_idp_metadata} | sed 's/^[ \t]*//;s/[ \t]*$//;s/\"/\\"/g' | tr -d '\n')"
+    local _idp_meta_str="$(cat "${_idp_metadata}" | sed 's/^[ \t]*//;s/[ \t]*$//;s/\"/\\"/g' | tr -d '\n')"
     if ! f_api "/service/rest/v1/security/saml" "{\"entityId\":\"${_entityId}\",\"idpMetadata\":\"${_idp_meta_str}\",\"usernameAttribute\":\"uid\",\"firstNameAttribute\":\"givenName\",\"lastNameAttribute\":\"sn\",\"emailAttribute\":\"eduPersonPrincipalName\",\"groupsAttribute\":\"eduPersonAffiliation\",\"validateResponseSignature\":false,\"validateAssertionSignature\":false}" "PUT"; then
         echo "If SAML is already configured, please try 'DELETE /service/rest/v1/security/saml' first."
         return 1
