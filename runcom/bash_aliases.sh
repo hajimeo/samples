@@ -1183,4 +1183,10 @@ function startCommonUtils() {
     slackS
     #chrome-work
     #open -na "Google Chrome"
+    if type ollama &>/dev/null; then
+        ollama serve &>/tmp/ollama.log &
+    fi
+    if  [ -s "$HOME/.vnevAi/bin/open-webui" ]; then
+        source $HOME/.vnevAi/bin/activate && open-webui serve --host 127.0.0.1 --port 48080 &>/tmp/open-webui.log &
+    fi
 }
