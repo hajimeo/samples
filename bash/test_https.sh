@@ -354,9 +354,9 @@ function keytool_v() {
     eval "${_cmd} ${_pwd_opts}"
 }
 
-# If HTTP*S* proxy with username and password: -J-Dhttps.proxyUser="proxyuser" -J-Dshttp.proxyPassword="proxypwd"
-#$ keytool -J-Djavax.net.debug=all -J-Dhttps.proxyHost=dh1.standalone.localdomain -J-Dhttps.proxyPort=28080 -printcert -rfc -sslserver ${_host}:${_port}
-# NOTE: openssl might be better and easier for troubleshooting as it also shows depth etc.
+# TODO: not sure if this works, but if HTTP*S* proxy with username and password: -J-Dhttps.proxyUser="proxyuser" -J-Dhttps.proxyPassword="proxypwd"
+#$ keytool -J-Djavax.net.debug=all -J-Dhttps.proxyHost=dh1.standalone.localdomain -J-Dhttps.proxyPort=28080 -printcert -rfc -sslserver ${_host}:${_port} >maybe_certs.pem 2>keytool.err
+# NOTE: Not in Docker image but, openssl might be better and easier for troubleshooting as it also shows depth etc.
 #$ openssl s_client -help 2>&1 | grep proxy
 #$ echo -n | openssl s_client -proxy "dh1.standalone.localdomain:28080" -proxy_user "proxyuser" -proxy_pass "pass:proxypwd" -showcerts -connect ${_host}:${_port} | openssl x509 -outform PEM | tee ./certificates.pem
 function get_cert_from_https() {
@@ -389,7 +389,7 @@ function get_cert_from_https() {
         else
             # NOTE: very old openssl version may fail with -proxy (Mac and modern Linux works), so workaround:
             # This may not work: -p -x dh1.standalone.localdomain:28080 --proxy-basic -U proxyuser:proxypwd
-            # export HTTPS_PROXY="http://proxyuser:proxypwd@192.168.4.31:28080/"
+            # export ALL_PROXY="http://proxyuser:proxypwd@192.168.4.31:28080/" # or http_proxy, https_proxy
             # curl -sfv -k -L https://${_host}:${_port}/ 2>&1 | grep 'Server certificate:' -A10"
             _proxy_opt="-proxy ${_PROXY_HOST_PORT}"
             if [ -n "${_PROXY_USER_PWD}" ]; then
