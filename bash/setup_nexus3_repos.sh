@@ -2248,7 +2248,7 @@ function f_start_saml_server() {
     # SAML server: https://github.com/hajimeo/samples/blob/master/golang/SamlTester/README.md
     local __doc__="Install and start a dummy SAML service"
     local _idp_base_url="${1:-"http://localhost:2080/"}"
-    local _sp_meta_file="${2:-"/tmp/metadata.xml"}"
+    local _sp_meta_file="${2:-"${_TMP%/}/metadata.xml"}"
     local _sp_meta_url="${3}"   # If IQ: http://localhost:8070/api/v2/config/saml/metadata
     local _sp_meta_cred="${4-"admin:admin123"}"
     local _install_dir="${5:-"${_SHARE_DIR%/}/simplesaml"}"
@@ -2290,12 +2290,12 @@ function f_start_saml_server() {
     fi
 
     export IDP_KEY="${_install_dir%/}/myidp.key" IDP_CERT="${_install_dir%/}/myidp.crt" USER_JSON="${_users_json}" IDP_BASE_URL="${_idp_base_url}" SERVICE_METADATA_URL="${_sp_meta_file}"
-    eval "${_cmd}" &> ./simplesamlidp_$$.log &
+    eval "${_cmd}" &> ${_TMP%/}/simplesamlidp_$$.log &
     local _pid="$!"
     sleep 2
     curl -sf -o ${_TMP%/}/idp_metadata.xml "${_idp_base_url%/}/metadata" || return $?
     echo "[INFO] Running simplesamlidp in background ..."
-    echo "       PID: ${_pid}  Log: ./simplesamlidp_$$.log"
+    echo "       PID: ${_pid}  Log: ${_TMP%/}/simplesamlidp_$$.log"
     echo "       IdP metadata: ${_TMP%/}/idp_metadata.xml"
     #echo "       curl -D- -X PUT -u admin:admin123 http://localhost:8070/api/v2/roleMemberships/global/role/b9646757e98e486da7d730025f5245f8/group/ipausers"
     if [ ! -s "${_sp_meta_file}" ]; then
