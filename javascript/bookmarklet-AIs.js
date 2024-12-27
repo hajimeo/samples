@@ -5,6 +5,7 @@ q = prompt("search word", s);
 if (q != null) {
     (function (s) {
         q = encodeURIComponent(s);
+        w.open("http://localhost:48080/?q=" + q + "&models=gemma2:latest", "t_openwebui");
         w.open("https://chatgpt.com/?q=" + q, "t_chatgpt");
         w.open("https://www.phind.com/search?q=" + q + "&ignoreSearchResults=false&allowMultiSearch=false", "t_phind");
         w.open("https://www.perplexity.ai/search?q=" + q, "t_perplex");
