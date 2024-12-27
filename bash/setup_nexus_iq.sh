@@ -434,6 +434,7 @@ function f_setup_ldap_glauth() {
         _um_id="\"$(_apiS "/rest/config/ldap/${_server_id}/userMapping" | JSON_SEARCH_KEY="id" _sortjson)\""
     fi
 
+    # userFilter="ou=ipausers"
     if [ "${_LDAP_GROUP_MAPPING_TYPE}" == "STATIC" ]; then
         _apiS "/rest/config/ldap/${_server_id}/userMapping" '{"id":'${_um_id}',"serverId":"'${_server_id}'","userBaseDN":"ou=users","userObjectClass":"posixAccount","userFilter":"","userIDAttribute":"uid","userRealNameAttribute":"cn","userEmailAttribute":"mail","userPasswordAttribute":"","groupBaseDN":"ou=users","groupObjectClass":"posixGroup","groupIDAttribute":"cn","groupMemberAttribute":"memberUid","groupMemberFormat":"${username}","userMemberOfGroupAttribute":"memberOf","groupMappingType":"STATIC","userSubtree":true,"groupSubtree":true,"dynamicGroupSearchEnabled":true}' "PUT"
     else
