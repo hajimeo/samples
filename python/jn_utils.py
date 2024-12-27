@@ -59,6 +59,8 @@ Get request started time by concatenating today and the time string from 'date' 
     udf_started_time(date, elapsedTime) as started
 Kind of joining two tables with UDF_REGEX:
     AND UDF_REGEX('.+ /repository/([^/]+)', t_request.requestURL, 1) IN (SELECT repository_name FROM t_db_repo where t_db_repo.`attributes.storage.blobStoreName` = 'default')
+Calculate variance (TODO)
+    SUM((num-(SELECT AVG(num) FROM TableX))*(num-(SELECT AVG(num) FROM TableX)) ) / (COUNT(num)-1)
 """
 
 # TODO: When you add a new pip package, don't forget to update setup_work_env.sh
