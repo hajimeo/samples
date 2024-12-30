@@ -13,8 +13,10 @@
 #   ./filelistv2_test.sh <blobstore> <path/prefix>
 # If File type blobstore:
 #   export _TEST_WORKDIR="$HOME/Documents/tests/nxrm_3.70.3-01_rmfilelisttest/sonatype-work/nexus3"
-#   export _TEST_BLOBSTORE="${_TEST_WORKDIR%/}/blobs/default"
-#   $HOME/IdeaProjects/samples/golang/FileListV2/filelistv2_test.sh
+#   $HOME/IdeaProjects/samples/golang/FileListV2/filelistv2_test.sh "${_TEST_WORKDIR%/}/blobs/default"
+# If S3 type blobstore:
+#   export AWS_ACCESS_KEY_ID="..." AWS_SECRET_ACCESS_KEY="..." AWS_REGION="ap-southeast-2"
+#   $HOME/IdeaProjects/samples/golang/FileListV2/filelistv2_test.sh "s3://apac-support-bucket/filelist_test"
 #
 # Prepare the test data using setup_nexus3_repos.sh:
 #   _AUTO=true main
@@ -30,7 +32,7 @@
 : ${_TEST_DB_CONN_PWD:="nexus123"}
 : ${_TEST_STOP_ERROR:=true}
 : ${_TEST_REPO_NAME:=""}
-: ${_TEST_BLOB_ID:=""}
+: ${_TEST_S3_REPO:="raw-s3-hosted"}
 
 
 ### Test functions
@@ -40,11 +42,11 @@ function test_1_First10FilesForSpecificRepo() {
     _find_sample_repo_name "${_b}" "${_p}" || return 1
 
     local _out_file="/tmp/test_finding-${_TEST_REPO_NAME}-n10.tsv"
-    _exec_filelist "filelist2 -b '${_b}' -p '${_p}' -pRx '@Bucket\.repo-name=${_TEST_REPO_NAME},' -P -c 40" "${_out_file}"
-    if [ "$?" == "0" ] && rg -q "${_TEST_BLOB_ID}" ${_out_file}; then
-        echo "TEST=OK Found ${_TEST_BLOB_ID} in ${_out_file}"
+    _exec_filelist "filelist2 -b '${_b}' -p '${_p}' -pRx '@Bucket\.repo-name=${_TEST_REPO_NAME},' -P -c 40 -H" "${_out_file}"
+    if [ "$?" == "0" ] && [ -s "${_out_file}" ]; then
+        echo "TEST=OK: out_file= ${_out_file}"
     else
-        echo "TEST=ERROR: Could not find ${_TEST_BLOB_ID} in ${_out_file} (check /tmp/test_last.*)"
+        echo "TEST=ERROR (check /tmp/test_last.*)"
         return 1
     fi
 }
@@ -55,11 +57,11 @@ function test_2_ShouldNotFindAny() {
     _find_sample_repo_name "${_b}" "${_p}" || return 1
 
     local _out_file="/tmp/test_not-finding-${_TEST_REPO_NAME}.tsv"
-    _exec_filelist "filelist2 -b '${_b}' -p '${_p}' -pRx '@Bucket\.repo-name=${_TEST_REPO_NAME},' -pRxNot 'BlobStore\.blob-name=' -P -c 80" "${_out_file}"
-    if [ "$?" == "0" ] && ! rg -q "${_TEST_BLOB_ID}" ${_out_file}; then
-        echo "TEST=OK : Did not find ${_TEST_BLOB_ID} in ${_out_file}"
+    _exec_filelist "filelist2 -b '${_b}' -p '${_p}' -pRx '@Bucket\.repo-name=${_TEST_REPO_NAME},' -pRxNot 'BlobStore\.blob-name=' -P -c 40 -H" "${_out_file}"
+    if [ "$?" == "0" ] && [ ! -s "${_out_file}" ]; then
+        echo "TEST=OK : ${_out_file} is empty"
     else
-        echo "TEST=ERR: Should not have found ${_TEST_BLOB_ID} in ${_out_file} (check /tmp/test_last.*)"
+        echo "TEST=ERROR: ${_out_file} should be empty (check /tmp/test_last.*)"
         return 1
     fi
 }
@@ -70,25 +72,24 @@ function test_3_FindFromTextFile() {
     _find_sample_repo_name "${_b}" "${_p}" || return 1
 
     local _out_file="/tmp/test_from-textfile.tsv"
-    _exec_filelist "filelist2 -b '${_b}' -p '${_p}' -rF /tmp/test_finding-${_TEST_REPO_NAME}-n10.tsv -P -f '\.properties' " "${_out_file}"
-    if [ "$?" == "0" ] && rg -q "${_TEST_BLOB_ID}" ${_out_file}; then
-        #echo "TEST=OK : Found ${_TEST_BLOB_ID} in ${_out_file}"
+    _exec_filelist "filelist2 -b '${_b}' -p '${_p}' -rF /tmp/test_finding-${_TEST_REPO_NAME}-n10.tsv -P -f '\.properties' -H" "${_out_file}"
+    if [ "$?" == "0" ] && [ -s "${_out_file}" ]; then
         local _orig_num="$(wc -l /tmp/test_finding-${_TEST_REPO_NAME}-n10.tsv | awk '{print $1}')"
         local _result_num="$(wc -l ${_out_file} | awk '{print $1}')"
         if [ ${_result_num:-"0"} -gt 0 ] && [ "${_orig_num}" -eq "${_result_num}" ]; then
             echo "TEST=OK : The number of lines in the original file and the result file are the same (${_result_num})"
         else
-            echo "TEST=ERR: The number of lines in /tmp/test_finding-${_TEST_REPO_NAME}-n10.tsv (${_orig_num}) and ${_out_file} (${_result_num}) are different"
+            echo "TEST=ERROR: The number of lines in /tmp/test_finding-${_TEST_REPO_NAME}-n10.tsv (${_orig_num}) and ${_out_file} (${_result_num}) are different"
             return 1
         fi
         rg -o "[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}" /tmp/test_finding-${_TEST_REPO_NAME}-n10.tsv | while read _id; do
             if ! rg -q "${_id}" ${_out_file}; then
-                echo "TEST=ERR: Could not find ${_id} in ${_out_file} (check /tmp/test_last.*)"
+                echo "TEST=ERROR: Could not find ${_id} in ${_out_file} (check /tmp/test_last.*)"
                 return 1
             fi
         done
     else
-        echo "TEST=ERR: Could not find ${_TEST_BLOB_ID} in ${_out_file} (check /tmp/test_last.*)"
+        echo "TEST=ERROR: ${_out_file} might be empty (check /tmp/test_last.*)"
         return 1
     fi
 }
@@ -101,7 +102,7 @@ function test_4_SizeAndCount() {
     _exec_filelist "filelist2 -b '${_b}' -p '${_p}' -f '.bytes'" "${_out_file}"
     local _result="$(rg "Listed.+ bytes" -o /tmp/test_last.err)"
     if [ -z "${_result}" ]; then
-        echo "TEST=ERR: Could not find 'Listed.+ bytes' in /tmp/test_last.err"
+        echo "TEST=ERROR: Could not find 'Listed.+ bytes' in /tmp/test_last.err"
         return 1
     fi
 
@@ -113,7 +114,7 @@ function test_4_SizeAndCount() {
     if [ "${_result}" == "${_expect}" ]; then
         echo "TEST=OK : ${_result}"
     else
-        echo "TEST=ERR: ${_result} != ${_expect}"
+        echo "TEST=ERROR: ${_result} != ${_expect}"
         return 1
     fi
 }
@@ -150,7 +151,7 @@ function test_5_Undelete() {
             echo "TEST=ERROR: Found 'deleted=true' in ${_out_file} (check /tmp/test_last.*)"
             return 1
         fi
-        echo "TEST=OK Found ${_TEST_BLOB_ID} in ${_out_file} (compare with ${_prep_file})"
+        echo "TEST=OK : no 'deleted=true' in ${_out_file} (compare with ${_prep_file})"
     else
         echo "TEST=ERROR: Could not undelete ${_prep_file} result: /tmp/test_undeleted-${_TEST_REPO_NAME}.tsv (check /tmp/test_last.*)"
         return 1
@@ -288,9 +289,18 @@ function _exec_filelist() {
 function _find_sample_repo_name() {
     local _b="${1:-"${_TEST_BLOBSTORE}"}"
     local _p="${2:-"${_TEST_FILTER_PATH}"}"
-    [ -z "${_TEST_BLOBSTORE}" ] && export _TEST_BLOBSTORE="${_b}"
-    [ -z "${_TEST_FILTER_PATH}" ] && export _TEST_FILTER_PATH="${_p}"
+    [ -n "${_b}" ] && export _TEST_BLOBSTORE="${_b}"
+    [ -n "${_p}" ] && export _TEST_FILTER_PATH="${_p}"
     [ -n "${_TEST_REPO_NAME}" ] && return 0
+
+    if [[ "${_b}" =~ ^s3:// ]]; then
+        if [ -z "${_TEST_S3_REPO}" ]; then
+            _log "WARN" "No _TEST_S3_REPO found"
+            return 1
+        fi
+        export _TEST_REPO_NAME="${_TEST_S3_REPO}"
+        return 0
+    fi
 
     # Found _rn (repository name) which has at lest 10 .properties files
     local _rn="$(rg --no-filename -d 4 -g '*.properties' "^@Bucket.repo-name=(\S+)$" -o -r '$1' ${_b%/} | head -n100 | sort | uniq -c | sort -nr | head -n1 | rg -o '^\s*\d+\s+(\S+)$' -r '$1')"
@@ -299,15 +309,6 @@ function _find_sample_repo_name() {
         return 1
     fi
     export _TEST_REPO_NAME="${_rn}"
-
-    _log "INFO" "Found a sample .properties file: ${_prop}"
-    local _prop="$(rg -l -d 4 -g '*.properties' "^@Bucket.repo-name=${_TEST_REPO_NAME}$" ${_b%/} | head -n1)"
-    local _blob_id="$(basename "${_prop}" ".properties")"
-    if [ -z "${_blob_id}" ]; then
-        _log "WARN" "No blob-id found in ${_prop}"
-        return 1
-    fi
-    export _TEST_BLOB_ID="${_blob_id}"
 }
 
 
@@ -330,6 +331,7 @@ function main() {
             return $?
         fi
     done
+    _log "INFO" "Completed all tests."
 }
 
 if [ "$0" = "$BASH_SOURCE" ]; then

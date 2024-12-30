@@ -17,10 +17,6 @@ import (
 
 type FileClient struct{}
 
-func (c *FileClient) GetBsClient() interface{} {
-	return nil
-}
-
 func (c *FileClient) ReadPath(path string) (string, error) {
 	if common.Debug {
 		// Record the elapsed time
@@ -84,23 +80,23 @@ func (c *FileClient) GetDirs(baseDir string, pathFilter string, maxDepth int) ([
 			// Not sure if this is a good way to limit the depth
 			count := strings.Count(path, string(filepath.Separator))
 			if realMaxDepth > 0 && count > realMaxDepth {
-				h.Log("DEBUG", fmt.Sprintf("Reached to the max depth %d / %d (path: %s)\n", count, maxDepth, path))
+				h.Log("DEBUG", fmt.Sprintf("Reached to the max depth %d / %d (path: %s)", count, maxDepth, path))
 				return filepath.SkipDir
 			}
 
 			if len(pathFilter) == 0 || filterRegex.MatchString(path) {
-				h.Log("DEBUG", fmt.Sprintf("Matching directory: %s (Depth: %d)\n", path, depth))
+				h.Log("DEBUG", fmt.Sprintf("Matching directory: %s (Depth: %d)", path, depth))
 				// NOTE: As ListObjects for File type is not checking the subdirectories, it's OK to contain the parent directories.
 				matchingDirs = append(matchingDirs, path)
 			} else {
-				h.Log("DEBUG", fmt.Sprintf("Not matching directory: %s (Depth: %d)\n", path, depth))
+				h.Log("DEBUG", fmt.Sprintf("Not matching directory: %s (Depth: %d)", path, depth))
 			}
 		}
 		return nil
 	})
 
 	if err != nil {
-		h.Log("ERROR", fmt.Sprintf("%s (base dir: %s, depth: %d)\n", err, baseDir, depth))
+		h.Log("ERROR", fmt.Sprintf("%s (base dir: %s, depth: %d)", err, baseDir, depth))
 	}
 	if len(matchingDirs) < 10 {
 		h.Log("DEBUG", fmt.Sprintf("Matched directories: %v", matchingDirs))

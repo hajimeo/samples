@@ -10,30 +10,49 @@ import (
 	"strings"
 )
 
-func GetSchema(urlString string) string {
-	if strings.HasPrefix(urlString, string(filepath.Separator)) {
+func GetSchema(uri string) string {
+	if strings.HasPrefix(uri, string(filepath.Separator)) {
 		return "file"
 	}
-	u, err := url.Parse(urlString)
+	u, err := url.Parse(uri)
 	if err != nil {
 		return "" // Return empty string if parsing fails
 	}
 	return u.Scheme
 }
 
+func GetContainerAndPrefix(uri string) (string, string) {
+	// Get the Container/Bucket/hostname and prefix from URI
+	u, err := url.Parse(uri)
+	if err != nil {
+		h.Log("ERROR", "GetHostnameAndPrefix - Error parsing URI: "+uri)
+		return "", ""
+	}
+	prefix := u.Path
+	if prefix != "" {
+		prefix = GetUpToContent(prefix)
+		prefix = strings.TrimPrefix(prefix, "/")
+		prefix = strings.TrimSuffix(prefix, "/"+common.CONTENT)
+	}
+	return u.Hostname(), prefix
+}
+
 func GetContentPath(blobStoreWithPrefix string) string {
 	bsType := GetSchema(blobStoreWithPrefix)
-	h.Log("DEBUG", "GetContentPath - bsType:"+bsType)
+	h.Log("DEBUG", "(GetContentPath) bsType:"+bsType)
+	if strings.Contains(blobStoreWithPrefix, "://") {
+		blobStoreWithPrefix = strings.SplitAfter(blobStoreWithPrefix, "://")[1]
+		h.Log("DEBUG", "(GetContentPath) blobStoreWithPrefix:"+blobStoreWithPrefix)
+	}
 	// Default (empty) is "file"
 	if bsType == "" || bsType == "file" {
-		if strings.Contains(blobStoreWithPrefix, "://") {
-			blobStoreWithPrefix = strings.SplitAfter(blobStoreWithPrefix, "://")[1]
-			h.Log("DEBUG", "GetContentPath - blobStoreWithPrefix:"+blobStoreWithPrefix)
-		}
 		return GetUpToContent(blobStoreWithPrefix)
 	} else if bsType == "s3" {
-		// TODO: If S3, common.BaseDir is an S3 bucket + prefix, assuming no need to include those in the content path (test needed)
-		return common.CONTENT
+		contentPath := GetUpToContent(blobStoreWithPrefix)
+		if len(common.Container) == 0 {
+			return contentPath
+		}
+		return strings.SplitAfter(contentPath, common.Container+"/")[1]
 	} else {
 		h.Log("TODO", "Do something for Azure/Google etc. blob store content path")
 		return ""

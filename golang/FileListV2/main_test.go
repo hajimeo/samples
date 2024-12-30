@@ -44,7 +44,7 @@ func TestGenBlobPath_EmptyBlobId_ReturnsCorrectPath(t *testing.T) {
 
 func TestGenAssetBlobUnionQuery_NoAssetTableNames_UsesDefaultAssetTables(t *testing.T) {
 	result := genAssetBlobUnionQuery(nil, "", "", nil, "")
-	if common.AseetTables == nil || len(common.AseetTables) == 0 {
+	if common.AssetTables == nil || len(common.AssetTables) == 0 {
 		assert.Contains(t, result, "")
 		return
 	}

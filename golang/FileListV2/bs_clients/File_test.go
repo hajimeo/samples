@@ -192,7 +192,7 @@ func TestListObjects_ValidBaseDir_ReturnsFileCount(t *testing.T) {
 	os.WriteFile(baseDir+"/file2.txt", []byte("content2"), 0644)
 	client := &FileClient{}
 	db := &sql.DB{}
-	count := client.ListObjects(baseDir, "", db, func(path interface{}, info BlobInfo, db *sql.DB, c Client) {})
+	count := client.ListObjects(baseDir, db, func(path interface{}, info BlobInfo, db *sql.DB) {})
 	assert.Equal(t, int64(2), count)
 }
 
@@ -202,20 +202,8 @@ func TestListObjects_EmptyBaseDir_ReturnsZero(t *testing.T) {
 	defer os.RemoveAll(baseDir)
 	client := &FileClient{}
 	db := &sql.DB{}
-	count := client.ListObjects(baseDir, "", db, func(path interface{}, info BlobInfo, db *sql.DB, c Client) {})
+	count := client.ListObjects(baseDir, db, func(path interface{}, info BlobInfo, db *sql.DB) {})
 	assert.Equal(t, int64(0), count)
-}
-
-func TestListObjects_FilteredFiles_ReturnsFilteredCount(t *testing.T) {
-	baseDir := TEST_DATA_DIR + "/filtered_list_objects"
-	os.MkdirAll(baseDir, os.ModePerm)
-	defer os.RemoveAll(baseDir)
-	os.WriteFile(baseDir+"/file1.txt", []byte("content1"), 0644)
-	os.WriteFile(baseDir+"/file2.log", []byte("content2"), 0644)
-	client := &FileClient{}
-	db := &sql.DB{}
-	count := client.ListObjects(baseDir, ".txt", db, func(path interface{}, info BlobInfo, db *sql.DB, c Client) {})
-	assert.Equal(t, int64(1), count)
 }
 
 func TestListObjects_TopNLimit_ReturnsLimitedCount(t *testing.T) {
@@ -229,10 +217,10 @@ func TestListObjects_TopNLimit_ReturnsLimitedCount(t *testing.T) {
 	client := &FileClient{}
 	db := &sql.DB{}
 	common.PrintedNum = 0
-	testFunc := func(path interface{}, info BlobInfo, db *sql.DB, c Client) {
+	testFunc := func(path interface{}, info BlobInfo, db *sql.DB) {
 		common.PrintedNum++
 	}
-	count := client.ListObjects(baseDir, "", db, testFunc)
+	count := client.ListObjects(baseDir, db, testFunc)
 	assert.Equal(t, int64(2), count)
 	common.TopN = 0
 }
@@ -246,5 +234,5 @@ func TestListObjects_InvalidBaseDir_ReturnsError(t *testing.T) {
 			assert.Contains(t, r, "Got error retrieving list of files from")
 		}
 	}()
-	client.ListObjects(baseDir, "", db, func(path interface{}, info BlobInfo, db *sql.DB, c Client) {})
+	client.ListObjects(baseDir, db, func(path interface{}, info BlobInfo, db *sql.DB) {})
 }

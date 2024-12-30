@@ -1,13 +1,13 @@
 package bs_clients
 
 import (
+	"FileListV2/common"
 	"database/sql"
 	"time"
 )
 
 // Client : Like an OOP interface
 type Client interface {
-	GetBsClient() interface{}
 	ReadPath(string) (string, error)
 	WriteToPath(string, string) error
 	RemoveDeleted(string, string) error
@@ -23,4 +23,13 @@ type BlobInfo struct {
 	Size    int64
 	Owner   string
 	Tags    map[string]string
+}
+
+func GetClient() Client {
+	if common.BsType == "s3" {
+		return &S3Client{}
+	}
+	// TODO: add more types
+	// Default is FileClient
+	return &FileClient{}
 }

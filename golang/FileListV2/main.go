@@ -38,6 +38,7 @@ HOW TO and USAGE EXAMPLES:
 func setGlobals() {
 	common.StartTimestamp = time.Now().Unix()
 
+	// TODO: 'b' should accept the comma separated values for supporting the group blob store
 	flag.StringVar(&common.BaseDir, "b", "", "Blob store directory or URI (eg. 's3://s3-test-bucket/s3-test-prefix/'), which location contains 'content' directory (default: '.')")
 	flag.BoolVar(&common.DateBsLayout, "DateBS", false, "Created Date based Blob Store layout")
 	flag.StringVar(&common.Filter4Path, "p", "", "Regular Expression for directory *path* (eg 'vol-'), or S3 prefix.")
@@ -80,28 +81,22 @@ func setGlobals() {
 	h.DEBUG = common.Debug
 
 	h.Log("DEBUG", "Starting setGlobals for "+strings.Join(os.Args[1:], " "))
+	h.Log("DEBUG", "common.BaseDir = "+common.BaseDir)
 	common.BaseDir = h.AppendSlash(common.BaseDir)
 	h.Log("DEBUG", "common.BaseDir with slash = "+common.BaseDir)
+
 	common.BsType = lib.GetSchema(common.BaseDir)
 	h.Log("DEBUG", "common.BsType = "+common.BsType)
+	// if the BaseDir starts with "s3://", get hostname as the bucket name, and the rest as the prefix
+	common.Container, common.Prefix = lib.GetContainerAndPrefix(common.BaseDir)
+	h.Log("DEBUG", "common.Container = "+common.Container)
+	h.Log("DEBUG", "common.Prefix = "+common.Prefix)
 	common.ContentPath = lib.GetContentPath(common.BaseDir)
 	h.Log("DEBUG", "common.ContentPath = "+common.ContentPath)
 
 	if common.Conc1 < 1 {
 		h.Log("ERROR", "-c is lower than 1.")
 		os.Exit(1)
-	}
-
-	// If _FILTER_P is given, automatically populate other related variables
-	if len(common.Filter4PropsIncl) > 0 || len(common.Filter4PropsExcl) > 0 {
-		// TODO: currently this script can not include .bytes when the .properties is included or excluded
-		common.Filter4FileName = `\.` + common.PROPERTIES + `$`
-		if len(common.Filter4PropsIncl) > 0 {
-			common.RxIncl, _ = regexp.Compile(common.Filter4PropsIncl)
-		}
-		if len(common.Filter4PropsExcl) > 0 {
-			common.RxExcl, _ = regexp.Compile(common.Filter4PropsExcl)
-		}
 	}
 
 	if len(common.DbConnStr) > 0 {
@@ -159,11 +154,18 @@ func setGlobals() {
 		}
 	}
 
-	if len(common.SaveToFile) > 0 {
-		var err error
-		common.SaveToPointer, err = os.OpenFile(common.SaveToFile, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
-		if err != nil {
-			panic(err)
+	// If _FILTER_P is given, automatically populate other related variables
+	if len(common.Filter4PropsIncl) > 0 || len(common.Filter4PropsExcl) > 0 {
+		if len(common.Filter4FileName) == 0 {
+			// TODO: currently this script can not include .bytes when the .properties is included or excluded
+			common.Filter4FileName = `\.` + common.PROPERTIES + `$`
+		}
+
+		if len(common.Filter4PropsIncl) > 0 {
+			common.RxIncl, _ = regexp.Compile(common.Filter4PropsIncl)
+		}
+		if len(common.Filter4PropsExcl) > 0 {
+			common.RxExcl, _ = regexp.Compile(common.Filter4PropsExcl)
 		}
 	}
 
@@ -210,13 +212,21 @@ func setGlobals() {
 	if common.NoHeader && common.WithProps {
 		h.Log("WARN", "With Properties (-P), listing can be slower.")
 	}
+
+	if len(common.SaveToFile) > 0 {
+		var err error
+		common.SaveToPointer, err = os.OpenFile(common.SaveToFile, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+		if err != nil {
+			panic(err)
+		}
+	}
 }
 
 // Initialize _REPO_TO_FMT and _ASSET_TABLES
 func initRepoFmtMap(db *sql.DB) {
 	// Not sure if needed, but resetting the map and slice
 	common.Repo2Fmt = make(map[string]string)
-	common.AseetTables = make([]string, 0)
+	common.AssetTables = make([]string, 0)
 
 	query := "SELECT name, REGEXP_REPLACE(recipe_name, '-.+', '') AS fmt FROM repository"
 	if len(common.BsName) > 0 {
@@ -236,8 +246,8 @@ func initRepoFmtMap(db *sql.DB) {
 			panic(err)
 		}
 		common.Repo2Fmt[name] = format
-		if !slices.Contains(common.AseetTables, format+"_asset") {
-			common.AseetTables = append(common.AseetTables, format+"_asset")
+		if !slices.Contains(common.AssetTables, format+"_asset") {
+			common.AssetTables = append(common.AssetTables, format+"_asset")
 		}
 	}
 	h.Log("DEBUG", fmt.Sprintf("Repo2Fmt = %v", common.Repo2Fmt))
@@ -245,16 +255,7 @@ func initRepoFmtMap(db *sql.DB) {
 	if len(common.BsName) > 0 {
 		logLevel = "INFO"
 	}
-	h.Log(logLevel, fmt.Sprintf("AseetTables = %v", common.AseetTables))
-}
-
-func getClient() bs_clients.Client {
-	// TODO: add more types
-	//if common.BsType == "s3" {
-	//	return &bs_clients.S3Client{}
-	//}
-	// Default is FileClient
-	return &bs_clients.FileClient{}
+	h.Log(logLevel, fmt.Sprintf("AssetTables = %v", common.AssetTables))
 }
 
 func printHeader() {
@@ -311,6 +312,7 @@ func genOutput(path string, bi bs_clients.BlobInfo, db *sql.DB) string {
 	output := fmt.Sprintf("%s%s%s%s%d", path, common.SEP, bi.ModTime, common.SEP, bi.Size)
 	// If .properties file is checked, depending on other flags, need to generate extra output
 	if isExtraInfoNeeded(path, modTimestamp) {
+		//h.Log("DEBUG", fmt.Sprintf("Extra info from properties is needed for '%s'", path))
 		props, skipReason = extraInfo(path)
 		if skipReason != nil {
 			h.Log("DEBUG", fmt.Sprintf("%s: %s", path, skipReason.Error()))
@@ -322,6 +324,8 @@ func genOutput(path string, bi bs_clients.BlobInfo, db *sql.DB) string {
 		} else if len(props) == 0 {
 			h.Log("WARN", fmt.Sprintf("No property contents for %s", path))
 		}
+		//} else {
+		//	h.Log("DEBUG", fmt.Sprintf("Extra info from properties is NOT needed for '%s'", path))
 	}
 
 	if common.Truth == "BS" {
@@ -398,6 +402,7 @@ func extraInfo(path string) (string, error) {
 	}
 
 	// Finally, generate the properties output
+	//h.Log("DEBUG", fmt.Sprintf("Sorting content for the path '%s'", path))
 	return genOutputFromContents(contents)
 }
 
@@ -413,7 +418,7 @@ func genOutputFromContents(contents string) (string, error) {
 		if common.RxIncl.MatchString(sortedContents) {
 			return sortedContents, nil
 		} else {
-			//h.Log("DEBUG", fmt.Sprintf("Sorted content: '%s'", sortedContents))
+			//h.Log("DEBUG", fmt.Sprintf("Sorted content did not match with '%s'", common.RxIncl.String()))
 			return "", errors.New(fmt.Sprintf("Does NOT match with the regex: %s. Skipping.", common.RxIncl.String()))
 		}
 	}
@@ -484,6 +489,7 @@ func removeLines(contents string, rex *regexp.Regexp) string {
 }
 
 func printLineFromPath(path interface{}, blobInfo bs_clients.BlobInfo, db *sql.DB) {
+	//h.Log("DEBUG", fmt.Sprintf("Generating the output for '%s'", path))
 	output := genOutput(path.(string), blobInfo, db)
 	printOrSave(output)
 }
@@ -502,6 +508,7 @@ func printOrSave(line string) {
 
 func listObjects(dir string, db *sql.DB) {
 	startMs := time.Now().UnixMilli()
+	//h.Log("DEBUG", fmt.Sprintf("Listing objects from %s", dir))
 	subTtl := Client.ListObjects(dir, db, printLineFromPath)
 	// Always log this elapsed time by using 0 thresholdMs
 	h.Elapsed(startMs, fmt.Sprintf("Checked %s for %d files (current total: %d)", dir, subTtl, common.CheckedNum), 0)
@@ -544,16 +551,17 @@ func checkBlobIdDetailFromBS(maybeBlobId string) interface{} {
 		// TODO: Probably need to find the created date from the database?
 	}
 
+	// basePath is the file path without extension
 	basePath := h.AppendSlash(common.ContentPath) + genBlobPath(blobId, "")
-	h.Log("DEBUG", basePath+".*")
+	propsPath := basePath + common.PROP_EXT
 	// TODO: this is not accurate as it should be checking the file name, not the path
-	if common.RxFilter4FileName == nil || common.RxFilter4FileName.MatchString(basePath+common.PROP_EXT) {
-		blobInfo, err := Client.GetFileInfo(basePath + common.PROP_EXT)
+	if common.RxFilter4FileName == nil || common.RxFilter4FileName.MatchString(propsPath) {
+		blobInfo, err := Client.GetFileInfo(propsPath)
 		if err != nil {
 			// As this is the check function, if not exist report
-			h.Log("WARN", fmt.Sprintf("No %s in BS (DeadBlob)", basePath+common.PROP_EXT))
+			h.Log("WARN", fmt.Sprintf("No %s in BS (DeadBlob)", propsPath))
 		} else {
-			printLineFromPath(basePath+common.PROP_EXT, blobInfo, common.DB)
+			printLineFromPath(propsPath, blobInfo, common.DB)
 		}
 	}
 	if common.RxFilter4FileName == nil || common.RxFilter4FileName.MatchString(basePath+common.BYTES_EXT) {
@@ -666,8 +674,8 @@ func genAssetBlobUnionQuery(assetTableNames []string, columns string, afterWhere
 	cte := ""
 	cteJoin := ""
 	if len(assetTableNames) == 0 {
-		h.Log("DEBUG", fmt.Sprintf("No assetTableNames. Using the default AseetTables (%d)", len(common.AseetTables)))
-		assetTableNames = common.AseetTables
+		h.Log("DEBUG", fmt.Sprintf("No assetTableNames. Using the default AssetTables (%d)", len(common.AssetTables)))
+		assetTableNames = common.AssetTables
 	}
 	if len(columns) == 0 {
 		columns = "a.repository_id, a.asset_id, a.path, a.kind, a.component_id, ab.blob_ref, ab.blob_size, ab.blob_created"
@@ -792,7 +800,9 @@ func main() {
 	log.SetFlags(log.Lmicroseconds)
 	log.SetPrefix(time.Now().Format("2006-01-02 15:04:05"))
 	setGlobals()
-	Client = getClient()
+
+	Client = bs_clients.GetClient()
+
 	var db *sql.DB
 	if len(common.DbConnStr) > 0 {
 		db = lib.OpenDb(common.DbConnStr)
@@ -821,13 +831,16 @@ func main() {
 	}
 
 	// If the Blob ID file is not provided, run per directory
+	h.Log("DEBUG", fmt.Sprintf("Starting GetDirs with %s, %s, %d", common.ContentPath, common.Filter4Path, common.MaxDepth))
+	startMs := time.Now().UnixMilli()
 	subDirs, err := Client.GetDirs(common.ContentPath, common.Filter4Path, common.MaxDepth)
+	h.Elapsed(startMs, fmt.Sprintf("GetDirs got %d directories", len(subDirs)), 200)
 	if err != nil {
 		h.Log("ERROR", "Failed to list directories in "+common.ContentPath+" with filter: "+common.Filter4Path)
 		panic(err)
 	}
-	startMs := time.Now().UnixMilli()
-	chunks := h.Chunk(subDirs, 1) // To check per chap-XX
+	startMs = time.Now().UnixMilli()
+	chunks := h.Chunk(subDirs, common.Conc1)
 	runParallel(chunks, listObjects, common.Conc1)
 	// Always log this elapsed time by using 0 thresholdMs
 	h.Elapsed(startMs, fmt.Sprintf("Completed. Listed: %d (checked: %d), Size: %d bytes", common.PrintedNum, common.CheckedNum, common.TotalSize), 0)

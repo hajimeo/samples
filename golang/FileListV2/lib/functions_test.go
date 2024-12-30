@@ -25,11 +25,12 @@ func TestGetContentPath_NoType_ReturnsFullPath(t *testing.T) {
 	assert.Equal(t, "/base/dir/content", result)
 }
 
-func TestGetContentPath_S3_ReturnsPrifixPlusContent(t *testing.T) {
+func TestGetContentPath_S3_ReturnsPrefixPlusContent(t *testing.T) {
 	common.BsType = "s3"
+	common.Container = "s3-test-bucket"
 	// TODO: not sure if this is correct, but for now, returning relative path
 	result := GetContentPath("s3://s3-test-bucket/s3-test-prefix/")
-	assert.Equal(t, "content", result)
+	assert.Equal(t, "s3-test-prefix/content", result)
 }
 
 func TestSortToSingleLine_ValidContent_ReturnsSortedSingleLine(t *testing.T) {
@@ -45,12 +46,6 @@ func TestSortToSingleLine_EmptyContent_ReturnsEmptyString(t *testing.T) {
 func TestGetContentPath_EmptyBsType_ReturnsFullPath(t *testing.T) {
 	result := GetContentPath("/base/dir")
 	assert.Equal(t, "/base/dir/content", result)
-}
-
-func TestGetContentPath_S3BsType_ReturnsContentOnly(t *testing.T) {
-	// TODO: haven't decided the behavior for S3
-	result := GetContentPath("s3://s3-test-bucket/s3-test-prefix/")
-	assert.Equal(t, "content", result)
 }
 
 func TestGetContentPath_FileBsType_ReturnsFullPath(t *testing.T) {
@@ -135,4 +130,37 @@ func TestMyHashCode_EmptyString_ReturnsZero(t *testing.T) {
 func TestMyHashCode_NonEmptyString_ReturnsHash(t *testing.T) {
 	result := HashCode("test")
 	assert.Equal(t, int32(3556498), result)
+}
+
+func TestGetContainerAndPrefix_ValidURL_ReturnsHostnameAndPrefix(t *testing.T) {
+	hostname, prefix := GetContainerAndPrefix("https://example.com/path/to/content")
+	assert.Equal(t, "example.com", hostname)
+	assert.Equal(t, "path/to", prefix) // not starting with /
+	hostname, prefix = GetContainerAndPrefix("s3://s3-test-bucket/s3-test-prefix/content")
+	assert.Equal(t, "s3-test-bucket", hostname)
+	assert.Equal(t, "s3-test-prefix", prefix)
+}
+
+func TestGetContainerAndPrefix_InvalidURL_ReturnsEmptyStrings(t *testing.T) {
+	hostname, prefix := GetContainerAndPrefix("://invalid-url")
+	assert.Equal(t, "", hostname)
+	assert.Equal(t, "", prefix)
+}
+
+func TestGetContainerAndPrefix_EmptyURL_ReturnsEmptyStrings(t *testing.T) {
+	hostname, prefix := GetContainerAndPrefix("")
+	assert.Equal(t, "", hostname)
+	assert.Equal(t, "", prefix)
+}
+
+func TestGetContainerAndPrefix_URLWithoutPath_ReturnsHostnameAndEmptyPrefix(t *testing.T) {
+	hostname, prefix := GetContainerAndPrefix("https://example.com")
+	assert.Equal(t, "example.com", hostname)
+	assert.Equal(t, "", prefix)
+}
+
+func TestGetContainerAndPrefix_URLWithContentPath_ReturnsHostnameAndTrimmedPrefix(t *testing.T) {
+	hostname, prefix := GetContainerAndPrefix("https://example.com/path/to/content/vol-NN")
+	assert.Equal(t, "example.com", hostname)
+	assert.Equal(t, "path/to", prefix) // not starting with /
 }

@@ -51,19 +51,23 @@ var WriteIntoStr = ""
 var Query = "" // Not in use yet
 var RxSelect = regexp.MustCompile("(?i)^SELECT [^;]+;?$")
 var RxAnd = regexp.MustCompile("(?i)^ *AND ")
+var Container = "" // Azure: Container name, S3: Bucket name
+var Prefix = ""
 
 // Database related
 var DbConnStr = ""
 var DB *sql.DB
 var Truth = ""
 var Repo2Fmt map[string]string
-var AseetTables []string
+var AssetTables []string
 
 // Search related
 var Filter4FileName = ""
 var RxFilter4FileName *regexp.Regexp
 var Filter4PropsIncl = ""
+var RxIncl *regexp.Regexp
 var Filter4PropsExcl = ""
+var RxExcl *regexp.Regexp
 
 var DelDateFromStr = ""
 var DelDateFromTS int64
@@ -73,8 +77,7 @@ var ModDateFromStr = ""
 var ModDateFromTS int64
 var ModDateToStr = ""
 var ModDateToTS int64
-var RxIncl *regexp.Regexp
-var RxExcl *regexp.Regexp
+
 var RxDeletedDT = regexp.MustCompile("[^#]?deletedDateTime=([0-9]+)")
 var RxDeleted = regexp.MustCompile("deleted=true") // should not use ^ as replacing one-line text
 var RxRepoName = regexp.MustCompile(`[^#]?@Bucket\.repo-name=([^,$]+)`)
@@ -89,7 +92,3 @@ var CheckedNum int64 = 0 // Atomic (maybe slower?)
 var PrintedNum int64 = 0 // Atomic (maybe slower?)
 var TotalSize int64 = 0  // Atomic (maybe slower?)
 //var SlowMS int64 = 100
-/*var (
-	ObjectOutputs = make(map[string]interface{})
-	mu            sync.RWMutex
-)*/
