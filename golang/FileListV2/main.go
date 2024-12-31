@@ -353,7 +353,7 @@ func genOutput(path string, bi bs_clients.BlobInfo, db *sql.DB) string {
 func isExtraInfoNeeded(path string, modTimestamp int64) bool {
 	if !strings.HasSuffix(path, common.PROP_EXT) {
 		// If the path is not properties file, no need to open the file
-		h.Log("DEBUG", "Skipping path:"+path+" as not a properties file")
+		//h.Log("DEBUG", "Skipping path:"+path+" as not a properties file")
 		return false
 	}
 	if common.StartTimestamp > 0 && modTimestamp > common.StartTimestamp {
@@ -391,7 +391,7 @@ func extraInfo(path string) (string, error) {
 	if len(contents) == 0 {
 		h.Log("WARN", "extraInfo for "+path+" returned 0 size.") // But still can check extra
 	} else {
-		// removeDel requires 'contents', so executing in here.
+		// removeDel requires 'contents' (to avoid re-reading same file), so executing in the extraInfo.
 		if common.RemoveDeleted {
 			_ = removeDel(contents, path)
 		}
@@ -451,14 +451,9 @@ func removeDel(contents string, path string) bool {
 		return false
 	}
 
-	updatedContents := removeLines(contents, common.RxDeleted)
-	err := Client.WriteToPath(path, updatedContents)
+	err := Client.RemoveDeleted(path, contents)
 	if err != nil {
 		h.Log("ERROR", fmt.Sprintf("Removing 'deleted=true' for path:%s failed with %s", path, err))
-		return false
-	}
-	if len(contents) == len(updatedContents) {
-		h.Log("WARN", fmt.Sprintf("Removed 'deleted=true' from path:%s but size is same (%d => %d)", path, len(contents), len(updatedContents)))
 		return false
 	}
 	return true
@@ -481,11 +476,6 @@ func appendStr(appending string, contents string, path string) bool {
 		return false
 	}
 	return true
-}
-
-// one line but for unit testing
-func removeLines(contents string, rex *regexp.Regexp) string {
-	return rex.ReplaceAllString(contents, "")
 }
 
 func printLineFromPath(path interface{}, blobInfo bs_clients.BlobInfo, db *sql.DB) {
@@ -769,6 +759,7 @@ func runParallel(chunks [][]string, f func(string, *sql.DB), conc int) {
 	for _, chunk := range chunks {
 		guard <- struct{}{}
 		wg.Add(1)
+		h.Log("DEBUG", fmt.Sprintf("Spawning a routine for %d items", len(chunk)))
 		go func(items []string) {
 			defer wg.Done()
 			if common.TopN == 0 || common.PrintedNum < common.TopN {
@@ -834,7 +825,7 @@ func main() {
 	h.Log("DEBUG", fmt.Sprintf("Starting GetDirs with %s, %s, %d", common.ContentPath, common.Filter4Path, common.MaxDepth))
 	startMs := time.Now().UnixMilli()
 	subDirs, err := Client.GetDirs(common.ContentPath, common.Filter4Path, common.MaxDepth)
-	h.Elapsed(startMs, fmt.Sprintf("GetDirs got %d directories", len(subDirs)), 200)
+	h.Elapsed(startMs, fmt.Sprintf("GetDirs got %d directories", len(subDirs)), 100)
 	if err != nil {
 		h.Log("ERROR", "Failed to list directories in "+common.ContentPath+" with filter: "+common.Filter4Path)
 		panic(err)

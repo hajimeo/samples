@@ -8,6 +8,7 @@ require (
 	github.com/aws/aws-sdk-go-v2/service/s3 v1.71.0
 	github.com/hajimeo/samples/golang/helpers v0.0.0-20241211030624-487a2d19fc1c
 	github.com/lib/pq v1.10.9
+	github.com/pkg/errors v0.9.1
 	github.com/stretchr/testify v1.10.0
 )
 

@@ -12,13 +12,13 @@ import (
 
 func TestGetBsClient_InitializedClient_ReturnsExistingClient(t *testing.T) {
 	s3Api = &s3.Client{}
-	client := getBsClient()
+	client := getS3Api()
 	assert.Equal(t, s3Api, client)
 }
 
 func TestGetBsClient_UninitializedClient_ReturnsNewClient(t *testing.T) {
 	s3Api = nil
-	client := getBsClient()
+	client := getS3Api()
 	assert.NotNil(t, client)
 	assert.Equal(t, s3Api, client)
 }
@@ -91,7 +91,7 @@ func TestWriteToPath_ValidPath_WritesContents_S3(t *testing.T) {
 }
 
 func TestRemoveTags(t *testing.T) {
-	t.Log("TODO: Not implemented removeTags tests yet")
+	t.Log("TODO: Not implemented removeTag tests yet")
 	t.SkipNow()
 }
 

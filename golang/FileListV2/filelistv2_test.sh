@@ -11,8 +11,8 @@
 #
 # HOW TO RUN EXAMPLE:
 #   ./filelistv2_test.sh <blobstore> <path/prefix>
-# If File type blobstore:
 #   export _TEST_WORKDIR="$HOME/Documents/tests/nxrm_3.70.3-01_rmfilelisttest/sonatype-work/nexus3"
+# If File type blobstore:
 #   $HOME/IdeaProjects/samples/golang/FileListV2/filelistv2_test.sh "${_TEST_WORKDIR%/}/blobs/default"
 # If S3 type blobstore:
 #   export AWS_ACCESS_KEY_ID="..." AWS_SECRET_ACCESS_KEY="..." AWS_REGION="ap-southeast-2"
@@ -74,8 +74,8 @@ function test_3_FindFromTextFile() {
     local _out_file="/tmp/test_from-textfile.tsv"
     _exec_filelist "filelist2 -b '${_b}' -p '${_p}' -rF /tmp/test_finding-${_TEST_REPO_NAME}-n10.tsv -P -f '\.properties' -H" "${_out_file}"
     if [ "$?" == "0" ] && [ -s "${_out_file}" ]; then
-        local _orig_num="$(wc -l /tmp/test_finding-${_TEST_REPO_NAME}-n10.tsv | awk '{print $1}')"
-        local _result_num="$(wc -l ${_out_file} | awk '{print $1}')"
+        local _orig_num="$(_line_num /tmp/test_finding-${_TEST_REPO_NAME}-n10.tsv)"
+        local _result_num="$(_line_num ${_out_file})"
         if [ ${_result_num:-"0"} -gt 0 ] && [ "${_orig_num}" -eq "${_result_num}" ]; then
             echo "TEST=OK : The number of lines in the original file and the result file are the same (${_result_num})"
         else
@@ -172,9 +172,23 @@ function test_6_Orphaned() {
     [ -n "${_TEST_DB_CONN_PWD}" ] && export PGPASSWORD="${_TEST_DB_CONN_PWD}"
 
     local _out_file="/tmp/test_orphaned.tsv"
-    _exec_filelist "filelist2 -b '${_b}' -p '${_p}' -c 10 -src BS -db ${_nexus_store} -pRxNot \"deleted=true\"" "${_out_file}"
+    _exec_filelist "filelist2 -b '${_b}' -p '${_p}' -c 10 -src BS -db ${_nexus_store} -pRxNot \"deleted=true\" -H" "${_out_file}"
     if [ "$?" == "0" ]; then
         echo "TEST=OK (${_out_file})"
+    else
+        echo "TEST=ERROR: Could not generate ${_out_file} (check /tmp/test_last.*)"
+        return 1
+    fi
+
+    local _out_file="/tmp/test_orphaned_should_find_some.tsv"
+    _exec_filelist "filelist2 -b '${_b}' -p '${_p}' -c 10 -src BS -db ${_nexus_store} -pRx \"deleted=true\" -P -H" "${_out_file}"
+    if [ "$?" == "0" ]; then
+        local _expected_num="$(_line_num ${_out_file})"
+        if [ ${_expected_num:-"0"} -gt 0 ]; then
+            echo "TEST=OK : ${_out_file}, expected:${_expected_num}"
+        else
+            echo "TEST=WARN: ${_out_file} should not be empty (or no soft-deleted blobs) (check /tmp/test_last.*)"
+        fi
     else
         echo "TEST=ERROR: Could not generate ${_out_file} (check /tmp/test_last.*)"
         return 1
@@ -198,8 +212,8 @@ function test_7_TextFileToCheckBlobStore() {
         echo "TEST=ERROR: Could not generate ${_out_file} (check /tmp/test_last.*)"
         return 1
     fi
-    local _expected_num="$(wc -l /tmp/test_mock_blob_ids.txt | awk '{print $1}')"
-    local _result_num="$(wc -l ${_out_file} | awk '{print $1}')"
+    local _expected_num="$(_line_num /tmp/test_mock_blob_ids.txt)"
+    local _result_num="$(_line_num ${_out_file})"
     if [ ${_expected_num:-"0"} -gt 0 ] && [ "$((_expected_num * 2))" -eq "${_result_num}" ]; then
         echo "TEST=OK (${_out_file})"
     else
@@ -213,8 +227,8 @@ function test_7_TextFileToCheckBlobStore() {
         echo "TEST=ERROR: Could not generate ${_out_file} (check /tmp/test_last.*)"
         return 1
     fi
-    local _expected_num="$(wc -l /tmp/test_mock_blob_ids.txt | awk '{print $1}')"
-    local _result_num="$(wc -l ${_out_file} | awk '{print $1}')"
+    local _expected_num="$(_line_num /tmp/test_mock_blob_ids.txt)"
+    local _result_num="$(_line_num ${_out_file})"
     if [ ${_expected_num:-"0"} -gt 0 ] && [ "${_expected_num}" -eq "${_result_num}" ]; then
         echo "TEST=OK (${_out_file})"
     else
@@ -243,8 +257,8 @@ function test_8_TextFileToCheckDatabase() {
 
     local _out_file="/tmp/test_assets_from_db.tsv"
     _exec_filelist "filelist2 -db ${_nexus_store} -bsName $(basename "${_b}") -c 10 -rF /tmp/test_mock_blob_ids.txt -H" "${_out_file}"
-    local _expected_num="$(wc -l /tmp/test_mock_blob_ids.txt | awk '{print $1}')"
-    local _result_num="$(wc -l ${_out_file} | awk '{print $1}')"
+    local _expected_num="$(_line_num /tmp/test_mock_blob_ids.txt)"
+    local _result_num="$(_line_num ${_out_file})"
     if [ ${_result_num:-"0"} -gt 0 ]; then
         echo "TEST=OK (${_out_file}) expected:${_expected_num}, result:${_result_num}"
     else
@@ -266,6 +280,10 @@ function _log_duration() {
         _log_level="INFO"
     fi
     echo "[${_log_level}] ${_log_msg} in ${_diff}s" >&2
+}
+function _line_num() {
+    local _file="$1"
+    wc -l "${_file}" | awk '{print $1}'
 }
 function _log() {
     local _log_file="${_LOG_FILE_PATH:-"/dev/null"}"

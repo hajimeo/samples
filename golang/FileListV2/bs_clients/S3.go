@@ -12,6 +12,7 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/s3"
 	"github.com/aws/aws-sdk-go-v2/service/s3/types"
 	h "github.com/hajimeo/samples/golang/helpers"
+	"github.com/pkg/errors"
 	"path/filepath"
 	"sort"
 	"strings"
@@ -23,7 +24,7 @@ type S3Client struct{}
 
 var s3Api *s3.Client
 
-func getBsClient() *s3.Client {
+func getS3Api() *s3.Client {
 	if s3Api != nil {
 		return s3Api
 	}
@@ -56,7 +57,7 @@ func getObjectS3(key string) (*s3.GetObjectOutput, error) {
 		Bucket: &common.Container,
 		Key:    &key,
 	}
-	client := getBsClient()
+	client := getS3Api()
 	value, err := client.GetObject(context.TODO(), input)
 	if err == nil {
 		cacheSize := 16
@@ -91,7 +92,7 @@ func (s S3Client) WriteToPath(path string, contents string) error {
 	} else {
 		defer h.Elapsed(time.Now().UnixMilli(), "WARN  slow file write for path:"+path, 400)
 	}
-	client := getBsClient()
+	client := getS3Api()
 	baseDir := common.BaseDir
 	input := &s3.PutObjectInput{
 		Bucket: &baseDir,
@@ -106,34 +107,54 @@ func (s S3Client) WriteToPath(path string, contents string) error {
 	return nil
 }
 
-func removeTags(path string, client *s3.Client) error {
-	baseDir := common.BaseDir
+func removeTag(path string) error {
+	return replaceTag(path, "", "")
+}
+
+func replaceTag(path string, key string, value string) error {
+	// NOTE: currently not appending but replacing with just one tag
+	var tagSet []types.Tag
+	if len(key) > 0 {
+		tagSet = []types.Tag{
+			{Key: aws.String(key), Value: aws.String(value)},
+		}
+	}
+	bucket := common.Container
 	inputTag := &s3.PutObjectTaggingInput{
-		Bucket: &baseDir,
+		Bucket: &bucket,
 		Key:    &path,
 		Tagging: &types.Tagging{
-			TagSet: []types.Tag{},
+			TagSet: tagSet,
 		},
 	}
-	respTag, err := client.PutObjectTagging(context.TODO(), inputTag)
+	respTag, err := getS3Api().PutObjectTagging(context.TODO(), inputTag)
 	if err != nil {
-		h.Log("WARN", fmt.Sprintf("Deleting Tag with PutObjectTagging failed. Path: %s. Resp: %v", path, respTag))
+		h.Log("WARN", fmt.Sprintf("PutObjectTagging failed. Path: %s. Resp: %v", path, respTag))
 	}
 	return err
 }
 
 func (s S3Client) RemoveDeleted(path string, contents string) error {
+	// Remove "deleted=true" line from the contents
+	updatedContents := common.RxDeleted.ReplaceAllString(contents, "")
+	if len(contents) == len(updatedContents) {
+		if common.RxDeleted.MatchString(contents) {
+			return errors.Errorf("ReplaceAllString may failed for path:%s, as the size is same (%d vs. %d)", path, len(contents), len(updatedContents))
+		} else {
+			h.Log("DEBUG", fmt.Sprintf("No 'deleted=true' found in %s", path))
+			return nil
+		}
+	}
 	err := s.WriteToPath(path, contents)
 	if err != nil {
 		return err
 	}
-	client := getBsClient()
-	err = removeTags(path, client)
+	err = removeTag(path)
 	if err != nil {
 		return err
 	}
 	bPath := h.PathWithoutExt(path) + ".bytes"
-	err = removeTags(bPath, client)
+	err = removeTag(bPath)
 	if err != nil {
 		return err
 	}
@@ -173,7 +194,7 @@ func (s S3Client) GetDirs(baseDir string, pathFilter string, maxDepth int) ([]st
 		Prefix:    aws.String(strings.TrimSuffix(prefix, "/") + "/"),
 		Delimiter: aws.String("/"),
 	}
-	client := getBsClient()
+	client := getS3Api()
 	resp, err := client.ListObjectsV2(context.TODO(), input)
 	if err != nil {
 		return dirs, err
@@ -225,7 +246,7 @@ func (s S3Client) ListObjects(dir string, db *sql.DB, perLineFunc func(interface
 		input.StartAfter = aws.String(time.Unix(common.ModDateFromTS, 0).UTC().Format("2006-01-02T15:04:05.000Z"))
 	}
 
-	client := getBsClient()
+	client := getS3Api()
 	for {
 		resp, err := client.ListObjectsV2(context.TODO(), input)
 		if err != nil {
@@ -239,8 +260,10 @@ func (s S3Client) ListObjects(dir string, db *sql.DB, perLineFunc func(interface
 		//https://stackoverflow.com/questions/25306073/always-have-x-number-of-goroutines-running-at-any-time
 		wgTags := sync.WaitGroup{}                     // *
 		guardTags := make(chan struct{}, common.Conc2) // **
+		if input.ContinuationToken != nil {
+			h.Log("DEBUG", fmt.Sprintf("Spawning a new routine for Token %s", h.TruncateStr(*input.ContinuationToken, 32)))
+		}
 		for _, item := range resp.Contents {
-			//h.Log("DEBUG", fmt.Sprintf("item: %s (filter: %s)", *item.Key, common.Filter4FileName))
 			// TODO: this should check the file name, not path
 			if common.RxFilter4FileName == nil || common.RxFilter4FileName.MatchString(*item.Key) {
 				subTtl++

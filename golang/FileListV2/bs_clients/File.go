@@ -6,6 +6,7 @@ import (
 	"database/sql"
 	"fmt"
 	h "github.com/hajimeo/samples/golang/helpers"
+	"github.com/pkg/errors"
 	"io"
 	"os"
 	"path/filepath"
@@ -53,8 +54,17 @@ func (c *FileClient) WriteToPath(path string, contents string) error {
 }
 
 func (c *FileClient) RemoveDeleted(path string, contents string) error {
-	// TODO: remove "deleted=true" from the contents
-	return c.WriteToPath(path, contents)
+	// Remove "deleted=true" line from the contents
+	updatedContents := common.RxDeleted.ReplaceAllString(contents, "")
+	if len(contents) == len(updatedContents) {
+		if common.RxDeleted.MatchString(contents) {
+			return errors.Errorf("ReplaceAllString may failed for path:%s, as the size is same (%d vs. %d)", path, len(contents), len(updatedContents))
+		} else {
+			h.Log("DEBUG", fmt.Sprintf("No 'deleted=true' found in %s", path))
+			return nil
+		}
+	}
+	return c.WriteToPath(path, updatedContents)
 }
 
 func (c *FileClient) GetDirs(baseDir string, pathFilter string, maxDepth int) ([]string, error) {
