@@ -13,7 +13,7 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/s3/types"
 	h "github.com/hajimeo/samples/golang/helpers"
 	"github.com/pkg/errors"
-	"path/filepath"
+	"regexp"
 	"sort"
 	"strings"
 	"sync"
@@ -61,8 +61,12 @@ func getObjectS3(key string) (*s3.GetObjectOutput, error) {
 	value, err := client.GetObject(context.TODO(), input)
 	if err == nil {
 		cacheSize := 16
-		if common.Conc2 > cacheSize {
-			cacheSize = common.Conc2
+		if (common.Conc1 * common.Conc2) > cacheSize {
+			if (common.Conc1 * common.Conc2) > 1000 {
+				cacheSize = 1000
+			} else {
+				cacheSize = common.Conc1 * common.Conc2
+			}
 		}
 		h.CacheAddObject(key, value, cacheSize)
 	}
@@ -163,39 +167,23 @@ func (s S3Client) RemoveDeleted(path string, contents string) error {
 }
 
 func (s S3Client) GetDirs(baseDir string, pathFilter string, maxDepth int) ([]string, error) {
-	// TODO: not utilising baseDir and pathFilter
-	// baseDir is the path to 'content' directory.
 	var dirs []string
 	if len(common.Container) == 0 {
 		common.Container, _ = lib.GetContainerAndPrefix(common.BaseDir)
 	}
 	var bucket = common.Container
+	// baseDir is the path to 'content' directory.
 	var prefix = baseDir
-	var contain string
-	//var filterRegex = regexp.MustCompile(pathFilter)
+	var filterRegex = regexp.MustCompile(pathFilter)
 
-	// Prefix not ending / does not work with S3 API, for example: ${S3_PREFIX}/content/vol-, so trying to handle this in here
-	if !strings.HasSuffix(prefix, "/") {
-		if !strings.HasPrefix(prefix, "/") && strings.Contains(prefix, "/") {
-			prefix_tmp := filepath.Dir(prefix)
-			if len(prefix_tmp) > 0 {
-				prefix = prefix_tmp
-				contain = filepath.Base(prefix) // like 'vol-'
-				h.Log("DEBUG", fmt.Sprintf("S3 prefix = %s, contain = %s", prefix, contain))
-			}
-		}
-	}
-
-	//prefix = lib.GetUpToContent(prefix + "/" + bucket)
 	h.Log("DEBUG", fmt.Sprintf("Retriving sub folders under %s %s", bucket, prefix))
 	// Not expecting more than 1000 sub folders, so no MaxKeys
 	input := &s3.ListObjectsV2Input{
 		Bucket:    &bucket,
-		Prefix:    aws.String(strings.TrimSuffix(prefix, "/") + "/"),
+		Prefix:    aws.String(h.AppendSlash(prefix)),
 		Delimiter: aws.String("/"),
 	}
-	client := getS3Api()
-	resp, err := client.ListObjectsV2(context.TODO(), input)
+	resp, err := getS3Api().ListObjectsV2(context.TODO(), input)
 	if err != nil {
 		return dirs, err
 	}
@@ -208,17 +196,14 @@ func (s S3Client) GetDirs(baseDir string, pathFilter string, maxDepth int) ([]st
 	}
 
 	for _, item := range resp.CommonPrefixes {
+		//h.Log("DEBUG", fmt.Sprintf("*item.Prefix %s", *item.Prefix))
 		if len(strings.TrimSpace(*item.Prefix)) == 0 {
 			continue
 		}
-		if len(contain) > 0 && !strings.Contains(*item.Prefix, contain) {
-			h.Log("DEBUG", fmt.Sprintf("Skipping %s as it doss not contain %s", *item.Prefix, contain))
-			continue
-		}
-		/*if len(pathFilter) > 0 && !filterRegex.MatchString(*item.Prefix) {
+		if len(pathFilter) > 0 && !filterRegex.MatchString(*item.Prefix) {
 			h.Log("DEBUG", fmt.Sprintf("Skipping %s as it does not match with %s", *item.Prefix, pathFilter))
 			continue
-		}*/
+		}
 		// if maxDepth is greater than -1, then check the depth (0 means current directory depth)
 		if maxDepth >= 0 && strings.Count(*item.Prefix, "/") > maxDepth {
 			h.Log("DEBUG", fmt.Sprintf("Skipping %s as it exceeds max depth %d", *item.Prefix, maxDepth))
@@ -248,65 +233,97 @@ func (s S3Client) ListObjects(dir string, db *sql.DB, perLineFunc func(interface
 
 	client := getS3Api()
 	for {
-		resp, err := client.ListObjectsV2(context.TODO(), input)
-		if err != nil {
-			println("Got error retrieving list of objects:")
-			// Fail immediately
-			panic(err.Error())
+		if common.TopN > 0 && common.TopN <= common.PrintedNum {
+			h.Log("INFO", fmt.Sprintf("Found %d and reached to %d", common.PrintedNum, common.TopN))
+			break
 		}
-		// Somehow KeyCount is extremely large, like 1374389592920, so not using it.
-		//h.Log("DEBUG", fmt.Sprintf("ListObjectsV2 returned %d (max: %d)", resp.KeyCount, common.MaxKeys))
+
+		p := s3.NewListObjectsV2Paginator(client, input, func(o *s3.ListObjectsV2PaginatorOptions) {
+			if v := int32(common.MaxKeys); v != 0 {
+				o.Limit = v
+			}
+		})
 
 		//https://stackoverflow.com/questions/25306073/always-have-x-number-of-goroutines-running-at-any-time
-		wgTags := sync.WaitGroup{}                     // *
-		guardTags := make(chan struct{}, common.Conc2) // **
-		if input.ContinuationToken != nil {
-			h.Log("DEBUG", fmt.Sprintf("Spawning a new routine for Token %s", h.TruncateStr(*input.ContinuationToken, 32)))
-		}
-		for _, item := range resp.Contents {
-			// TODO: this should check the file name, not path
-			if common.RxFilter4FileName == nil || common.RxFilter4FileName.MatchString(*item.Key) {
-				subTtl++
-				guardTags <- struct{}{} // **
-				wgTags.Add(1)           // *
-				go func(client *s3.Client, item types.Object, db *sql.DB) {
-					perLineFunc(*item.Key, s.Convert2BlobInfo(item), db)
-					<-guardTags   // **
-					wgTags.Done() // *
-				}(client, item, db)
-			}
+		wgTags := sync.WaitGroup{}                      // *
+		guardFiles := make(chan struct{}, common.Conc2) // **
 
+		var i int
+		for p.HasMorePages() {
 			if common.TopN > 0 && common.TopN <= common.PrintedNum {
 				h.Log("DEBUG", fmt.Sprintf("Printed %d >= %d", common.PrintedNum, common.TopN))
 				break
 			}
+
+			i++
+			resp, err := p.NextPage(context.Background())
+			if err != nil {
+				println("Got error retrieving list of objects:")
+				panic(err.Error())
+			}
+			if i > 1 {
+				h.Log("INFO", fmt.Sprintf("%s: Page %d, %d objects", dir, i, len(resp.Contents)))
+			}
+
+			for _, item := range resp.Contents {
+				if common.TopN > 0 && common.TopN <= common.PrintedNum {
+					h.Log("DEBUG", fmt.Sprintf("Printed %d >= %d for %s", common.PrintedNum, common.TopN, item.Key))
+					break
+				}
+
+				subTtl++
+				guardFiles <- struct{}{} // **
+				wgTags.Add(1)            // *
+				go func(client *s3.Client, item types.Object, db *sql.DB) {
+					perLineFunc(*item.Key, s.Convert2BlobInfo(item), db)
+					<-guardFiles  // **
+					wgTags.Done() // *
+				}(client, item, db)
+
+			}
 		}
 		wgTags.Wait() // *
-
-		// Continue if truncated (more data available) and if not reaching to the top N.
-		if common.TopN > 0 && common.TopN <= common.PrintedNum {
-			h.Log("DEBUG", fmt.Sprintf("Found %d and reached to %d", common.PrintedNum, common.TopN))
-			break
-		} else if *resp.IsTruncated {
-			h.Log("DEBUG", fmt.Sprintf("Set ContinuationToken to %s", *resp.NextContinuationToken))
-			input.ContinuationToken = resp.NextContinuationToken
-		} else {
-			break
-		}
+		break
 	}
 	return subTtl
 }
 
-func (s S3Client) GetFileInfo(path string) (BlobInfo, error) {
-	obj, err := getObjectS3(path)
+func (s S3Client) GetFileInfo(key string) (BlobInfo, error) {
+	if len(common.Container) == 0 {
+		common.Container, common.Prefix = lib.GetContainerAndPrefix(common.BaseDir)
+	}
+	owner := ""
+
+	input := &s3.HeadObjectInput{
+		Bucket: &common.Container,
+		Key:    &key,
+	}
+	headObj, err := getS3Api().HeadObject(context.TODO(), input)
 	if err != nil {
-		h.Log("DEBUG", fmt.Sprintf("Retrieving %s failed with %s. Ignoring...", path, err.Error()))
+		h.Log("DEBUG", fmt.Sprintf("Retrieving %s failed with %s. Ignoring...", key, err.Error()))
 		return BlobInfo{}, err
 	}
-	if err != nil {
-		return BlobInfo{}, err
+	// for Owner
+	if common.WithOwner {
+		input2 := &s3.GetObjectAclInput{
+			Bucket: &common.Container,
+			Key:    &key,
+		}
+		ownerObj, err2 := getS3Api().GetObjectAcl(context.TODO(), input2)
+		if err != nil {
+			h.Log("WARN", fmt.Sprintf("GetObjectAcl for %s failed with %v", key, err2))
+		}
+		if ownerObj.Owner != nil && ownerObj.Owner.DisplayName != nil {
+			owner = *ownerObj.Owner.DisplayName
+		}
 	}
-	return s.Convert2BlobInfo(obj), nil
+	blobInfo := BlobInfo{
+		Path:    key,
+		ModTime: *headObj.LastModified,
+		Size:    *headObj.ContentLength,
+		Owner:   owner,
+	}
+	return blobInfo, nil
 }
 
 func (s S3Client) Convert2BlobInfo(f interface{}) BlobInfo {

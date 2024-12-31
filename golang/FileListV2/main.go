@@ -49,7 +49,7 @@ func setGlobals() {
 	flag.StringVar(&common.SaveToFile, "s", "", "Save the output (TSV text) into the specified path")
 	flag.Int64Var(&common.TopN, "n", 0, "Return first N lines (0 = no limit). Can't be less than '-c'")
 	flag.IntVar(&common.Conc1, "c", 1, "Concurrent number for reading directories")
-	flag.IntVar(&common.Conc2, "c2", 8, "2nd Concurrent number. Currently used when retrieving AWS Tags")
+	flag.IntVar(&common.Conc2, "c2", 8, "2nd Concurrent number. Currently used when retrieving object from AWS S3")
 	flag.BoolVar(&common.NoHeader, "H", false, "If true, no header line")
 	// Reconcile / orphaned blob finding related
 	flag.StringVar(&common.Truth, "src", "", "Using database or blobstore as source [BS|DB|ALL] (if Blob ID file is provided, DB conn is not required)")
@@ -498,7 +498,7 @@ func printOrSave(line string) {
 
 func listObjects(dir string, db *sql.DB) {
 	startMs := time.Now().UnixMilli()
-	//h.Log("DEBUG", fmt.Sprintf("Listing objects from %s", dir))
+	//h.Log("INFO", fmt.Sprintf("Listing objects from %s", dir))
 	subTtl := Client.ListObjects(dir, db, printLineFromPath)
 	// Always log this elapsed time by using 0 thresholdMs
 	h.Elapsed(startMs, fmt.Sprintf("Checked %s for %d files (current total: %d)", dir, subTtl, common.CheckedNum), 0)
@@ -759,8 +759,8 @@ func runParallel(chunks [][]string, f func(string, *sql.DB), conc int) {
 	for _, chunk := range chunks {
 		guard <- struct{}{}
 		wg.Add(1)
-		h.Log("DEBUG", fmt.Sprintf("Spawning a routine for %d items", len(chunk)))
 		go func(items []string) {
+			//h.Log("INFO", fmt.Sprintf("(runParallel) Spawning a routine for %d items", len(items)))
 			defer wg.Done()
 			if common.TopN == 0 || common.PrintedNum < common.TopN {
 				// Open a DB connection per chunk
@@ -825,13 +825,14 @@ func main() {
 	h.Log("DEBUG", fmt.Sprintf("Starting GetDirs with %s, %s, %d", common.ContentPath, common.Filter4Path, common.MaxDepth))
 	startMs := time.Now().UnixMilli()
 	subDirs, err := Client.GetDirs(common.ContentPath, common.Filter4Path, common.MaxDepth)
-	h.Elapsed(startMs, fmt.Sprintf("GetDirs got %d directories", len(subDirs)), 100)
 	if err != nil {
 		h.Log("ERROR", "Failed to list directories in "+common.ContentPath+" with filter: "+common.Filter4Path)
 		panic(err)
 	}
+	chunks := h.Chunk(subDirs, 1) // 1 is for spawning the routine per subDir.
+	h.Elapsed(startMs, fmt.Sprintf("GetDirs got %d directories", len(subDirs)), 200)
+
 	startMs = time.Now().UnixMilli()
-	chunks := h.Chunk(subDirs, common.Conc1)
 	runParallel(chunks, listObjects, common.Conc1)
 	// Always log this elapsed time by using 0 thresholdMs
 	h.Elapsed(startMs, fmt.Sprintf("Completed. Listed: %d (checked: %d), Size: %d bytes", common.PrintedNum, common.CheckedNum, common.TotalSize), 0)

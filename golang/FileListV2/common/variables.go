@@ -86,7 +86,7 @@ var RxBlobId = regexp.MustCompile("[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{
 // Counters and misc.
 var Conc1 int
 var Conc2 int
-var MaxKeys int // AWS S3: Integer value for Max Keys (<= 1000)
+var MaxKeys = 1000 // AWS S3: Integer value for Max Keys (<= 1000)
 var StartTimestamp = time.Now().Unix()
 var CheckedNum int64 = 0 // Atomic (maybe slower?)
 var PrintedNum int64 = 0 // Atomic (maybe slower?)
