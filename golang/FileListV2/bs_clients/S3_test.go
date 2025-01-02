@@ -23,17 +23,6 @@ func TestGetBsClient_UninitializedClient_ReturnsNewClient(t *testing.T) {
 	assert.Equal(t, s3Api, client)
 }
 
-func TestGetObjectS3_CachedObject_ReturnsCachedObject(t *testing.T) {
-	path := "test_path"
-	cachedObject := &s3.GetObjectOutput{}
-	h.CacheAddObject(path, cachedObject, 1)
-
-	result, err := getObjectS3(path)
-
-	assert.NoError(t, err)
-	assert.Equal(t, cachedObject, result)
-}
-
 func TestReadPath_ValidPath_ReturnsContents_S3(t *testing.T) {
 	path := "valid_path"
 	expectedContents := "file contents"

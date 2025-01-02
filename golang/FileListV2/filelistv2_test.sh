@@ -42,7 +42,7 @@ function test_1_First10FilesForSpecificRepo() {
     local _p="${2:-"${_TEST_FILTER_PATH}"}"
     _find_sample_repo_name "${_b}" "${_p}" || return 1
 
-    local _out_file="/tmp/test_finding-${_TEST_REPO_NAME}-n10.tsv"
+    local _out_file="/tmp/test_finding_${_TEST_REPO_NAME}-n10.tsv"
     _exec_filelist "filelist2 -b '${_b}' -p '${_p}' -pRx '@Bucket\.repo-name=${_TEST_REPO_NAME},' -P -H" "${_out_file}"
     if [ "$?" == "0" ] && [ -s "${_out_file}" ]; then
         echo "TEST=OK: out_file= ${_out_file}"
@@ -55,11 +55,13 @@ function test_1_First10FilesForSpecificRepo() {
 function test_2_ShouldNotFindAny() {
     local _b="${1:-"${_TEST_BLOBSTORE}"}"
     local _p="${2:-"${_TEST_FILTER_PATH}"}"
-    # This test can take long time so not running for now
-    return 0
+    if [[ "${_b}" =~ ^s3:// ]]; then
+        echo "TEST=Skipped as this test can take long time with S3"
+        return 0
+    fi
     _find_sample_repo_name "${_b}" "${_p}" || return 1
 
-    local _out_file="/tmp/test_not-finding-${_TEST_REPO_NAME}.tsv"
+    local _out_file="/tmp/test_not-finding_${_TEST_REPO_NAME}.tsv"
     _exec_filelist "filelist2 -b '${_b}' -p '${_p}' -pRx '@Bucket\.repo-name=${_TEST_REPO_NAME},' -pRxNot 'BlobStore\.blob-name=' -P -H" "${_out_file}"
     if [ "$?" == "0" ] && [ ! -s "${_out_file}" ]; then
         echo "TEST=OK : ${_out_file} is empty"
@@ -75,17 +77,17 @@ function test_3_FindFromTextFile() {
     _find_sample_repo_name "${_b}" "${_p}" || return 1
 
     local _out_file="/tmp/test_from-textfile.tsv"
-    _exec_filelist "filelist2 -b '${_b}' -p '${_p}' -rF /tmp/test_finding-${_TEST_REPO_NAME}-n10.tsv -P -f '\.properties' -H" "${_out_file}"
+    _exec_filelist "filelist2 -b '${_b}' -p '${_p}' -rF /tmp/test_finding_${_TEST_REPO_NAME}-n10.tsv -P -f '\.properties' -H" "${_out_file}"
     if [ "$?" == "0" ] && [ -s "${_out_file}" ]; then
-        local _orig_num="$(_line_num /tmp/test_finding-${_TEST_REPO_NAME}-n10.tsv)"
+        local _orig_num="$(_line_num /tmp/test_finding_${_TEST_REPO_NAME}-n10.tsv)"
         local _result_num="$(_line_num ${_out_file})"
         if [ ${_result_num:-"0"} -gt 0 ] && [ "${_orig_num}" -eq "${_result_num}" ]; then
             echo "TEST=OK : The number of lines in the original file and the result file are the same (${_result_num})"
         else
-            echo "TEST=ERROR: The number of lines in /tmp/test_finding-${_TEST_REPO_NAME}-n10.tsv (${_orig_num}) and ${_out_file} (${_result_num}) are different"
+            echo "TEST=ERROR: The number of lines in /tmp/test_finding_${_TEST_REPO_NAME}-n10.tsv (${_orig_num}) and ${_out_file} (${_result_num}) are different"
             return 1
         fi
-        rg -o "[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}" /tmp/test_finding-${_TEST_REPO_NAME}-n10.tsv | while read _id; do
+        rg -o "[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}" /tmp/test_finding_${_TEST_REPO_NAME}-n10.tsv | while read _id; do
             if ! rg -q "${_id}" ${_out_file}; then
                 echo "TEST=ERROR: Could not find ${_id} in ${_out_file} (check /tmp/test_last.*)"
                 return 1
@@ -102,22 +104,28 @@ function test_4_SizeAndCount() {
     local _p="${2:-"${_TEST_FILTER_PATH}"}"
 
     local _out_file="/tmp/test_count_size.tsv"
-    _exec_filelist "filelist2 -b '${_b}' -p '${_p}' -f '.bytes'" "${_out_file}"
+    _TEST_MAX_NUM=0 _exec_filelist "filelist2 -b '${_b}' -p '${_p}' -f '.bytes' -H" "${_out_file}"
     local _result="$(rg "Listed.+ bytes" -o /tmp/test_last.err)"
     if [ -z "${_result}" ]; then
         echo "TEST=ERROR: Could not find 'Listed.+ bytes' in /tmp/test_last.err"
         return 1
     fi
 
-    # TODO: if not File type, return in here
+    # TODO: if not File type, return in here (add other types)
+    if [[ "${_b}" =~ ^s3:// ]]; then
+        echo "TEST=OK : ${_result}"
+        return 0
+    fi
+
     local _find="find"
     type gfind &>/dev/null && _find="gfind"
     # "c*2" is because the filelist2 checks both .properties and .bytes files
     local _expect="$(${_find} ${_b} -type f -name '*.bytes*' -path "*${_p}*" -printf '%s\n' | awk '{ c+=1;s+=$1 }; END { print "Listed: "c" (checked: "c*2"), Size: "s" bytes" }')"
-    if [ "${_result}" == "${_expect}" ]; then
+
+    if [ -n "${_expect}" ] && [ "${_result}" == "${_expect}" ]; then
         echo "TEST=OK : ${_result}"
     else
-        echo "TEST=ERROR: ${_result} != ${_expect}"
+        echo "TEST=ERROR: '${_result}' != '${_expect}'"
         return 1
     fi
 }
@@ -127,7 +135,7 @@ function test_5_Undelete() {
     local _p="${2:-"${_TEST_FILTER_PATH}"}"
     _find_sample_repo_name "${_b}" "${_p}" || return 1
 
-    local _prep_file="/tmp/test_soft-deleted-${_TEST_REPO_NAME}-n10.tsv"
+    local _prep_file="/tmp/test_soft-deleted_${_TEST_REPO_NAME}-n10.tsv"
     # Find 10 NOT soft-deleted .properties files
     _exec_filelist "filelist2 -b '${_b}' -p '${_p}' -pRx '@Bucket\.repo-name=${_TEST_REPO_NAME}' -pRxNot 'deleted=true' -n 10 -H" "${_prep_file}"
     if [ ! -s "${_prep_file}" ]; then
@@ -135,28 +143,32 @@ function test_5_Undelete() {
         return 0
     fi
     # Append 'deleted=true' in each file in the tsv file
-    _exec_filelist "filelist2 -b '${_b}' -rF ${_prep_file} -wStr \"deleted=true\"" "/tmp/test_dummy-soft-deleted-${_TEST_REPO_NAME}.tsv"
+    _exec_filelist "filelist2 -b '${_b}' -rF ${_prep_file} -wStr \"deleted=true\" -P -H" "/tmp/test_preparing-soft-deleted_${_TEST_REPO_NAME}.tsv"
     if [ "$?" != "0" ]; then
-        echo "TEST=ERROR: Could not soft-delete ${_prep_file} (check /tmp/test_last.*)"
+        echo "TEST=ERROR: Could not prepare soft-delete ${_prep_file} (check /tmp/test_last.*)"
         return 1
     fi
 
-    local _out_file="/tmp/test_undeleting-${_TEST_REPO_NAME}.tsv"
+    local _out_file="/tmp/test_undeleting_${_TEST_REPO_NAME}.tsv"
     _exec_filelist "filelist2 -b '${_b}' -rF ${_prep_file} -RDel -P -H" "${_out_file}"
     if [ "$?" == "0" ]; then
         if ! rg -q "deleted=true" ${_out_file}; then
             echo "TEST=ERROR: Not found 'deleted=true' in ${_out_file} (check /tmp/test_last.*)"
             return 1
         fi
-        _out_file="/tmp/test_undeleted-${_TEST_REPO_NAME}.tsv"
-        _exec_filelist "filelist2 -b '${_b}' -rF ${_prep_file} -P -H" "${_out_file}"
-        if rg -q "deleted=true" ${_out_file}; then
-            echo "TEST=ERROR: Found 'deleted=true' in ${_out_file} (check /tmp/test_last.*)"
+        if [[ "${_b}" =~ ^s3:// ]]; then
+            echo "Waiting 3 seconds to wait for S3 to complete the writing ..."
+            sleep 3
+        fi
+        _out_file="/tmp/test_check_undeleted_${_TEST_REPO_NAME}.tsv"
+        _exec_filelist "filelist2 -b '${_b}' -rF ${_prep_file} -P -H" "${_out_file}" "_check"
+        if head -n10 "${_out_file}" | rg -q "deleted=true"; then
+            echo "TEST=ERROR: Found 'deleted=true' in ${_out_file} (check /tmp/test_last*)"
             return 1
         fi
-        echo "TEST=OK : no 'deleted=true' in ${_out_file} (compare with ${_prep_file})"
+        echo "TEST=OK : no 'deleted=true' in the first 10 lines of ${_out_file} (compare with ${_prep_file})"
     else
-        echo "TEST=ERROR: Could not undelete ${_prep_file} result: /tmp/test_undeleted-${_TEST_REPO_NAME}.tsv (check /tmp/test_last.*)"
+        echo "TEST=ERROR: Could not undelete ${_prep_file} result: /tmp/test_undeleted_${_TEST_REPO_NAME}.tsv (check /tmp/test_last.*)"
         return 1
     fi
 }
@@ -203,6 +215,11 @@ function test_7_TextFileToCheckBlobStore() {
     local _p="${2:-"${_TEST_FILTER_PATH}"}"
     local _work_dir="${3:-"${_TEST_WORKDIR}"}"
 
+    if [[ "${_b}" =~ ^s3:// ]]; then
+        echo "TEST=Skipped this test for S3 for now."
+        return 0
+    fi
+
     find ${_b%/} -maxdepth 4 -name '*.properties' -path '*/content/vol*' -print | head -n10 >/tmp/test_mock_blob_ids.txt
     if [ ! -s "/tmp/test_mock_blob_ids.txt" ]; then
         echo "TEST=ERROR: No mock .properties files found in ${_b}"
@@ -245,6 +262,12 @@ function test_8_TextFileToCheckDatabase() {
     local _b="${1:-"${_TEST_BLOBSTORE}"}"
     local _p="${2:-"${_TEST_FILTER_PATH}"}"
     local _work_dir="${3:-"${_TEST_WORKDIR}"}"
+
+    if [[ "${_b}" =~ ^s3:// ]]; then
+        echo "TEST=Skipped this test as no need to test if S3."
+        return 0
+    fi
+
     local _nexus_store="$(find ${_work_dir%/} -maxdepth 3 -name 'nexus-store.properties' -path '*/etc/fabric/*' -print | head -n1)"
     if [ -z "${_nexus_store}" ]; then
         echo "TEST=ERROR: Could not find nexus-store.properties in ${_work_dir}"
@@ -300,11 +323,12 @@ function _log() {
 function _exec_filelist() {
     local _cmd_without_s="$1"
     local _out_file="$2"
+    local _stdouterr_prefix="$3"
     if [ -s "${_out_file}" ]; then
-        rm -v -f "${_out_file}" || return $?
+        rm -f "${_out_file}" || return $?
     fi
     local _cmd="${_cmd_without_s} -s ${_out_file}"
-    if rg -q ' -b +.*s3://' <<<"${_cmd_without_s}"; then
+    if rg -q ' -b +.?s3://' <<<"${_cmd_without_s}"; then
         _cmd="${_cmd} -c 2 -c2 8"
     else
         _cmd="${_cmd} -c 10"
@@ -313,7 +337,7 @@ function _exec_filelist() {
         _cmd="${_cmd} -n ${_TEST_MAX_NUM}"
     fi
     _log "INFO" "Running: ${_cmd}"
-    eval "${_cmd}" >/tmp/test_last.out 2>/tmp/test_last.err
+    eval "${_cmd}" >"/tmp/test_last${_stdouterr_prefix}.out" 2>"/tmp/test_last${_stdouterr_prefix}.err"
 }
 function _find_sample_repo_name() {
     local _b="${1:-"${_TEST_BLOBSTORE}"}"

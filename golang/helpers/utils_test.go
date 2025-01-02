@@ -5,6 +5,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"os"
 	"path/filepath"
+	"sync"
 	"testing"
 	"time"
 )
@@ -332,4 +333,32 @@ func TestCacheAddObject_MaxSizeZero_StillAddsObject(t *testing.T) {
 	CacheAddObject("key5", "value5", 0)
 	result := CacheGetObj("key5")
 	assert.Equal(t, "value5", result)
+}
+
+func TestCacheDelObj_KeyExists_RemovesObject(t *testing.T) {
+	CacheAddObject("key1", "value1", 10)
+	CacheDelObj("key1")
+	result := CacheGetObj("key1")
+	assert.Nil(t, result)
+}
+
+func TestCacheDelObj_KeyDoesNotExist_NoError(t *testing.T) {
+	CacheDelObj("nonexistent")
+	result := CacheGetObj("nonexistent")
+	assert.Nil(t, result)
+}
+
+func TestCacheDelObj_ConcurrentAccess_NoDataRace(t *testing.T) {
+	CacheAddObject("key1", "value1", 10)
+	var wg sync.WaitGroup
+	for i := 0; i < 100; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			CacheDelObj("key1")
+		}()
+	}
+	wg.Wait()
+	result := CacheGetObj("key1")
+	assert.Nil(t, result)
 }

@@ -91,4 +91,5 @@ var StartTimestamp = time.Now().Unix()
 var CheckedNum int64 = 0 // Atomic (maybe slower?)
 var PrintedNum int64 = 0 // Atomic (maybe slower?)
 var TotalSize int64 = 0  // Atomic (maybe slower?)
-//var SlowMS int64 = 100
+var SlowMS int64 = 1000
+var CacheSize int = 1000

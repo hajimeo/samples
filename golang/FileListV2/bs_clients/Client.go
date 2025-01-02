@@ -22,7 +22,7 @@ type BlobInfo struct {
 	ModTime time.Time
 	Size    int64
 	Owner   string
-	Tags    map[string]string
+	Tags    string // JSON string
 }
 
 func GetClient() Client {

@@ -97,7 +97,7 @@ func GetRow(rowCur *sql.Rows, cols []string) []interface{} {
 }
 
 func GetRows(query string, db *sql.DB, slowMs int64) [][]interface{} {
-	// NOTE: Not using this function, just an example, because do not want to store all results in memory
+	// NOTE: Not using this GetRows function (just an example) because do not want to store all results in memory
 	rows := Query(query, db, slowMs)
 	if rows == nil { // Mainly for unit test
 		h.Log("WARN", "rows is nil for query: "+query)

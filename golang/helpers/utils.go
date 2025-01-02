@@ -301,13 +301,20 @@ func CacheGetObj(key string) interface{} {
 func CacheAddObject(key string, value interface{}, maxSize int) {
 	_mu.Lock()
 	for k := range _cachedObjects {
-		// Because going to add one, using >= (to be safe, it should create a copy of _cachedObjects...)
+		// Because going to add one, using >= (
 		if len(_cachedObjects) >= maxSize {
+			// NOTE: to be safe, should it create a copy of _cachedObjects?
 			delete(_cachedObjects, k)
 		} else {
 			break
 		}
 	}
 	_cachedObjects[key] = value
+	_mu.Unlock()
+}
+
+func CacheDelObj(key string) {
+	_mu.Lock()
+	delete(_cachedObjects, key)
 	_mu.Unlock()
 }

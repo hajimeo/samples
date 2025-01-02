@@ -23,8 +23,8 @@ func (c *FileClient) ReadPath(path string) (string, error) {
 		// Record the elapsed time
 		defer h.Elapsed(time.Now().UnixMilli(), "Read "+path, int64(0))
 	} else {
-		// If File type blob store, shouldn't take more than 1 second
-		defer h.Elapsed(time.Now().UnixMilli(), "Slow file read for path:"+path, int64(1000))
+		// If File type blob store, shouldn't take more than 1 second (could be NFS)
+		defer h.Elapsed(time.Now().UnixMilli(), "Slow file read for path:"+path, common.SlowMS)
 	}
 	bytes, err := os.ReadFile(path)
 	if err != nil {
@@ -37,9 +37,9 @@ func (c *FileClient) ReadPath(path string) (string, error) {
 
 func (c *FileClient) WriteToPath(path string, contents string) error {
 	if common.Debug {
-		defer h.Elapsed(time.Now().UnixMilli(), "Wrote "+path, 0)
+		defer h.Elapsed(time.Now().UnixMilli(), "Wrote "+path, int64(0))
 	} else {
-		defer h.Elapsed(time.Now().UnixMilli(), "Slow file write for path:"+path, 100)
+		defer h.Elapsed(time.Now().UnixMilli(), "Slow file write for path:"+path, common.SlowMS*2)
 	}
 	f, err := os.OpenFile(path, os.O_RDWR|os.O_CREATE|os.O_TRUNC, 0644)
 	if err != nil {
@@ -69,9 +69,9 @@ func (c *FileClient) RemoveDeleted(path string, contents string) error {
 
 func (c *FileClient) GetDirs(baseDir string, pathFilter string, maxDepth int) ([]string, error) {
 	if common.Debug {
-		defer h.Elapsed(time.Now().UnixMilli(), "Walked "+baseDir, 0)
+		defer h.Elapsed(time.Now().UnixMilli(), "Walked "+baseDir, int64(0))
 	} else {
-		defer h.Elapsed(time.Now().UnixMilli(), "Slow directory walk for "+baseDir, 1000)
+		defer h.Elapsed(time.Now().UnixMilli(), "Slow directory walk for "+baseDir, common.SlowMS)
 	}
 	var matchingDirs []string
 	filterRegex := regexp.MustCompile(pathFilter)

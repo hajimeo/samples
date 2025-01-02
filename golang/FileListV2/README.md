@@ -23,7 +23,7 @@ NOTE: The arguments, which name starts with a Capital letter, are boolean type. 
 ```
 filelist2 -b "./sonatype-work/nexus3/blobs/default/content"
 filelist2 -b "file://sonatype-work/nexus3/blobs/default/content"
-TODO: filelist2 -b "s3://s3-test-bucket/s3-test-prefix/content"
+filelist2 -b "s3://s3-test-bucket/s3-test-prefix/content"
 TODO: filelist2 -b "az://azure-test-container/azure-test-prefix/content"
 TODO: filelist2 -b "gs://google-test-storage/google-test-prefix/content"
 ```
@@ -31,8 +31,9 @@ TODO: filelist2 -b "gs://google-test-storage/google-test-prefix/content"
 ```
 filelist2 -b "$BLOB_STORE" -p "vol-" -c 80 -s "/tmp/file-list_$(date +"%Y%m%d%H%M%S").tsv"
 ```
-NOTE: The recommended concurrency is less than (CPUs / 2) * 10, unless against slow disk/network. 
-Also, the concurrency is based on the directories under `-b` (max depth 3), so even the "vol-NN" is less than 50, the concurrency higher than 50 would work.
+NOTE: The recommended concurrency is less than (CPUs / 2) * 10, unless against slow disk/network.  
+Also, the concurrency is based on the directories under `-b` (max depth 3), so even the "vol-NN" is less than 50, the concurrency higher than 50 would work.  
+Also, if S3, `-c 2 -c2 8` might be faster.
 
 #### Same as the above but only files which File name matches with `-f "file-filter"`, and including the Properties file content `-P` into the saving file
 ```

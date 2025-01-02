@@ -69,6 +69,9 @@ func setGlobals() {
 	flag.BoolVar(&common.WithOwner, "O", false, "AWS S3: If true, get the owner display name")
 	flag.BoolVar(&common.WithTags, "T", false, "AWS S3: If true, get tags of each object")
 
+	flag.Int64Var(&common.SlowMS, "slowMS", 1000, "Some methods show WARN log if that method takes more than this msec")
+	flag.IntVar(&common.CacheSize, "cacheSize", 1000, "How many .properties files to cache")
+
 	flag.BoolVar(&common.Debug, "X", false, "If true, verbose logging")
 	flag.BoolVar(&common.Debug2, "XX", false, "If true, more verbose logging (currently only for AWS")
 	//flag.BoolVar(&common.DryRun, "Dry", false, "If true, RDel does not do anything")	# No longer needed as -rF can be used
@@ -294,8 +297,9 @@ func genBlobPath(blobId string, extension string) string {
 }
 
 func genOutput(path string, bi bs_clients.BlobInfo, db *sql.DB) string {
-	// Increment checked number counter synchronously
+	// Incrementing the checked number counter *synchronously* (not sure if this causes some slowness)
 	atomic.AddInt64(&common.CheckedNum, 1)
+
 	if len(common.Filter4FileName) > 0 && !common.RxFilter4FileName.MatchString(path) {
 		h.Log("DEBUG", fmt.Sprintf("path:%s does not match with the filter %s", path, common.RxFilter4FileName.String()))
 		return ""
@@ -311,21 +315,28 @@ func genOutput(path string, bi bs_clients.BlobInfo, db *sql.DB) string {
 	var skipReason error
 	output := fmt.Sprintf("%s%s%s%s%d", path, common.SEP, bi.ModTime, common.SEP, bi.Size)
 	// If .properties file is checked, depending on other flags, need to generate extra output
-	if isExtraInfoNeeded(path, modTimestamp) {
+	if shouldReadProps(path, modTimestamp) {
 		//h.Log("DEBUG", fmt.Sprintf("Extra info from properties is needed for '%s'", path))
 		props, skipReason = extraInfo(path)
 		if skipReason != nil {
 			h.Log("DEBUG", fmt.Sprintf("%s: %s", path, skipReason.Error()))
 			return ""
 		}
-		// Append to the output only when WithProps is true even if the props is empty
-		if common.WithProps {
-			output = fmt.Sprintf("%s%s%s", output, common.SEP, props)
-		} else if len(props) == 0 {
-			h.Log("WARN", fmt.Sprintf("No property contents for %s", path))
-		}
 		//} else {
 		//	h.Log("DEBUG", fmt.Sprintf("Extra info from properties is NOT needed for '%s'", path))
+	}
+
+	// NOTE: make sure the output order is same as the printHeader
+	if common.WithProps {
+		output = fmt.Sprintf("%s%s%s", output, common.SEP, props)
+	}
+
+	if common.WithOwner {
+		output = fmt.Sprintf("%s%s%s", output, common.SEP, bi.Owner)
+	}
+
+	if common.WithTags {
+		output = fmt.Sprintf("%s%s%s", output, common.SEP, bi.Tags)
 	}
 
 	if common.Truth == "BS" {
@@ -350,7 +361,7 @@ func genOutput(path string, bi bs_clients.BlobInfo, db *sql.DB) string {
 	return output
 }
 
-func isExtraInfoNeeded(path string, modTimestamp int64) bool {
+func shouldReadProps(path string, modTimestamp int64) bool {
 	if !strings.HasSuffix(path, common.PROP_EXT) {
 		// If the path is not properties file, no need to open the file
 		//h.Log("DEBUG", "Skipping path:"+path+" as not a properties file")
@@ -380,29 +391,57 @@ func isExtraInfoNeeded(path string, modTimestamp int64) bool {
 }
 
 func extraInfo(path string) (string, error) {
-	// This function returns the extra information, and also does extra checks.
-	// Returns the error only when RxIncl or RxExcl filtered the contents
-	contents, err := Client.ReadPath(path)
-	if err != nil {
-		h.Log("ERROR", "extraInfo for "+path+" returned error:"+err.Error())
-		// This is not skip reason, so returning nil
+	// This function returns the extra information (.properties contents) and the skip reason as error
+	// Also does extra checks. For example, this may return "" with the error, when RxIncl or RxExcl filtered the contents.
+
+	var contents string
+	var err error
+	var shouldInvalidateCache = false
+
+	// If the contents is already cached, return it
+	if common.CacheSize > 0 {
+		valueInCache := h.CacheGetObj(path)
+		if valueInCache != nil && len(valueInCache.(string)) > 0 {
+			contents = valueInCache.(string)
+			h.Log("DEBUG", fmt.Sprintf("Found %s in the cache (size:%d)", path, len(contents)))
+		}
+	}
+
+	if len(contents) == 0 {
+		contents, err = Client.ReadPath(path)
+		if err != nil {
+			h.Log("ERROR", "(extraInfo) "+path+" returned error:"+err.Error())
+			// This (reading file error) is not the skip reason, so returning nil error.
+			return "", nil
+		}
+	}
+
+	if len(contents) == 0 {
+		h.Log("ERROR", "(extraInfo) "+path+" returned 0 size.")
+		// This (empty) is not the skip reason, so returning nil error.
 		return "", nil
 	}
-	if len(contents) == 0 {
-		h.Log("WARN", "extraInfo for "+path+" returned 0 size.") // But still can check extra
-	} else {
-		// removeDel requires 'contents' (to avoid re-reading same file), so executing in the extraInfo.
-		if common.RemoveDeleted {
-			_ = removeDel(contents, path)
-		}
+
+	// removeDel requires to read the contents (to avoid re-reading same file), so executing in the extraInfo.
+	if common.RemoveDeleted {
+		_ = removeDel(contents, path)
+		shouldInvalidateCache = true
 	}
 
 	if len(common.WriteIntoStr) > 0 {
 		_ = appendStr(common.WriteIntoStr, contents, path)
+		shouldInvalidateCache = true
+	}
+
+	if common.CacheSize > 0 {
+		if shouldInvalidateCache {
+			h.CacheDelObj(path)
+		} else { // the content size is already checked
+			h.CacheAddObject(path, contents, common.CacheSize)
+		}
 	}
 
 	// Finally, generate the properties output
-	//h.Log("DEBUG", fmt.Sprintf("Sorting content for the path '%s'", path))
 	return genOutputFromContents(contents)
 }
 
@@ -428,11 +467,22 @@ func genOutputFromContents(contents string) (string, error) {
 }
 
 func shouldBeUndeleted(contents string, path string) bool {
+	if len(contents) == 0 {
+		h.Log("WARN", fmt.Sprintf("path:%s has no contents", path))
+		return false
+	}
+
+	if !common.RxDeleted.MatchString(contents) {
+		h.Log("DEBUG", fmt.Sprintf("path:%s does not have 'deleted=true' so that no need to un-delete", path))
+		return false
+	}
+
 	matches := common.RxDeletedDT.FindStringSubmatch(contents)
 	if matches == nil || len(matches) == 0 {
-		h.Log("WARN", fmt.Sprintf("path:%s has incorrect deletedDateTime (but un-deleting)", path))
+		h.Log("WARN", fmt.Sprintf("path:%s may not have the deletedDateTime (but un-deleting)", path))
 		return true
 	}
+
 	delTimeTs, err := strconv.ParseInt(matches[1], 10, 64)
 	if err != nil {
 		h.Log("WARN", fmt.Sprintf("path:%s has non numeric deletedDateTime %v (but un-deleting)", path, matches))
