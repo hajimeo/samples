@@ -232,7 +232,12 @@ public class AssetDupeCheckV2 {
         long idxSize = getIndexFileSize(indexName);
         log("Rebuilding indexName:" + indexName + " size:" + idxSize + " bytes");
         OIndex<?> index = db.getMetadata().getIndexManager().getIndex(indexName);
-        index.rebuild();
+        if (index == null) {
+            log("[WARN] Index: " + indexName + " does not exist. Re-creating (as rebuilding)");
+            createUniqueIndex(db, indexName, false);
+        } else {
+            index.rebuild();
+        }
         long idxSize2 = getIndexFileSize(indexName);
         int prct = 100;
         if (idxSize > 0) {
@@ -390,7 +395,7 @@ public class AssetDupeCheckV2 {
         return fieldsStr.replaceAll("_", ",");
     }
 
-    private static OIndex<?> createUniqueIndex(ODatabaseDocumentTx db, String indexName, boolean noRebuild) {
+    private static OIndex<?> createUniqueIndex(ODatabaseDocumentTx db, String indexName, boolean isDummy) {
         String indexFields = getIndexFields(indexName);
         OIndex<?> index = null;
         if (indexFields.isEmpty() || indexFields.equals("*")) {
@@ -404,7 +409,12 @@ public class AssetDupeCheckV2 {
             String[] fields = indexFields.split(",");
             String type = INDEX_TYPE.UNIQUE.name();
             OClassImpl tbl = (OClassImpl) db.getMetadata().getSchema().getClass(TABLE_NAME);
-            if (noRebuild) {
+            if (tbl == null) {
+                log("[ERROR] No schema for " + TABLE_NAME);
+                return null;
+            }
+            if (isDummy) {
+                indexName = DUMMY_INDEX_PFX + indexName;
                 // OrientDB hack for setting rebuild = false in index.create()
                 OIndexDefinition indexDefinition =
                         OIndexDefinitionFactory.createIndexDefinition(tbl, Arrays.asList(fields), tbl.extractFieldTypes(fields),
@@ -415,7 +425,8 @@ public class AssetDupeCheckV2 {
                         ODefaultIndexFactory.NONE_VALUE_CONTAINER, null, -1);
                 index.create(indexName, indexDefinition, OMetadataDefault.CLUSTER_INDEX_NAME, clustersToIndex,
                         false, new OIndexRebuildOutputListener(index));
-                debug("Created Unique index: " + indexName);
+                index.flush();
+                log("Created temporary Unique index:" + indexName + " with " + indexFields + " (noRebuild)");
             } else {
                 // Below rebuild indexes, and it doesn't look like the schema saved when exception.
                 index = tbl.createIndex(indexName, type, fields);
@@ -473,10 +484,10 @@ public class AssetDupeCheckV2 {
         OIndex<?> index = db.getMetadata().getIndexManager().getIndex(indexName);
         boolean isDummyIdxCreated = false;
         if (index == null && IS_REPAIRING) {
-            // If no index but repairing, create a real index
-            log("Creating the missing index: " + indexName + "...");
-            index = createUniqueIndex(db, indexName, false);
-            IS_REBUILDING = false;  // no need to re-rebuild
+            // If no index but repairing, create a dummy index (will be re-created later)
+            log("Creating the missing index from " + indexName + ". Force rebuilding " + INDEX_NAME + " later.");
+            index = createUniqueIndex(db, indexName, true);
+            IS_REBUILDING = true;
         } else if (index != null && IS_REPAIRING) {
             try {
                 // TODO: Ideally wanted to rename the dummy index as the repaired index, but OrientDB can't rename index, and re-creating didn't stop java.nio.BufferUnderflowException (and not catchable)
@@ -488,7 +499,7 @@ public class AssetDupeCheckV2 {
         } else {
             // If no index or not repairing, create a dummy index
             log("Creating a temp Unique index from " + indexName + " ...");
-            index = createUniqueIndex(db, DUMMY_INDEX_PFX + indexName, true);
+            index = createUniqueIndex(db, indexName, true);
             isDummyIdxCreated = true;
         }
 
@@ -575,7 +586,7 @@ public class AssetDupeCheckV2 {
                 // TODO: below toString() causes exception when the doc is corrupted
                 //debug("Put key: " + indexKey.toString() + ", values: " + docId.toString());
             } catch (Exception e) {
-                log("[ERROR] Updating index failed for docId: " + docId + ".\n" + e.getMessage());
+                log("[WARN] Updating index failed for docId: " + docId + ".\n" + e.getMessage());
             }
         }
         return dupeCounter;
@@ -638,6 +649,8 @@ public class AssetDupeCheckV2 {
         if (IS_REPAIRING) {
             try {
                 db.delete(deletingId);
+                // The above delete should remove the index, but just in case
+                index.remove(indexKey, deletingId);
                 log("[WARN] Deleted duplicate: " + deletingId);
             } catch (Exception e) {
                 log("[ERROR] Deleting duplicate: " + deletingId + " failed (keepingId = " + keepingId + ")\n" + e.getMessage());
@@ -654,6 +667,7 @@ public class AssetDupeCheckV2 {
                         "select * from (select expand(indexes) from metadata:indexmanager) where name = '" + indexName + "'"))
                 .execute();
         if (oDocs.isEmpty()) {
+            log("No Index definition for " + indexName);
             return false;
         }
         String indexDef = oDocs.get(0).toJSON("rid,attribSameRow,alwaysFetchEmbedded,fetchPlan:*:0"); //,prettyPrint
