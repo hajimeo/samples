@@ -59,6 +59,7 @@ public class AssetDupeCheckV2 {
     private static Path TMP_DIR = null;
     private static String TABLE_NAME = "";
     private static String INDEX_NAME = "";
+    private static String DUMMY_INDEX_PFX = "dummy_";
     private static String[] DROP_TABLES;
     private static String[] DROP_INDEXES;
     // First one is the default index to be checked
@@ -347,11 +348,11 @@ public class AssetDupeCheckV2 {
                 try {
                     OIndex<?> _index = db.getMetadata().getIndexManager().getIndex(indexName);
                     if (_index == null) {
-                        log("[WARN] " +indexName+ " does not exist in the imported DB");
+                        log("[WARN] " + indexName + " does not exist in the imported DB");
                         log(index.getDefinition().toString());
                     }
                 } catch (Exception e) {
-                    log("[WARN] " +indexName+ " does not exist in the imported DB: " + e.getMessage());
+                    log("[WARN] " + indexName + " does not exist in the imported DB: " + e.getMessage());
                     log(index.getDefinition().toString());
                 }
             }
@@ -389,7 +390,7 @@ public class AssetDupeCheckV2 {
         return fieldsStr.replaceAll("_", ",");
     }
 
-    private static OIndex<?> createIndex(ODatabaseDocumentTx db, String indexName, boolean isDummy) {
+    private static OIndex<?> createUniqueIndex(ODatabaseDocumentTx db, String indexName, boolean noRebuild) {
         String indexFields = getIndexFields(indexName);
         OIndex<?> index = null;
         if (indexFields.isEmpty() || indexFields.equals("*")) {
@@ -403,32 +404,32 @@ public class AssetDupeCheckV2 {
             String[] fields = indexFields.split(",");
             String type = INDEX_TYPE.UNIQUE.name();
             OClassImpl tbl = (OClassImpl) db.getMetadata().getSchema().getClass(TABLE_NAME);
-            if (isDummy) {
+            if (noRebuild) {
                 // OrientDB hack for setting rebuild = false in index.create()
                 OIndexDefinition indexDefinition =
                         OIndexDefinitionFactory.createIndexDefinition(tbl, Arrays.asList(fields), tbl.extractFieldTypes(fields),
                                 null, type, ODefaultIndexFactory.SBTREE_ALGORITHM);
                 indexDefinition.setNullValuesIgnored(OGlobalConfiguration.INDEX_IGNORE_NULL_VALUES_DEFAULT.getValueAsBoolean());
                 Set<String> clustersToIndex = findClustersByIds(tbl.getClusterIds(), db);
-                index = OIndexes.createIndex(db, "dummy_" + indexName, type, ODefaultIndexFactory.SBTREE_ALGORITHM,
+                index = OIndexes.createIndex(db, indexName, type, ODefaultIndexFactory.SBTREE_ALGORITHM,
                         ODefaultIndexFactory.NONE_VALUE_CONTAINER, null, -1);
-                index.create("dummy_" + indexName, indexDefinition, OMetadataDefault.CLUSTER_INDEX_NAME, clustersToIndex,
+                index.create(indexName, indexDefinition, OMetadataDefault.CLUSTER_INDEX_NAME, clustersToIndex,
                         false, new OIndexRebuildOutputListener(index));
-                debug("Created index:dummy_" + indexName);
+                debug("Created Unique index: " + indexName);
             } else {
                 // Below rebuild indexes, and it doesn't look like the schema saved when exception.
                 index = tbl.createIndex(indexName, type, fields);
                 // Below is simpler but again, it does not save schema when exception
                 //String query = "CREATE INDEX " + indexName + " ON " + TABLE_NAME + " (" + fields + ") UNIQUE;";
                 //Object oDocs = db.command(new OCommandSQL(query)).execute();
-                log("Created unique index:" + indexName + " with " + indexFields);
+                log("Created Unique index:" + indexName + " with " + indexFields);
             }
         } catch (ORecordDuplicatedException eDupe) {
             log("Ignoring ORecordDuplicatedException for index:" + indexName + " - " + eDupe.getMessage());
             //eDupe.printStackTrace();
         } catch (Exception e) {
             // If table is corrupted, this may cause java.lang.ArrayIndexOutOfBoundsException but not sure what could be done in this code.
-            log("[ERROR] Creating index:" + indexName + " failed. May need to do DB export/import.");
+            log("[ERROR] Creating Unique index:" + indexName + " failed. May need to do DB export/import.");
             e.printStackTrace();
             return null;
         } finally {
@@ -474,20 +475,20 @@ public class AssetDupeCheckV2 {
         if (index == null && IS_REPAIRING) {
             // If no index but repairing, create a real index
             log("Creating the missing index: " + indexName + "...");
-            index = createIndex(db, indexName, false);
+            index = createUniqueIndex(db, indexName, false);
             IS_REBUILDING = false;  // no need to re-rebuild
         } else if (index != null && IS_REPAIRING) {
             try {
-                // If index exists and repairing, just clear, then it will be rebuilt later
+                // TODO: Ideally wanted to rename the dummy index as the repaired index, but OrientDB can't rename index, and re-creating didn't stop java.nio.BufferUnderflowException (and not catchable)
                 index.clear();
-                log("Index: " + indexName + " is cleared (= do not terminate this script in the middle)");
+                log("Index: " + indexName + " is cleared (WARN: Do not terminate this script in the middle)");
             } catch (Exception e) {
                 log("[WARN] index.clear() failed with: '" + e.getMessage() + "'");
             }
         } else {
             // If no index or not repairing, create a dummy index
             log("Creating a temp Unique index from " + indexName + " ...");
-            index = createIndex(db, indexName, true);
+            index = createUniqueIndex(db, DUMMY_INDEX_PFX + indexName, true);
             isDummyIdxCreated = true;
         }
 
@@ -503,6 +504,7 @@ public class AssetDupeCheckV2 {
         long total = db.countClass(TABLE_NAME);
         try {
             log("*Estimate* count for " + TABLE_NAME + " = " + total);
+            // TODO: java.nio.BufferUnderflowException may happen but not catchable?
             for (ODocument doc : db.browseClass(TABLE_NAME)) {
                 count++;
                 DUPE_COUNTER += chkAndPutIndexEntry(db, index, doc);
@@ -547,10 +549,14 @@ public class AssetDupeCheckV2 {
         Object indexKey = index.getDefinition().createValue(vals);
         boolean needPut = true;
         long c = index.count(indexKey);
+        if (c > 1) {
+            debug("key: " + indexKey.toString() + " has multiple index records (" + c + ")");
+        }
         for (int i = 0; i < c; i++) {
             Object maybeDupe = index.get(indexKey);
             // This condition should not happen because of 'c', but just in case ...
-            if (maybeDupe == null) {  // No index, so will put later
+            if (maybeDupe == null) {
+                // No index record found for this key, so will put later (not changing needPut)
                 break;
             }
             if (c == 1 && maybeDupe.toString().equals(docId.toString())) {  // only one index and same ID, so no put
@@ -596,6 +602,7 @@ public class AssetDupeCheckV2 {
         ORID keepingId = docId; // This means default is keeping the older one for UPDATE.
         boolean shouldUpdate;
         String updQuery;
+        // Special logic for component table
         if (TABLE_NAME.equalsIgnoreCase("component")) {
             List<ODocument> docIdAssets = logAssets(db, docId);
             List<ODocument> maybeAssets = logAssets(db, maybeDupe);
@@ -625,6 +632,7 @@ public class AssetDupeCheckV2 {
                 }
             }
         }
+        // Output the TRUNCATE statement regardless of -Drepair=true
         out("TRUNCATE RECORD " + deletingId + ";");
 
         if (IS_REPAIRING) {
