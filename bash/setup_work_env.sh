@@ -284,8 +284,10 @@ function f_setup_python() {
     #python3 -m pip install -U pip ${_i_opt} &>/dev/null
     _log "INFO" "Generating outdated list"
     python3 -m pip list -o ${_i_opt} | tee /tmp/pip_$$.log
-    # NOTE: -o with --format=freeze no longer works from pip v22.3
-    #python -m pip list -o --format=json ${_i_opt} | python -c 'import sys,json;js=json.load(sys.stdin);[print(o["name"]+"=="+o["version"]) for o in js]' > /tmp/requirements.txt && python3 -m pip install -U ${_i_opt} -r /tmp/requirements.txt
+    # NOTE: -o with --format=freeze no longer works from pip v22.3 (mutually exclusive)
+    #pip --disable-pip-version-check list -o --format=json ${_i_opt} | python -c 'import sys,json;js=json.load(sys.stdin);[print(o["name"]+"=="+o["version"]) for o in js]' > /tmp/requirements.txt && python3 -m pip install -U ${_i_opt} -r /tmp/requirements.txt
+    #pip --disable-pip-version-check freeze --local | grep -v '^\-e' | cut -d = -f 1  | xargs -n1 pip install -U
+
 
     # My favourite/essential python packages (except jupyter and pandas related)
     python3 -m pip install -U ${_i_opt} wheel lxml xmltodict pyyaml markdown memory_profiler
