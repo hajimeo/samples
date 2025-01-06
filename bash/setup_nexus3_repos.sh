@@ -1378,7 +1378,7 @@ function f_create_azure_blobstore() {
 }
 
 function f_create_google_blobstore() {
-    local __doc__="Create an Google blobstore. AZURE_ACCOUNT_NAME and AZURE_ACCOUNT_KEY are required"
+    local __doc__="Create an Google blobstore. GOOGLE_ACCOUNT_KEY_FILE is required"
     #https://learn.microsoft.com/en-us/azure/active-directory/develop/howto-create-service-principal-portal#get-tenant-and-app-id-values-for-signing-in
     local _bs_name="${1:-"ggl-test"}"
     local _accountKeyFle="${2:-"${GOOGLE_ACCOUNT_KEY_FILE}"}"
