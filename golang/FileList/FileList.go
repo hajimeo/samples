@@ -14,6 +14,9 @@ For S3:
 For Azure:
 	https://learn.microsoft.com/en-us/azure/storage/blobs/storage-quickstart-blobs-go
 	https://github.com/Azure-Samples/storage-blobs-go-quickstart/blob/master/storage-quickstart.go
+	or:
+	https://learn.microsoft.com/en-us/samples/azure-samples/azure-sdk-for-go-samples/azure-sdk-for-go-samples/
+	git clone https://github.com/Azure-Samples/azure-sdk-for-go-samples.git
 */
 
 package main
