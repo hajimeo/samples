@@ -14,7 +14,10 @@
 # TODO: Direct / Transitive example for Java and NPM
 #
 _DL_URL="${_DL_URL:-"https://raw.githubusercontent.com/hajimeo/samples/master"}"
-type _import &>/dev/null || _import() { [ ! -s /tmp/${1} ] && curl -sf --compressed "${_DL_URL%/}/bash/$1" -o /tmp/${1}; . /tmp/${1}; }
+type _import &>/dev/null || _import() {
+    [ ! -s /tmp/${1} ] && curl -sf --compressed "${_DL_URL%/}/bash/$1" -o /tmp/${1}
+    . /tmp/${1}
+}
 
 _import "utils.sh"
 _import "utils_db.sh"
@@ -75,19 +78,18 @@ Using previously saved response file and NO interviews:
 : ${_ADMIN_PWD:="admin123"}
 : ${_IQ_URL:="http://localhost:8070/"}
 : ${_IQ_TEST_URL:="https://nxiqha-k8s.standalone.localdomain/"}
-_TMP="/tmp"  # for downloading/uploading assets
+_TMP="/tmp" # for downloading/uploading assets
 _DEBUG=false
-
 
 # To upgrade (from ${_dirname}/): mv -f -v ./config.yml{,.tmp} && tar -xvf $HOME/.nexus_executable_cache/nexus-iq-server-1.183.0-01-bundle.tar.gz && cp -p -v ./config.yml{.tmp,}
 function f_install_iq() {
     local __doc__="Install specific IQ version (to recreate sonatype-work and DB, _RECREATE_ALL=Y)"
-    local _ver="${1}"     # 'latest'
+    local _ver="${1}" # 'latest'
     local _dbname="${2}"
-    local _dbusr="${3:-"nexus"}"     # Specifying default as do not want to create many users/roles
+    local _dbusr="${3:-"nexus"}" # Specifying default as do not want to create many users/roles
     local _dbpwd="${4:-"${_dbusr}123"}"
-    local _port="${5:-"${_IQ_INSTALL_PORT}"}"      # If not specified, checking from 8070
-    local _dirpath="${6}"    # If not specified, create a new dir under current dir
+    local _port="${5:-"${_IQ_INSTALL_PORT}"}" # If not specified, checking from 8070
+    local _dirpath="${6}"                     # If not specified, create a new dir under current dir
     local _download_dir="${7}"
     local _starting="${_NEXUS_START}"
     if [ -z "${_ver}" ] || [ "${_ver}" == "latest" ]; then
@@ -117,7 +119,8 @@ function f_install_iq() {
     fi
     if [[ "${_RECREATE_ALL-"Y"}" =~ [yY] ]]; then
         if [ -d "${_dirpath%/}" ]; then
-            _log "WARN" "Removing ${_dirpath%/} (to avoid set _RECREATE_ALL)"; sleep 3
+            _log "WARN" "Removing ${_dirpath%/} (to avoid set _RECREATE_ALL)"
+            sleep 3
             rm -v -rf "${_dirpath%/}" || return $?
         fi
         _RECREATE_DB="Y"
@@ -138,14 +141,14 @@ function f_install_iq() {
         cp -p "${_cfg_file}" "${_cfg_file}.orig"
     fi
     # TODO: From v138, most of configs need to use API: https://help.sonatype.com/iqserver/automating/rest-apis/configuration-rest-api---v2
-    grep -qE '^hdsUrl:' "${_cfg_file}" || echo -e "hdsUrl: https://clm-staging.sonatype.com/\n$(cat "${_cfg_file}")" > "${_cfg_file}"
-    grep -qE '^licenseFile' "${_cfg_file}" || echo -e "licenseFile: ${_license_path%/}\n$(cat "${_cfg_file}")" > "${_cfg_file}"
+    grep -qE '^hdsUrl:' "${_cfg_file}" || echo -e "hdsUrl: https://clm-staging.sonatype.com/\n$(cat "${_cfg_file}")" >"${_cfg_file}"
+    grep -qE '^licenseFile' "${_cfg_file}" || echo -e "licenseFile: ${_license_path%/}\n$(cat "${_cfg_file}")" >"${_cfg_file}"
     grep -qE '^\s*port: 8070' "${_cfg_file}" && sed -i.tmp 's/port: 8070/port: '${_port}'/g' "${_cfg_file}"
     grep -qE '^\s*port: 8071' "${_cfg_file}" && sed -i.tmp 's/port: 8071/port: '$((${_port} + 1))'/g' "${_cfg_file}"
 
     if [ -n "${_dbname}" ]; then
         # NOTE: currently assuming "database:" is the end of file
-        cat << EOF > ${_cfg_file}
+        cat <<EOF >${_cfg_file}
 $(sed -n '/^database:/q;p' ${_cfg_file})
 database:
   type: postgresql
@@ -163,7 +166,8 @@ EOF
 
     [ ! -d "${_dirpath%/}/log" ] && mkdir -v -m 777 "${_dirpath%/}/log"
     if _isYes "${_starting}"; then
-        echo "Starting with: java -jar ${_jar_file} server ${_cfg_file} >${_dirpath%/}/log/iq-server.out 2>${_dirpath%/}/log/iq-server.err &"; sleep 3
+        echo "Starting with: java -jar ${_jar_file} server ${_cfg_file} >${_dirpath%/}/log/iq-server.out 2>${_dirpath%/}/log/iq-server.err &"
+        sleep 3
         eval "java -jar ${_jar_file} server ${_cfg_file} >./log/iq-server.out 2>./log/iq-server.err &"
     else
         cd "${_dirpath%/}" || return $?
@@ -177,7 +181,6 @@ EOF
         fi
     fi
 }
-
 
 ### API related
 function f_api_config() {
@@ -236,7 +239,7 @@ function f_api_role_mapping() {
     local _external_id="$2" # login username, LDAP/AD groupname etc.
     local _apporg_name="${3:-"Root Organization"}"
     local _user_or_group="${4:-"group"}"
-    local _app_or_org="organization"    # TODO: application is not supported yet
+    local _app_or_org="organization" # TODO: application is not supported yet
     local _role_int_id="$(_curl "${_IQ_URL%/}/api/v2/roles" | python -c "import sys,json
 a=json.loads(sys.stdin.read())
 for r in a['roles']:
@@ -248,7 +251,7 @@ for r in a['roles']:
         return $?
     fi
     _log "INFO" "Using Role Internal Id = ${_role_int_id} ..."
-    local _int_id="$(_curl "${_IQ_URL%/}/api/v2/${_app_or_org}s"  --get --data-urlencode "${_app_or_org}Name=${_apporg_name}" | python -c "import sys,json
+    local _int_id="$(_curl "${_IQ_URL%/}/api/v2/${_app_or_org}s" --get --data-urlencode "${_app_or_org}Name=${_apporg_name}" | python -c "import sys,json
 a=json.loads(sys.stdin.read())
 print(a['${_app_or_org}s'][0]['id'])")" || return $?
     if [ -z "${_int_id}" ]; then
@@ -298,7 +301,20 @@ function f_api_audit() {
     _curl "${_IQ_URL%/}/api/v2/auditLogs?startUtcDate=${_startUtcDate}&endUtcDate=${_endUtcDate}" -o "${_saveTo}"
 }
 
-
+function f_api_report_success() {
+    local __doc__="API to get Success Metrics *Weekly* report from /api/v2/reports/metrics"
+    local _first_date_str="${1:-"1 week ago"}"
+    local _last_date_str="${2:-"1 week ago"}"
+    # Require gnu date
+    local _date="date"
+    if [ -n "$(type -P gdate)" ]; then
+        _date="gdate"
+    fi
+    local _firstTimePeriod="$(eval "${_date} -d \"${_first_date_str}\" \"+%G-W%V\"")"
+    local _lastTimePeriod="$(eval "${_date} -d \"${_last_date_str}\" \"+%G-W%V\"")"
+    # -H "Accept: text/csv" for generating the report in CSV format
+    _curl "${_IQ_URL%/}/api/v2/reports/metrics" -d "{\"timePeriod\":\"WEEK\",\"firstTimePeriod\":\"${_firstTimePeriod}\",\"lastTimePeriod\":\"${_lastTimePeriod}\",\"applicationIds\":[],\"organizationIds\":[]}"
+}
 
 ### Misc. setup functions
 function f_config_update() {
@@ -313,9 +329,9 @@ function f_config_update() {
     f_api_config '{"hdsUrl":"https://clm.sonatype.com/"}'
     #f_api_config '{"hdsUrl":"https://clm-staging.sonatype.com/"}'
     f_api_config '{"enableDefaultPasswordWarning":false}'
-    f_api_config '{"sessionTimeout":120}'   # between 3 and 120
+    f_api_config '{"sessionTimeout":120}' # between 3 and 120
     #f_api_config "" "/features/internalFirewallOnboardingEnabled" "POST"  # to enable
-    f_api_config "" "/features/internalFirewallOnboardingEnabled" "DELETE" &>/dev/null  # this one can return 400
+    f_api_config "" "/features/internalFirewallOnboardingEnabled" "DELETE" &>/dev/null # this one can return 400
     #curl -u "admin:admin123" "${_IQ_URL%/}/api/v2/config/features/internalFirewallOnboardingEnabled" -X DELETE #POST
 }
 
@@ -333,7 +349,7 @@ function f_add_testuser() {
 function f_setup_https() {
     local __doc__="Modify config files to enable SSL/TLS/HTTPS"
     # https://guides.sonatype.com/iqserver/technical-guides/iq-secure-connections/
-    local _p12="${1}"   # If empty, will use *.standalone.localdomain cert.
+    local _p12="${1}" # If empty, will use *.standalone.localdomain cert.
     local _port="${2:-8470}"
     local _pwd="${3:-"password"}"
     local _alias="${4}"
@@ -352,7 +368,8 @@ function f_setup_https() {
     # Using sonatypeWork as upgrading breaks this IQ.
     if [ -s "${_base_dir%/}/sonatype-work/clm-server/keystore.p12" ]; then
         _p12="${_base_dir%/}/sonatype-work/clm-server/keystore.p12"
-        _log "INFO" "${_p12} exits. reusing ..."; sleep 1
+        _log "INFO" "${_p12} exits. reusing ..."
+        sleep 1
     else
         if [ -n "${_p12}" ]; then
             cp -v -f "${_p12}" "${_base_dir%/}/sonatype-work/clm-server/keystore.p12" || return $?
@@ -368,7 +385,8 @@ function f_setup_https() {
 
     if [ -z "${_alias}" ] && which keytool &>/dev/null; then
         _alias="$(keytool -list -v -keystore ${_base_dir%/}/sonatype-work/clm-server/keystore.p12 -storetype PKCS12 -storepass "${_pwd}" 2>/dev/null | _sed -nr 's/Alias name: (.+)/\1/p')"
-        _log "INFO" "Using '${_alias}' as alias name..."; sleep 1
+        _log "INFO" "Using '${_alias}' as alias name..."
+        sleep 1
     fi
 
     _log "INFO" "Updating ${_cfg_file} ..."
@@ -379,7 +397,7 @@ function f_setup_https() {
         _log "ERROR" "Looks like https is already configured."
         return 1
     fi
-    local _workdir_escaped="`echo "${_base_dir%/}/sonatype-work/clm-server" | _sed 's/[\/]/\\\&/g'`"
+    local _workdir_escaped="$(echo "${_base_dir%/}/sonatype-work/clm-server" | _sed 's/[\/]/\\\&/g')"
     local _lines="    - type: https\n      port: ${_port}\n      keyStorePath: ${_workdir_escaped%/}\/keystore.p12\n      keyStorePassword: ${_pwd}\n      certAlias: ${_alias}"
     # TODO: currently replacing only the first match with "0,/" (so not doing for admin port)
     _sed -i -r "0,/^(\s*applicationConnectors:.*)$/s//\1\n${_lines}/" ${_cfg_file}
@@ -421,7 +439,7 @@ function f_setup_ldap_glauth() {
     local __doc__="Setup LDAP for GLAuth server."
     local _name="${1:-"glauth"}"
     local _host="${2:-"localhost"}"
-    local _port="${3:-"389"}"   # 636
+    local _port="${3:-"389"}" # 636
     #[ -z "${_LDAP_PWD}" ] && _log "WARN" "Missing _LDAP_PWD" && sleep 3
     local _server_id="$(_apiS "/rest/config/ldap" | JSON_SEARCH_KEY="id,name" _sortjson | sed -nE 's/([^,]+),'${_name}'$/\1/p')"
     local _um_id="null"
@@ -442,14 +460,14 @@ function f_setup_ldap_glauth() {
     fi | _sortjson || return $?
     # Dynamic/Static use admin to check if the user exists
     echo "To test group mappings (space may need to be changed to %20):"
-    echo "    curl -v -u \"cn=ldapadmin,dc=standalone,dc=localdomain\" -k \"ldap://${_host:-"localhost"}:${_port:-"389"}/ou=users,dc=standalone,dc=localdomain?dn,uid,cn,mail,memberof?sub?(&(objectClass=posixAccount)(uid=ldapuser))\""   # + userFilter
+    echo "    curl -v -u \"cn=ldapadmin,dc=standalone,dc=localdomain\" -k \"ldap://${_host:-"localhost"}:${_port:-"389"}/ou=users,dc=standalone,dc=localdomain?dn,uid,cn,mail,memberof?sub?(&(objectClass=posixAccount)(uid=ldapuser))\"" # + userFilter
     # TODO: Bind request: curl -v -u "cn=ldapuser,ou=ipausers,ou=users,dc=standalone,dc=localdomain:ldapuser" -k "ldap://${_host:-"localhost"}:${_port:-"389"}/dc=standalone,dc=localdomain""   # + userFilter
     if [ "${_LDAP_GROUP_MAPPING_TYPE}" == "STATIC" ]; then
         # groupIDAttribute is returned
-        echo "    curl -v -u \"cn=ldapadmin,dc=standalone,dc=localdomain\" -k \"ldap://${_host:-"localhost"}:${_port:-"389"}/ou=users,dc=standalone,dc=localdomain?cn?sub?(&(objectClass=posixGroup)(cn=*)(memberUid=ldapuser))\""   # + userFilter
+        echo "    curl -v -u \"cn=ldapadmin,dc=standalone,dc=localdomain\" -k \"ldap://${_host:-"localhost"}:${_port:-"389"}/ou=users,dc=standalone,dc=localdomain?cn?sub?(&(objectClass=posixGroup)(cn=*)(memberUid=ldapuser))\"" # + userFilter
     fi
     echo "To start glauth, execute f_start_ldap_server from setup_nexus3_repo.sh"
-   # echo "To test: LDAPTLS_REQCERT=never ldapsearch -H ldap://${_host}:${_port} -b 'dc=standalone,dc=localdomain' -D 'admin@standalone.localdomain' -w '${_LDAP_PWD:-"secret12"}' -s sub '(&(objectClass=posixAccount)(uid=*))'"
+    # echo "To test: LDAPTLS_REQCERT=never ldapsearch -H ldap://${_host}:${_port} -b 'dc=standalone,dc=localdomain' -D 'admin@standalone.localdomain' -w '${_LDAP_PWD:-"secret12"}' -s sub '(&(objectClass=posixAccount)(uid=*))'"
 }
 
 function f_deprecated_setup_ldap_freeipa() {
@@ -502,7 +520,7 @@ function f_setup_webhook() {
 function f_setup_scm() {
     local __doc__="Setup IQ SCM on the Organisation and app if _git_url is specified"
     local _org_name="${1}"
-    local _git_url="${2}"   # https://github.com/sonatype/support-apac-scm-test https://github.com/hajimeo/private-repo
+    local _git_url="${2}" # https://github.com/sonatype/support-apac-scm-test https://github.com/hajimeo/private-repo
     local _provider="${3:-"github"}"
     local _branch="${4:-"main"}"
     local _username="${5}"
@@ -598,7 +616,7 @@ function f_setup_jenkins() {
         return 1
     fi
 
-    cat << 'EOF' > "${_jenkins_home%/}/jenkins-configuration.yaml"
+    cat <<'EOF' >"${_jenkins_home%/}/jenkins-configuration.yaml"
 jenkins:
  securityRealm:
   local:
@@ -651,7 +669,7 @@ EOF
     else
         tail -f /tmp/jenkins.log
     fi
-    cat << 'EOF'
+    cat <<'EOF'
 # To configure Nexus IQ Server (jenkins_home/org.sonatype.nexus.ci.config.GlobalNexusConfiguration.xml):
     http://localhost:8080/manage/configure
 # To configure maven / java:
@@ -672,7 +690,7 @@ function f_setup_gitlab() {
 function f_setup_bitbucket() {
     local __doc__="TODO: Setup Bitbucket with Docker"
     echo "docker run --rm -d -v /var/tmp/share/bitbucket:/var/atlassian/application-data/bitbucket -p 7990:7990 -p 7999:7999 --name=bitbucket atlassian/bitbucket"
-    cat << 'EOF'
+    cat <<'EOF'
 1. Setup Bitbucket
     mkdir -p -m 777 /var/tmp/share/bitbucket
     docker run -v /var/tmp/share/bitbucket:/var/atlassian/application-data/bitbucket \
@@ -712,7 +730,7 @@ function f_prep_maven_pom_for_scan() {
     cd "${_tmpdir}" || return $?
     # https://help.sonatype.com/en/java-application-analysis.html#example--pom-xml
     # Does the pom.xml require `dependencyManagement`?
-    cat << 'EOF' > ./pom.xml
+    cat <<'EOF' >./pom.xml
 <project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
    <modelVersion>4.0.0</modelVersion>
    <groupId>org.example</groupId>
@@ -751,7 +769,7 @@ function f_prep_npm_meta_for_scan() {
     local _remote_url="${2:-"https://registry.npmjs.org/"}"
     local _tmpdir="$(mktemp -d)" || return $?
     cd "${_tmpdir}" || return $?
-    cat << EOF > ./package.json
+    cat <<EOF >./package.json
 {
   "name": "iq-npm-scan-demo",
   "version": "0.0.1",
@@ -777,13 +795,13 @@ EOF
 function f_prep_yum_meta_for_scan() {
     local _tmpdir="$(mktemp -d)" || return $?
     cd "${_tmpdir}" || return $?
-    echo "expat.x86_64                   2.2.5-13.el8                 @nexusiq-test" > ./yum-packages.txt
-    echo "expat.x86_64                   2.5.0-2.el9                  @nexusiq-test" >> ./yum-packages.txt
+    echo "expat.x86_64                   2.2.5-13.el8                 @nexusiq-test" >./yum-packages.txt
+    echo "expat.x86_64                   2.5.0-2.el9                  @nexusiq-test" >>./yum-packages.txt
 }
 
-function f_prep_scan_target_for_proprietary_component(){
+function f_prep_scan_target_for_proprietary_component() {
     local __doc__="As scan-<reportId>.xml.gz file can't be used for this test, generating a dummy jar file"
-    local _path="${1:-"./"}"    # A/1/_work/8/s/all/target/some.class.com.all-1.0-SNAPSHOT.jar
+    local _path="${1:-"./"}"                # A/1/_work/8/s/all/target/some.class.com.all-1.0-SNAPSHOT.jar
     local _gen_file_name="${2:-"test.zip"}" # not a path
     local _dir="$(dirname "${_path}")"
     local _cwd="$(pwd)"
@@ -829,12 +847,13 @@ function f_setup_service() {
     fi
 
     if [ -s ${_svc_file} ]; then
-        _log "WARN" "${_svc_file} already exists. Overwriting..."; sleep 3
+        _log "WARN" "${_svc_file} already exists. Overwriting..."
+        sleep 3
     fi
 
     local _env="#env="
     #_env="Environment=\"INSTALL4J_ADD_VM_PARAMS=-agentlib:jdwp=transport=dt_socket,server=y,suspend=n,address=5005\""
-    cat << EOF > /tmp/nexusiq.service || return $?
+    cat <<EOF >/tmp/nexusiq.service || return $?
 [Unit]
 Description=nexus iq service
 After=network-online.target
@@ -870,11 +889,11 @@ function f_cli() {
     local _iq_stage="${3:-${_IQ_STAGE:-"build"}}" #develop|build|stage-release|release|operate
     local _iq_url="${4:-${_IQ_URL}}"
     local _iq_cli_ver="${5:-${_IQ_CLI_VER}}"
-    local _iq_cli_opt="${6:-${_IQ_CLI_OPT}}"    # -D fileIncludes="**/package-lock.json"
+    local _iq_cli_opt="${6:-${_IQ_CLI_OPT}}" # -D fileIncludes="**/package-lock.json"
     local _iq_cred="${7:-${_IQ_CRED:-"${_ADMIN_USER}:${_ADMIN_PWD}"}}"
 
     _iq_url="$(_get_iq_url "${_iq_url}")" || return $?
-        if [ -z "${_iq_cli_ver}" ]; then
+    if [ -z "${_iq_cli_ver}" ]; then
         _iq_cli_ver="$(curl -m3 -sf "${_iq_url%/}/rest/product/version" | python -c "import sys,json;a=json.loads(sys.stdin.read());print(a['version'])")"
     fi
 
@@ -916,10 +935,10 @@ function f_mvn() {
     local _iq_stage="${2:-${_IQ_STAGE:-"build"}}" #develop|build|stage-release|release|operate
     local _iq_url="${3:-${_IQ_URL}}"
     local _file="${4:-"."}"
-    local _mvn_opts="${5:-"-X"}"    # no -U
+    local _mvn_opts="${5:-"-X"}" # no -U
     #local _iq_tmp="${_IQ_TMP:-"./iq-tmp"}" # does not generate anything
 
-    local _iq_mvn_ver="${_IQ_MVN_VER}"  # empty = latest
+    local _iq_mvn_ver="${_IQ_MVN_VER}" # empty = latest
     [ -n "${_iq_mvn_ver}" ] && _iq_mvn_ver=":${_iq_mvn_ver}"
     _iq_url="$(_get_iq_url "${_iq_url}")" || return $?
 
@@ -930,17 +949,16 @@ function f_mvn() {
     echo "[$(date +'%Y-%m-%d %H:%M:%S')] Completed." >&2
 }
 
-
 ## Utility functions
 function _curl() {
-   curl -sSf -u "${_IQ_CRED:-"${_ADMIN_USER}:${_ADMIN_PWD}"}" "$@"
+    curl -sSf -u "${_IQ_CRED:-"${_ADMIN_USER}:${_ADMIN_PWD}"}" "$@"
 }
 
 function _gen_dummy_jar() {
     local _filepath="${1:-"${_TMP%/}/dummy.jar"}"
     if [ ! -s "${_filepath}" ]; then
         if type jar &>/dev/null; then
-            echo "test at $(date +'%Y-%m-%d %H:%M:%S')" > dummy.txt
+            echo "test at $(date +'%Y-%m-%d %H:%M:%S')" >dummy.txt
             jar -cvf ${_filepath} dummy.txt || return $?
         else
             curl -o "${_filepath}" "https://repo1.maven.org/maven2/org/sonatype/goodies/goodies-i18n/2.3.4/goodies-i18n-2.3.4.jar" || return $?
@@ -965,7 +983,7 @@ function _apiS() {
     if [ "${_data:0:5}" == "file=" ]; then
         _cmd="${_cmd} -F ${_data}"
     elif [ -n "${_data}" ] && [ "${_data:0:1}" != "{" ]; then
-        _cmd="${_cmd} -H 'Content-Type: text/plain' --d ${_data}"    # TODO: should use quotes?
+        _cmd="${_cmd} -H 'Content-Type: text/plain' --d ${_data}" # TODO: should use quotes?
     elif [ -n "${_data}" ]; then
         _cmd="${_cmd} -H 'Content-Type: application/json' --data-raw '${_data}'"
     fi
@@ -977,7 +995,7 @@ function _get_iq_url() {
     local _iq_url="${1-${_IQ_URL}}"
     if [ -n "${_iq_url%/}" ]; then
         if [[ ! "${_iq_url}" =~ ^https?://.+ ]]; then
-            if [[ ! "${_iq_url}" =~ .+:[0-9]+ ]]; then   # Provided hostname only
+            if [[ ! "${_iq_url}" =~ .+:[0-9]+ ]]; then # Provided hostname only
                 _iq_url="http://${_iq_url%/}:8070/"
             else
                 _iq_url="http://${_iq_url%/}/"
@@ -998,7 +1016,6 @@ function _get_iq_url() {
     return 1
 }
 
-
 ### Main #######################################################################################################
 main() {
     # Clear the log file if not empty
@@ -1008,7 +1025,7 @@ main() {
     [ -n "${_WORK_DIR}" ] && [ ! -d "${_WORK_DIR}/sonatype" ] && mkdir -p -m 777 ${_WORK_DIR}/sonatype
 
     # Checking requirements (so far only a few commands)
-    if [ "`uname`" = "Darwin" ]; then
+    if [ "$(uname)" = "Darwin" ]; then
         if which gsed &>/dev/null && which ggrep &>/dev/null; then
             _log "DEBUG" "gsed and ggrep are available."
         else
@@ -1023,7 +1040,7 @@ main() {
     fi
 
     # If _RESP_FILE is populated by -r xxxxx.resp, load it
-    if [ -s "${_RESP_FILE}" ];then
+    if [ -s "${_RESP_FILE}" ]; then
         _load_resp "${_RESP_FILE}"
     elif ! ${_AUTO}; then
         _ask "Would you like to load your response file?" "N" "" "N" "N"
@@ -1074,28 +1091,28 @@ if [ "$0" = "$BASH_SOURCE" ]; then
     _NEXUS_DBNAME_FROM_ARGS=""
     while getopts "ADf:r:v:d:" opts; do
         case $opts in
-            A)
-                _AUTO=true
-                ;;
-            D)
-                _DEBUG=true
-                ;;
-            r)
-                _RESP_FILE="$OPTARG"
-                ;;
-            f)
-                _REPO_FORMATS_FROM_ARGS="$OPTARG"
-                ;;
-            v)
-                _NEXUS_VERSION_FROM_ARGS="$OPTARG"
-                ;;
-            d)
-                _NEXUS_DBNAME_FROM_ARGS="$OPTARG"
-                ;;
-			*)
-				echo "Unsupported command line argument: $opts"
-				exit 1
-				;;
+        A)
+            _AUTO=true
+            ;;
+        D)
+            _DEBUG=true
+            ;;
+        r)
+            _RESP_FILE="$OPTARG"
+            ;;
+        f)
+            _REPO_FORMATS_FROM_ARGS="$OPTARG"
+            ;;
+        v)
+            _NEXUS_VERSION_FROM_ARGS="$OPTARG"
+            ;;
+        d)
+            _NEXUS_DBNAME_FROM_ARGS="$OPTARG"
+            ;;
+        *)
+            echo "Unsupported command line argument: $opts"
+            exit 1
+            ;;
         esac
     done
 
