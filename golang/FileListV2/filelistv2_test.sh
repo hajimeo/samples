@@ -16,7 +16,7 @@
 #   $HOME/IdeaProjects/samples/golang/FileListV2/filelistv2_test.sh "${_TEST_WORKDIR%/}/blobs/default"
 # If S3 type blobstore:
 #   export AWS_ACCESS_KEY_ID="..." AWS_SECRET_ACCESS_KEY="..." AWS_REGION="ap-southeast-2"
-#   $HOME/IdeaProjects/samples/golang/FileListV2/filelistv2_test.sh "s3://apac-support-bucket/filelist_test"
+#   $HOME/IdeaProjects/samples/golang/FileListV2/filelistv2_test.sh "s3://apac-support-bucket/filelist-test"
 #
 # Prepare the test data using setup_nexus3_repos.sh:
 #   _AUTO=true main

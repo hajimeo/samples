@@ -5,9 +5,16 @@ import (
 	"FileListV2/lib"
 	"bytes"
 	"context"
+	"database/sql"
 	"fmt"
+	"github.com/Azure/azure-sdk-for-go/sdk/azcore/to"
 	"github.com/Azure/azure-sdk-for-go/sdk/storage/azblob"
+	"github.com/Azure/azure-sdk-for-go/sdk/storage/azblob/container"
 	h "github.com/hajimeo/samples/golang/helpers"
+	"github.com/pkg/errors"
+	"path/filepath"
+	"regexp"
+	"sort"
 	"strings"
 	"time"
 )
@@ -15,9 +22,10 @@ import (
 type AzClient struct{}
 
 var AzApi *azblob.Client
+var AzContainer *container.Client
 
 func getAzApi() *azblob.Client {
-	if AzApi != nil {
+	if AzApi != nil && AzApi.URL() != "" {
 		return AzApi
 	}
 
@@ -35,18 +43,45 @@ func getAzApi() *azblob.Client {
 	return AzApi
 }
 
+func getAzContainer() *container.Client {
+	if AzContainer != nil && AzContainer.URL() != "" {
+		return AzContainer
+	}
+	if len(common.Container) == 0 {
+		common.Container, common.Prefix = lib.GetContainerAndPrefix(common.BaseDir)
+	}
+	if len(common.Container) == 0 {
+		panic("container is not set")
+	}
+
+	AzContainer = getAzApi().ServiceClient().NewContainerClient(common.Container)
+	if AzContainer == nil || AzContainer.URL() == "" {
+		panic("container: " + common.Container + " is empty")
+	}
+	return AzContainer
+}
+
 func getAzObject(path string) (azblob.DownloadStreamResponse, error) {
 	if len(common.Container) == 0 {
 		common.Container, common.Prefix = lib.GetContainerAndPrefix(common.BaseDir)
 	}
 	if len(common.Container) == 0 {
-		return azblob.DownloadStreamResponse{}, fmt.Errorf("Container is not set")
+		return azblob.DownloadStreamResponse{}, fmt.Errorf("container is not set")
 	}
-	ctx := context.Background()
-	return getAzApi().DownloadStream(ctx, common.Container, path, nil)
+	return getAzApi().DownloadStream(context.TODO(), common.Container, path, nil)
 }
 
-func (a AzClient) ReadPath(path string) (string, error) {
+func setAzObject(path string, contents string) (azblob.UploadStreamResponse, error) {
+	if len(common.Container) == 0 {
+		common.Container, common.Prefix = lib.GetContainerAndPrefix(common.BaseDir)
+	}
+	if len(common.Container) == 0 {
+		return azblob.UploadStreamResponse{}, fmt.Errorf("container is not set")
+	}
+	return getAzApi().UploadStream(context.TODO(), common.Container, path, strings.NewReader(contents), nil)
+}
+
+func (a *AzClient) ReadPath(path string) (string, error) {
 	if common.Debug {
 		// Record the elapsed time
 		defer h.Elapsed(time.Now().UnixMilli(), "Read "+path, int64(0))
@@ -68,4 +103,117 @@ func (a AzClient) ReadPath(path string) (string, error) {
 	}
 	contents := strings.TrimSpace(buf.String())
 	return contents, nil
+}
+
+func (a *AzClient) WriteToPath(path string, contents string) error {
+	if common.Debug {
+		defer h.Elapsed(time.Now().UnixMilli(), "Wrote "+path, 0)
+	} else {
+		defer h.Elapsed(time.Now().UnixMilli(), "Slow file write for path:"+path, common.SlowMS*2)
+	}
+
+	resp, err := setAzObject(path, contents)
+	if err != nil {
+		h.Log("DEBUG", fmt.Sprintf("Path: %s. Resp: %v", path, resp))
+		return err
+	}
+	return nil
+}
+
+func (a *AzClient) RemoveDeleted(path string, contents string) error {
+	// if the contents is empty, read from the key
+	if len(contents) == 0 {
+		var err error
+		contents, err = a.ReadPath(path)
+		if err != nil {
+			h.Log("DEBUG", fmt.Sprintf("ReadPath for %s failed with %s.", path, err.Error()))
+			return fmt.Errorf("contents of %s is empty and can not read", path)
+		}
+	}
+
+	// Remove "deleted=true" line from the contents
+	updatedContents := common.RxDeleted.ReplaceAllString(contents, "")
+	if len(contents) == len(updatedContents) {
+		if common.RxDeleted.MatchString(contents) {
+			return errors.Errorf("ReplaceAllString may failed for path:%s, as the size is same (%d vs. %d)", path, len(contents), len(updatedContents))
+		} else {
+			h.Log("DEBUG", fmt.Sprintf("No 'deleted=true' found in %s", path))
+			return nil
+		}
+	}
+	// Azure blob store has the metadata (like S3's tag) but Nexus is not using it.
+	return a.WriteToPath(path, updatedContents)
+}
+
+func (a *AzClient) GetDirs(baseDir string, pathFilter string, maxDepth int) ([]string, error) {
+	if common.Debug {
+		defer h.Elapsed(time.Now().UnixMilli(), "Walked "+baseDir, int64(0))
+	} else {
+		defer h.Elapsed(time.Now().UnixMilli(), "Slow directory walk for "+baseDir, common.SlowMS)
+	}
+	var matchingDirs []string
+	filterRegex := regexp.MustCompile(pathFilter)
+	// Just in case, remove the ending slash
+	baseDir = strings.TrimSuffix(baseDir, "/")
+	depth := strings.Count(baseDir, "/")
+	realMaxDepth := maxDepth + depth
+
+	// Walk through the directory structure
+	h.Log("DEBUG", fmt.Sprintf("Walking directory: %s with pathFilter: %s", baseDir, pathFilter))
+	opts := container.ListBlobsHierarchyOptions{
+		//Include:    container.ListBlobsInclude{Versions: true},
+		//Marker:     nil,
+		MaxResults: to.Ptr(int32(common.MaxKeys)),
+		Prefix:     to.Ptr(baseDir + "/"),
+	}
+	pager := getAzContainer().NewListBlobsHierarchyPager("/", &opts)
+	for pager.More() {
+		resp, err := pager.NextPage(context.TODO())
+		if err != nil {
+			panic("Failed to get next page: " + err.Error())
+		}
+
+		// Process virtual directories (directories) and blobs
+		for _, prefix := range resp.Segment.BlobPrefixes {
+			path := *prefix.Name
+			// Not sure if this is a good way to limit the depth
+			count := strings.Count(path, string(filepath.Separator))
+			if realMaxDepth > 0 && count > realMaxDepth {
+				h.Log("DEBUG", fmt.Sprintf("Reached to the max depth %d / %d (path: %s)", count, maxDepth, *prefix.Name))
+				// Assuming Azure SDK returns the directories in order
+				break
+			}
+			if len(pathFilter) == 0 || filterRegex.MatchString(path) {
+				h.Log("DEBUG", fmt.Sprintf("Matching directory: %s (Depth: %d)", path, depth))
+				// NOTE: As ListObjects for File type is not checking the subdirectories, it's OK to contain the parent directories.
+				matchingDirs = append(matchingDirs, path)
+			} else {
+				h.Log("DEBUG", fmt.Sprintf("Not matching directory: %s (Depth: %d)", path, depth))
+			}
+		}
+	}
+
+	if len(matchingDirs) < 10 {
+		h.Log("DEBUG", fmt.Sprintf("Matched directories: %v", matchingDirs))
+	} else {
+		h.Log("DEBUG", fmt.Sprintf("Matched %d directories", len(matchingDirs)))
+	}
+	// Sorting would make resuming easier, I think
+	sort.Strings(matchingDirs)
+	return matchingDirs, nil
+}
+
+func (a *AzClient) ListObjects(dir string, db *sql.DB, perLineFunc func(interface{}, BlobInfo, *sql.DB)) int64 {
+	// TODO: Implement
+	return 0
+}
+
+func (a *AzClient) GetFileInfo(path string) (BlobInfo, error) {
+	// TODO: Implement
+	return BlobInfo{}, nil
+}
+
+func (a *AzClient) Convert2BlobInfo(f interface{}) BlobInfo {
+	// TODO: Implement
+	return BlobInfo{}
 }

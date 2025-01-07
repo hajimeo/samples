@@ -29,6 +29,9 @@ func GetClient() Client {
 	if common.BsType == "s3" {
 		return &S3Client{}
 	}
+	if common.BsType == "az" {
+		return &AzClient{}
+	}
 	// TODO: add more types
 	// Default is FileClient
 	return &FileClient{}

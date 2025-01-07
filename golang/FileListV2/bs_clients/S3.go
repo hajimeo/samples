@@ -52,7 +52,7 @@ func getS3Object(key string) (*s3.GetObjectOutput, error) {
 	return getS3Api().GetObject(context.TODO(), input)
 }
 
-func (s S3Client) ReadPath(key string) (string, error) {
+func (s *S3Client) ReadPath(key string) (string, error) {
 	if common.Debug {
 		// Record the elapsed time
 		defer h.Elapsed(time.Now().UnixMilli(), "Read "+key, int64(0))
@@ -76,20 +76,19 @@ func (s S3Client) ReadPath(key string) (string, error) {
 	return contents, nil
 }
 
-func (s S3Client) WriteToPath(key string, contents string) error {
+func (s *S3Client) WriteToPath(key string, contents string) error {
 	if common.Debug {
 		defer h.Elapsed(time.Now().UnixMilli(), "Wrote "+key, 0)
 	} else {
 		defer h.Elapsed(time.Now().UnixMilli(), "Slow file write for key:"+key, common.SlowMS*2)
 	}
-	client := getS3Api()
 	bucket := common.Container
 	input := &s3.PutObjectInput{
 		Bucket: &bucket,
 		Key:    &key,
 		Body:   bytes.NewReader([]byte(contents)),
 	}
-	resp, err := client.PutObject(context.TODO(), input)
+	resp, err := getS3Api().PutObject(context.TODO(), input)
 	if err != nil {
 		h.Log("DEBUG", fmt.Sprintf("Key: %s. Resp: %v", key, resp))
 		return err
@@ -120,7 +119,16 @@ func replaceTag(key string, tagKey string, tagVal string) error {
 	return err
 }
 
-func (s S3Client) RemoveDeleted(key string, contents string) error {
+func (s *S3Client) RemoveDeleted(key string, contents string) error {
+	// if the contents is empty, read from the key
+	if len(contents) == 0 {
+		var err error
+		contents, err = s.ReadPath(key)
+		if err != nil {
+			h.Log("DEBUG", fmt.Sprintf("ReadPath for %s failed with %s.", key, err.Error()))
+			return fmt.Errorf("contents of %s is empty and can not read", key)
+		}
+	}
 	// Remove "deleted=true" line from the contents
 	updatedContents := common.RxDeleted.ReplaceAllString(contents, "")
 	if len(contents) == len(updatedContents) {
@@ -152,7 +160,7 @@ func (s S3Client) RemoveDeleted(key string, contents string) error {
 	return nil
 }
 
-func (s S3Client) GetDirs(baseDir string, pathFilter string, maxDepth int) ([]string, error) {
+func (s *S3Client) GetDirs(baseDir string, pathFilter string, maxDepth int) ([]string, error) {
 	var dirs []string
 	if len(common.Container) == 0 {
 		common.Container, _ = lib.GetContainerAndPrefix(common.BaseDir)
@@ -202,7 +210,7 @@ func (s S3Client) GetDirs(baseDir string, pathFilter string, maxDepth int) ([]st
 	return dirs, nil
 }
 
-func (s S3Client) ListObjects(dir string, db *sql.DB, perLineFunc func(interface{}, BlobInfo, *sql.DB)) int64 {
+func (s *S3Client) ListObjects(dir string, db *sql.DB, perLineFunc func(interface{}, BlobInfo, *sql.DB)) int64 {
 	var subTtl int64
 	//common.Container, common.Prefix = lib.GetContainerAndPrefix(common.BaseDir)
 	bucket := common.Container
@@ -274,7 +282,7 @@ func (s S3Client) ListObjects(dir string, db *sql.DB, perLineFunc func(interface
 	return subTtl
 }
 
-func (s S3Client) GetFileInfo(key string) (BlobInfo, error) {
+func (s *S3Client) GetFileInfo(key string) (BlobInfo, error) {
 	if len(common.Container) == 0 {
 		common.Container, common.Prefix = lib.GetContainerAndPrefix(common.BaseDir)
 	}
@@ -332,7 +340,7 @@ func (s S3Client) GetFileInfo(key string) (BlobInfo, error) {
 	return blobInfo, nil
 }
 
-func (s S3Client) Convert2BlobInfo(f interface{}) BlobInfo {
+func (s *S3Client) Convert2BlobInfo(f interface{}) BlobInfo {
 	item := f.(types.Object)
 	owner := ""
 	if item.Owner != nil && item.Owner.DisplayName != nil {

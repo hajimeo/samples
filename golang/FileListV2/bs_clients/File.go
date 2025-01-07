@@ -54,6 +54,16 @@ func (c *FileClient) WriteToPath(path string, contents string) error {
 }
 
 func (c *FileClient) RemoveDeleted(path string, contents string) error {
+	// if the contents is empty, read from the key
+	if len(contents) == 0 {
+		var err error
+		contents, err = c.ReadPath(path)
+		if err != nil {
+			h.Log("DEBUG", fmt.Sprintf("ReadPath for %s failed with %s.", path, err.Error()))
+			return fmt.Errorf("contents of %s is empty and can not read", path)
+		}
+	}
+
 	// Remove "deleted=true" line from the contents
 	updatedContents := common.RxDeleted.ReplaceAllString(contents, "")
 	if len(contents) == len(updatedContents) {
