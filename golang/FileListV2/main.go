@@ -286,6 +286,7 @@ func extractBlobIdFromString(line string) string {
 func genBlobPath(blobId string, extension string) string {
 	// org.sonatype.nexus.blobstore.VolumeChapterLocationStrategy#location
 	// TODO: this will be changed in a newer version, with DB <format>_asset_blob.use_date_path flag
+	// default@e60e55f0-2bce-43fd-b767-85b329ddbd20@2024-12-20T15:53 => content/2024/01/01/10/15/UUID.properties
 	if len(blobId) == 0 {
 		h.Log("WARN", "genBlobPath got empty blobId.")
 		return ""

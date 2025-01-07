@@ -23,8 +23,10 @@ NOTE: The arguments, which name starts with a Capital letter, are boolean type. 
 ```
 filelist2 -b "./sonatype-work/nexus3/blobs/default/content"
 filelist2 -b "file://sonatype-work/nexus3/blobs/default/content"
+#export AWS_ACCESS_KEY_ID="*******" AWS_SECRET_ACCESS_KEY="*********************" AWS_REGION="ap-southeast-2"
 filelist2 -b "s3://s3-test-bucket/s3-test-prefix/content"
-TODO: filelist2 -b "az://azure-test-container/azure-test-prefix/content"
+#export AZURE_STORAGE_ACCOUNT_NAME="********" AZURE_STORAGE_ACCOUNT_KEY="*********************"
+filelist2 -b "az://azure-test-container/content"
 TODO: filelist2 -b "gs://google-test-storage/google-test-prefix/content"
 ```
 #### List files which path matches with `-p "path-filter"` with the concurrency N `-c N`, and save to a file with `-s "save-to-file-path"`

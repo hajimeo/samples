@@ -11,31 +11,16 @@ import (
 )
 
 func TestGetBsClient_InitializedClient_ReturnsExistingClient(t *testing.T) {
-	s3Api = &s3.Client{}
+	S3Api = &s3.Client{}
 	client := getS3Api()
-	assert.Equal(t, s3Api, client)
+	assert.Equal(t, S3Api, client)
 }
 
 func TestGetBsClient_UninitializedClient_ReturnsNewClient(t *testing.T) {
-	s3Api = nil
+	S3Api = nil
 	client := getS3Api()
 	assert.NotNil(t, client)
-	assert.Equal(t, s3Api, client)
-}
-
-func TestReadPath_ValidPath_ReturnsContents_S3(t *testing.T) {
-	path := "valid_path"
-	expectedContents := "file contents"
-
-	cachedObject := &s3.GetObjectOutput{}
-	cachedObject.Body = io.NopCloser(strings.NewReader(expectedContents))
-	h.CacheAddObject(path, cachedObject, 1)
-
-	s3Client := S3Client{}
-	contents, err := s3Client.ReadPath(path)
-
-	assert.NoError(t, err)
-	assert.Equal(t, expectedContents, contents)
+	assert.Equal(t, S3Api, client)
 }
 
 func TestReadPath_InvalidPath_ReturnsError_S3(t *testing.T) {

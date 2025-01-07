@@ -23,11 +23,11 @@ import (
 
 type S3Client struct{}
 
-var s3Api *s3.Client
+var S3Api *s3.Client
 
 func getS3Api() *s3.Client {
-	if s3Api != nil {
-		return s3Api
+	if S3Api != nil {
+		return S3Api
 	}
 	cfg, err := config.LoadDefaultConfig(context.TODO())
 	if common.Debug2 {
@@ -37,11 +37,11 @@ func getS3Api() *s3.Client {
 	if err != nil {
 		panic("configuration error, " + err.Error())
 	}
-	s3Api = s3.NewFromConfig(cfg)
-	return s3Api
+	S3Api = s3.NewFromConfig(cfg)
+	return S3Api
 }
 
-func getObjectS3(key string) (*s3.GetObjectOutput, error) {
+func getS3Object(key string) (*s3.GetObjectOutput, error) {
 	if len(common.Container) == 0 {
 		common.Container, common.Prefix = lib.GetContainerAndPrefix(common.BaseDir)
 	}
@@ -61,9 +61,9 @@ func (s S3Client) ReadPath(key string) (string, error) {
 		defer h.Elapsed(time.Now().UnixMilli(), "Slow file read for key:"+key, common.SlowMS*2)
 	}
 
-	obj, err := getObjectS3(key)
+	obj, err := getS3Object(key)
 	if err != nil {
-		h.Log("DEBUG", fmt.Sprintf("getObjectS3 for %s failed with %s.", key, err.Error()))
+		h.Log("DEBUG", fmt.Sprintf("getS3Object for %s failed with %s.", key, err.Error()))
 		return "", err
 	}
 	buf := new(bytes.Buffer)
@@ -253,7 +253,7 @@ func (s S3Client) ListObjects(dir string, db *sql.DB, perLineFunc func(interface
 
 			for _, item := range resp.Contents {
 				if common.TopN > 0 && common.TopN <= common.PrintedNum {
-					h.Log("DEBUG", fmt.Sprintf("Printed %d >= %d for %s", common.PrintedNum, common.TopN, item.Key))
+					h.Log("DEBUG", fmt.Sprintf("Printed %d >= %d for %s", common.PrintedNum, common.TopN, *item.Key))
 					break
 				}
 
