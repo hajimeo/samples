@@ -814,6 +814,54 @@ function f_prep_scan_target_for_proprietary_component() {
     cd "${_cwd}" || return $?
 }
 
+function f_dummy_scans() {
+    local __doc__="Generate dummy reports by scanning same target but different application"
+    local _scan_target="${1}"
+    local _how_many="${2:-10}"
+    local _parallel="${3:-5}"
+    local _app_name_prefix="${4:-"dummy-app"}"
+    local _iq_stage="${5:-${_IQ_STAGE:-"build"}}" #develop|build|stage-release|release|operate
+    local _create_under_org="${6:-"Sandbox Organization"}"
+
+    local _seq_start="${_SEQ_START:-1}"
+    local _seq_end="$((_seq_start + _how_many - 1))"
+
+    if [ -z "${_scan_target}" ]; then
+        _log "INFO" "No scan target is given. Using ./maven-policy-demo-1.3.0.jar"
+        if [ ! -s "${_TMP%/}/maven-policy-demo-1.3.0.jar" ]; then
+            curl -o "${_TMP%/}/maven-policy-demo-1.3.0.jar" -L "https://repo1.maven.org/maven2/org/sonatype/maven-policy-demo/1.3.0/maven-policy-demo-1.3.0.jar" || return $?
+        fi
+        _scan_target="${_TMP%/}/maven-policy-demo-1.3.0.jar"
+    fi
+
+    local _org_int_id="$(f_api_orgId "${_create_under_org}" "Y")"
+    # Automatic applications is required (or f_api_create_app)
+    _apiS "/rest/config/automaticApplications" '{"enabled":true,"parentOrganizationId":"'${_org_int_id}'"}' "PUT" || return $?
+    echo ""
+
+    local _completed=false
+    local _counter=0
+    for i in $(eval "seq ${_seq_start} ${_seq_end}"); do
+        for j in $(eval "seq 1 ${_parallel}"); do
+            _counter=$((_counter + 1))
+            local _num=$((_counter + _seq_start - 1))
+            if [ ${_counter} -ge ${_how_many} ]; then
+                _log "INFO" "Scanning for ${_app_name_prefix}${_num} (last one) ..."
+                _SIMPLE_SCAN="Y" f_cli "${_scan_target}" "${_app_name_prefix}${_num}" "${_iq_stage}"
+                _completed=true
+                break
+            else
+                _log "INFO" "Scanning for ${_app_name_prefix}${_num} ..."
+                _SIMPLE_SCAN="Y" f_cli "${_scan_target}" "${_app_name_prefix}${_num}" "${_iq_stage}" &>/dev/null &
+            fi
+        done
+        wait
+        if ${_completed}; then
+            break
+        fi
+    done
+}
+
 #f_set_log_level "org.apache.http.headers"
 function f_set_log_level() {
     local __doc__="Set / Change some logger's log level (TODO: currently only localhost:8071)"
@@ -891,6 +939,7 @@ function f_cli() {
     local _iq_cli_ver="${5:-${_IQ_CLI_VER}}"
     local _iq_cli_opt="${6:-${_IQ_CLI_OPT}}" # -D fileIncludes="**/package-lock.json"
     local _iq_cred="${7:-${_IQ_CRED:-"${_ADMIN_USER}:${_ADMIN_PWD}"}}"
+    local _simple_scan="${8:-"${_SIMPLE_SCAN:-"N"}"}" # Y: simple, N: full
 
     _iq_url="$(_get_iq_url "${_iq_url}")" || return $?
     if [ -z "${_iq_cli_ver}" ]; then
@@ -916,10 +965,17 @@ function f_cli() {
     #       Mac uses "TMPDIR" (and can't change), which is like java.io.tmpdir = /var/folders/ct/cc2rqp055svfq_cfsbvqpd1w0000gn/T/ + nexus-iq
     #       Newer IQ CLI removes scan-6947340794864341803.xml.gz (if no -k), so no point of changing the tmpdir...
     # -D includeSha256=true is for BFS
-    local _cmd="${_java} -jar ${_iq_cli_jar} ${_iq_cli_opt} -s ${_iq_url} -a \"${_iq_cred}\" -i ${_iq_app_id} -t ${_iq_stage} -D includeSha256=true -r ./iq_result_$$.json -k -X ${_path}"
-    echo "[$(date +'%Y-%m-%d %H:%M:%S')] Executing: ${_cmd} | tee ./iq_cli_$$.out" >&2
-    eval "${_cmd} | tee ./iq_cli_$$.out"
-    echo "[$(date +'%Y-%m-%d %H:%M:%S')] Completed ($?)." >&2
+    local _cmd="${_java} -jar ${_iq_cli_jar} ${_iq_cli_opt} -s ${_iq_url} -a \"${_iq_cred}\" -i ${_iq_app_id} -t ${_iq_stage}"
+    if [[ ! "${_simple_scan}" =~ ^[yY] ]]; then
+        _cmd="${_cmd} -D includeSha256=true -r ./iq_result_$$.json -k -X"
+    fi
+    echo "[$(date +'%Y-%m-%d %H:%M:%S')] Executing: ${_cmd} ${_path} | tee ./iq_cli_$$.out" >&2
+    eval "${_cmd} ${_path} | tee ./iq_cli_$$.out"
+    local _rc=$?
+    echo "[$(date +'%Y-%m-%d %H:%M:%S')] Completed (${_rc})." >&2
+    if [[ "${_simple_scan}" =~ ^[yY] ]]; then
+        return ${_rc}
+    fi
     local _scanId="$(rg -m1 '"reportDataUrl"\s*:\s*".+/([0-9a-f]{32})/.*"' -o -r '$1' ./iq_result_$$.json)"
     if [ -n "${_scanId}" ]; then
         _cmd="curl -sf -u \"${_iq_cred}\" ${_iq_url%/}/api/v2/applications/${_iq_app_id}/reports/${_scanId}/raw | python -m json.tool > ./iq_raw_$$.json"
