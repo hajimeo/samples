@@ -1356,12 +1356,12 @@ aws s3 cp s3://${_bucket}/${_prefix}content/vol-42/chap-31/f062f002-88f0-4b53-ae
 }
 
 function f_create_azure_blobstore() {
-    local __doc__="Create an Azure blobstore. AZURE_ACCOUNT_NAME and AZURE_ACCOUNT_KEY are required"
-    #https://learn.microsoft.com/en-us/azure/active-directory/develop/howto-create-service-principal-portal#get-tenant-and-app-id-values-for-signing-in
+    local __doc__="Create an Azure blobstore. AZURE_STORAGE_ACCOUNT_NAME and AZURE_STORAGE_ACCOUNT_KEY are required"
+    #https://pkg.go.dev/github.com/Azure/azure-sdk-for-go/sdk/azidentity#readme-environment-variables
     local _bs_name="${1:-"az-test"}"
     local _container_name="${2:-"$(hostname -s | tr '[:upper:]' '[:lower:]')-${_bs_name}"}"
-    local _an="${3:-"${AZURE_ACCOUNT_NAME}"}"
-    local _ak="${4:-"${AZURE_ACCOUNT_KEY}"}"
+    local _an="${3:-"${AZURE_STORAGE_ACCOUNT_NAME}"}"
+    local _ak="${4:-"${AZURE_STORAGE_ACCOUNT_KEY}"}"
     # NOTE: nexus.azure.server=<your.desired.blob.storage.server>
     # Container names can contain only lowercase letters, numbers, and the dash (-) character, and must be 3-63 characters long.
     if ! f_api "/service/rest/v1/blobstores/azure" '{"name":"'${_bs_name}'","bucketConfiguration":{"authentication":{"authenticationMethod":"ACCOUNTKEY","accountKey":"'${_ak}'"},"accountName":"'${_an}'","containerName":"'${_container_name}'"}}' > ${_TMP%/}/f_api_last.out; then
@@ -3149,8 +3149,8 @@ function f_staging_move() {
     echo ""
 }
 
-# Test associate, run f_setup_maven & f_upload_dummies_maven
-# search: repository=maven-hosted&maven.groupId=setup.nexus3.repos&maven.artifactId=dummy&maven.baseVersion=3
+# To prepare data: f_upload_dummies_maven "maven-releases"
+#   f_associate_tag "repository=maven-releases&maven.groupId=setup.nexus3.repos&maven.artifactId=dummy&maven.baseVersion=3"
 function f_associate_tag() {
     local __doc__="Associate one tag to the search result"
     local _search="${1}"
