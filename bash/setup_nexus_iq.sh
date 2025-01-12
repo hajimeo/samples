@@ -397,7 +397,8 @@ function f_setup_https() {
         _log "ERROR" "Looks like https is already configured."
         return 1
     fi
-    local _workdir_escaped="$(echo "${_base_dir%/}/sonatype-work/clm-server" | _sed 's/[\/]/\\\&/g')"
+    # Need to escape '/' in the path
+    local _workdir_escaped="$(echo "${_base_dir%/}/sonatype-work/clm-server" | _sed 's@[/]@\\/@g')"
     local _lines="    - type: https\n      port: ${_port}\n      keyStorePath: ${_workdir_escaped%/}\/keystore.p12\n      keyStorePassword: ${_pwd}\n      certAlias: ${_alias}"
     # TODO: currently replacing only the first match with "0,/" (so not doing for admin port)
     _sed -i -r "0,/^(\s*applicationConnectors:.*)$/s//\1\n${_lines}/" ${_cfg_file}
