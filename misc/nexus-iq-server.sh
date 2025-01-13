@@ -15,13 +15,15 @@
 # Description:       Start the nexus-iq-server service
 ### END INIT INFO
 
+### BEGIN Variables (change to fit your configuration)
+# Make sure those directories exist and owned by "RUN_AS_USER"
 NEXUS_IQ_SERVER_HOME=/opt/sonatype/nexus-iq-server
 NEXUS_IQ_SONATYPEWORK=/opt/sonatype/sonatype-work/clm-server
-# The user ID which should be used to run the IQ Server - Make sure that the user has the write privilege for the IQ Server work/log directory.
 RUN_AS_USER="${_NXIQ_USER:-"sonatype"}"
+### END Variables
+
 SUDO="sudo -u ${RUN_AS_USER}"
 [ "${RUN_AS_USER}" == "${USER}" ] && SUDO=""
-
 JAVA="java"
 # If JAVA_HOME is specified, use it.
 [ -n "${JAVA_HOME}" ] && JAVA="${JAVA_HOME%/}/bin/java"
@@ -33,7 +35,7 @@ JAVA_OPTIONS="-Xms${_NXIQ_HEAPSIZE:-"2G"} -Xmx${_NXIQ_HEAPSIZE:-"2G"} -XX:Active
 JAVA_OPTIONS="${JAVA_OPTIONS} -XX:+UnlockDiagnosticVMOptions -XX:+LogVMOutput -XX:LogFile=${NEXUS_IQ_SONATYPEWORK}/log/jvm.log"
 
 # GC log related options are different by Java version.
-if ${JAVA} -XX:+PrintFlagsFinal -version 2>/dev/null | grep -q PrintClassHistogramAfterFullGC; then
+if ${JAVA} -XX:+PrintFlagsFinal -version 2>&1 | grep -q GCLogFileSize; then
     # probably java 8 (-verbose:gc = -XX:+PrintGC)
     JAVA_OPTIONS="${JAVA_OPTIONS} -XX:+UseG1GC -XX:+ExplicitGCInvokesConcurrent -XX:+PrintGCApplicationStoppedTime -XX:+TraceClassLoading -XX:+TraceClassUnloading"
     # https://confluence.atlassian.com/confkb/how-to-enable-garbage-collection-gc-logging-300813751.html
