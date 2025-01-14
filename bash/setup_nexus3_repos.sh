@@ -2349,6 +2349,31 @@ function f_start_ldap_server() {
     # listening 0.0.0.0:389
     ${_install_dir%/}/glauth -c ${_install_dir%/}/glauth-simple.cfg
 }
+function f_gen_glauth_groups_config() {
+    local __doc__="Generate glauth groups config"
+    # @see: https://pkg.go.dev/github.com/gwelch-contegix/glauth/v2/pkg/config
+    local _groups_file="${1}"
+    local _gid_num="${2:-6501}"
+    local __other_groups=""
+    while read -r _line; do
+        [ -n "${_line}" ] || continue
+        cat << EOF
+[[groups]]
+name = "${_line}"
+gidnumber = ${_gid_num}
+
+EOF
+#includegroups = [ ${include_uid} ]    <<< probably for nested group
+        if [ -z "${__other_groups}" ]; then
+            __other_groups="${_gid_num}"
+        else
+            __other_groups="${__other_groups}, ${_gid_num}"
+        fi
+        _gid_num=$(( _gid_num + 1 ))
+    done <<< "$(cat "${_groups_file}")"
+    _log "INFO" "Generated groups config. Please also add the following to user config"
+    echo "othergroups = [ ${__other_groups} ]"
+}
 function f_setup_ldap_glauth() {
     local __doc__="Setup LDAP for GLAuth server."
     local _name="${1:-"glauth"}"
@@ -2441,24 +2466,34 @@ function f_register_script() {
     curl -u admin -X POST -H 'Content-Type: application/json' '${_NEXUS_URL%/}/service/rest/v1/script/${_script_name}/run' -d'{arg:value}'"
 }
 
-#f_upload_dummies "http://localhost:8081/repository/raw-hosted/manyfiles" "1432 10000" 8
-function f_upload_dummies() {
-    local __doc__="Upload (PUT) text files into (raw) hosted repository"
-    local _repo_path="${1:-"${_NEXUS_URL%/}/repository/raw-hosted/test"}"
+function f_upload_dummies_raw() {
+    local __doc__="Upload text files into raw hosted repository by using f_upload_dummies"
+    local _repo_name="${1:-"raw-hosted"}"
     local _how_many="${2:-"10"}"
-    local _parallel="${3:-"8"}"
-    local _file_prefix="${4}"
-    local _file_suffix="${5:-".txt"}"
-    local _sub_dir_depth="${6:-"${_SUB_DIR_DEPTH:-3}"}"
-    local _usr="${7:-"${_ADMIN_USER}"}"
-    local _pwd="${8:-"${_ADMIN_PWD}"}"
-    # _SEQ_START is for continuing
+    local _parallel="${3:-"5"}"
+    local _path="${4:-"dummies"}"
+    local _file_prefix="${5}"
+    local _file_suffix="${6:-".txt"}"
+    local _sub_dir_depth="${7:-"${_SUB_DIR_DEPTH:-3}"}"
+    local _usr="${8:-"${_ADMIN_USER}"}"
+    local _pwd="${9:-"${_ADMIN_PWD}"}"
+
+    local _repo_path="${_NEXUS_URL%/}/repository/${_repo_name}/${_path#/}"
     local _seq_start="${_SEQ_START:-1}"
     local _seq_end="$((${_seq_start} + ${_how_many} - 1))"
     local _seq="seq ${_seq_start} ${_seq_end}"
     [[ "${_how_many}" =~ ^[0-9]+[[:space:]]+[0-9]+$ ]] && _seq="seq ${_how_many}"
-    # -T<(echo "aaa") may not work with some old bash and somehow some of files become 0 byte, so creating a file
+
+    if ! _is_repo_available "${_repo_name}"; then
+        local _ds_name="$(_get_datastore_name)"
+        local _bs_name="$(_get_blobstore_name)"
+        local _extra_sto_opt="$(_get_extra_sto_opt "${_ds_name}")"
+        _apiS '{"action":"coreui_Repository","method":"create","data":[{"attributes":{"storage":{"blobStoreName":"'${_bs_name}'","writePolicy":"ALLOW","strictContentTypeValidation":false'${_extra_sto_opt}'},"cleanup":{"policyName":[]}},"name":"'${_repo_name}'","format":"","type":"","url":"","online":true,"recipe":"raw-hosted"}],"type":"rpc"}' || return $?
+    fi
+
+    # -T<(echo "aaa") may not work with old bash, also somehow some of files become 0 byte, so creating a file
     echo "test at $(date +'%Y-%m-%d %H:%M:%S')" > ${_TMP%/}/${FUNCNAME[0]}_$$.txt || return $?
+
     for i in $(eval "${_seq}"); do
         if [ -z "${_file_prefix}" ]; then
             local _final_prefix=""
@@ -2475,26 +2510,7 @@ function f_upload_dummies() {
     done | xargs -I{} -P${_parallel} curl -sf -u "${_usr}:${_pwd}" -w '%{http_code} {} (%{time_total}s)\n' -T ${_TMP%/}/${FUNCNAME[0]}_$$.txt -L -k "${_repo_path%/}/{}"
     # NOTE: xargs only stops if exit code is 255
 }
-function f_upload_dummies_raw() {
-    local __doc__="Upload text files into raw hosted repository by using f_upload_dummies"
-    local _repo_name="${1:-"raw-hosted"}"
-    local _how_many="${2:-"10"}"
-    local _parallel="${3:-"8"}"
-    local _path="${4:-"dummies"}"
-    local _file_prefix="${5}"
-    local _file_suffix="${6:-".txt"}"
-    local _usr="${7:-"${_ADMIN_USER}"}"
-    local _pwd="${8:-"${_ADMIN_PWD}"}"
 
-    if ! _is_repo_available "${_repo_name}"; then
-        local _ds_name="$(_get_datastore_name)"
-        local _bs_name="$(_get_blobstore_name)"
-        local _extra_sto_opt="$(_get_extra_sto_opt "${_ds_name}")"
-        _apiS '{"action":"coreui_Repository","method":"create","data":[{"attributes":{"storage":{"blobStoreName":"'${_bs_name}'","writePolicy":"ALLOW","strictContentTypeValidation":false'${_extra_sto_opt}'},"cleanup":{"policyName":[]}},"name":"'${_repo_name}'","format":"","type":"","url":"","online":true,"recipe":"raw-hosted"}],"type":"rpc"}' || return $?
-    fi
-
-    f_upload_dummies "${_NEXUS_URL%/}/repository/${_repo_name}/${_path#/}" "${_how_many}" "${_parallel}" "${_file_prefix}" "${_file_suffix}" "" "${_usr}" "${_pwd}"
-}
 function f_upload_dummies_raw_with_api() {
     local __doc__="Upload text files into raw hosted repository with Upload API"
     local _repo_name="${1:-"raw-hosted"}"
@@ -2505,6 +2521,22 @@ function f_upload_dummies_raw_with_api() {
         echo "test by f_upload_dummies_raw_with_api at $(date +'%Y-%m-%d %H:%M:%S')" > ${_TMP%/}/${FUNCNAME[0]}_$$.txt || return $?
         f_upload_asset "${_repo_name}" -F raw.directory=/dummies -F raw.asset1=@${_TMP%/}/${FUNCNAME[0]}_$$.txt -F raw.asset1.filename=${_file_prefix}${i}${_file_suffix} || return $?
     done
+}
+
+function f_upload_dummies_raw_from_list() {
+    local __doc__="Upload files, which paths are in a text file, into a raw hosted repository"
+    local _repo_name="${1:-"raw-hosted"}"
+    local _list_file="${2}"
+    local _parallel="${3:-"5"}"
+    local _usr="${8:-"${_ADMIN_USER}"}"
+    local _pwd="${9:-"${_ADMIN_PWD}"}"
+    if [ -z "${_list_file}" ] || [ ! -s "${_list_file}" ]; then
+        _log "ERROR" "Please specify _list_file"
+        return 1
+    fi
+    local _repo_path="${_NEXUS_URL%/}/repository/${_repo_name}/"
+    echo "test by f_upload_dummies_raw_from_list" > ${_TMP%/}/${FUNCNAME[0]}_$$.txt || return $?
+    cat "${_list_file}" | xargs -I{} -P${_parallel} curl -sf -u "${_usr}:${_pwd}" -w '%{http_code} {} (%{time_total}s)\n' -T ${_TMP%/}/${FUNCNAME[0]}_$$.txt -L -k "${_repo_path%/}/{}"
 }
 
 function _gen_dummy_jar() {
@@ -2798,7 +2830,7 @@ function f_upload_dummies_nuget() {
         local _rc=$?
         cd - >/dev/null
         [ ${_rc} != 0 ] && return ${_rc}
-        # NOTE: Can't execute this curl in parallel (unlike other f_upload_dummies) because of using same file name.
+        # NOTE: Can't execute this curl in parallel (unlike other f_upload_dummies_xxxx) because of using same file name.
         #       Use different _SEQ_START to make upload faster
         curl -sSf -u "${_usr}:${_pwd}" -o/dev/null -w "%{http_code} ${_pkg_name}.${_base_ver}.$i.nupkg (%{time_total}s)\n" -X PUT "${_repo_url%/}/" -F "package=@${_tmpdir%/}/${_pkg_name}.${_base_ver}.${_seq_start}.nupkg" || return $?
         #f_upload_asset "${_repo_name}" -F "nuget.asset=@${_TMP%/}/${_pkg_name}.${_base_ver}.$i.nupkg" || return $?
@@ -3133,8 +3165,9 @@ function f_staging_move() {
             echo ""
             return
         fi
-        if [ -n "${_tag}" ]; then
+        if [ -n "${_tag}" ] && [ -n "${_search}" ]; then
             # If tag is given, associate the search matching components to this tag
+            # If it's already associated, Nexus does not return any error
             f_associate_tag "${_search}" "${_tag}" || return $?
         fi
     fi
@@ -3151,14 +3184,19 @@ function f_staging_move() {
 
 # To prepare data: f_upload_dummies_maven "maven-releases"
 #   f_associate_tag "repository=maven-releases&maven.groupId=setup.nexus3.repos&maven.artifactId=dummy&maven.baseVersion=3"
+#   f_staging_move "maven-hosted" "tag-test"
 function f_associate_tag() {
     local __doc__="Associate one tag to the search result"
     local _search="${1}"
     local _tag="${2:-"tag-test"}"
-    # Ignore if tag association fails
+    if [ -z "${_search}" ]; then
+        _log "ERROR" "Search is mandatory"
+        return 1
+    fi
+    # Ignoring if tag creation fails
     echo "# /service/rest/v1/tags -d '{\"name\":\"${_tag}\"}'"
     f_api "/service/rest/v1/tags" "{\"name\":\"${_tag}\"}"
-    echo "# /service/rest/v1/tags/associate/${_tag}?${_search}" # wait=true for Elasticsearch to wait for calm down
+    echo "# /service/rest/v1/tags/associate/${_tag}?${_search}" # 'wait=true' for Elasticsearch to wait for calm down
     f_api "/service/rest/v1/tags/associate/${_tag}?${_search}" "" "POST" || return $?
     sleep 3 # Just in case waiting for elastic search
     echo "To confirm:"
@@ -3333,8 +3371,9 @@ function f_setup_service() {
     local _base_dir="${1:-"."}"
     local _usr="${2:-"$USER"}"
     local _num_of_files="${3:-4096}"    # Increase this if production
-    local _svc_file="/etc/systemd/system/nexus.service"
+        local _svc_file="/etc/systemd/system/nexus.service"
     local _env="#env="
+    # NOTE: you can also use EnvironmentFile=/etc/envfile.conf
     #_env="Environment=\"INSTALL4J_ADD_VM_PARAMS=-agentlib:jdwp=transport=dt_socket,server=y,suspend=n,address=5005\""
     local _bin_nexus="$(find "${_base_dir%/}" -maxdepth 3 -type f -name "nexus" -path '*/bin/*' | head -n1)"
     if [ -z "${_bin_nexus}" ]; then
