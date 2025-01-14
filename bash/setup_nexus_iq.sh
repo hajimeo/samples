@@ -74,10 +74,11 @@ Using previously saved response file and NO interviews:
 }
 
 ## Global variables
+: ${_DOMAIN:=".standalone.localdomain"}
 : ${_ADMIN_USER:="admin"}
 : ${_ADMIN_PWD:="admin123"}
 : ${_IQ_URL:="http://localhost:8070/"}
-: ${_IQ_TEST_URL:="https://nxiqha-k8s.standalone.localdomain/"}
+: ${_IQ_TEST_URL:="https://nxiqha-k8s${_DOMAIN}/"}
 _TMP="/tmp" # for downloading/uploading assets
 _DEBUG=false
 
@@ -211,6 +212,10 @@ function f_api_orgId() {
     if [ -z "${_org_int_id}" ] && [[ "${_create}" =~ ^[yY] ]]; then
         _org_int_id="$(_curl "${_IQ_URL%/}/api/v2/organizations" -H "Content-Type: application/json" -d "{\"name\":\"${_org_name}\",\"parentOrganizationId\": \"${_parent_org_id}\"}" | JSON_SEARCH_KEY="id" _sortjson)"
     fi
+    if [ -z "${_org_int_id}" ]; then
+        _log "ERROR" "Failed to find or create organization: ${_org_name}"
+        return 1
+    fi
     echo "${_org_int_id}"
 }
 
@@ -228,9 +233,13 @@ function f_api_create_app() {
     local __doc__="Create an application with /api/v2/applications"
     local _app_pub_id="${1}"
     local _create_under_org="${2:-"Sandbox Organization"}"
-    [ -z "${_app_pub_id}" ] && return 11
+    if [ -z "${_app_pub_id}" ]; then
+        _log "ERROR" "Application public ID is required."
+        return 1
+    fi
     local _org_int_id="$(f_api_orgId "${_create_under_org}" "Y")"
-    _curl "${_IQ_URL%/}/api/v2/applications" -H "Content-Type: application/json" -d '{"publicId":"'${_app_pub_id}'","name": "'${_app_pub_id}'","organizationId": "'${_org_int_id}'"}'
+    [ -z "${_org_int_id}" ] && return 11
+    printf "%s\n" "$(_curl "${_IQ_URL%/}/api/v2/applications" -H "Content-Type: application/json" -d '{"publicId":"'${_app_pub_id}'","name": "'${_app_pub_id}'","organizationId": "'${_org_int_id}'"}')"
 }
 
 function f_api_role_mapping() {
@@ -461,14 +470,14 @@ function f_setup_ldap_glauth() {
     fi | _sortjson || return $?
     # Dynamic/Static use admin to check if the user exists
     echo "To test group mappings (space may need to be changed to %20):"
-    echo "    curl -v -u \"cn=ldapadmin,dc=standalone,dc=localdomain\" -k \"ldap://${_host:-"localhost"}:${_port:-"389"}/ou=users,dc=standalone,dc=localdomain?dn,uid,cn,mail,memberof?sub?(&(objectClass=posixAccount)(uid=ldapuser))\"" # + userFilter
+    echo "    curl -v -u \"cn=ldapadmin,dc=standalone,dc=localdomain\" -k \"ldap://${_host:-"localhost"}:${_port:-"389"}/ou=users,dc=standalone,dc=localdomain?dn,cn,mail,memberof?sub?(&(objectClass=posixAccount)(uid=ldapuser))\"" # + userFilter
+    # echo "To test: LDAPTLS_REQCERT=never ldapsearch -H ldap://${_host}:${_port} -b 'dc=standalone,dc=localdomain' -D 'admin@standalone.localdomain' -w '${_LDAP_PWD:-"secret12"}' -s sub '(&(objectClass=posixAccount)(uid=*))'"
     # TODO: Bind request: curl -v -u "cn=ldapuser,ou=ipausers,ou=users,dc=standalone,dc=localdomain:ldapuser" -k "ldap://${_host:-"localhost"}:${_port:-"389"}/dc=standalone,dc=localdomain""   # + userFilter
     if [ "${_LDAP_GROUP_MAPPING_TYPE}" == "STATIC" ]; then
         # groupIDAttribute is returned
         echo "    curl -v -u \"cn=ldapadmin,dc=standalone,dc=localdomain\" -k \"ldap://${_host:-"localhost"}:${_port:-"389"}/ou=users,dc=standalone,dc=localdomain?cn?sub?(&(objectClass=posixGroup)(cn=*)(memberUid=ldapuser))\"" # + userFilter
     fi
     echo "To start glauth, execute f_start_ldap_server from setup_nexus3_repo.sh"
-    # echo "To test: LDAPTLS_REQCERT=never ldapsearch -H ldap://${_host}:${_port} -b 'dc=standalone,dc=localdomain' -D 'admin@standalone.localdomain' -w '${_LDAP_PWD:-"secret12"}' -s sub '(&(objectClass=posixAccount)(uid=*))'"
 }
 
 function f_deprecated_setup_ldap_freeipa() {
@@ -681,11 +690,36 @@ EOF
 }
 
 function f_setup_gitlab() {
-    # TODO: @see: https://docs.gitlab.com/ee/install/docker/installation.html
-    docker pull gitlab/gitlab-ee:latest || return $?
-    GITLAB_HOME="${HOME%/}/share/gitlab"
-    mkdir -v -p ${GITLAB_HOME}/{config,logs,data} || return $?
+    local __doc__="Setup GitLab with Docker"
+    local _hostname="${1:-"gitlab${_DOMAIN}"}"
+    local _tag="${2:-"latest"}"
+    local _port_pfx="${3-5900}"
+    local _gitlab_home="${4:-"${HOME%/}/share/gitlab"}"
+    # @see: https://docs.gitlab.com/ee/install/docker/installation.html#install-gitlab-by-using-docker-engine
+    #docker pull gitlab/gitlab-ee:${_tag} || return $?
+    if [ ! -d "${_gitlab_home}" ]; then
+        mkdir -v -p ${_gitlab_home}/{config,logs,data} || return $?
+        chmod -R 777 ${_gitlab_home} || return $?
+    fi
+    # nslookup does not use /etc/hosts
+    if ! ping -c1 ${_hostname} &>/dev/null; then
+        _log "WARN" "Please make sure ${_hostname} is resolvable."
+        sleep 5
+    fi
     # TODO: not completed
+    docker run --detach \
+        --privileged=true \
+        --hostname "${_hostname}" \
+        --env GITLAB_OMNIBUS_CONFIG="external_url='http://${_hostname}:$((_port_pfx + 80))';gitlab_rails['lfs_enabled']=true;gitlab_rails['initial_root_password']='${_ADMIN_PWD}'" \
+        --publish $((_port_pfx + 443)):443 --publish $((_port_pfx + 80)):80 --publish $((_port_pfx + 22)):22 \
+        --name gitlab \
+        --restart always \
+        --volume ${_gitlab_home}/config:/etc/gitlab:z \
+        --volume ${_gitlab_home}/logs:/var/log/gitlab:z \
+        --volume ${_gitlab_home}/data:/var/opt/gitlab:z \
+        --shm-size 256m \
+        gitlab/gitlab-ee:${_tag} || return $?
+    _log "INFO" "Please wait for a few minutes for GitLab to start. (http://${_hostname}:$((_port_pfx + 80)))"
 }
 
 function f_setup_bitbucket() {
@@ -821,8 +855,9 @@ function f_dummy_scans() {
     local _how_many="${2:-10}"
     local _parallel="${3:-5}"
     local _app_name_prefix="${4:-"dummy-app"}"
-    local _iq_stage="${5:-${_IQ_STAGE:-"build"}}" #develop|build|stage-release|release|operate
-    local _create_under_org="${6:-"Sandbox Organization"}"
+    local _org_name_prefix="${5:-"dummy-org"}"
+    local _iq_stage="${6:-${_IQ_STAGE:-"develop"}}" #develop|build|stage-release|release|operate
+    local _create_under_org="${7-"${_CREATE_UNDER_ORG:-"Sandbox Organization"}"}"
 
     local _seq_start="${_SEQ_START:-1}"
     local _seq_end="$((_seq_start + _how_many - 1))"
@@ -834,16 +869,20 @@ function f_dummy_scans() {
         fi
         _scan_target="${_TMP%/}/maven-policy-demo-1.3.0.jar"
     fi
-
-    local _org_int_id="$(f_api_orgId "${_create_under_org}" "Y")"
-    # Automatic applications is required (or f_api_create_app)
-    _apiS "/rest/config/automaticApplications" '{"enabled":true,"parentOrganizationId":"'${_org_int_id}'"}' "PUT" || return $?
-    echo ""
+    if [ -n "${_create_under_org}" ]; then
+        # Just in case, creating the base (under) organization
+        f_api_orgId "${_create_under_org}" "Y" || return $?
+    fi
+    # Automatic applications was required but not any more
+    #_apiS "/rest/config/automaticApplications" '{"enabled":true,"parentOrganizationId":"'${_under_org_int_id}'"}' "PUT" || return $?
 
     local _completed=false
     local _counter=0
     for i in $(eval "seq ${_seq_start} ${_seq_end}"); do
         for j in $(eval "seq 1 ${_parallel}"); do
+            local _this_org_id="$(f_api_orgId "${_org_name_prefix}${j}" "Y" "${_create_under_org}")"
+            [ -z "${_this_org_id}" ] && return $((i * 10 + j))
+            f_api_create_app "${_app_name_prefix}${i}" "${_this_org_id}" || return $?
             _counter=$((_counter + 1))
             local _num=$((_counter + _seq_start - 1))
             if [ ${_counter} -ge ${_how_many} ]; then
@@ -882,18 +921,18 @@ function f_setup_service() {
     local _usr="${2:-"$USER"}"
     local _num_of_files="${3:-4096}"
     local _svc_file="/etc/systemd/system/nexusiq.service"
-    if [ ! -s ${_base_dir%/}/nexus-iq-server.sh ]; then
-        _download_and_extract "https://raw.githubusercontent.com/hajimeo/samples/master/misc/nexus-iq-server.sh" "" "${_base_dir%/}" "" "${_usr}" || return $?
-        chown ${_usr}: ${_base_dir%/}/nexus-iq-server.sh || return $?
-        chmod u+x ${_base_dir%/}/nexus-iq-server.sh || return $?
-    fi
-
-    # NOTE: expecting this symlink always exists
-    local _app_dir="${_base_dir%/}/nexus-iq-server"
+    local _app_dir="$(readlink -f "${_base_dir%/}")"
     if [ ! -d "${_app_dir}" ]; then
         _log "ERROR" "App dir ${_app_dir} does not exist."
         return 1
     fi
+
+    if [ ! -s ${_app_dir%/}/nexus-iq-server.sh ]; then
+        _download_and_extract "https://raw.githubusercontent.com/hajimeo/samples/master/misc/nexus-iq-server.sh" "" "${_app_dir%/}" "" "${_usr}" || return $?
+        chown ${_usr}: ${_app_dir%/}/nexus-iq-server.sh || return $?
+        chmod u+x ${_app_dir%/}/nexus-iq-server.sh || return $?
+    fi
+
 
     if [ -s ${_svc_file} ]; then
         _log "WARN" "${_svc_file} already exists. Overwriting..."
@@ -911,8 +950,8 @@ After=network-online.target
 ${_env}
 Type=forking
 LimitNOFILE=${_num_of_files}
-ExecStart=${_base_dir%/}/nexus-iq-server.sh start
-ExecStop=${_base_dir%/}/nexus-iq-server.sh stop
+ExecStart=${_app_dir%/}/nexus-iq-server.sh start
+ExecStop=${_app_dir%/}/nexus-iq-server.sh stop
 User=${_usr}
 Restart=on-abort
 TimeoutSec=600
@@ -925,6 +964,7 @@ EOF
     sudo systemctl daemon-reload || return $?
     sudo systemctl enable nexusiq.service
     _log "INFO" "Service configured. If Nexus is currently running, please stop, then 'systemctl start nexusiq'"
+    _log "INFO" "Please modify ${_app_dir%/}/nexus-iq-server.sh for your environment."
     # NOTE: for troubleshooting 'systemctl cat nexusiq'
 }
 
@@ -1044,7 +1084,7 @@ function _apiS() {
     elif [ -n "${_data}" ]; then
         _cmd="${_cmd} -H 'Content-Type: application/json' --data-raw '${_data}'"
     fi
-    eval ${_cmd}
+    printf "%s\n" "$(eval "${_cmd}")"
 }
 
 # In case _IQ_URL is not specified, check my test servers
