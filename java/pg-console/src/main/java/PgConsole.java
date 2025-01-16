@@ -26,7 +26,8 @@ import java.util.regex.Pattern;
 
 public class PgConsole {
     static private Boolean isDebug;
-    static final private String PROMPT = "=> ";
+    static private Boolean isBatch;
+    static private String prompt = "=> ";
     static final private List<String> numTypes = Arrays.asList("smallint", "integer", "int", "int4", "bigint", "decimal", "numeric", "real", "smallserial", "serial", "bigserial");
     static private String outputFormat = "csv";    // or json
     static private Terminal terminal;
@@ -376,13 +377,17 @@ public class PgConsole {
     }
 
     private static void readLineLoop(LineReader reader) {
-        String input = reader.readLine(PROMPT);
+        String input = reader.readLine(prompt);
         while (input != null && !input.startsWith("exit")) {
             try {
                 if (!isSpecialQueryAndProcess(input)) {
+                    log("execQueries: " + input, isDebug);
+                    if (!isBatch) {
+                        System.out.println();
+                    }
                     execQueries(input);
                 }
-                input = reader.readLine(PROMPT);
+                input = reader.readLine(prompt);
             } catch (SQLException e) {
                 log(e.getMessage());
                 input = "";
@@ -513,7 +518,10 @@ public class PgConsole {
 
     private static void setGlobals() {
         isDebug = Boolean.getBoolean("debug");
-
+        isBatch = Boolean.getBoolean("batch");
+        if (isBatch) {
+            prompt = "";
+        }
         String envPgDBUser = System.getenv("_PGDB_USER");
         if (envPgDBUser != null) {
             dbUser = envPgDBUser;

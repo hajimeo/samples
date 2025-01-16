@@ -34,6 +34,7 @@ echo "<*SIMPLE* SELECT statement which returns so many rows>" | java -Dpaging=10
 ```
 export yum_asset to .;
 export public.* to ./export_dir;
+export insight_brain_ods.*_ancestor to ./export_dir;
 ```
 NOTE: To compare with the PostgreSQL table dump, use `--column-inserts` in pg_dump, then `rg 'VALUES\s*\((.+)\);' -o -r '$1'`
 ```shell
@@ -72,9 +73,7 @@ echo "select <PK>, <TEXT_column> from <table_name>" | java -jar ~/IdeaProjects/s
 
 ## My note:
 ```shell
-mvn clean package && cp -v -p ./target/h2-console-1.0-SNAPSHOT.jar ../../misc/h2-console.jar
 #sed -i .bak 's/>1.4.196</>1.4.200</' ./pom.xml && mvn clean package && cp -v -p ./target/h2-console-1.0-SNAPSHOT.jar ../../misc/h2-console_v200.jar
-sed -i .bak 's/>1.4.196</>2.2.224</' ./pom.xml && mvn clean package && cp -v -p ./target/h2-console-1.0-SNAPSHOT.jar ../../misc/h2-console_v224.jar
-mv -f -v ./pom.xml.bak ./pom.xml
+mvn clean package && cp -v -p ./target/h2-console-1.0-SNAPSHOT.jar ../../misc/h2-console.jar && sed -i .bak 's/>1.4.196</>2.2.224</' ./pom.xml && mvn clean package && cp -v -p ./target/h2-console-1.0-SNAPSHOT.jar ../../misc/h2-console_v224.jar &&  mv -f -v ./pom.xml.bak ./pom.xml
 ```
 

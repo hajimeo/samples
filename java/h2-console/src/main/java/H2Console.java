@@ -24,10 +24,11 @@ import static java.lang.String.valueOf;
 
 public class H2Console {
     static private Boolean isDebug;
+    static private Boolean isBatch;
     static final private List<String> numTypes = Arrays.asList("smallint", "integer", "int", "int4", "bigint", "decimal", "numeric", "real", "smallserial", "serial", "bigserial");
     static private String outputFormat = "csv";    // or json
     static final private String H2_DEFAULT_OPTS = "DATABASE_TO_UPPER=FALSE;DEFAULT_LOCK_TIMEOUT=600000";
-    static final private String PROMPT = "=> ";
+    static private String prompt = "=> ";
     static private String h2Opts = "";
     static private String binaryField;
     static private Terminal terminal;
@@ -514,14 +515,17 @@ public class H2Console {
     }
 
     private static void readLineLoop(LineReader reader) {
-        String input = reader.readLine(PROMPT);
+        String input = reader.readLine(prompt);
         while (input != null && !input.startsWith("exit")) {
             try {
                 if (!isSpecialQueryAndProcess(input)) {
                     log("execQueries: " + input, isDebug);
+                    if (!isBatch) {
+                        System.out.println();
+                    }
                     execQueries(input);
                 }
-                input = reader.readLine(PROMPT);
+                input = reader.readLine(prompt);
             } catch (SQLException e) {
                 log(e.getMessage());
                 input = "";
@@ -662,6 +666,10 @@ public class H2Console {
 
     private static void setGlobals() {
         isDebug = Boolean.getBoolean("debug");
+        isBatch = Boolean.getBoolean("batch");
+        if (isBatch) {
+            prompt = "";
+        }
         paging = Integer.parseInt(System.getProperty("paging", "0"));
         log("paging       = " + paging, isDebug);
         ridName = System.getProperty("ridName", "_ROWID_");
