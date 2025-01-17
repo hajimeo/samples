@@ -85,9 +85,9 @@ Just get the repositories setting:
 #TODO: : ${_NO_ASSET_UPLOAD:=""}
 : ${_ADMIN_USER:="admin"}
 : ${_ADMIN_PWD:="admin123"}
-: ${_DOMAIN:="standalone.localdomain"}
+: ${_DOMAIN:=".standalone.localdomain"}
 : ${_NEXUS_URL:="http://localhost:8081/"}   # or https://local.standalone.localdomain:8443/ for docker
-: ${_NEXUS_DOCKER_HOSTNAME:="local.standalone.localdomain"}
+: ${_NEXUS_DOCKER_HOSTNAME:="local${_DOMAIN}"}
 : ${_IQ_URL:="http://localhost:8070/"}
 : ${_IQ_CLI_VER-"latest"}                   # If "" (empty), not download CLI jar
 : ${_DOCKER_NETWORK_NAME:="nexus"}
@@ -155,12 +155,12 @@ function f_install_nexus3() {
         [ "${_port}" != "8081" ] && _dirpath="${_dirpath}_${_port}"
     fi
 
-    if [[ "${_RECREATE_ALL}" =~ [yY] ]] || ([ -z "${_RECREATE_ALL}" ] && ! _isYes "${_NEXUS_ENABLE_HA:-"${r_NEXUS_ENABLE_HA}"}"); then
+    if [[ "${_RECREATE_ALL}" =~ [yY] ]] && ! _isYes "${_NEXUS_ENABLE_HA:-"${r_NEXUS_ENABLE_HA}"}"; then
         if [ -d "${_dirpath%/}" ]; then
             _log "WARN" "Removing ${_dirpath%/} (to avoid set _RECREATE_ALL)"; sleep 3
             rm -v -rf "${_dirpath%/}" || return $?
         fi
-        _RECREATE_DB="Y"
+        [ -z "${_RECREATE_DB}" ] && _RECREATE_DB="Y"
     fi
     # If no `-\d\d`, appending the wildcard
     local _tgz_ver="${_ver}"
@@ -202,7 +202,7 @@ function f_install_nexus3() {
         else
             if [ -z "${_dbhost}" ]; then
                 _log "INFO" "Creating database with \"${_dbusr}\" \"********\" \"${_dbname}\" \"${_schema}\" in localhost:5432"
-                if ! _RECREATE_DB=${_RECREATE_DB} _postgresql_create_dbuser "${_dbusr}" "${_dbpwd}" "${_dbname}" "${_schema}"; then
+                if ! _RECREATE_DB=${_RECREATE_DB:-"N"} _postgresql_create_dbuser "${_dbusr}" "${_dbpwd}" "${_dbname}" "${_schema}"; then
                     _log "WARN" "Failed to create ${_dbusr} or ${_dbname}" || return $?
                 fi
                 _dbhost="$(hostname -f):5432"
@@ -506,6 +506,9 @@ function f_setup_docker() {
     [ -z "${_ds_name}" ] && _ds_name="$(_get_datastore_name)"
     local _extra_sto_opt="$(_get_extra_sto_opt "${_ds_name}")"
     #local _opts="--tls-verify=false"    # TODO: only for podman. need an *easy* way to use http for 'docker'
+
+    # NOTE: How to test Docker subdomain connector https://help.sonatype.com/en/docker-subdomain-connector.html
+    #curl -I -H 'Host: docker-proxy${_DOMAIN}:8443' "${_NEXUS_URL%/}/repository/docker-proxy/v2/"
 
     # If no xxxx-proxy, create it
     if ! _is_repo_available "${_prefix}-proxy"; then
@@ -2321,6 +2324,40 @@ function f_setup_saml_for_simplesaml() {
         return 1
     fi
     f_put_realms "SamlRealm"
+}
+
+function f_start_email_server() {
+    local __doc__="Install and start a dummy SMTP server with MailHog https://github.com/mailhog/MailHog/blob/master/docs/CONFIG.md"
+    local _smtp_port="${1:-"1025"}"
+    local _ui_port="${1:-"8025"}"
+    local _install_dir="${2:-"${_SHARE_DIR%/}/mailhog"}"
+
+    if [ ! -d "${_install_dir%/}" ]; then
+        mkdir -v -p "${_install_dir%/}" || return $?
+    fi
+
+    # Installing mailhog
+    local _cmd="mailhog"  # If not in the PATH, download it
+    if ! type ${_cmd} &>/dev/null; then
+        if [ ! -s "${_install_dir%/}/mailhog" ]; then
+            curl -o "${_install_dir%/}/mailhog" -L "https://github.com/hajimeo/samples/raw/master/misc/mailhog_$(uname)_$(uname -m)" --compressed || return $?
+            chmod u+x "${_install_dir%/}/mailhog" || return $?
+        fi
+        _cmd="${_install_dir%/}/mailhog"
+    fi
+
+    eval "${_cmd} -api-bind-addr 0.0.0.0:${_smtp_port} -ui-bind-addr 0.0.0.0:${_ui_port}" &> ${_TMP%/}/mailhog_$$.log &
+    local _pid="$!"
+    sleep 2
+    echo "[INFO] Running mailhog in background ..."
+    echo "       PID: ${_pid}  Log: ${_TMP%/}/mailhog_$$.log"
+}
+function f_setup_smtp_mailhog() {
+    local _smtp_port="${1:-"1025"}"
+    local _smtp_host="${2:-"localhost"}"
+    local _from_addr="${3:-"smtptest@example.com"}"
+    # TODO: should use create? or update?
+    _apiS '{"action":"coreui_Email","method":"update","data":[{"enabled":true,"host":"'${_smtp_host}'","port":'${_smtp_port}',"username":"","password":"","fromAddress":"'${_from_addr}'","subjectPrefix":"To mailhog - ","startTlsEnabled":false,"startTlsRequired":false,"sslOnConnectEnabled":false,"sslCheckServerIdentityEnabled":false,"nexusTrustStoreEnabled":false}],"type":"rpc"}'
 }
 
 function f_start_ldap_server() {
