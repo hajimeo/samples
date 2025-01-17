@@ -17,7 +17,7 @@ function _as_dbadmin() {
         ${_CMD_PREFIX} "$@"
     elif [ -n "${_DB_ADMIN}" ] && [ "${_DB_ADMIN}" != "${USER}" ] && id "${_DB_ADMIN}" &>/dev/null; then
         # TODO: need -i?
-        sudo -u ${_DB_ADMIN} "$@"
+        sudo -i -u ${_DB_ADMIN} "$@"
     else
         "$@"
     fi
@@ -354,13 +354,17 @@ function _postgresql_create_role_and_db() {
     if [ -n "${_dbname}" ]; then
         local _create_db=true
         if _as_dbadmin psql -d template1 -ltA  -F',' | grep -q "^${_dbname},"; then
+            _log "WARN" "${_dbname} already exists"
             if [[ "${_force}" =~ ^[yY] ]]; then
-                _log "WARN" "${_dbname} already exists. As force is specified, dropping ${_dbname} ..."
-                sleep 5
-                _psql_adm "DROP DATABASE \"${_dbname}\";" || return $?
+                _ask "Are you sure to drop \"${_dbname}\"?" "Y"
+                if ! _isYes; then
+                    _psql_adm "DROP DATABASE \"${_dbname}\";" || return $?
+                else
+                    _create_db=false
+                fi
             else
-                _log "WARN" "${_dbname} already exists. May need to run below first (or _RECREATE_DB=Y):
-                psql -d ${_dbname} -c \"DROP SCHEMA ${_schema:-"public"} CASCADE;CREATE SCHEMA ${_schema:-"public"} AUTHORIZATION ${_dbusr};GRANT ALL ON SCHEMA ${_schema:-"public"} TO ${_dbusr};\""
+                _log "INFO" "Example command to recreate:
+    psql -d ${_dbname} -c \"DROP SCHEMA ${_schema:-"public"} CASCADE;CREATE SCHEMA ${_schema:-"public"} AUTHORIZATION ${_dbusr};GRANT ALL ON SCHEMA ${_schema:-"public"} TO ${_dbusr};\""
                 sleep 3
                 _create_db=false
             fi
