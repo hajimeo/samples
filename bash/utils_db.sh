@@ -357,7 +357,7 @@ function _postgresql_create_role_and_db() {
             _log "WARN" "${_dbname} already exists"
             if [[ "${_recreate_db}" =~ ^[yY] ]]; then
                 _ask "Are you sure to drop \"${_dbname}\"?" "Y"
-                if ! _isYes; then
+                if _isYes; then
                     _psql_adm "DROP DATABASE \"${_dbname}\";" || return $?
                 else
                     _create_db=false
