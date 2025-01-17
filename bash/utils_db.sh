@@ -290,13 +290,13 @@ function _postgresql_create_dbuser() {
     local _dbname="${3-"${_dbusr}"}"    # accept "" (empty string), then 'all' database is allowed
     local _schema="${4}"
     local _port="${6:-"5432"}"
-    local _force="${7-"${_RECREATE_DB}"}"
+    local _recreate_db="${7-"${_RECREATE_DB}"}"
 
     _update_pg_hba_conf "${_dbusr}" "${_dbname}"
 
     [ "${_dbusr}" == "all" ] && return 0    # not creating user 'all'
     _log "INFO" "Creating Role:${_dbusr} and Database:${_dbname} ..."
-    _postgresql_create_role_and_db "${_dbusr}" "${_dbpwd}" "${_dbname}" "${_schema}" "${_port}" "${_force}"
+    _postgresql_create_role_and_db "${_dbusr}" "${_dbpwd}" "${_dbname}" "${_schema}" "${_port}" "${_recreate_db}"
 }
 
 function _update_pg_hba_conf() {
@@ -329,7 +329,7 @@ function _postgresql_create_role_and_db() {
     local _dbname="${3-"${_dbusr}"}"    # If explicitly "", not creating DB but user/role only
     local _schema="${4}"
     local _port="${5:-"${PGPORT:-"5432"}"}"
-    local _force="${6-"${_RECREATE_DB}"}"
+    local _recreate_db="${6-"${_RECREATE_DB}"}"
     local _ts_location="${7:-"${_DB_TS_LOCATION}"}"       # tablespace location, and name is generated from this path
 
     # NOTE: need to be superuser. 'usename' (no 'r') is correct. options: -t --tuples-only, -A --no-align, -F --field-separator
@@ -355,7 +355,7 @@ function _postgresql_create_role_and_db() {
         local _create_db=true
         if _as_dbadmin psql -d template1 -ltA  -F',' | grep -q "^${_dbname},"; then
             _log "WARN" "${_dbname} already exists"
-            if [[ "${_force}" =~ ^[yY] ]]; then
+            if [[ "${_recreate_db}" =~ ^[yY] ]]; then
                 _ask "Are you sure to drop \"${_dbname}\"?" "Y"
                 if ! _isYes; then
                     _psql_adm "DROP DATABASE \"${_dbname}\";" || return $?
@@ -455,7 +455,7 @@ function _psql_restore() {
     # NOTE: pg_restore has useful options: --jobs=2 --no-owner --verbose #--clean --data-only, but does not support SQL file
     # NOTE: Do not use superuser to restore, specify -U ${_dbusr} instead.
     #PGPASSWORD="${_dbpwd}" pg_restore -U ${_dbusr} -d ${_dbname} --jobs=3 --no-owner --disable-triggers --superuser $USER --verbose ${_dump_filepath}
-    _postgresql_create_role_and_db "${_dbusr}" "${_dbpwd}" "${_dbname}" "${_schema}"
+    _postgresql_create_role_and_db "${_dbusr}" "${_dbpwd}" "${_dbname}" "${_schema}" "${_dbport}" "${_RECREATE_DB}"
     local _cmd=""
     if [[ "${_dump_filepath}" =~ \.gz$ ]]; then
         _cmd="gunzip -c ${_dump_filepath}"
