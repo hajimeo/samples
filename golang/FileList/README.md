@@ -98,12 +98,12 @@ sed -n -E 's/.+([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})\..
 ### Remove 'deleted=true' (-RDel) which soft-deleted within 1 day (-dF <YYYY-MM-DD>) against S3 (-bsType S -b <bucket> -p <prefix>/content/vol-) but only "raw-s3-hosted" (-R -fP <regex>) , and outputs the contents of .properties (-P) to check, but *Dry Run* (-Dry)
 ```
 export AWS_REGION=us-east-1 AWS_ACCESS_KEY_ID="xxxxxxxxxxx" AWS_SECRET_ACCESS_KEY="yyyyyyyyyyyyy" #AWS_ENDPOINT_URL="http://127.0.0.1:9000"
-S3_BUCKET="apac-support-bucket" S3_PREFIX="filelist_test"
+S3_BUCKET="apac-support-bucket" S3_PREFIX="filelist-test"
 file-list -RDel -dF "$(date -d "1 day ago" +%Y-%m-%d)" -bsType S -b "${S3_BUCKET}" -p "${S3_PREFIX}/content/vol-" -P -R -fP "@Bucket\.repo-name=raw-s3-hosted,.+deleted=true" -s ./undelete_raw-s3-hosted.out -Dry
 ```
 Just get the list
 ```
-S3_BUCKET="apac-support-bucket" S3_PREFIX="filelist_test"
+S3_BUCKET="apac-support-bucket" S3_PREFIX="filelist-test"
 file-list -bsType S -b "${S3_BUCKET}" -p "${S3_PREFIX}/content/vol-" -P -R -fP "@Bucket\.repo-name=raw-s3-hosted,.+deleted=true" -s ./raw-s3-hosted_deleted.out
 ```
 
@@ -134,9 +134,9 @@ file-list -b ./blobs/default/content -p vol- -c 10 -src DB -db ./etc/fabric/nexu
 file-list -b ./blobs/default/content -p vol- -c 10 -src DB -db "host=localhost port=5432 user=nxrm3pg dbname=nxrm3pg password=********" -bsName default -X -s ./dead-list.out 2>./dead-list.log 
 ```
 ```
-file-list -bsType S -b "apac-support-bucket" -p "filelist_test/content/vol-" -c 10 -src DB -db ./etc/fabric/nexus-store.properties -bsName "s3-test" -s ./dead-list_s3.out -X 2>./dead-list_s3.log 
+file-list -bsType S -b "apac-support-bucket" -p "filelist-test/content/vol-" -c 10 -src DB -db ./etc/fabric/nexus-store.properties -bsName "s3-test" -s ./dead-list_s3.out -X 2>./dead-list_s3.log 
 ```
-In above example, `filelist_test` is the S3 bucket prefix and `-X` is for debug (verbose) output.
+In above example, `filelist-test` is the S3 bucket prefix and `-X` is for debug (verbose) output.
 ### For OrientDB
 ```
 cd ./sonatype-work/nexus3/

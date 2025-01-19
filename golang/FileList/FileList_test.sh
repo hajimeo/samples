@@ -46,7 +46,7 @@ _PID=""
 _WORKING_DIR=""
 
 _S3_BUCKET="apac-support-bucket"
-_S3_PREFIX="filelist_test"
+_S3_PREFIX="filelist-test"
 _S3_BLOBSTORE="s3-test"
 # NOTE: Can't change repo names, always $(genRepoName) and raw-s3-hosted
 
