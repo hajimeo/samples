@@ -509,7 +509,7 @@ function t_system() {
     _test_template "$(rg -g jmx.json -q -- '-XX:MaxDirectMemorySize' || rg -g jmx.json -- '-Xmx')" "WARN" "No '-XX:MaxDirectMemorySize' (better set '-Djdk.nio.maxCachedBufferSize=262144' as well)"
     _test_template "$(rg -g jmx.json 'UseCGroupMemoryLimitForHeap')" "WARN" "UseCGroupMemoryLimitForHeap is specified (not required from 8v191)"
     _test_template "$(rg -g jmx.json 'MaxMetaspaceSize')" "WARN" "MaxMetaspaceSize is specified"
-    _test_template "$(rg -g jmx.json -- '-Djavax\.net\.ssl..+=')" "WARN" "javax.net.ssl.xxxx is used in jmx.json: java.lang:type=Runtime,InputArguments"
+    _test_template "$(rg -g jmx.json -- '-Djavax\.net\.ssl..+=')" "WARN" "javax.net.ssl.* (eg. trustStore) is used in jmx.json"
     _test_template "$(rg -g jmx.json 'add-exports=' | rg -v 'java.base/sun.security.\S+=ALL-UNNAMED')" "WARN" "add-exports=java.base/sun.security.\S+=ALL-UNNAMED might be missing in jmx.json (eg: NEXUS-44004)"   # TODO: this is wrong
     _test_template "$(rg -g jmx.json -m1 '1\.8\.0.(29[2-9]|30[01])\b')" "WARN" "Java version might be 1.8.0_292, which has critical bug: https://bugs.java.com/bugdatabase/view_bug?bug_id=JDK-8266929 (JDK-8266261)" "java.security.NoSuchAlgorithmException: unrecognized algorithm name: PBEWithSHA1AndDESede"
 
