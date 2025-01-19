@@ -96,7 +96,9 @@ function f_check_system() {
     # NOTE: with java https://confluence.atlassian.com/kb/test-disk-access-speed-for-a-java-application-818577561.html
     mount &> ${_work_dir%/}/mount_df.out    # findmnt -T /path for specific location's mount options (util-linux)
     df -Th &> ${_work_dir%/}/mount_df.out
-    grep -wE "(nfs|nfs4)" /proc/mounts > mounts_nfs.out # to check NFS version
+    grep -wE "(nfs|nfs4)" /proc/mounts > ${_work_dir%/}/mounts_nfs.out # to check NFS version (eg. nconnect for concurrency)
+    #echo sunrpc > /etc/modules-load.d/sunrpc.conf   But this should be dynamically adjusted
+    sysctl sunrpc.tcp_max_slot_table_entries sunrpc.tcp_slot_table_entries >> ${_work_dir%/}/mounts_nfs.out
     vmstat 1 3 &> ${_work_dir%/}/vmstat.out &
     iostat -x -p -t 1 3 2>/dev/null || vmstat -d 1 3 &> ${_work_dir%/}/iostat.out &
     pidstat -dl 3 3 &> ${_work_dir%/}/pstat.out &   # current disk stats per PID
@@ -118,9 +120,10 @@ function f_check_system() {
     #nethogs (per process), iftop (per socket)
 
     # Misc.
-    #sysctl kernel.pid_max fs.file-max fs.file-nr kernel.threads-max vm.overcommit_memory vm.overcommit_ratio vm.swappiness vm.max_map_count # file-max is OS limit (Too many open files)
     # $JAVA_HOME/bin/java -XX:+PrintFlagsFinal -version | grep -w ThreadStackSize
-    sysctl -a &> ${_work_dir%/}/sysctl.out
+    #sysctl -a &> ${_work_dir%/}/sysctl.out
+    # file-max is OS limit (Too many open files)
+    sysctl kernel.pid_max fs.file-max fs.file-nr kernel.threads-max vm.overcommit_memory vm.overcommit_ratio vm.swappiness vm.max_map_count &> ${_work_dir%/}/sysctl_various_limits.out
     sysctl -a | grep fips &> ${_work_dir%/}/sysctl_rhel_fips.out
     #sar -A &> ${_work_dir%/}/sar_A.out
     env &> ${_work_dir%/}/env.out  # to check PATH, LD_LIBRARY_PATH, JAVA_HOME, CLASSPATH
