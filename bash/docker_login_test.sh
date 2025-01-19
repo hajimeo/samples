@@ -10,3 +10,12 @@ for _h in ${@:2}; do
   echo "# Testing TOKEN:${_TOKEN} by requesting to ${_h%/}/v2/"
   curl -D/dev/stderr -sSf -k -H "Authorization: Bearer ${_TOKEN}" -H "Accept: application/json" -L "${_h%/}/v2/"
 done
+
+# Simple test. In case the Index is REGISTRY
+# curl -sS -I "https://localhost:12346/v2/" | grep 'WWW-Authenticate'
+#   WWW-Authenticate: Bearer realm="http://localhost:8081/v2/token",service="http://localhost:8081/v2/token"
+_TOKEN="$(curl -D/dev/stderr -s "${realm}" --get --data-urlencode "scope=repository:elasticsearch/elasticsearch:pull" --data-urlencode "service=${service}")"
+# Returns 401
+curl -D/dev/stderr -sSf -k -H "Authorization: Bearer ${_TOKEN}" -H "Accept: application/json" -L "http://localhost:12345/v2/"
+
+# SELECT * FROM api_key_v2 WHERE username ='anonymous' and domain = 'DockerToken';
