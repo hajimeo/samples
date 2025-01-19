@@ -3,7 +3,7 @@
 # Testing Docker V2 API with curl
 
 # Simpler test:
-#   curl -D/dev/stderr -u "${_USER}:${_PWD}" -s "https://auth.docker.io/token?service=registry.docker.io" --get --data-urlencode "scope=repository:library/alpine:pull"
+#   curl -D/dev/stderr -u "${_USER}:${_PWD}" -s "https://auth.docker.io/token" --get --data-urlencode "scope=repository:library/alpine:pull"  --data-urlencode "service=registry.docker.io"
 #   _TOKEN="$(curl -u admin "${_DOCKER_REGISTRY_URL%/}/v2/token" --get --data-urlencode "account=admin&scope=repository:alpine:pull,push&service=${_DOCKER_REGISTRY_URL%/}" | sed -E 's/.+"token":"([^"]+)".+/\1/')"
 #
 #   curl -I -u "${_USER}:${_PWD}" -L -k "${_DOCKER_REGISTRY_URL%/}/v2/"
