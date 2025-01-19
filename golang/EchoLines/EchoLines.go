@@ -63,8 +63,8 @@ Read one file and output only necessary lines.
 ### NXRM3 thread dumps:
     HTML_REMOVE=Y echolines "./jvm.log" "^\d\d\d\d-\d\d-\d\d \d\d:\d\d:\d\d$" "(^\s+class space.+|^\s+Metaspace\s+.+)" "threads"
     _THREAD_FILE_GLOB="0*.out" f_threads ./threads/
-    # If would like to split per thread:
-    echolines ./threads.txt '^20\d\d-\d\d-\d\d.\d\d:\d\d:\d\d$' '' "threads_per_dump"
+    # If would like to split the thread dumps per datetime. Considering in case the datetime includes the timezone (eg. +09:00)
+    echolines ./threads.txt '^20\d\d-\d\d-\d\d.\d\d:\d\d:\d\d\S{0,6}$$' '' "threads_per_datetime"
     #echolines "threads.txt" "^\".+" "" "./threads_per_thread"
     find ./threads_per_dump -type f -name '[0-9]*_*.out' | xargs -P3 -t -I{} bash -c '_d="$(basename "{}" ".out")";echolines "{}" "^\".+" "" "./threads_per_thread/${_d}"'
 
