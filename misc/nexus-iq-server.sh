@@ -43,15 +43,17 @@ if ${JAVA} -XX:+PrintFlagsFinal -version 2>&1 | grep -q GCLogFileSize; then
     JAVA_OPTIONS="${JAVA_OPTIONS} -XX:+PrintGCDetails -XX:+PrintGCDateStamps -XX:+PrintGCCause -XX:+UseGCLogFileRotation -XX:NumberOfGCLogFiles=10 -XX:GCLogFileSize=100M -Xloggc:${NEXUS_IQ_SONATYPEWORK}/log/gc.%t.log -XX:+PrintClassHistogramAfterFullGC"
 else
     # default, expecting java 11 (@see: https://docs.oracle.com/en/java/java-components/enterprise-performance-pack/epp-user-guide/printing-jvm-information.html)
-    JAVA_OPTIONS="${JAVA_OPTIONS} -Xlog:gc*,gc+classhisto*=trace:file=${NEXUS_IQ_SONATYPEWORK}/log/gc.%t.log:time,uptime:filecount=10,filesize=100m"
+    #JAVA_OPTIONS="${JAVA_OPTIONS} -Xlog:gc*,gc+classhisto*=trace:file=${NEXUS_IQ_SONATYPEWORK}/log/gc.%t.log:time,uptime:filecount=10,filesize=100m"
+    # TODO: GC log for Java 17
+    JAVA_OPTIONS="${JAVA_OPTIONS}"
 fi
 JAVA_OPTIONS="${JAVA_OPTIONS} -XX:MaxDirectMemorySize=1g -Djdk.nio.maxCachedBufferSize=262144"  # probably bytes
 #JAVA_OPTIONS="${JAVA_OPTIONS} -XX:OnOutOfMemoryError='kill %p'"    # Or -XX:+ExitOnOutOfMemoryError, but no need because of https://help.sonatype.com/en/iq-server-installation.html#automatic-shutdown-on-errors
-JAVA_OPTIONS="${JAVA_OPTIONS} -XX:OnOutOfMemoryError='kill -3 %p'"  # TODO: May not work with IQ
-JAVA_OPTIONS="${JAVA_OPTIONS} -XX:+CrashOnOutOfMemoryError -XX:ErrorFile=${NEXUS_IQ_SONATYPEWORK}/log"  # TODO: May not work with IQ
-JAVA_OPTIONS="${JAVA_OPTIONS} -XX:+HeapDumpOnOutOfMemoryError -XX:HeapDumpPath=${NEXUS_IQ_SONATYPEWORK}/log"    # or 'user.dir' (cwd) if not specified
-JAVA_OPTIONS="${JAVA_OPTIONS} -Xdump:system:label=${NEXUS_IQ_SONATYPEWORK}/log/core.%Y%m%d.%H%M%S.%pid.dmp"     # or 'user.dir' (cwd) if not specified
-JAVA_OPTIONS="${JAVA_OPTIONS} -Dcom.sun.management.jmxremote -Dcom.sun.management.jmxremote.port=6786 -Dcom.sun.management.jmxremote.local.only=false -Dcom.sun.management.jmxremote.authenticate=false -Dcom.sun.management.jmxremote.ssl=false"
+#JAVA_OPTIONS="${JAVA_OPTIONS} -XX:OnOutOfMemoryError='kill -3 %p'"  # TODO: May not work with IQ
+#JAVA_OPTIONS="${JAVA_OPTIONS} -XX:+CrashOnOutOfMemoryError -XX:ErrorFile=${NEXUS_IQ_SONATYPEWORK}/log"  # TODO: May not work with IQ
+#JAVA_OPTIONS="${JAVA_OPTIONS} -XX:+HeapDumpOnOutOfMemoryError -XX:HeapDumpPath=${NEXUS_IQ_SONATYPEWORK}/log"    # or 'user.dir' (cwd) if not specified
+#JAVA_OPTIONS="${JAVA_OPTIONS} -Xdump:system:label=${NEXUS_IQ_SONATYPEWORK}/log/core.%Y%m%d.%H%M%S.%pid.dmp"     # or 'user.dir' (cwd) if not specified
+#JAVA_OPTIONS="${JAVA_OPTIONS} -Dcom.sun.management.jmxremote -Dcom.sun.management.jmxremote.port=6786 -Dcom.sun.management.jmxremote.local.only=false -Dcom.sun.management.jmxremote.authenticate=false -Dcom.sun.management.jmxremote.ssl=false"
 # for testing
 #JAVA_OPTIONS="${JAVA_OPTIONS} -Dinsight.threads.monitor=3"
 
