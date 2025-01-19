@@ -2565,8 +2565,8 @@ function f_upload_dummies_raw_from_list() {
     local _repo_name="${1:-"raw-hosted"}"
     local _list_file="${2}"
     local _parallel="${3:-"5"}"
-    local _usr="${8:-"${_ADMIN_USER}"}"
-    local _pwd="${9:-"${_ADMIN_PWD}"}"
+    local _usr="${4:-"${_ADMIN_USER}"}"
+    local _pwd="${5:-"${_ADMIN_PWD}"}"
     if [ -z "${_list_file}" ] || [ ! -s "${_list_file}" ]; then
         _log "ERROR" "Please specify _list_file"
         return 1
@@ -2771,17 +2771,27 @@ function f_upload_dummies_npm() {
     if [ ! -s "${_TMP%/}/policy-demo-2.0.0.tgz" ]; then
         curl -sSf -o "${_TMP%/}/policy-demo-2.0.0.tgz" -L "https://registry.npmjs.org/@sonatype/policy-demo/-/policy-demo-2.0.0.tgz" || return $?
     fi
-    # TODO: replace with _update_npm_tgz()
     # TODO: upload concurrently with some limit (not only using _ASYNC_CURL="Y")
     for i in $(eval "${_seq}"); do
-        local _uploading_file="$(_update_npm_tgz "${_TMP%/}/policy-demo-2.0.0.tgz" "${_dummy_pkg_name}" "9.${i}.0")" || return $?
-        if [ -z "${_uploading_file}" ]; then
-            _log "ERROR" "Failed to generate a new upload tgz file with ${_TMP%/}/policy-demo-2.0.0.tgz, ${_dummy_pkg_name}, 9.${i}.0"
-            return 1
-        fi
-        f_upload_asset "${_repo_name}" -F "npm.asset=@${_uploading_file}" || return $?
-        rm -v -f ${_TMP%/}/${_dummy_pkg_name}-9.${i}.0.tgz
+        f_upload_dummy_npm "${_repo_name}" "${_dummy_pkg_name}" "9.${i}.0" || return $?
     done
+}
+function f_upload_dummy_npm() {
+    local __doc__="Upload one file into a npm hosted repository to upload with the specific version string"
+    local _repo_name="${1:-"npm-hosted"}"
+    local _dummy_pkg_name="${2:-"dummy-policy-demo"}"
+    local _ver="${3:-"9.9.9"}"
+    # Using policy-demo-2.0.0.tgz as a dummy (template)
+    if [ ! -s "${_TMP%/}/policy-demo-2.0.0.tgz" ]; then
+        curl -sSf -o "${_TMP%/}/policy-demo-2.0.0.tgz" -L "https://registry.npmjs.org/@sonatype/policy-demo/-/policy-demo-2.0.0.tgz" || return $?
+    fi
+    local _uploading_file="$(_update_npm_tgz "${_TMP%/}/policy-demo-2.0.0.tgz" "${_dummy_pkg_name}" "${_ver}")" || return $?
+    if [ -z "${_uploading_file}" ]; then
+        _log "ERROR" "Failed to generate a new upload tgz file with ${_TMP%/}/policy-demo-2.0.0.tgz, ${_dummy_pkg_name}, 9.${i}.0"
+        return 1
+    fi
+    f_upload_asset "${_repo_name}" -F "npm.asset=@${_uploading_file}" || return $?
+    rm -v -f ${_TMP%/}/${_dummy_pkg_name}-${_ver}.tgz
 }
 function _update_npm_tgz() {
     local _tgz="$1"
