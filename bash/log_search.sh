@@ -1138,7 +1138,7 @@ function f_threads() {
     local __doc__="Split file to each thread, then output thread count"
     local _file="$1"    # Or dir contains thread_xxxx.txt files
     local _split_search="${2}"  # "^\".+" or if NXRM2, "^[a-zA-Z].+"
-    local _running_thread_search_re="${3-"\.sonatype\."}"
+    local _running_thread_search_re="${3-".sonatype."}"
     local _save_dir="${4}"
     local _not_split_by_date="${5:-${_NOT_SPLIT_BY_DATE}}"
     local _incl_datetime_rx="${6:-${_INCL_DATETIME_RX}}"
@@ -1333,22 +1333,18 @@ function f_threads() {
 }
 function f_analyse_multiple_dumps() {
     local _individual_thread_dir="${1:-"."}"
-    local _running_thread_search_re="${2-"\.sonatype\."}"
+    local _running_thread_search_re="${2-".sonatype."}"
     local _times="${3:-"3"}"
 
     echo "## Thread status counts from ./f_thread_*.out"
-    rg -A10 '^### Counting thread states' ./f_thread_*.out
+    rg -A10 '^### Counting thread states' --no-filename ./f_thread_*.out | rg -v '^#'
     echo " "
 
-    echo "## Multiple *RUN*ning and no-change (same hash) threads which contain '${_running_thread_search_re}' and over 2KB"
+    echo "## Long running threads and no-change (same hash) threads which contain '${_running_thread_search_re}' and +3k"
     _elapsed &>/dev/null
-    _long_running "${_individual_thread_dir%/}" "${_running_thread_search_re}" "" "2k"
-    _LOG "INFO" "_long_running $(_elapsed)"
+    _long_running "${_individual_thread_dir%/}" "${_running_thread_search_re}" "${_times}" "3k"
     echo 'NOTE: rg -A7 -m1 "RUNNABLE" -g <filename>'
-    echo " "
-    echo "## Multiple BLOCKED and no-change (same hash) threads which contain '${_running_thread_search_re}' and over 2KB"
-    _long_blocked "${_individual_thread_dir%/}" "${_running_thread_search_re}" "" "2k"
-    _LOG "INFO" "_long_blocked $(_elapsed)"
+    _LOG "INFO" "_long_running $(_elapsed)"
     echo " "
     echo "## Potential network slowness \"ConditionObject\.await .+ ${_running_thread_search_re}\" threads"
     _many_wait "${_individual_thread_dir%/}" "${_running_thread_search_re}"
@@ -1398,38 +1394,31 @@ function _long_running() {
     local _search_dir="${1:-"."}"
     local _search_re="${2}"
     local _min_count="${3:-"3"}"
-    local _size="${4:-"1k"}"
-    find ${_search_dir%/} -type f -iname '*run*.out' -size +${_size} -print | while read -r _f; do
-        if rg -q "${_search_re}" ${_f}; then
-            # Just md5sum ${_f} won't work with Java 17 because of CPU time and memory usage
-            tail -n +2 ${_f} | md5
+    local _size="${4:-"2k"}"
+    find ${_search_dir%/} -type f -size +${_size} -print | while read -r _f; do
+        if [ -n "${_search_re}" ] && ! rg -q "${_search_re}" ${_f}; then
+            continue
         fi
-    done | rg '([0-9a-z]+)\s+.+/([^/]+)$' -o -r '$1 $2' | sort | uniq -c | rg "^\s*([${_min_count}-9]|\d\d+)\s+" | sort -nr
-}
-function _long_blocked() {
-    local _search_dir="${1:-"."}"
-    local _search_re="${2}"
-    local _min_count="${3:-"2"}"
-    local _size="${4:-"1k"}"
-    find ${_search_dir%/} -type f -iname '*wait*.out' -size +${_size} -print | while read -r _f; do
-        if rg -q --multiline --multiline-dotall " BLOCKED .+${_search_re}" ${_f}; then
-            tail -n +2 ${_f} | md5
-        fi
-    done | rg '([0-9a-z]+)\s+.+/([^/]+)$' -o -r '$1 $2' | sort | uniq -c | rg "^\s*([${_min_count}-9]|\d\d+)\s+" | sort -nr
+        echo "$(basename "${_f}") ($(tail -n +2 ${_f} | md5))"
+    done | sort | uniq -c | rg "^\s*([${_min_count}-9]|\d\d+)\s+" | sort -nr | tee /tmp/${FUNCNAME[0]}_$$.out
+    if [ -s /tmp/${FUNCNAME[0]}_$$.out ]; then
+        echo "NOTE: /tmp/${FUNCNAME[0]}_$$.out exists."
+    fi
 }
 function _many_wait() {
     local _search_dir="${1:-"."}"   # "_threads"
     local _search_re="${2}"         # "sonatype"
-    local _min_100_count="${3:-"2"}"
+    local _min_10_count="${3:-"2"}"
     #local _size="${4:-"1k"}"   # For performance, not using size
     #find ${_search_dir%/} -type f -iname '*waiting_on_condition*.out' -size -${_size} -print | while read -r _f; do
-    rg -l "ConditionObject\.await\(." -g '*waiting_on_condition*.out' -g '*WAITING_ON_CONDITION*.out' | while read -r _f; do
+    rg -l "ConditionObject\.await\(." -g '*waiting_on_condition*.out' -g '*WAITING_ON_CONDITION*.out' "${_search_dir}" | while read -r _f; do
         local _method=""
         if [ -n "${_search_re}" ]; then
             _method="$(rg -m1 "${_search_re}" ${_f})"
+            [ -z "${_method}" ] && continue
         fi
         echo "$(dirname "${_f}") ${_method}"
-    done | sort | uniq -c | rg "^\s*([${_min_100_count}-9]\d\d|\d\d\d\d+)\s+" | sort -nr
+    done | sort | uniq -c | rg "^\s*([${_min_10_count}-9]\d|\d\d\d+)\s+" | sort -nr
 }
 function _threads_extra_check() {
     local _file="${1:-"threads.txt"}"
