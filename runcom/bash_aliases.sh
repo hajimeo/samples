@@ -759,10 +759,13 @@ function ncWeb() {
 }
 
 # When this method is changed, update golang/README.md
+#GO_SKIP_TESTS=Y GO_BUILD_OPTS="-mod=readonly" goBuild
 function goBuild() {
+    local __doc__="Go build for multiple OS/Arch. Use GO_SKIP_TESTS and GO_BUILD_OPTS to skip tests and pass options."
     local _goFile="$1"
     local _name="$2"
     local _destDir="${3:-"$HOME/IdeaProjects/samples/misc"}"
+    local _opts="${4-"${GO_BUILD_OPTS}"}"   # -mod=readonly
     if [ -z "${_name}" ]; then
         if [ -z "${_goFile}" ]; then
             _name="$(basename "${PWD}" | tr '[:upper:]' '[:lower:]')"
@@ -783,11 +786,11 @@ function goBuild() {
         echo "" >&2
     fi
     echo "# Compiling at $(date)" >&2
-    env GOOS=darwin GOARCH=arm64 go build -o "${_destDir%/}/${_name}_Darwin_arm64" ${_goFile} || return $?
-    env GOOS=linux GOARCH=amd64 go build -o "${_destDir%/}/${_name}_Linux_x86_64" ${_goFile} && \
-    env GOOS=linux GOARCH=arm64 go build -o "${_destDir%/}/${_name}_Linux_aarch64" ${_goFile} && \
-    env GOOS=darwin GOARCH=amd64 go build -o "${_destDir%/}/${_name}_Darwin_x86_64" ${_goFile} && \
-    env GOOS=windows GOARCH=amd64 go build -o "${_destDir%/}/${_name}_Windows_x86_64" ${_goFile}
+    env GOOS=darwin GOARCH=arm64 go build -o "${_destDir%/}/${_name}_Darwin_arm64" ${_opts} ${_goFile} || return $?
+    env GOOS=linux GOARCH=amd64 go build -o "${_destDir%/}/${_name}_Linux_x86_64" ${_opts} ${_goFile} && \
+    env GOOS=linux GOARCH=arm64 go build -o "${_destDir%/}/${_name}_Linux_aarch64" ${_opts} ${_goFile} && \
+    env GOOS=darwin GOARCH=amd64 go build -o "${_destDir%/}/${_name}_Darwin_x86_64" ${_opts} ${_goFile} && \
+    env GOOS=windows GOARCH=amd64 go build -o "${_destDir%/}/${_name}_Windows_x86_64" ${_opts} ${_goFile}
     echo "" >&2
     find "${_destDir%/}" -type f -name "${_name}_*" -mmin -1 >&2
     echo "# curl -o /usr/local/bin/${_name} -L \"https://github.com/hajimeo/samples/raw/master/misc/${_name}_\$(uname)_\$(uname -m)\"" >&2
