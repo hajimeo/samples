@@ -834,6 +834,48 @@ function f_prep_yum_meta_for_scan() {
     echo "expat.x86_64                   2.5.0-2.el9                  @nexusiq-test" >>./yum-packages.txt
 }
 
+function f_prep_docker_image_for_scan() {
+    local __doc__="TODO: Incomplete. Generate an image for docker scanning"
+    local _base_img="${1:-"alpine:latest"}"    # dh1.standalone.localdomain:15000/alpine:3.7
+    local _host_port="${2}"
+    local _tag_to="${3:-"${_TAG_TO}"}"
+    local _num_layers="${4:-"${_NUM_LAYERS:-"1"}"}" # Can be used to test overwriting image
+    local _cmd="${6-"${r_DOCKER_CMD}"}"
+    local _usr="${7:-"${_ADMIN_USER}"}"
+    local _pwd="${8:-"${_ADMIN_PWD}"}"
+    [ -z "${_cmd}" ] && _cmd="$(_docker_cmd)"
+    [ -z "${_cmd}" ] && return 0    # If no docker command, just exist
+
+    local _repo_tag="${_tag_to}"
+    [ -n "${_host_port%/}" ] && _repo_tag="${_host_port%/}/${_tag_to}"
+    if ${_cmd} images --format "{{.Repository}}:{{.Tag}}" | grep -qE "^${_repo_tag}$"; then
+        _log "INFO" "'${_repo_tag}' already exists. Skipping the build ..."
+        return
+    fi
+
+    # NOTE: docker build -f does not work (bug?)
+    local _build_dir="${HOME%/}/${FUNCNAME[0]}_build_tmp_dir_$(date +'%Y%m%d%H%M%S')"  # /tmp or /var/tmp fails on Ubuntu
+    if [ ! -d "${_build_dir%/}" ]; then
+        mkdir -v -p ${_build_dir} || return $?
+    fi
+    cd ${_build_dir} || return $?
+    local _build_str="FROM ${_base_img}"
+    # Crating random (multiple) layer. NOTE: 'CMD' doesn't create new layers.
+    #echo -e "FROM alpine:3.7\nRUN apk add --no-cache mysql-client\nCMD echo 'Built ${_tag_to} from image:${_base_img}' > Dockerfile
+    for i in $(seq 1 ${_num_layers}); do
+        #\nRUN apk add --no-cache mysql-client
+        _build_str="${_build_str}\nRUN echo 'Adding layer ${i} for ${_tag_to} at $(date +'%Y%m%d%H%M%S') (R${RANDOM})' > /var/tmp/layer_${i}"
+    done
+    echo -e "${_build_str}" > Dockerfile
+    ${_cmd} build --rm -t ${_tag_to} .
+    local _rc=$?
+    cd -  && mv -v ${_build_dir} ${_TMP%/}/
+    if [ ${_rc} -ne 0 ]; then
+        _log "ERROR" "'${_cmd} build --rm -t ${_tag_to} .' failed (${_rc}, ${_TMP%/}/$(basename "${_build_dir}"))"
+        return ${_rc}
+    fi
+}
+
 function f_prep_scan_target_for_proprietary_component() {
     local __doc__="As scan-<reportId>.xml.gz file can't be used for this test, generating a dummy jar file"
     local _path="${1:-"./"}"                # A/1/_work/8/s/all/target/some.class.com.all-1.0-SNAPSHOT.jar
@@ -988,14 +1030,18 @@ function f_cli() {
     fi
 
     local _iq_cli_jar="${_IQ_CLI_JAR:-"$HOME/.nexus_executable_cache/nexus-iq-cli-${_iq_cli_ver}.jar"}"
+    local _cli_dir="$(dirname "${_iq_cli_jar}")"
     if [ ! -s "${_iq_cli_jar}" ]; then
         #local _tmp_iq_cli_jar="$(find ${_WORK_DIR%/}/sonatype -name 'nexus-iq-cli*.jar' 2>/dev/null | sort -r | head -n1)"
-        local _cli_dir="$(dirname "${_iq_cli_jar}")"
         [ ! -d "${_cli_dir}" ] && mkdir -p "${_cli_dir}"
-        if [ -s "$HOME/.nexus_executable_cache/nexus-iq-server-${_iq_cli_ver}-bundle.tar.gz" ]; then
-            tar -xvf $HOME/.nexus_executable_cache/nexus-iq-server-${_iq_cli_ver}-bundle.tar.gz -C "${_cli_dir}" nexus-iq-cli-${_iq_cli_ver}.jar || return $?
-        else
-            curl -f -L "https://download.sonatype.com/clm/scanner/nexus-iq-cli-${_iq_cli_ver}.jar" -o "${_iq_cli_jar}" || return $?
+        if [ ! -s "$HOME/.nexus_executable_cache/nexus-iq-server-${_iq_cli_ver}-bundle.tar.gz" ] || ! tar -xvf $HOME/.nexus_executable_cache/nexus-iq-server-${_iq_cli_ver}-bundle.tar.gz -C "${_cli_dir}" nexus-iq-cli-${_iq_cli_ver}.jar; then
+            if ! curl -f -L "https://download.sonatype.com/clm/scanner/nexus-iq-cli-${_iq_cli_ver}.jar" -o "${_iq_cli_jar}"; then
+                local _cli_filename="$(curl -s -I -L "https://download.sonatype.com/clm/scanner/latest.jar" | grep -o "nexus-iq-cli-.*\.jar")"
+                _iq_cli_jar="$HOME/.nexus_executable_cache/${_cli_filename}"
+                if [ ! -s "${_iq_cli_jar}" ]; then
+                    curl -f -L "https://download.sonatype.com/clm/scanner/latest.jar" -o "${_iq_cli_jar}" || return $?
+                fi
+            fi
         fi
     fi
     local _java="java"
