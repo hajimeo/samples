@@ -150,7 +150,7 @@ func (c *FileClient) Convert2BlobInfo(f interface{}) BlobInfo {
 	return blobInfo
 }
 
-func (c *FileClient) ListObjects(dir string, db *sql.DB, perLineFunc func(interface{}, BlobInfo, *sql.DB)) int64 {
+func (c *FileClient) ListObjects(dir string, db *sql.DB, perLineFunc func(PrintLineArgs) bool) int64 {
 	// ListObjects: List all files in one directory.
 	// Global variables should be only TopN, PrintedNum, MaxDepth
 	var subTtl int64
@@ -166,7 +166,15 @@ func (c *FileClient) ListObjects(dir string, db *sql.DB, perLineFunc func(interf
 		}
 		if !f.IsDir() {
 			subTtl++
-			perLineFunc(path, c.Convert2BlobInfo(f), db)
+			args := PrintLineArgs{
+				Path:    path,
+				BInfo:   c.Convert2BlobInfo(f),
+				DB:      db,
+				SaveDir: dir,
+			}
+			if !perLineFunc(args) {
+				return io.EOF
+			}
 		} else {
 			if common.MaxDepth > 1 && dir != path {
 				//TODO: Because GetDirs for "File" type returns all directories, this should not recursively check sub-directories. But if other blob store types will implement GetDirs differently, may need to change this line.

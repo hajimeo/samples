@@ -2,6 +2,8 @@ package bs_clients
 
 import (
 	"FileListV2/common"
+	"database/sql"
+	"fmt"
 	"github.com/Azure/azure-sdk-for-go/sdk/storage/azblob"
 	h "github.com/hajimeo/samples/golang/helpers"
 	"github.com/stretchr/testify/assert"
@@ -157,4 +159,42 @@ func TestGetDirs_InvalidPathFilter_ReturnsNoDirs(t *testing.T) {
 
 	assert.NoError(t, err)
 	assert.Empty(t, dirs)
+}
+
+func TestListObjects_Azure(t *testing.T) {
+	accountName := h.GetEnv("AZURE_STORAGE_ACCOUNT_NAME", "")
+	if accountName == "" {
+		t.Skip("AZURE_STORAGE_ACCOUNT_NAME is not set")
+	}
+	containerName := h.GetEnv("AZURE_STORAGE_CONTAINER_NAME", "")
+	if containerName == "" {
+		t.Skip("AZURE_STORAGE_CONTAINER_NAME is not set")
+	}
+	t.Logf("containerName: %v", containerName)
+	common.Container = containerName
+
+	h.DEBUG = true
+	azClient := AzClient{}
+	db := &sql.DB{}
+	common.TopN = 1
+
+	testFunc := func(args PrintLineArgs) bool {
+		if common.TopN > 0 && common.TopN <= common.PrintedNum {
+			h.Log("DEBUG", fmt.Sprintf("testFunc found Printed %d >= %d", common.PrintedNum, common.TopN))
+			return false
+		}
+		t.Logf("path: %v (%d)", args.Path.(string), common.PrintedNum)
+		common.PrintedNum++
+		return true
+	}
+
+	common.PrintedNum = 0
+	subTtl := azClient.ListObjects("", db, testFunc)
+	t.Logf("subTtl: %v", subTtl)
+	assert.Greater(t, subTtl, int64(0))
+
+	common.PrintedNum = 0
+	subTtl = azClient.ListObjects("content", db, testFunc)
+	t.Logf("subTtl under content: %v", subTtl)
+	assert.Greater(t, subTtl, int64(0))
 }

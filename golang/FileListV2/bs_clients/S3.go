@@ -210,7 +210,7 @@ func (s *S3Client) GetDirs(baseDir string, pathFilter string, maxDepth int) ([]s
 	return dirs, nil
 }
 
-func (s *S3Client) ListObjects(dir string, db *sql.DB, perLineFunc func(interface{}, BlobInfo, *sql.DB)) int64 {
+func (s *S3Client) ListObjects(dir string, db *sql.DB, perLineFunc func(PrintLineArgs) bool) int64 {
 	var subTtl int64
 	//common.Container, common.Prefix = lib.GetContainerAndPrefix(common.BaseDir)
 	bucket := common.Container
@@ -269,7 +269,17 @@ func (s *S3Client) ListObjects(dir string, db *sql.DB, perLineFunc func(interfac
 				guardFiles <- struct{}{} // **
 				wgTags.Add(1)            // *
 				go func(client *s3.Client, item types.Object, db *sql.DB) {
-					perLineFunc(*item.Key, s.Convert2BlobInfo(item), db)
+					args := PrintLineArgs{
+						Path:    *item.Key,
+						BInfo:   s.Convert2BlobInfo(item),
+						DB:      db,
+						SaveDir: dir,
+					}
+					if !perLineFunc(args) {
+						<-guardFiles  // **
+						wgTags.Done() // *
+						return
+					}
 					<-guardFiles  // **
 					wgTags.Done() // *
 				}(client, item, db)

@@ -203,17 +203,70 @@ func (a *AzClient) GetDirs(baseDir string, pathFilter string, maxDepth int) ([]s
 	return matchingDirs, nil
 }
 
-func (a *AzClient) ListObjects(dir string, db *sql.DB, perLineFunc func(interface{}, BlobInfo, *sql.DB)) int64 {
-	// TODO: Implement
-	return 0
+func (a *AzClient) ListObjects(dir string, db *sql.DB, perLineFunc func(PrintLineArgs) bool) int64 {
+	// ListObjects: List all files in one directory recursively.
+	// Global variables should be only TopN, PrintedNum, MaxDepth
+	var subTtl int64
+	prefix := h.AppendSlash(dir)
+
+	// Walk through the directory structure
+	h.Log("DEBUG", fmt.Sprintf("Walking directory: %s", dir))
+	opts := container.ListBlobsFlatOptions{
+		//Include:    container.ListBlobsInclude{Versions: true},
+		//Marker:     nil,
+		MaxResults: to.Ptr(int32(common.MaxKeys)),
+		Prefix:     to.Ptr(prefix),
+	}
+	pager := getAzContainer().NewListBlobsFlatPager(&opts)
+	for pager.More() {
+		if common.TopN > 0 && common.TopN <= common.PrintedNum {
+			h.Log("DEBUG", fmt.Sprintf("Printed %d >= %d", common.PrintedNum, common.TopN))
+			break
+		}
+		resp, err := pager.NextPage(context.TODO())
+		if err != nil {
+			h.Log("ERROR", "Got error: "+err.Error()+" from "+dir)
+			break
+		}
+
+		// Process virtual directories (directories) and blobs
+		for _, blob := range resp.Segment.BlobItems {
+			subTtl++
+			args := PrintLineArgs{
+				Path:    *blob.Name,
+				BInfo:   a.Convert2BlobInfo(blob),
+				DB:      db,
+				SaveDir: dir,
+			}
+			if !perLineFunc(args) {
+				break
+			}
+		}
+	}
+	return subTtl
 }
 
-func (a *AzClient) GetFileInfo(path string) (BlobInfo, error) {
-	// TODO: Implement
-	return BlobInfo{}, nil
+func (a *AzClient) GetFileInfo(name string) (BlobInfo, error) {
+	// Get one BlobItem from Azure container
+	blobClient := getAzContainer().NewBlobClient(name)
+	blobItem, err := blobClient.GetProperties(context.Background(), nil)
+	if err != nil {
+		return BlobInfo{}, err
+	}
+	return a.Convert2BlobInfo(blobItem), nil
 }
 
 func (a *AzClient) Convert2BlobInfo(f interface{}) BlobInfo {
-	// TODO: Implement
-	return BlobInfo{}
+	item := f.(*container.BlobItem)
+	owner := ""
+	if item.Properties.Owner != nil {
+		owner = *item.Properties.Owner
+	}
+	blobInfo := BlobInfo{
+		Path:    *item.Name,
+		ModTime: *item.Properties.LastModified,
+		Size:    *item.Properties.ContentLength,
+		Owner:   owner,
+	}
+	return blobInfo
 }

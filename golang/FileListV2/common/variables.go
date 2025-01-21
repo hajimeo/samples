@@ -38,6 +38,7 @@ var BaseDir = ""
 var Filter4Path = ""
 var ContentPath = "" // BaseDirWithPrefix + "/content/"
 var SaveToFile = ""
+var SavePerDir = false
 var SaveToPointer *os.File
 var MaxDepth = 5 // `vol-YY/chap-XX/` vs. `YYYY/MM/DD/hh/mm/`
 

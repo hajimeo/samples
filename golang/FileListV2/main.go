@@ -47,6 +47,7 @@ func setGlobals() {
 	flag.StringVar(&common.Filter4PropsIncl, "pRx", "", "Regular Expression for the content of the .properties files (eg: 'deleted=true')")
 	flag.StringVar(&common.Filter4PropsExcl, "pRxNot", "", "Excluding Regular Expression for .properties (eg: 'BlobStore.blob-name=.+/maven-metadata.xml.*')")
 	flag.StringVar(&common.SaveToFile, "s", "", "Save the output (TSV text) into the specified path")
+	flag.BoolVar(&common.SavePerDir, "SaveDir", false, "If true and -s is given, save the output per sub-directory")
 	flag.Int64Var(&common.TopN, "n", 0, "Return first N lines (0 = no limit). Can't be less than '-c'")
 	flag.IntVar(&common.Conc1, "c", 1, "Concurrent number for reading directories")
 	flag.IntVar(&common.Conc2, "c2", 8, "2nd Concurrent number. Currently used when retrieving object from AWS S3")
@@ -211,16 +212,29 @@ func setGlobals() {
 		}
 	}
 
-	// Validating some flags
-	if common.NoHeader && common.WithProps {
-		h.Log("WARN", "With Properties (-P), listing can be slower.")
-	}
-
 	if len(common.SaveToFile) > 0 {
+		// If the SaveToFile is a directory, set SavePerDir to true
+		if fi, err := os.Stat(common.SaveToFile); err == nil && fi.IsDir() {
+			h.Log("DEBUG", "Save to destination is directory. Setting SavePerDir to true. "+common.SaveToFile)
+			common.SavePerDir = true
+		}
 		var err error
-		common.SaveToPointer, err = os.OpenFile(common.SaveToFile, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
-		if err != nil {
-			panic(err)
+		if common.SavePerDir {
+			// Header is written only when one file is used (otherwise, when concatenating files, it will be problem)
+			common.NoHeader = true
+			// if SaveToFile does not exist, create this directory
+			if _, err = os.Stat(common.SaveToFile); os.IsNotExist(err) {
+				if err = os.MkdirAll(common.SaveToFile, 0755); err != nil {
+					panic(err)
+				}
+			}
+			h.Log("INFO", "Output will be saved into the directory: "+common.SaveToFile)
+		} else {
+			common.SaveToPointer, err = os.OpenFile(common.SaveToFile, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+			if err != nil {
+				panic(err)
+			}
+			h.Log("INFO", "Output will be saved into the file: "+common.SaveToFile)
 		}
 	}
 }
@@ -261,7 +275,7 @@ func initRepoFmtMap(db *sql.DB) {
 	h.Log(logLevel, fmt.Sprintf("AssetTables = %v", common.AssetTables))
 }
 
-func printHeader() {
+func printHeader(saveToPointer *os.File) {
 	if !common.NoHeader {
 		header := fmt.Sprintf("Path%sLastModified%sSize", common.SEP, common.SEP)
 		if common.WithProps {
@@ -273,7 +287,7 @@ func printHeader() {
 		if common.WithTags {
 			header += fmt.Sprintf("%sTags", common.SEP)
 		}
-		printOrSave(header)
+		printOrSave(header, saveToPointer)
 	}
 }
 
@@ -298,9 +312,6 @@ func genBlobPath(blobId string, extension string) string {
 }
 
 func genOutput(path string, bi bs_clients.BlobInfo, db *sql.DB) string {
-	// Incrementing the checked number counter *synchronously* (not sure if this causes some slowness)
-	atomic.AddInt64(&common.CheckedNum, 1)
-
 	if len(common.Filter4FileName) > 0 && !common.RxFilter4FileName.MatchString(path) {
 		h.Log("DEBUG", fmt.Sprintf("path:%s does not match with the filter %s", path, common.RxFilter4FileName.String()))
 		return ""
@@ -354,11 +365,6 @@ func genOutput(path string, bi bs_clients.BlobInfo, db *sql.DB) string {
 		}
 	}
 
-	// Updating counters before returning
-	if len(output) > 0 {
-		atomic.AddInt64(&common.PrintedNum, 1)
-		atomic.AddInt64(&common.TotalSize, bi.Size)
-	}
 	return output
 }
 
@@ -529,19 +535,54 @@ func appendStr(appending string, contents string, path string) bool {
 	return true
 }
 
-func printLineFromPath(path interface{}, blobInfo bs_clients.BlobInfo, db *sql.DB) {
+func printLineFromPath(args bs_clients.PrintLineArgs) bool {
+	path := args.Path
+	blobInfo := args.BInfo
+	db := args.DB
+	saveToPointer := common.SaveToPointer
+	var err error
+	if common.SavePerDir {
+		if len(args.SaveDir) == 0 || args.SaveDir == "." {
+			panic("SavePerDir is true but SaveDir is nil or '.'")
+		}
+		// TODO: SaveDir is the basename (directory name) of the `dir` but chap-01 was given
+		saveFile := filepath.Base(args.SaveDir) + ".tsv"
+		saveToPointer, err = os.OpenFile(filepath.Join(common.SaveToFile, saveFile), os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+		if err != nil {
+			panic(err)
+		}
+		defer saveToPointer.Close()
+	}
+
+	// This function should control the all counters
+	// and return 'false' when it reached the limit (TopN)
+	if common.TopN > 0 && common.TopN <= common.PrintedNum {
+		h.Log("DEBUG", fmt.Sprintf("printLineFromPath found Printed %d >= %d", common.PrintedNum, common.TopN))
+		return false
+	}
+	// Incrementing the checked number counter *synchronously* (not sure if this causes some slowness)
+	atomic.AddInt64(&common.CheckedNum, 1)
+
 	//h.Log("DEBUG", fmt.Sprintf("Generating the output for '%s'", path))
 	output := genOutput(path.(string), blobInfo, db)
-	printOrSave(output)
+
+	// Updating counters before (saving and) returning
+	if len(output) > 0 {
+		atomic.AddInt64(&common.PrintedNum, 1)
+		atomic.AddInt64(&common.TotalSize, blobInfo.Size)
+	}
+	printOrSave(output, saveToPointer)
+	return true
 }
 
-func printOrSave(line string) {
+func printOrSave(line string, saveToPointer *os.File) {
 	// At this moment, excluding empty line
 	if len(line) == 0 {
 		return
 	}
-	if len(common.SaveToFile) > 0 {
-		_, _ = fmt.Fprintln(common.SaveToPointer, line)
+	if saveToPointer != nil {
+		//h.Log("INFO", saveToPointer.Name())
+		_, _ = fmt.Fprintln(saveToPointer, line)
 		return
 	}
 	_, _ = fmt.Println(line)
@@ -568,7 +609,7 @@ func checkBlobIdDetailFromDB(maybeBlobId string) interface{} {
 	for format, repoNames := range formatRepoNames {
 		output := getAssetWithBlobRefAsCsv(blobId, repoNames, format, common.DB)
 		if output != "" {
-			printOrSave(maybeBlobId + common.SEP + output)
+			printOrSave(maybeBlobId+common.SEP+output, common.SaveToPointer)
 			foundInDB = true
 			break // Should I consider the blobId exists in multiple formats?
 		}
@@ -602,7 +643,12 @@ func checkBlobIdDetailFromBS(maybeBlobId string) interface{} {
 			// As this is the check function, if not exist report
 			h.Log("WARN", fmt.Sprintf("No %s in BS (DeadBlob)", propsPath))
 		} else {
-			printLineFromPath(propsPath, blobInfo, common.DB)
+			args := bs_clients.PrintLineArgs{
+				Path:  propsPath,
+				BInfo: blobInfo,
+				DB:    common.DB,
+			}
+			printLineFromPath(args)
 		}
 	}
 	if common.RxFilter4FileName == nil || common.RxFilter4FileName.MatchString(basePath+common.BYTES_EXT) {
@@ -610,7 +656,12 @@ func checkBlobIdDetailFromBS(maybeBlobId string) interface{} {
 		if err != nil {
 			h.Log("WARN", fmt.Sprintf("No %s in BS", basePath+common.BYTES_EXT))
 		} else {
-			printLineFromPath(basePath+common.BYTES_EXT, blobInfo, common.DB)
+			args := bs_clients.PrintLineArgs{
+				Path:  basePath + common.BYTES_EXT,
+				BInfo: blobInfo,
+				DB:    common.DB,
+			}
+			printLineFromPath(args)
 		}
 	}
 	return nil
@@ -804,7 +855,7 @@ func isOrphanedBlob(contents string, blobId string, db *sql.DB) bool {
 	return noRows
 }
 
-func runParallel(chunks [][]string, f func(string, *sql.DB), conc int) {
+func runParallel(chunks [][]string, apply func(string, *sql.DB), conc int) {
 	wg := sync.WaitGroup{}
 	guard := make(chan struct{}, conc)
 	for _, chunk := range chunks {
@@ -821,7 +872,7 @@ func runParallel(chunks [][]string, f func(string, *sql.DB), conc int) {
 					defer db.Close()
 				}
 				for _, item := range items {
-					f(item, db)
+					apply(item, db)
 				}
 			}
 			<-guard
@@ -842,16 +893,17 @@ func main() {
 	log.SetFlags(log.Lmicroseconds)
 	log.SetPrefix(time.Now().Format("2006-01-02 15:04:05"))
 	setGlobals()
-
+	// As currently not supporting multiple blob store types, Client should be only one instance
 	Client = bs_clients.GetClient()
-
+	// Currently only one DB object ...
 	var db *sql.DB
 	if len(common.DbConnStr) > 0 {
 		db = lib.OpenDb(common.DbConnStr)
 		defer db.Close()
 	}
 
-	printHeader()
+	// NOTE: Header is written only when one file is used
+	printHeader(common.SaveToPointer)
 
 	// If the list of Blob IDs are provided, use it
 	if len(common.BlobIDFIle) > 0 {
@@ -880,7 +932,7 @@ func main() {
 		h.Log("ERROR", "Failed to list directories in "+common.ContentPath+" with filter: "+common.Filter4Path)
 		panic(err)
 	}
-	chunks := h.Chunk(subDirs, 1) // 1 is for spawning the routine per subDir.
+	chunks := h.Chunk(subDirs, 1) // 1 is for spawning the Go routine per subDir.
 	h.Elapsed(startMs, fmt.Sprintf("GetDirs got %d directories", len(subDirs)), 200)
 
 	startMs = time.Now().UnixMilli()

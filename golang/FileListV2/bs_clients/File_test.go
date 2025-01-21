@@ -192,7 +192,7 @@ func TestListObjects_ValidBaseDir_ReturnsFileCount(t *testing.T) {
 	os.WriteFile(baseDir+"/file2.txt", []byte("content2"), 0644)
 	client := &FileClient{}
 	db := &sql.DB{}
-	count := client.ListObjects(baseDir, db, func(path interface{}, info BlobInfo, db *sql.DB) {})
+	count := client.ListObjects(baseDir, db, func(args PrintLineArgs) bool { return true })
 	assert.Equal(t, int64(2), count)
 }
 
@@ -202,7 +202,7 @@ func TestListObjects_EmptyBaseDir_ReturnsZero(t *testing.T) {
 	defer os.RemoveAll(baseDir)
 	client := &FileClient{}
 	db := &sql.DB{}
-	count := client.ListObjects(baseDir, db, func(path interface{}, info BlobInfo, db *sql.DB) {})
+	count := client.ListObjects(baseDir, db, func(args PrintLineArgs) bool { return true })
 	assert.Equal(t, int64(0), count)
 }
 
@@ -217,8 +217,9 @@ func TestListObjects_TopNLimit_ReturnsLimitedCount(t *testing.T) {
 	client := &FileClient{}
 	db := &sql.DB{}
 	common.PrintedNum = 0
-	testFunc := func(path interface{}, info BlobInfo, db *sql.DB) {
+	testFunc := func(args PrintLineArgs) bool {
 		common.PrintedNum++
+		return true
 	}
 	count := client.ListObjects(baseDir, db, testFunc)
 	assert.Equal(t, int64(2), count)
@@ -234,5 +235,5 @@ func TestListObjects_InvalidBaseDir_ReturnsError(t *testing.T) {
 			assert.Contains(t, r, "Got error retrieving list of files from")
 		}
 	}()
-	client.ListObjects(baseDir, db, func(path interface{}, info BlobInfo, db *sql.DB) {})
+	client.ListObjects(baseDir, db, func(args PrintLineArgs) bool { return true })
 }
