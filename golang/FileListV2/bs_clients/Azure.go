@@ -249,11 +249,22 @@ func (a *AzClient) ListObjects(dir string, db *sql.DB, perLineFunc func(PrintLin
 func (a *AzClient) GetFileInfo(name string) (BlobInfo, error) {
 	// Get one BlobItem from Azure container
 	blobClient := getAzContainer().NewBlobClient(name)
-	blobItem, err := blobClient.GetProperties(context.Background(), nil)
+	blobItemProps, err := blobClient.GetProperties(context.Background(), nil)
 	if err != nil {
 		return BlobInfo{}, err
 	}
-	return a.Convert2BlobInfo(blobItem), nil
+	owner := ""
+
+	if blobItemProps.Metadata != nil {
+		owner = *blobItemProps.Metadata["owner"]
+	}
+	blobInfo := BlobInfo{
+		Path:    name,
+		ModTime: *blobItemProps.LastModified,
+		Size:    *blobItemProps.ContentLength, // TODO: this may not be correct if .bytes
+		Owner:   owner,                        // TODO: this is not working
+	}
+	return blobInfo, nil
 }
 
 func (a *AzClient) Convert2BlobInfo(f interface{}) BlobInfo {
@@ -265,7 +276,7 @@ func (a *AzClient) Convert2BlobInfo(f interface{}) BlobInfo {
 	blobInfo := BlobInfo{
 		Path:    *item.Name,
 		ModTime: *item.Properties.LastModified,
-		Size:    *item.Properties.ContentLength,
+		Size:    *item.Properties.ContentLength, // TODO: this may not be correct
 		Owner:   owner,
 	}
 	return blobInfo

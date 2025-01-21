@@ -47,14 +47,14 @@ func GetContentPath(blobStoreWithPrefix string) string {
 	// Default (empty) is "file"
 	if bsType == "" || bsType == "file" {
 		return GetUpToContent(blobStoreWithPrefix)
-	} else if bsType == "s3" {
+	} else if bsType == "s3" || bsType == "az" {
 		contentPath := GetUpToContent(blobStoreWithPrefix)
 		if len(common.Container) == 0 {
 			return contentPath
 		}
 		return strings.SplitAfter(contentPath, common.Container+"/")[1]
 	} else {
-		h.Log("TODO", "Do something for Azure/Google etc. blob store content path")
+		h.Log("TODO", "Do something for Google etc. blob store content path")
 		return ""
 	}
 }

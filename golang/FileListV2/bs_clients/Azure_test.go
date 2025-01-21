@@ -117,9 +117,9 @@ func TestGetDirs_ValidBaseDir_ReturnsMatchingDirs(t *testing.T) {
 	}
 	common.Container = containerName
 
-	baseDir := "content/"
-	pathFilter := ".*"
-	maxDepth := 2
+	baseDir := "content"
+	pathFilter := ""
+	maxDepth := 5
 
 	azClient := AzClient{}
 	//h.DEBUG = true

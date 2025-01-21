@@ -12,11 +12,15 @@
 # HOW TO RUN EXAMPLE:
 #   ./filelistv2_test.sh <blobstore> <path/prefix>
 #   export _TEST_WORKDIR="$HOME/Documents/tests/nxrm_3.70.3-01_rmfilelisttest/sonatype-work/nexus3"
+#
 # If File type blobstore:
 #   $HOME/IdeaProjects/samples/golang/FileListV2/filelistv2_test.sh "${_TEST_WORKDIR%/}/blobs/default"
 # If S3 type blobstore:
 #   export AWS_ACCESS_KEY_ID="..." AWS_SECRET_ACCESS_KEY="..." AWS_REGION="ap-southeast-2"
 #   $HOME/IdeaProjects/samples/golang/FileListV2/filelistv2_test.sh "s3://apac-support-bucket/filelist-test"
+# If Azure type blobstore:
+#   export AZURE_STORAGE_ACCOUNT_NAME="..." AZURE_STORAGE_ACCOUNT_KEY="..."
+#   $HOME/IdeaProjects/samples/golang/FileListV2/filelistv2_test.sh "az://filelist-test/"
 #
 # Prepare the test data using setup_nexus3_repos.sh:
 #   _AUTO=true main
@@ -33,6 +37,7 @@
 : ${_TEST_STOP_ERROR:=true}
 : ${_TEST_REPO_NAME:=""}
 : ${_TEST_S3_REPO:="raw-s3-hosted"}
+: ${_TEST_AZ_REPO:="raw-az-hosted"}
 : ${_TEST_MAX_NUM:=100}
 
 
@@ -55,8 +60,8 @@ function test_1_First10FilesForSpecificRepo() {
 function test_2_ShouldNotFindAny() {
     local _b="${1:-"${_TEST_BLOBSTORE}"}"
     local _p="${2:-"${_TEST_FILTER_PATH}"}"
-    if [[ "${_b}" =~ ^s3:// ]]; then
-        echo "TEST=Skipped as this test can take long time with S3"
+    if [[ "${_b}" =~ ^(s3|az):// ]]; then
+        echo "TEST=Skipped as this test can take long time with S3/Azure"
         return 0
     fi
     _find_sample_repo_name "${_b}" "${_p}" || return 1
@@ -112,7 +117,7 @@ function test_4_SizeAndCount() {
     fi
 
     # TODO: if not File type, return in here (add other types)
-    if [[ "${_b}" =~ ^s3:// ]]; then
+    if [[ "${_b}" =~ ^(s3|az):// ]]; then
         echo "TEST=OK : ${_result}"
         return 0
     fi
@@ -136,34 +141,53 @@ function test_5_Undelete() {
     _find_sample_repo_name "${_b}" "${_p}" || return 1
 
     local _prep_file="/tmp/test_soft-deleted_${_TEST_REPO_NAME}-n10.tsv"
+    local _out_file="/tmp/test_undeleting_${_TEST_REPO_NAME}.tsv"
+    local _last_rc=""
+    local _should_not_find_soft_delete=true
     # Find 10 NOT soft-deleted .properties files
     _exec_filelist "filelist2 -b '${_b}' -p '${_p}' -pRx '@Bucket\.repo-name=${_TEST_REPO_NAME}' -pRxNot 'deleted=true' -n 10 -H" "${_prep_file}"
-    if [ ! -s "${_prep_file}" ]; then
-        echo "TEST=WARN: No non-soft-deleted (normal) files found for ${_TEST_REPO_NAME} in ${_prep_file}, so skipping ${FUNCNAME[0]}"
-        return 0
-    fi
-    # Append 'deleted=true' in each file in the tsv file
-    _exec_filelist "filelist2 -b '${_b}' -rF ${_prep_file} -wStr \"deleted=true\" -P -H" "/tmp/test_preparing-soft-deleted_${_TEST_REPO_NAME}.tsv"
-    if [ "$?" != "0" ]; then
-        echo "TEST=ERROR: Could not prepare soft-delete ${_prep_file} (check /tmp/test_last.*)"
-        return 1
+    if [ -s "${_prep_file}" ]; then
+        # Append 'deleted=true' in each file in the tsv file
+        _exec_filelist "filelist2 -b '${_b}' -rF ${_prep_file} -wStr \"deleted=true\" -P -H" "/tmp/test_preparing-soft-deleted_${_TEST_REPO_NAME}.tsv"
+        if [ "$?" != "0" ]; then
+            echo "TEST=ERROR: Could not prepare soft-delete ${_prep_file} (check /tmp/test_last.*)"
+            return 1
+        fi
+        _exec_filelist "filelist2 -b '${_b}' -rF ${_prep_file} -RDel -P -H" "${_out_file}"
+        _last_rc="$?"
+    else
+        _exec_filelist "filelist2 -b '${_b}' -p '${_p}' -pRx '@Bucket\.repo-name=${_TEST_REPO_NAME}' -pRx 'deleted=true' -n 10 -H" "${_prep_file}"
+        if [ ! -s "${_prep_file}" ]; then
+            echo "TEST=WARN: No soft-deleted files found for ${_TEST_REPO_NAME} in ${_prep_file}, so skipping ${FUNCNAME[0]}"
+            return 0
+        fi
+        _exec_filelist "filelist2 -b '${_b}' -rF ${_prep_file} -RDel -P -H" "${_out_file}"
+        _last_rc="$?"
+        _log "INFO" "Restoring blob status by soft-deleting again (${_out_file}) ..."
+        _exec_filelist "filelist2 -b '${_b}' -rF ${_out_file} -wStr \"deleted=true\" -P -H" "/tmp/test_restoring-soft-deleted_${_TEST_REPO_NAME}.tsv" "" "_restore_soft_delete"
+        if [ "$?" != "0" ]; then
+            echo "TEST=WARN: Restoring the soft-delete status failed ${_prep_file} (check /tmp/test_last_restore_soft_delete.*)"
+        fi
+        _should_not_find_soft_delete=false
     fi
 
-    local _out_file="/tmp/test_undeleting_${_TEST_REPO_NAME}.tsv"
-    _exec_filelist "filelist2 -b '${_b}' -rF ${_prep_file} -RDel -P -H" "${_out_file}"
-    if [ "$?" == "0" ]; then
+    if [ "${_last_rc}" == "0" ]; then
         if ! rg -q "deleted=true" ${_out_file}; then
             echo "TEST=ERROR: Not found 'deleted=true' in ${_out_file} (check /tmp/test_last.*)"
             return 1
         fi
-        if [[ "${_b}" =~ ^s3:// ]]; then
-            echo "Waiting 3 seconds to wait for S3 to complete the writing ..."
+        if [[ "${_b}" =~ ^(s3|az):// ]]; then
+            _log "INFO" "Waiting 3 seconds to wait for S3/Az to complete the writing ..."
             sleep 3
         fi
         _out_file="/tmp/test_check_undeleted_${_TEST_REPO_NAME}.tsv"
         _exec_filelist "filelist2 -b '${_b}' -rF ${_prep_file} -P -H" "${_out_file}" "_check"
-        if head -n10 "${_out_file}" | rg -q "deleted=true"; then
-            echo "TEST=ERROR: Found 'deleted=true' in ${_out_file} (check /tmp/test_last*)"
+        if ${_should_not_find_soft_delete} && rg -q "deleted=true" ${_out_file}; then
+            echo "TEST=ERROR: Found 'deleted=true' in ${_out_file} (check /tmp/test_last_check*)"
+            return 1
+        fi
+        if ! ${_should_not_find_soft_delete} && ! rg -q "deleted=true" ${_out_file}; then
+            echo "TEST=WARN: Should find 'deleted=true' but didn't in ${_out_file} (check /tmp/test_last_check*)"
             return 1
         fi
         echo "TEST=OK : no 'deleted=true' in the first 10 lines of ${_out_file} (compare with ${_prep_file})"
@@ -215,8 +239,8 @@ function test_7_TextFileToCheckBlobStore() {
     local _p="${2:-"${_TEST_FILTER_PATH}"}"
     local _work_dir="${3:-"${_TEST_WORKDIR}"}"
 
-    if [[ "${_b}" =~ ^s3:// ]]; then
-        echo "TEST=Skipped this test for S3 for now."
+    if [[ "${_b}" =~ ^(s3|az):// ]]; then
+        echo "TEST=Skipped this test for S3/Az for now."
         return 0
     fi
 
@@ -263,8 +287,8 @@ function test_8_TextFileToCheckDatabase() {
     local _p="${2:-"${_TEST_FILTER_PATH}"}"
     local _work_dir="${3:-"${_TEST_WORKDIR}"}"
 
-    if [[ "${_b}" =~ ^s3:// ]]; then
-        echo "TEST=Skipped this test as no need to test if S3."
+    if [[ "${_b}" =~ ^(s3|az):// ]]; then
+        echo "TEST=Skipped this test as no need to test if S3/Az."
         return 0
     fi
 
@@ -323,12 +347,12 @@ function _log() {
 function _exec_filelist() {
     local _cmd_without_s="$1"
     local _out_file="$2"
-    local _stdouterr_prefix="$3"
+    local _stdouterr_sfx="$3"
     if [ -s "${_out_file}" ]; then
         rm -f "${_out_file}" || return $?
     fi
     local _cmd="${_cmd_without_s} -s ${_out_file}"
-    if rg -q ' -b +.?s3://' <<<"${_cmd_without_s}"; then
+    if rg -q ' -b +.?s3://' <<<"${_cmd_without_s}"; then    # this is S3 only (not Azure)
         _cmd="${_cmd} -c 2 -c2 8"
     else
         _cmd="${_cmd} -c 10"
@@ -337,7 +361,7 @@ function _exec_filelist() {
         _cmd="${_cmd} -n ${_TEST_MAX_NUM}"
     fi
     _log "INFO" "Running: ${_cmd}"
-    eval "${_cmd}" >"/tmp/test_last${_stdouterr_prefix}.out" 2>"/tmp/test_last${_stdouterr_prefix}.err"
+    eval "${_cmd}" >"/tmp/test_last${_stdouterr_sfx}.out" 2>"/tmp/test_last${_stdouterr_sfx}.err"
 }
 function _find_sample_repo_name() {
     local _b="${1:-"${_TEST_BLOBSTORE}"}"
@@ -352,6 +376,15 @@ function _find_sample_repo_name() {
             return 1
         fi
         export _TEST_REPO_NAME="${_TEST_S3_REPO}"
+        return 0
+    fi
+
+    if [[ "${_b}" =~ ^az:// ]]; then
+        if [ -z "${_TEST_AZ_REPO}" ]; then
+            _log "WARN" "No _TEST_AZ_REPO found"
+            return 1
+        fi
+        export _TEST_REPO_NAME="${_TEST_AZ_REPO}"
         return 0
     fi
 
@@ -378,7 +411,7 @@ function main() {
     # The function names should start with 'test_', and sorted
     for _t in $(typeset -F | grep "^declare -f ${_pfx}" | cut -d' ' -f3 | sort); do
         local _started="$(date +%s)"
-        _log "INFO" "Started ${_t} (${_started}) ..."
+        _log "INFO" "Starting TEST: ${_t} (${_started}) ..."
 
         if ! eval "${_t} && _log_duration \"${_started}\"" && ${_TEST_STOP_ERROR}; then
             return $?

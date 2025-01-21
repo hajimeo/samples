@@ -30,6 +30,8 @@ func getS3Api() *s3.Client {
 		return S3Api
 	}
 	cfg, err := config.LoadDefaultConfig(context.TODO())
+	// To stop 'WARN Response has no supported checksum. Not validating response payload.'
+	cfg.ResponseChecksumValidation = 2
 	if common.Debug2 {
 		// https://aws.github.io/aws-sdk-go-v2/docs/configuring-sdk/logging/
 		cfg, err = config.LoadDefaultConfig(context.TODO(), config.WithClientLogMode(aws.LogRetries|aws.LogRequest))
