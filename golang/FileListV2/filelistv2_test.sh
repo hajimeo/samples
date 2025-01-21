@@ -144,15 +144,18 @@ function test_5_Undelete() {
     local _out_file="/tmp/test_undeleting_${_TEST_REPO_NAME}.tsv"
     local _last_rc=""
     local _should_not_find_soft_delete=true
+
     # Find 10 NOT soft-deleted .properties files
     _exec_filelist "filelist2 -b '${_b}' -p '${_p}' -pRx '@Bucket\.repo-name=${_TEST_REPO_NAME}' -pRxNot 'deleted=true' -n 10 -H" "${_prep_file}"
     if [ -s "${_prep_file}" ]; then
-        # Append 'deleted=true' in each file in the tsv file
+        # Append 'deleted=true' in each blob by reading the tsv file
         _exec_filelist "filelist2 -b '${_b}' -rF ${_prep_file} -wStr \"deleted=true\" -P -H" "/tmp/test_preparing-soft-deleted_${_TEST_REPO_NAME}.tsv"
         if [ "$?" != "0" ]; then
             echo "TEST=ERROR: Could not prepare soft-delete ${_prep_file} (check /tmp/test_last.*)"
             return 1
         fi
+        _log "INFO" "Waiting 3 seconds to avoid 'Skipping path:xxxxxxx as recently modified' message ..."
+        sleep 3
         _exec_filelist "filelist2 -b '${_b}' -rF ${_prep_file} -RDel -P -H" "${_out_file}"
         _last_rc="$?"
     else

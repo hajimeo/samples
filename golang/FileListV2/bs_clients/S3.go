@@ -95,6 +95,11 @@ func (s *S3Client) WriteToPath(key string, contents string) error {
 		h.Log("DEBUG", fmt.Sprintf("Key: %s. Resp: %v", key, resp))
 		return err
 	}
+	// if 'contents' contain 'deleted=true', then add tag
+	if common.RxDeleted.MatchString(contents) {
+		// Currently do not care about the error. Also replaceTag() will log the warn.
+		_ = replaceTag(key, "deleted", "true")
+	}
 	return nil
 }
 
@@ -116,7 +121,7 @@ func replaceTag(key string, tagKey string, tagVal string) error {
 	}
 	respTag, err := getS3Api().PutObjectTagging(context.TODO(), inputTag)
 	if err != nil {
-		h.Log("WARN", fmt.Sprintf("PutObjectTagging failed. Path: %s. Resp: %v", key, respTag))
+		h.Log("WARN", fmt.Sprintf("PutObjectTagging failed. Path: %s. Resp: %v, Error: %s", key, respTag, err.Error()))
 	}
 	return err
 }
