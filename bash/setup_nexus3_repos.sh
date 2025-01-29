@@ -213,7 +213,7 @@ username=${_dbusr}
 password=${_dbpwd}
 schema=${_schema:-"public"}
 maximumPoolSize=40
-advanced=maxLifetime\=600000
+advanced=maxLifetime\=30000
 EOF
         fi
     fi
@@ -2581,7 +2581,8 @@ function _gen_dummy_jar() {
     if [ ! -s "${_filepath}" ]; then
         if type jar &>/dev/null; then
             echo "test at $(date +'%Y-%m-%d %H:%M:%S')" > dummy.txt
-            jar -cvf ${_filepath} dummy.txt || return $?
+            jar -cf ${_filepath} dummy.txt || return $?
+            rm -f dummy.txt
         else
             curl -o "${_filepath}" "https://repo1.maven.org/maven2/org/sonatype/goodies/goodies-i18n/2.3.4/goodies-i18n-2.3.4.jar" || return $?
         fi

@@ -1723,7 +1723,7 @@ function f_h2_start() {
     local _port="${2:-"8082"}"
     local _Xmx="${3:-"8g"}"
     local _h2_jar="${4}"
-    local _h2_ver="${5:-"1.4.200"}"
+    local _h2_ver="${5:-"2.2.224"}" # or 1.4.200 for RM3
     if [ -z "${_baseDir}" ]; then
         if [ -d ./sonatype-work/clm-server/data ]; then
             _baseDir="./sonatype-work/clm-server/data/"
@@ -1914,12 +1914,13 @@ function f_splitPerHourReq() {
     # Can't use _SPLIT_BY_REGEX_SORT="Y" when regex contains un-sortable values such as "dd/MMM/yyyy"
     _SPLIT_BY_REGEX_SORT="Y" f_splitByRegex "${_file}" "${_DATE_FMT_REQ}:\d\d" "${_dest_dir}"
 }
-#f_extractFromLog .nexus-2024-07-08.log.gz "^2024-07-08 19:45:[23]" "^2024-07-08 19:46:4" | tee nexus-2024-07-08_1945to1946.out
+#f_extractFromLog ./nexus-2024-07-08.log.gz "^2024-07-08 19:45:[23]" "^2024-07-08 19:46:4" | tee nexus-2024-07-08_1945to1946.out
+#f_extractFromLog ./clm-server.log '^2025-01-15 01:4' '^2025-01-15 02:' > filtered_logs2.log
 function f_extractFromLog() {
     local __doc__="Extract specific lines from file"
-    local _file="$1"    # can't be a glob as used in sed later
-    local _regex_from="$2"
-    local _regex_to="$3"
+    local _file="$1"        # Need to be a path (not glob) as used in sed later
+    local _regex_from="$2"  # This regex must match with at least one line
+    local _regex_to="$3"    # This regex must match with at least one line
 
     local _n1="$(rg "${_regex_from}" --no-filename -m1 -n -o "${_file}" | cut -d':' -f1)"
     [ -z "${_n1}" ] && return 11

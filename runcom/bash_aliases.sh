@@ -82,8 +82,9 @@ function git_comp_tags() {
 # find branches or tags which contains a commit
 function git_search() {
     local _search="$1"
-    for c in $(git log --all --grep "$_search" | grep ^commit | cut -d ' ' -f 2); do git branch -r --contains $c; done
-    for c in $(git log --all --grep "$_search" | grep ^commit | cut -d ' ' -f 2); do git tag --contains $c; done
+    local _git_repo="${2:-"."}"
+    for c in $(git -C "${_git_repo}" log --all --grep "$_search" | grep ^commit | cut -d ' ' -f 2); do git branch -r --contains $c; done
+    for c in $(git -C "${_git_repo}" log --all --grep "$_search" | grep ^commit | cut -d ' ' -f 2); do git tag --contains $c; done
 }
 
 ## Python ##############################################################################################################
@@ -776,6 +777,7 @@ function goBuild() {
     if [ -d /opt/homebrew/opt/go/libexec ]; then
         export GOROOT=/opt/homebrew/opt/go/libexec
     fi
+    go mod tidy || return $?    # go get -v -t -u all && go mod tidy
     if [[ "${GO_SKIP_TESTS}" =~ ^[yY] ]]; then
         echo "# Skipping tests ..." >&2
     else
@@ -794,7 +796,7 @@ function goBuild() {
     echo "" >&2
     find "${_destDir%/}" -type f -name "${_name}_*" -mmin -1 >&2
     echo "# curl -o /usr/local/bin/${_name} -L \"https://github.com/hajimeo/samples/raw/master/misc/${_name}_\$(uname)_\$(uname -m)\"" >&2
-    echo "Completed at $(date)" >&2
+    echo "Completed at $(date) (scan ./go.sum)" >&2
 }
 
 function cleanOldDirs() {

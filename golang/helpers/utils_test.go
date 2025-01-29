@@ -362,3 +362,28 @@ func TestCacheDelObj_ConcurrentAccess_NoDataRace(t *testing.T) {
 	result := CacheGetObj("key1")
 	assert.Nil(t, result)
 }
+
+func TestValsToString_EmptySlice_ReturnsEmptyString(t *testing.T) {
+	result := ValsToString([]interface{}{}, ",")
+	assert.Equal(t, "", result)
+}
+
+func TestValsToString_SingleElement_ReturnsElementAsString(t *testing.T) {
+	result := ValsToString([]interface{}{"single"}, ",")
+	assert.Equal(t, "single", result)
+}
+
+func TestValsToString_MultipleElements_ReturnsJoinedString(t *testing.T) {
+	result := ValsToString([]interface{}{"a", "b", "c"}, ",")
+	assert.Equal(t, "a,b,c", result)
+}
+
+func TestValsToString_DifferentTypes_ReturnsJoinedString(t *testing.T) {
+	result := ValsToString([]interface{}{"a", 1, 2.5, true}, ",")
+	assert.Equal(t, "a,1,2.5,true", result)
+}
+
+func TestValsToString_CustomDelimiter_ReturnsJoinedStringWithDelimiter(t *testing.T) {
+	result := ValsToString([]interface{}{"a", "b", "c"}, "|")
+	assert.Equal(t, "a|b|c", result)
+}

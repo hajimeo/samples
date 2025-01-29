@@ -237,7 +237,7 @@ username=${_dbusr}
 password=${_dbpwd}
 schema=${_dbschema:-"public"}
 maximumPoolSize=40
-advanced=maxLifetime\=600000
+advanced=maxLifetime\=30000
 EOF
         if [ -s "${_work_dir%/}/etc/fabric/nexus-store.properties" ]; then
             cat ${_work_dir%/}/etc/fabric/nexus-store.properties | grep -v password

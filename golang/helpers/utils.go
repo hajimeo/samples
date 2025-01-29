@@ -110,6 +110,15 @@ func DatetimeStrToInt(datetimeStr string) int64 {
 	return tmpTimeFrom.Unix()
 }
 
+func ValsToString(vals []interface{}, delimiter string) string {
+	strSlice := make([]string, len(vals))
+	for i, val := range vals {
+		strSlice[i] = fmt.Sprint(val)
+	}
+	result := strings.Join(strSlice, delimiter)
+	return result
+}
+
 func GetEnv(key string, fallback string) string {
 	value, exists := os.LookupEnv(key)
 	if exists {
@@ -254,7 +263,7 @@ func OpenStdInOrFIle(path string) *os.File {
 	return f
 }
 
-func StreamLines(path string, conc int, f func(string) interface{}) []interface{} {
+func StreamLines(path string, conc int, apply func(string) interface{}) []interface{} {
 	fp := OpenStdInOrFIle(path)
 	defer fp.Close()
 	var returns []interface{}
@@ -275,7 +284,7 @@ func StreamLines(path string, conc int, f func(string) interface{}) []interface{
 		go func() {
 			defer wg.Done()
 			for line := range input {
-				returns = append(returns, f(line))
+				returns = append(returns, apply(line))
 			}
 		}()
 	}

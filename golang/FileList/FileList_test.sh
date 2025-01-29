@@ -194,7 +194,7 @@ jdbcUrl=jdbc\:postgresql\://$(hostname -f)\:5432/${_DBNAME}
 username=${_DBUSER}
 password=${_DBPWD}
 maximumPoolSize=40
-advanced=maxLifetime\=600000
+`advanced=maxLifetime\=30000
 EOF
 
     _log "INFO" "Creating DB and DB user (${_DBNAME}, ${_DBUSER}) ..."

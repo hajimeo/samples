@@ -34,7 +34,7 @@ var DUMMY_DB_PROP_TXT = `#2022-08-14 20:58:43,970+0000
 password=nexus123
 maximumPoolSize=10
 jdbcUrl=jdbc\:postgresql\://localhost\:5432/nxrmfilelisttest?ssl\=true&sslfactory\=org.postgresql.ssl.NonValidatingFactory
-advanced=maxLifetime\=600000
+advanced=maxLifetime\=30000
 username=nexus`
 var DUMMY_BLOB_IDS_PATH = tempDir + "/dummy-blobids.txt"
 var DUMMY_BLOB_IDS_TXT = `./vol-25/chap-40/79a659c7-32a1-4a72-84e0-1a7d07a9f11f.properties

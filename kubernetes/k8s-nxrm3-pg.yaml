@@ -184,7 +184,7 @@ spec:
                 -Dnexus.datastore.nexus.password=\${DB_PWD} \
                 -Dnexus.datastore.nexus.schema=${_DB_SCHEMA:-"public"} \
                 -Dnexus.datastore.nexus.maximumPoolSize=10 \
-                -Dnexus.datastore.nexus.advanced=maxLifetime=600000 \
+                -Dnexus.datastore.nexus.advanced=maxLifetime=30000 \
                 -Dnexus.datastore.nexus.advanced=leakDetectionThreshold=20000'
           volumeMounts:
             - name: sonatype-license-volume

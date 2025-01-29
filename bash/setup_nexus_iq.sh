@@ -207,9 +207,17 @@ function f_api_orgId() {
     local _create="${2}"
     local _parent_org="${3:-"Root Organization"}"
     [ -z "${_org_name}" ] && return 11
-    local _parent_org_id="$(_curl "${_IQ_URL%/}/api/v2/organizations" --get --data-urlencode "organizationName=${_parent_org}" | _sortjson | sed -nE 's/^            "id": "(.+)",$/\1/p')"
     local _org_int_id="$(_curl "${_IQ_URL%/}/api/v2/organizations" --get --data-urlencode "organizationName=${_org_name}" | _sortjson | sed -nE 's/^            "id": "(.+)",$/\1/p')"
     if [ -z "${_org_int_id}" ] && [[ "${_create}" =~ ^[yY] ]]; then
+        local _parent_org_id="$(_curl "${_IQ_URL%/}/api/v2/organizations" --get --data-urlencode "organizationName=${_parent_org}" | _sortjson | sed -nE 's/^            "id": "(.+)",$/\1/p')"
+        if [ -z "${_parent_org_id}" ]; then
+            if [ "${_parent_org}" == "Root Organization" ]; then
+                _parent_org_id="ROOT_ORGANIZATION_ID"
+            else
+                _log "INFO" "Failed to find parent organization: ${_parent_org}"
+                return 1
+            fi
+        fi
         _org_int_id="$(_curl "${_IQ_URL%/}/api/v2/organizations" -H "Content-Type: application/json" -d "{\"name\":\"${_org_name}\",\"parentOrganizationId\": \"${_parent_org_id}\"}" | JSON_SEARCH_KEY="id" _sortjson)"
     fi
     if [ -z "${_org_int_id}" ]; then
@@ -239,7 +247,12 @@ function f_api_create_app() {
     fi
     local _org_int_id="$(f_api_orgId "${_create_under_org}" "Y")"
     [ -z "${_org_int_id}" ] && return 11
-    printf "%s\n" "$(_curl "${_IQ_URL%/}/api/v2/applications" -H "Content-Type: application/json" -d '{"publicId":"'${_app_pub_id}'","name": "'${_app_pub_id}'","organizationId": "'${_org_int_id}'"}')"
+    local _app_int_id="$(f_api_appIntId "${_app_pub_id}")"
+    if [ -n "${_app_int_id}" ]; then
+        _log "INFO" "Not creating ${_app_pub_id} as it already exists."
+        return 0
+    fi
+    _curl "${_IQ_URL%/}/api/v2/applications" -H "Content-Type: application/json" -d '{"publicId":"'${_app_pub_id}'","name": "'${_app_pub_id}'","organizationId": "'${_org_int_id}'"}'
 }
 
 function f_api_role_mapping() {
@@ -892,6 +905,48 @@ function f_prep_scan_target_for_proprietary_component() {
 }
 
 function f_dummy_scans() {
+    local __doc__="Generate dummy reports by scanning (dummy) scan targets against one application"
+    local _scan_target="${1}"
+    local _how_many="${2:-10}"
+    #local _parallel="${3:-5}"  # Not used as can't scan in parallel for one application
+    local _app_name="${3:-"sandbox-application"}"
+    local _iq_stage="${4:-${_IQ_STAGE:-"build"}}" #develop|build|stage-release|release|operate
+    local _create_under_org="${5-"${_CREATE_UNDER_ORG:-"Sandbox Organization"}"}"
+
+    local _seq_start="${_SEQ_START:-1}"
+    local _seq_end="$((_seq_start + _how_many - 1))"
+
+    local _this_org_id=""
+    if [ -n "${_create_under_org}" ]; then
+        # Just in case, creating the base (under) organization
+        _this_org_id="$(f_api_orgId "${_create_under_org}" "Y")"
+        if [ -z "${_this_org_id}" ]; then
+            _log "ERROR" "Failed to get the organization ID for '${_create_under_org}'"
+            return 1
+        fi
+    fi
+    # Just in case, creating the application
+    f_api_create_app "${_app_name}" "${_this_org_id}" || return $?
+
+    for i in $(eval "seq ${_seq_start} ${_seq_end}"); do
+        local _this_scan_target="${_scan_target}"
+        if [ -z "${_scan_target}" ]; then
+            echo "test at $(date +'%Y-%m-%d %H:%M:%S')" > dummy.txt
+            jar -cf ${_TMP%/}/dummy-${i}.jar dummy.txt || return $?
+            rm -f dummy.txt
+            _this_scan_target="${_TMP%/}/dummy-${i}.jar"
+        fi
+
+        _log "INFO" "Scanning for ${_app_name} against ${_this_scan_target} (${i}/${_seq_end}) ..."
+        _SIMPLE_SCAN="Y" f_cli "${_this_scan_target}" "${_app_name}" "${_iq_stage}" || return $?
+
+        if [ -z "${_scan_target}" ] && [ -s "${_this_scan_target}" ]; then
+            rm -f "${_this_scan_target}"
+        fi
+    done
+}
+
+function f_dummy_scans_random() {
     local __doc__="Generate dummy reports by scanning same target but different application"
     local _scan_target="${1}"
     local _how_many="${2:-10}"
@@ -932,10 +987,9 @@ function f_dummy_scans() {
                 _SIMPLE_SCAN="Y" f_cli "${_scan_target}" "${_app_name_prefix}${_num}" "${_iq_stage}"
                 _completed=true
                 break
-            else
-                _log "INFO" "Scanning for ${_app_name_prefix}${_num} ..."
-                _SIMPLE_SCAN="Y" f_cli "${_scan_target}" "${_app_name_prefix}${_num}" "${_iq_stage}" &>/dev/null &
             fi
+            _log "INFO" "Scanning for ${_app_name_prefix}${_num} ..."
+            _SIMPLE_SCAN="Y" f_cli "${_scan_target}" "${_app_name_prefix}${_num}" "${_iq_stage}" &>/dev/null &
         done
         wait
         if ${_completed}; then
@@ -1054,18 +1108,18 @@ function f_cli() {
     # -D includeSha256=true is for BFS
     local _cmd="${_java} -jar ${_iq_cli_jar} ${_iq_cli_opt} -s ${_iq_url} -a \"${_iq_cred}\" -i ${_iq_app_id} -t ${_iq_stage}"
     if [[ ! "${_simple_scan}" =~ ^[yY] ]]; then
-        _cmd="${_cmd} -D includeSha256=true -r ./iq_result_$$.json -k -X"
+        _cmd="${_cmd} -D includeSha256=true -r ./iq_result.json -k -X"
     fi
-    echo "[$(date +'%Y-%m-%d %H:%M:%S')] Executing: ${_cmd} ${_path} | tee ./iq_cli_$$.out" >&2
-    eval "${_cmd} ${_path} | tee ./iq_cli_$$.out"
+    echo "[$(date +'%Y-%m-%d %H:%M:%S')] Executing: ${_cmd} ${_path} | tee ./iq_cli.out" >&2
+    eval "${_cmd} ${_path} | tee ./iq_cli.out"
     local _rc=$?
     echo "[$(date +'%Y-%m-%d %H:%M:%S')] Completed (${_rc})." >&2
     if [[ "${_simple_scan}" =~ ^[yY] ]]; then
         return ${_rc}
     fi
-    local _scanId="$(rg -m1 '"reportDataUrl"\s*:\s*".+/([0-9a-f]{32})/.*"' -o -r '$1' ./iq_result_$$.json)"
+    local _scanId="$(rg -m1 '"reportDataUrl"\s*:\s*".+/([0-9a-f]{32})/.*"' -o -r '$1' ./iq_result.json)"
     if [ -n "${_scanId}" ]; then
-        _cmd="curl -sf -u \"${_iq_cred}\" ${_iq_url%/}/api/v2/applications/${_iq_app_id}/reports/${_scanId}/raw | python -m json.tool > ./iq_raw_$$.json"
+        _cmd="curl -sf -u \"${_iq_cred}\" ${_iq_url%/}/api/v2/applications/${_iq_app_id}/reports/${_scanId}/raw | python -m json.tool > ./iq_raw.json"
         echo "[$(date +'%Y-%m-%d %H:%M:%S')] Executing: ${_cmd}" >&2
         eval "${_cmd}"
     fi
@@ -1094,7 +1148,12 @@ function f_mvn() {
 
 ## Utility functions
 function _curl() {
-    curl -sSf -u "${_IQ_CRED:-"${_ADMIN_USER}:${_ADMIN_PWD}"}" "$@"
+    local _sfx="$$_$RANDOM.out"
+    curl -sSf -u "${_IQ_CRED:-"${_ADMIN_USER}:${_ADMIN_PWD}"}" "$@" > "${_TMP%/}/${FUNCNAME[0]}_${_sfx}"
+    local _rc=$?
+    # To make sure the stdout ends with a new line
+    printf "%s\n" "$(cat "${_TMP%/}/${FUNCNAME[0]}_${_sfx}")"
+    return ${_rc}
 }
 
 function _gen_dummy_jar() {
