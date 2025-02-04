@@ -299,6 +299,7 @@ def etl(path="", log_suffix=".log", dist="./_filtered", max_file_size=(1024 * 10
         time_until_regex=None, add_startTime=True):
     """
     Extract data, transform and load (to DB)
+    NOTE: etl_request() for request.log only
     :param path: To specify a zip file
     :param log_suffix: To specify the YYYY-MM-DD.log.gz
     :param dist: Directory path to save the extracted data (default ./_filtered)

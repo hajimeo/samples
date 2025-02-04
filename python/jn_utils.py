@@ -61,6 +61,19 @@ Kind of joining two tables with UDF_REGEX:
     AND UDF_REGEX('.+ /repository/([^/]+)', t_request.requestURL, 1) IN (SELECT repository_name FROM t_db_repo where t_db_repo.`attributes.storage.blobStoreName` = 'default')
 Calculate variance (TODO)
     SUM((num-(SELECT AVG(num) FROM TableX))*(num-(SELECT AVG(num) FROM TableX)) ) / (COUNT(num)-1)
+
+How to count the request per second (very expensive):
+    WITH RECURSIVE
+    time_series(dt) AS (
+      SELECT '2025-01-29 19:20:00'
+      UNION ALL
+      SELECT datetime(dt, '+1 second')
+      FROM time_series
+      WHERE dt < '2025-01-29 19:40:00'
+    )
+    SELECT ts.dt, count(*) FROM (SELECT startTime, endTime FROM t_request
+        WHERE endTime > '2025-01-29 19:20:00' and startTime < '2025-01-29 19:40:00') r
+        JOIN time_series ts on dt BETWEEN startTime and endTime GROUP BY ts.dt
 """
 
 # TODO: When you add a new pip package, don't forget to update setup_work_env.sh
