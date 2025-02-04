@@ -2326,10 +2326,10 @@ function f_setup_saml_for_simplesaml() {
     f_put_realms "SamlRealm"
 }
 
-function f_start_email_server() {
+function f_start_dummy_smtp() {
     local __doc__="Install and start a dummy SMTP server with MailHog https://github.com/mailhog/MailHog/blob/master/docs/CONFIG.md"
     local _smtp_port="${1:-"1025"}"
-    local _ui_port="${1:-"8025"}"
+    local _ui_api_port="${1:-"8025"}"
     local _install_dir="${2:-"${_SHARE_DIR%/}/mailhog"}"
 
     if [ ! -d "${_install_dir%/}" ]; then
@@ -2346,10 +2346,10 @@ function f_start_email_server() {
         _cmd="${_install_dir%/}/mailhog"
     fi
 
-    eval "${_cmd} -api-bind-addr 0.0.0.0:${_smtp_port} -ui-bind-addr 0.0.0.0:${_ui_port}" &> ${_TMP%/}/mailhog_$$.log &
+    eval "${_cmd} -smtp-bind-addr 0.0.0.0:${_smtp_port} -api-bind-addr 0.0.0.0:${_ui_api_port} -ui-bind-addr 0.0.0.0:${_ui_api_port}" &> ${_TMP%/}/mailhog_$$.log &
     local _pid="$!"
     sleep 2
-    echo "[INFO] Running mailhog in background ..."
+    echo "[INFO] Running mailhog in background http://127.0.0.1:${_ui_api_port}/"
     echo "       PID: ${_pid}  Log: ${_TMP%/}/mailhog_$$.log"
 }
 function f_setup_smtp_mailhog() {
