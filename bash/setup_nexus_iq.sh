@@ -78,7 +78,7 @@ Using previously saved response file and NO interviews:
 : ${_ADMIN_USER:="admin"}
 : ${_ADMIN_PWD:="admin123"}
 : ${_IQ_URL:="http://localhost:8070/"}
-: ${_IQ_TEST_URL:="https://nxiqha-k8s${_DOMAIN}/"}
+: ${_IQ_TEST_URLS:="http://localhost:8070/ http://utm-ubuntu:8070/ https://nxiqha-k8s${_DOMAIN}/"}
 _TMP="/tmp" # for downloading/uploading assets
 _DEBUG=false
 
@@ -503,6 +503,14 @@ function f_deprecated_setup_ldap_freeipa() {
     [ -z "${_id}" ] && return 111
     _apiS "/rest/config/ldap/${_id}/connection" '{"id":null,"serverId":"'${_id}'","protocol":"LDAP","hostname":"'${_host}'","port":'${_port}',"searchBase":"cn=accounts,dc=standalone,dc=localdomain","authenticationMethod":"SIMPLE","saslRealm":null,"systemUsername":"uid=admin,cn=users,cn=accounts,dc=standalone,dc=localdomain","systemPassword":"'${_LDAP_PWD}'","connectionTimeout":30,"retryDelay":30}' "PUT" | python -m json.tool || return $?
     _apiS "/rest/config/ldap/${_id}/userMapping" '{"id":null,"serverId":"'${_id}'","userBaseDN":"cn=users","userSubtree":true,"userObjectClass":"person","userFilter":"","userIDAttribute":"uid","userRealNameAttribute":"cn","userEmailAttribute":"mail","userPasswordAttribute":"","groupMappingType":"DYNAMIC","groupBaseDN":"","groupSubtree":false,"groupObjectClass":null,"groupIDAttribute":null,"groupMemberAttribute":null,"groupMemberFormat":null,"userMemberOfGroupAttribute":"memberOf","dynamicGroupSearchEnabled":true}' "PUT" | python -m json.tool
+}
+
+# after f_start_dummy_smtp
+function f_setup_smtp_mailhog() {
+    local _smtp_port="${1:-"1025"}"
+    local _smtp_host="${2:-"localhost"}"
+    local _from_addr="${3:-"smtptest@example.com"}"
+    _apiS "/api/v2/config/mail" '{"startTlsEnabled":false,"sslEnabled":false,"hostname":"'${_smtp_host}'","username":null,"systemEmail":"'${_from_addr}'","port":'${_smtp_port}',"password":null,"passwordIsIncluded":true}'
 }
 
 function f_setup_webhook() {
@@ -1209,13 +1217,14 @@ function _get_iq_url() {
         fi
     fi
     # if curl is failing, silently replacing with
-    for _url in "http://localhost:8070/" "${_IQ_TEST_URL%/}/"; do
+    echo "${_IQ_TEST_URLS}" | sed "s/ /\n/g" | while read -r _url; do
         if [ "${_iq_url%/}" != "${_url%/}" ] && curl -m1 -f -s -I "${_url%/}/" &>/dev/null; then
             echo "${_url%/}/"
-            return
+            # 'return' from while just exit from the loop?
+            break
         fi
     done
-    return 1
+    return
 }
 
 ### Main #######################################################################################################
