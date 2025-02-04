@@ -1832,6 +1832,7 @@ function _getAfterFirstMatch() {
 }
 
 # To split hourly: f_splitByRegex nexus.log, and f_splitByRegex request.log '(\d\d/[a-zA-Z]{3}/\d\d\d\d).(\d\d)'
+# f_extractFromLog uses this function
 function f_splitByRegex() {
     # TODO: this doesn't work with Ubuntu?
     local _file="$1"        # can't be a glob as used in sed later
