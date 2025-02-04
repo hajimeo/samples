@@ -105,7 +105,7 @@ function _get_iq_url() {
 
 # export JAVA_HOME=$JAVA_HOME_17
 #
-# To start local (on Mac) NXRM2 or NXRM3 server
+# To start local (on Mac) NXRM2 or NXRM3 server for OrientDB
 # TODO: May need to reset 'admin' user, and also use below query (after modifying for H2/PostgreSQL/OrientDB)
 #  UPDATE repository_blobstore SET attributes = {} where type = 'S3';
 #  UPDATE repository_blobstore SET attributes.file = {} where type = 'S3';
@@ -187,6 +187,44 @@ function nxrmStart() {
             export JAVA_TOOL_OPTIONS="${_java_opts/address=5005,/address=5004,}" && _java_opts=""
         fi
     fi
+
+    if [ -n "${_CUSTOM_DNS}" ]; then
+        _java_opts="${_java_opts} -Dsun.net.spi.nameservice.nameservers=${_CUSTOM_DNS} -Dsun.net.spi.nameservice.provider.1=dns,sun"
+        _java_opts="${_java_opts} -Dhttp.proxyHost=non-existing-hostname -Dhttp.proxyPort=8800 -Dhttp.nonProxyHosts=\"*.sonatype.com\""
+
+        local _console=""
+        # TODO: may need to ick h2-console_v200 for older versions
+        # TODO: no support for OrientDB
+        if [ -s "${_sonatype_work:-"."}/db/nexus.mv.db" ]; then
+            if type h2-console_v224 &>/dev/null; then
+                if [ -s "${_sonatype_work:-"."}/db/nexus.mv.db" ] && [ ! -f "${_sonatype_work:-"."}/db/nexus.mv.db.gz" ]; then
+                    echo "No ${_sonatype_work:-"."}/db/nexus.mv.db.gz. Gzip-ing nexus.mv.db file ..."; sleep 3
+                    gzip -k "$(readlink -f "${_sonatype_work:-"."}/db/nexus.mv.db")" || return $?
+                else
+                    echo "WARN Not making a backup of database ${_sonatype_work:-"."}/db/nexus.mv.db"; sleep 5;
+                fi
+
+                _console="h2-console_v224 ${_sonatype_work:-"."}/db/nexus.mv.db"
+                echo "*** Updating DB with '${_console}' ***"; sleep 3;
+                _rm3StartSQLs_h2 | eval "${_console}" || return $?
+            fi
+        elif [ -s "${_sonatype_work:-"."}/etc/fabric/nexus-store.properties" ]; then
+            if type psql &>/dev/null; then
+                source "${_sonatype_work:-"."}/etc/fabric/nexus-store.properties"
+                if [[ "${jdbcUrl}" =~ jdbc:postgresql://([^:/]+):?([0-9]*)/([^\?]+) ]]; then
+                    _console="PGPASSWORD=${password} psql -h ${BASH_REMATCH[1]} -p ${BASH_REMATCH[2]} -U ${username} -d ${BASH_REMATCH[3]}"
+                    echo "*** Updating DB with '${_console}' ***"; sleep 3;
+                    _rm3StartSQLs_psql | eval "${_console}" || return $?
+                fi
+            fi
+        fi
+
+        if [ -z "${_console}" ]; then
+            echo "no DB console (h2 or psql)"
+            return 11
+        fi
+    fi
+
     # For java options, latter values are used, so appending
     ulimit -n 65536
     local _cmd="INSTALL4J_ADD_VM_PARAMS=\"-XX:-MaxFDLimit ${INSTALL4J_ADD_VM_PARAMS} ${_java_opts}\" ${_nexus_file} ${_mode}"
@@ -195,6 +233,35 @@ function nxrmStart() {
     eval "${_cmd}"
     # ulimit / Too many open files: https://help.sonatype.com/repomanager3/installation/system-requirements#SystemRequirements-MacOSX
 }
+function _rm3StartSQLs_h2() {
+    # TODO: May need to reset 'admin' user, and also use below query (after modifying for H2/PostgreSQL/OrientDB)
+    cat << 'EOF'
+UPDATE BLOB_STORE_CONFIGURATION SET TYPE = 'File', ATTRIBUTES = ('{"file":{"path":"s3/'||NAME||'"}}') FORMAT JSON where TYPE = 'S3';
+UPDATE CAPABILITY_STORAGE_ITEM SET ENABLED = false WHERE TYPE IN ('firewall.audit', 'clm', 'webhook.repository', 'healthcheck', 'crowd');
+#UPDATE REALM_CONFIGURATION SET REALM_NAMES = '["NexusAuthenticatingRealm", "NexusAuthorizingRealm"]'  FORMAT JSON where ID = 1;
+UPDATE SECURITY_USER SET PASSWORD='$shiro1$SHA-512$1024$NE+wqQq/TmjZMvfI7ENh/g==$V4yPw8T64UQ6GfJfxYq2hLsVrBY8D1v+bktfOxGdt4b/9BthpWPNUy/CBk6V9iA0nHpzYzJFWO8v/tZFtES8CA==' WHERE ID='admin';
+DELETE FROM USER_ROLE_MAPPING WHERE USER_ID = 'admin';
+INSERT INTO USER_ROLE_MAPPING (USER_ID, SOURCE, ROLES) VALUES ('admin', 'default', JSON'["nx-admin"]');
+#DELETE FROM nuget_asset WHERE path = '/index.json';
+TRUNCATE TABLE HTTP_CLIENT_CONFIGURATION;
+INSERT INTO HTTP_CLIENT_CONFIGURATION (ID, PROXY) VALUES (1, '{"http": {"host": "localhost", "port": 28080, "enabled": true, "authentication": null}, "https": null, "nonProxyHosts": "*.sonatype.com"}' FORMAT JSON);
+EOF
+}
+function _rm3StartSQLs_psql() {
+    # TODO: May need to reset 'admin' user, and also use below query (after modifying for H2/PostgreSQL/OrientDB)
+    cat << 'EOF'
+UPDATE blob_store_configuration SET type = 'File', attributes = ('{"file":{"path":"s3/'||name||'"}}')::jsonb where type = 'S3';
+UPDATE capability_storage_item SET enabled = false WHERE type IN ('firewall.audit', 'clm', 'webhook.repository', 'healthcheck', 'crowd');
+#UPDATE realm_configuration SET realm_names = '["NexusAuthenticatingRealm", "NexusAuthorizingRealm"]'::jsonb where id = 1;
+UPDATE security_user SET password='$shiro1$SHA-512$1024$NE+wqQq/TmjZMvfI7ENh/g==$V4yPw8T64UQ6GfJfxYq2hLsVrBY8D1v+bktfOxGdt4b/9BthpWPNUy/CBk6V9iA0nHpzYzJFWO8v/tZFtES8CA==' WHERE id='admin';
+DELETE FROM user_role_mapping WHERE user_id = 'admin';
+INSERT INTO user_role_mapping (user_id, source, roles) VALUES ('admin', 'default', '["nx-admin"]'::jsonb);
+#DELETE FROM nuget_asset WHERE path = '/index.json';
+TRUNCATE TABLE http_client_configuration;
+INSERT INTO http_client_configuration (id, proxy) VALUES (1, '{"http": {"host": "localhost", "port": 28080, "enabled": true, "authentication": null}, "https": null, "nonProxyHosts": "*.sonatype.com"}'::jsonb);
+EOF
+}
+
 
 #_RECREATE_DB
 function setDbConn() {
@@ -446,8 +513,10 @@ $(sed -n "/^  loggers:/,\$p" ${_cfg_file} | grep -v '^  loggers:')" > "${_cfg_fi
         _java_opts="${_java_opts} -Dhttp.proxyHost=non-existing-hostname -Dhttp.proxyPort=8800 -Dhttp.nonProxyHosts=\"*.sonatype.com\""
 
         local _console=""
-        if type h2-console &>/dev/null && [ -s "${_work_dir:-"."}/data/ods.h2.db" ]; then
-            _console="h2-console ${_work_dir:-"."}/data/ods.h2.db"
+        if [ -s "${_work_dir:-"."}/data/ods.h2.db" ]; then
+            if type h2-console &>/dev/null; then
+                _console="h2-console ${_work_dir:-"."}/data/ods.h2.db"
+            fi
         elif type psql &>/dev/null; then
             eval "$(grep "^database:" -A7 "${_cfg_file}" | sed -n -E 's/^ +([^:]+): *(.+)$/\1=\2/p')"
             if [ "${type}" == "postgresql" ]; then
@@ -455,7 +524,7 @@ $(sed -n "/^  loggers:/,\$p" ${_cfg_file} | grep -v '^  loggers:')" > "${_cfg_fi
             fi
         fi
         if [ -z "${_console}" ]; then
-            echo "no '${_console}'"
+            echo "no DB console (h2 or psql)"
             return 11
         fi
 

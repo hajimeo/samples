@@ -856,7 +856,7 @@ function cleanOldDBs() {
         echo "# Executing ${_sql}" >&2
         psql -c "${_sql}" || return $?
     done
-    # To restore
+    # To restore/revert
     #psql --csv -t -l | rg -i "^to_be_deleted_([^,]+)" -o -r '$1' | xargs -I{} -t psql -c "ALTER DATABASE to_be_deleted_{} RENAME TO {}"
 
     # Blow is bad because extracted files may have old dates
@@ -865,6 +865,7 @@ function cleanOldDBs() {
     echo "# DELETE statements for Not updated databases and above databases:" >&2
     psql -d template1 -tAc "SELECT 'DROP DATABASE '||datname||';    -- '||pg_database_size(datname)||' bytes' FROM pg_stat_database WHERE datname NOT IN ('', 'template0', 'template1', 'postgres', CURRENT_USER) AND stats_reset < (now() - interval '60 days') ORDER BY stats_reset"
     psql -d template1 -tAc "SELECT 'DROP DATABASE '||datname||';    -- '||pg_database_size(datname)||' bytes' FROM pg_stat_database WHERE datname ilike 'to_be_deleted_%' ORDER BY datname"
+    #psql -tAc "SELECT datname FROM pg_database WHERE datname LIKE 'to_be_deleted_%'" | while read -r _db; do psql -d template1 -c "DROP DATABASE ${_db}" || break; done
 }
 
 function listLargeDirs() {
