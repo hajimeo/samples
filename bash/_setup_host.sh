@@ -1839,68 +1839,75 @@ function f_kvm() {
 
 function f_postfix() {
     local __doc__="Install SMTP package (postfix) and configure."
-    # @see: https://help.ubuntu.com/community/Postfix
-    local _redirect_mail="${1}" # useful for SMTP testing
-    local _relay_host="${2}"
-    local _conf_file="/etc/postfix/main.cf"
+    # @see: https://help.ubuntu.com/community/Postfix https://ubuntu.com/server/docs/install-and-configure-postfix
+    local _relay_host="${1}"    # usually this is mandatory to send to outside
+    local _my_hostname="${2}"
+    local _redirect_mail="${3}" # useful for testing by capturing emails
+    #local _conf_file="/etc/postfix/main.cf"
 
     DEBIAN_FRONTEND=noninteractive apt-get -y install postfix mailutils || return $?
 
     touch /etc/postfix/generic || return $?
-    _upsert "${_conf_file}" "smtp_generic_maps" "hash:/etc/postfix/generic"
+    postconf -e "smtp_generic_maps = hash:/etc/postfix/generic"
+
+    postconf -e 'inet_protocols = ipv4'
+
+    # Below (smtpd_tls_wrappermode) seems to enable TLS always
+    #postconf -e 'smtpd_tls_wrappermode = yes'
+    postconf -e 'smtp_tls_security_level = may'
+    postconf -e 'smtpd_tls_security_level = may'
+    postconf -e 'smtpd_tls_auth_only = no'
+    postconf -e 'smtp_tls_note_starttls_offer = yes'
+    postconf -e 'smtpd_sasl_auth_enable = yes'
+    # Ubuntu's postfix uses /etc/ssl/private/ssl-cert-snakeoil.key so actually don't need below
+    #if [ -s /var/tmp/share/cert/standalone.localdomain.key ]; then
+    #    postconf -e "smtpd_tls_cert_file = /var/tmp/share/cert/standalone.localdomain.crt"
+    #    postconf -e "smtpd_tls_key_file = /var/tmp/share/cert/standalone.localdomain.key"
+        #postconf -e 'smtpd_tls_CAfile = /etc/ssl/certs/cacert.pem'
+    #fi
+    postconf -e 'smtpd_tls_loglevel = 1'
+    postconf -e 'smtpd_tls_received_header = yes'
+    postconf -e 'smtpd_tls_session_cache_timeout = 3600s'
+    postconf -e 'tls_random_source = dev:/dev/urandom'
+
     if [ -n "${_relay_host}" ]; then
-        _upsert "${_conf_file}" "relayhost" "${_relay_host}"
+        postconf -e "relayhost = ${_relay_host}"
     fi
+
+    if [ -n "${_my_hostname}" ]; then
+        postconf -e "myhostname = ${_my_hostname}"
+    fi
+    postconf -e 'smtpd_relay_restrictions = permit_mynetworks permit_sasl_authenticated defer_unauth_destination'
+
     if [ -n "${_redirect_mail}" ]; then
         if grep -qw "${_redirect_mail}" /etc/postfix/recipient_canonical_map; then
             _warn "${_redirect_mail} exists in /etc/postfix/recipient_canonical_map, so not setting up the redirection."
             sleep 3
         else
             echo "/./ ${_redirect_mail}" >>/etc/postfix/recipient_canonical_map || return $?
-            #postconf -e 'inet_protocols = ipv4'
             #postconf -e 'recipient_canonical_classes = envelope_recipient'
             #postconf -e 'recipient_canonical_maps = regexp:/etc/postfix/recipient_canonical_map'
-
-            # Below seems to enable TLS always
-            #postconf -e 'smtpd_tls_wrappermode = yes'
-
-            postconf -e 'smtp_tls_security_level = may'
-            postconf -e 'smtpd_tls_security_level = may'
-            postconf -e 'smtpd_tls_auth_only = no'
-            postconf -e 'smtp_tls_note_starttls_offer = yes'
-
-            postconf -e 'smtpd_sasl_auth_enable = yes'
-            # Ubuntu's postfix uses /etc/ssl/private/ssl-cert-snakeoil.key so actually don't need below
-            #if [ -s /var/tmp/share/cert/standalone.localdomain.key ]; then
-            #    postconf -e "smtpd_tls_cert_file = /var/tmp/share/cert/standalone.localdomain.crt"
-            #    postconf -e "smtpd_tls_key_file = /var/tmp/share/cert/standalone.localdomain.key"
-                #postconf -e 'smtpd_tls_CAfile = /etc/ssl/certs/cacert.pem'
-            #fi
-            postconf -e 'smtpd_tls_loglevel = 1'
-            postconf -e 'smtpd_tls_received_header = yes'
-            postconf -e 'smtpd_tls_session_cache_timeout = 3600s'
-            postconf -e 'tls_random_source = dev:/dev/urandom'
-            #postconf -e 'myhostname = server1.example.com' # remember to change this to yours
-            postconf -e 'smtpd_relay_restrictions = permit_mynetworks permit_sasl_authenticated defer_unauth_destination'
-
-            _info "openssl s_client -connect localhost:25 -starttls smtp" # -debug
-            echo -n | openssl s_client -connect localhost:25 -starttls smtp
-            # To connect with starttls, like telnet:
-            #openssl s_client -connect localhost:25 -starttls smtp -crlf
-            #ehlo localhost
-            #mail from:sender@domain.com
-            #rcpt to:recipient@remotedomain.com
-            #data   # hit enter then type something and '.' enter, Ctrl+D to exit.
         fi
     fi
 
     postmap /etc/postfix/generic || return $?
     service postfix restart || return $?
     _info "For 'Relay access denied', may need to modify 'mynetworks'"
-    # -n for non default, -d for default
+    # To test starttls
+    #echo -n | openssl s_client -connect localhost:25 -starttls smtp # -debug
+    # To connect with starttls, like telnet:
+    #openssl s_client -connect localhost:25 -starttls smtp -crlf
+    #ehlo localhost
+    #mail from:mailtest@hajigle.com
+    #rcpt to:recipient@hajigle.com
+    #data   # hit enter then type something and '.' enter, Ctrl+D to exit.
+    # Another test commands to send emails
+    #mail --debug-level=9 -a "FROM:mailtest@h-osa.com" -s "test mail" mailtest@hajigle.com </dev/null
+    #curl -sf -v -k smtp://localhost:25 --mail-from "testemail@hajigle.com" --mail-rcpt "hosako@sonatype.com" -T<(echo "TEST")
+
+    # Check with postconf. -n for non default, -d for default
     #postconf -d | grep mail_version
     #postconf -n | grep smtpd_relay_restrictions
-    #mail --debug-level=9 -a "FROM:test@hajigle.com" -s "test mail" admin@osakos.com </dev/null
 }
 
 function f_mac2ip() {
