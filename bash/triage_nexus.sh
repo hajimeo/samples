@@ -305,7 +305,7 @@ function f_orientdb_checks() {
         IFS=' ' read -r _size _table <<< "${_line}"
         printf "%14s %s\n" $(_size_to_bytes "${_size}") ${_table}
     done | sort -k2 | tee /tmp/f_orientdb_checks.out
-    echo "Total: $(awk '{print $1}' /tmp/f_orientdb_checks.out | paste -sd+ - | bc) bytes / $(cat /tmp/f_orientdb_checks.out | wc -l) indexes (expecting 21 as of 3.61.0)"
+    echo "Total: $(awk '{print $1}' /tmp/f_orientdb_checks.out | paste -sd+ - | bc) bytes / $(cat /tmp/f_orientdb_checks.out | wc -l) indexes (expecting 21 since 3.61.0 and up to 3.70.3)"
     echo ""
     echo "# Estimating table sizes (Bytes) from pcl files ..." # `sed` to get the class/table name
     grep '.pcl$' "${_db}" | awk '{print $'${_size_col:-5}'" "$'${_file_col:-9}'}' | while read -r _line; do
