@@ -113,8 +113,9 @@ _RESP_FILE=""
 
 
 ### Nexus installation functions ##############################################################################
+# To re-install: _RECREATE_ALL=Y f_install_nexus3 "<version>" "<dbname>"
 # To install HA instances (port is automatic): _NEXUS_ENABLE_HA=Y f_install_nexus3 "" "nxrm3740ha"
-# To upgrade (from ${_dirpath}/): tar -xvf $HOME/.nexus_executable_cache/nexus-3.74.0-05-mac.tgz
+# To upgrade (from ${_dirpath}/): tar -xvf $HOME/.nexus_executable_cache/nexus-3.77.0-08-mac.tgz
 function f_install_nexus3() {
     local __doc__="Install specific NXRM3 version (to recreate sonatype-work and DB, _RECREATE_ALL=Y)"
     local _ver="${1:-"${r_NEXUS_VERSION}"}"     # 'latest' or '3.71.0-03-java17'
@@ -2368,10 +2369,13 @@ function f_start_ldap_server() {
         mkdir -v -p "${_install_dir%/}" || return $?
     fi
     local _fname="$(uname | tr '[:upper:]' '[:lower:]')$(uname -m).zip"
+    if [ "$(uname -m)" == "x86_64" ]; then
+        _fname="$(uname | tr '[:upper:]' '[:lower:]')amd64.zip"
+    fi
     if [ ! -s "${_install_dir%/}/glauth" ]; then
         if [ ! -s "${_download_dir%/}/${_fname}" ]; then
             _log "INFO" "Downloading glauth v2.1.0 ..."
-            curl -sSf -o "${_download_dir%/}/${_fname}" -L "https://github.com/glauth/glauth/releases/download/v2.1.0/${_fname}" --compressed || return $?
+            curl -sf -o "${_download_dir%/}/${_fname}" -L "https://github.com/glauth/glauth/releases/download/v2.1.0/${_fname}" --compressed || return $?
         fi
         unzip -d "${_install_dir%/}" "${_download_dir%/}/${_fname}"
         chmod u+x "${_install_dir%/}/glauth" || return $?
@@ -2389,9 +2393,18 @@ function f_start_ldap_server() {
 function f_gen_glauth_groups_config() {
     local __doc__="Generate glauth groups config"
     # @see: https://pkg.go.dev/github.com/gwelch-contegix/glauth/v2/pkg/config
-    local _groups_file="${1}"
-    local _gid_num="${2:-6501}"
+    local _groups="${1}"    # File or space delimited group names
+    local _user_name="${2}"
+    local _gid_num="${3:-6501}"
+    local _uid_num="${4:-5101}"
+    local _group_lines=""
+    if [ -s "${_groups}" ]; then
+        _group_lines="$(cat "${_groups}")"
+    else
+        _group_lines="$(echo "${_groups}" | tr ' ' '\n')"
+    fi
     local __other_groups=""
+    local __gid_num="${_gid_num}"
     while read -r _line; do
         [ -n "${_line}" ] || continue
         cat << EOF
@@ -2402,14 +2415,29 @@ gidnumber = ${_gid_num}
 EOF
 #includegroups = [ ${include_uid} ]    <<< probably for nested group
         if [ -z "${__other_groups}" ]; then
-            __other_groups="${_gid_num}"
+            __other_groups="${__gid_num}"
         else
-            __other_groups="${__other_groups}, ${_gid_num}"
+            __other_groups="${__other_groups}, ${__gid_num}"
         fi
-        _gid_num=$(( _gid_num + 1 ))
-    done <<< "$(cat "${_groups_file}")"
-    _log "INFO" "Generated groups config. Please also add the following to user config"
-    echo "othergroups = [ ${__other_groups} ]"
+        __gid_num=$(( __gid_num + 1 ))
+    done <<< "${_group_lines}"
+    if [ -n "${_user_name}" ]; then
+        local _mail="${_user_name}"
+        [[ "${_user_name}" =~ ^([^@]+)@ ]] && _mail="${BASH_REMATCH[1]}@standalone.localdomain"
+        cat << EOF
+
+[[users]]
+name = "${_user_name}"
+givenname="ldap$$"
+sn="user$$"
+mail = "${_mail}"
+uidnumber = ${_uid_num}
+primarygroup = ${_gid_num}
+othergroups = [ ${__other_groups} ]
+# ldapuser
+passsha256 = "f8a94cd57abda9f0d388a3b279fb3afea239b435b6235ba7b5f195bf2eada67b"
+EOF
+    fi
 }
 function f_setup_ldap_glauth() {
     local __doc__="Setup LDAP for GLAuth server."
