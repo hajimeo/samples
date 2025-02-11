@@ -127,10 +127,19 @@ function nxrmStart() {
     # -Xrunhprof:heap=sites,format=b,file=${_base_dir%/}/heap_sites_$$.hprof
     # only 'root.level' is changeable with _LOG_LEVEL
     # Debugger port for NXRM2 is 5004
-    local _java_opts=${2-"-Xrunjdwp:transport=dt_socket,server=y,address=5005,suspend=${_SUSPEND:-"n"}"}
-    local _mode=${3} # if NXRM2, not 'run' but 'console'
+    local _java_opts="${2}"
+    local _port="${3-"${_NXRM3_INSTALL_PORT}"}"
+    local _mode="${4}" # if NXRM2, not 'run' but 'console'
     #local _java_opts=${@:2}
     _base_dir="$(realpath "${_base_dir}")"
+    local _debug_opts="-Xrunjdwp:transport=dt_socket,server=y,address=5005,suspend=${_SUSPEND:-"n"}"
+    if ! curl -m1 -sIf -k "http://127.0.0.1:5005" &>/dev/null; then
+        if [ -n "${_java_opts}" ]; then
+            _java_opts="${_java_opts} ${_debug_opts}"
+        else
+            _java_opts="${_debug_opts}"
+        fi
+    fi
 
     #_java_opts="${_java_opts} -XX:+PrintGCDetails -XX:+PrintGCDateStamps -XX:+PrintGCCause -XX:+PrintClassHistogramAfterFullGC -XX:+UseGCLogFileRotation -XX:NumberOfGCLogFiles=10 -XX:GCLogFileSize=100M -Xloggc:/tmp/rm-gc_%p_%t.log"
     if [ -n "${_CUSTOM_DNS}" ]; then
@@ -166,7 +175,9 @@ function nxrmStart() {
         if [ ! -d "${_sonatype_work%/}/etc" ]; then
             mkdir -p "${_sonatype_work%/}/etc"
         fi
-        [ -n "${_cfg_file}" ] && _updateNexusProps "${_cfg_file}"
+        if [ -n "${_cfg_file}" ]; then
+            _updateNexusProps "${_cfg_file}" "${_port}" || return $?
+        fi
         [ -z "${_mode}" ] && _mode="run"
         if [ -n "${_jetty_https}" ] && [[ "${_nexus_ver}" =~ nexus-3\.26\.+ ]]; then
             # @see: https://issues.sonatype.org/browse/NEXUS-24867
@@ -228,6 +239,7 @@ function nxrmStart() {
     # For java options, latter values are used, so appending
     ulimit -n 65536
     local _cmd="INSTALL4J_ADD_VM_PARAMS=\"-XX:-MaxFDLimit ${INSTALL4J_ADD_VM_PARAMS} ${_java_opts}\" ${_nexus_file} ${_mode}"
+    # TODO: should update the nexus.rc file with `app_java_home` for Java 17 or Java 11
     _java_home "${_nexus_ver}"
     echo "${_cmd}"; sleep 2
     eval "${_cmd}"
@@ -262,6 +274,57 @@ INSERT INTO http_client_configuration (id, proxy) VALUES (1, '{"http": {"host": 
 EOF
 }
 
+function _updateNexusProps() {
+    local _cfg_file="$1"
+    local _port="$2"
+    local _current_port="$(grep -E '^application-port=' "${_cfg_file}" | awk -F'=' '{print $2}')"
+
+    if [ -s "${_cfg_file}" ] && [ ! -f "${_cfg_file}.orig" ]; then
+        cp -p "${_cfg_file}" "${_cfg_file}.orig"
+    fi
+    touch "${_cfg_file}" || return $?
+    grep -qE '^#?nexus.security.randompassword' "${_cfg_file}" || echo "nexus.security.randompassword=false" >> "${_cfg_file}"
+    grep -qE '^#?nexus.onboarding.enabled' "${_cfg_file}" || echo "nexus.onboarding.enabled=false" >> "${_cfg_file}"
+    grep -qE '^#?nexus.scripts.allowCreation' "${_cfg_file}" || echo "nexus.scripts.allowCreation=true" >> "${_cfg_file}"
+    grep -qE '^#?nexus.browse.component.tree.automaticRebuild' "${_cfg_file}" || echo "nexus.browse.component.tree.automaticRebuild=false" >> "${_cfg_file}"
+    # NOTE: this would not work if elasticsearch directory is empty
+    #       or if upgraded from older than 3.39 due to https://sonatype.atlassian.net/browse/NEXUS-31285
+    grep -qE '^#?nexus.elasticsearch.autoRebuild' "${_cfg_file}" || echo "nexus.elasticsearch.autoRebuild=false" >> "${_cfg_file}"
+    grep -qE '^#?nexus.assetBlobCleanupTask.blobCreatedDelayMinute' "${_cfg_file}" || echo "nexus.assetBlobCleanupTask.blobCreatedDelayMinute=0" >> "${_cfg_file}"
+    grep -qE '^#?nexus.malware.risk.enabled' "${_cfg_file}" || echo "nexus.malware.risk.enabled=false" >> "${_cfg_file}"
+    grep -qE '^#?nexus.malware.risk.on.disk.enabled' "${_cfg_file}" || echo "nexus.malware.risk.on.disk.enabled=false" >> "${_cfg_file}"
+
+    # ${nexus.h2.httpListenerPort:-8082} jdbc:h2:file:./nexus (no username)
+    grep -qE '^#?nexus.h2.httpListenerEnabled' "${_cfg_file}" || echo "nexus.h2.httpListenerEnabled=true" >> "${_cfg_file}"
+    # Binary (or HA-C) for 'connect remote:hostname/component admin admin'
+    grep -qE '^#?nexus.orient.binaryListenerEnabled' "${_cfg_file}" || echo "nexus.orient.binaryListenerEnabled=true" >> "${_cfg_file}"
+    # For OrientDB studio (hostname:2480/studio/index.html) (removed)
+    #grep -qE '^#?nexus.orient.httpListenerEnabled' "${_cfg_file}" || echo "nexus.orient.httpListenerEnabled=true" >> "${_cfg_file}"
+    #grep -qE '^#?nexus.orient.dynamicPlugins' "${_cfg_file}" || echo "nexus.orient.dynamicPlugins=true" >> "${_cfg_file}"
+
+    #change the port automatically if different from _current_port
+    if [ -n "${_port}" ] && [ "${_port}" == "${_current_port}" ]; then
+        return 0
+    fi
+
+    if [ -z "${_port}" ]; then
+        for _p in 8081 8083 8084 8085 8086 8087; do
+            # Mac's netstat is too different, and lsof may not be available
+            if ! curl -m1 -sIf -k "http://127.0.0.1:${_p}" &>/dev/null; then
+                _port="${_p}"
+                break
+            fi
+        done
+    fi
+    if [ -n "${_port}" ] && [ "${_port}" != "8081" ]; then
+        echo "WARN: Updating port to *** '${_port}' *** !!" >&2; sleep 5;
+        sed -i '' -E "s/^application-port=.*/application-port=${_port}/" "${_cfg_file}"
+        if ! grep -qE "^application-port=${_port}" "${_cfg_file}"; then
+            echo "ERROR: Failed to update port to '${_port}'" >&2; sleep 5;
+            return 1
+        fi
+    fi
+}
 
 #_RECREATE_DB
 function setDbConn() {
@@ -364,7 +427,7 @@ function _nexus29730() {
 function nxrm3Install() {
     if [ -s "$HOME/IdeaProjects/samples/bash/setup_nexus3_repos.sh" ]; then
         source "$HOME/IdeaProjects/samples/bash/setup_nexus3_repos.sh" || return $?
-        f_install_nexus3 "$@"
+        _RECREATE_ALL="${_RECREATE_ALL:-"Y"}" f_install_nexus3 "$@"
     fi
 }
 
@@ -475,7 +538,7 @@ function iqStart() {
         if [ ! -s "${_cfg_file}.orig" ]; then
             cp -v -p "${_cfg_file}" "${_cfg_file}.orig"
         fi
-        grep -qE '^hdsUrl:' "${_cfg_file}" || echo -e "hdsUrl: https://clm-staging.sonatype.com/\n$(cat "${_cfg_file}")" > "${_cfg_file}"
+        #grep -qE '^hdsUrl:' "${_cfg_file}" || echo -e "hdsUrl: https://clm-staging.sonatype.com/\n$(cat "${_cfg_file}")" > "${_cfg_file}"
         grep -qE '^enableDefaultPasswordWarning:' "${_cfg_file}" || echo -e "enableDefaultPasswordWarning: false\n$(cat "${_cfg_file}")" > "${_cfg_file}"
         grep -qE '^baseUrl:' "${_cfg_file}" || echo -e "baseUrl: http://$(hostname -f):8070/\n$(cat "${_cfg_file}")" > "${_cfg_file}"
 

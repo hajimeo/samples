@@ -530,18 +530,6 @@ function grep_logs() {
     local _grep_opts="${4:-"-IrsP"}"
     grep ${_grep_opts} "${_search_regex}" $(find_recent "${_log_dir}" "${_log_file_glob}")
 }
-# Extract threads from some stdout log or jvm.log
-#curl -o /usr/local/bin/echolines -L https://github.com/hajimeo/samples/raw/master/misc/echolines_$(uname)_$(uname -m);
-#HTML_REMOVE=Y EXCL_REGEX="^\d\d\d\d-\d\d-\d\dT\d\d:\d\d:\d\d\.\d+" echolines "./sonatype-work/nexus3/log/jvm.log" "^\d\d\d\d-\d\d-\d\d \d\d:\d\d:\d\d$" "(^\s+(class space|Metaspace).+)" > "./threads.txt"
-function threadsFromJvmLog() {
-    local _files="$1"
-    local _save_to="${2:-"./threads.txt"}"
-    local _end_regex="$3"
-    local _from_regex="$4"
-    [ -z "${_from_regex}" ] && _from_regex="^\d\d\d\d-\d\d-\d\d \d\d:\d\d:\d\d$"
-    [ -z "${_end_regex}" ] && _end_regex="(^\s+(class space|Metaspace).+)"  # If not G1GC?
-    HTML_REMOVE=Y EXCL_REGEX="^\d\d\d\d-\d\d-\d\dT\d\d:\d\d:\d\d\.\d+" echolines "${_files}" "${_from_regex}" "${_end_regex}" > "${_save_to}"
-}
 # prettify any strings by checkinbg braces
 function prettify() {
     local _str="$1"

@@ -130,3 +130,6 @@ if [ -f '/Users/hosako/Apps/google-cloud-sdk/completion.bash.inc' ]; then . '/Us
 
 # Github Copilot CLI
 eval "$(gh copilot alias -- bash)"
+
+# rust / cargo installation added the below
+. "$HOME/.cargo/env"
