@@ -87,7 +87,7 @@ Just get the repositories setting:
 : ${_ADMIN_PWD:="admin123"}
 : ${_DOMAIN:=".standalone.localdomain"}
 : ${_NEXUS_URL:="http://localhost:8081/"}   # or https://local.standalone.localdomain:8443/ for docker
-: ${_NEXUS_DOCKER_HOSTNAME:="local${_DOMAIN}"}
+: ${_NEXUS_DOCKER_HOSTNAME:="local.${_DOMAIN#.}"}
 : ${_IQ_URL:="http://localhost:8070/"}
 : ${_IQ_CLI_VER-"latest"}                   # If "" (empty), not download CLI jar
 : ${_DOCKER_NETWORK_NAME:="nexus"}
@@ -494,6 +494,56 @@ function f_setup_nuget() {
     fi
     # add some data for xxxx-group
     _ASYNC_CURL="Y" f_get_asset "${_prefix}-v3-group" "/v3/content/nlog/3.1.0/nlog.3.1.0.nupkg"  # this one may fail on some Nexus version
+}
+
+function f_test_nuget_with_dotnet_restore() {
+    local __doc__="Test downloading against Nuget repositories with dotnet restore"
+    local _nuget_url="${1:-"https://api.nuget.org/v3/index.json"}"
+    local _work_dir="${2:-"${_TMP%/}/dotnet"}"
+    local _project_name="${3:-"MyTestProject"}"
+    local _not_clear_all="${4}"
+    if ! type dotnet &>/dev/null; then
+        _log "WARN" "dotnet is not installed. Please install it."
+        return 1
+    fi
+
+    if [ ! -d "${_work_dir}" ]; then
+        mkdir -p "${_work_dir}" || return $?
+    fi
+    if [ ! -f "${_work_dir%/}/${_project_name%/}${_project_name}.csproj" ]; then
+        dotnet new console -o "${_work_dir%/}/${_project_name}" || return $?
+    fi
+    cat << EOF > "${_work_dir%/}/${_project_name%/}${_project_name}.csproj"
+<Project Sdk="Microsoft.NET.Sdk.Web">
+  <PropertyGroup>
+    <TargetFramework>net7.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="Swashbuckle.AspNetCore" Version="7.2.0" />
+  </ItemGroup>
+</Project>
+EOF
+    local _configfile=""
+    if [ -n "${_nuget_url}" ]; then
+        local _v="2"
+        [[ "${_nuget_url}" =~ /index.json ]] && _v="3"
+        cat << EOF > "${_work_dir%/}/${_project_name%/}nuget.config"
+<?xml version="1.0" encoding="utf-8"?>
+<configuration>
+  <packageSources>
+    <add key="nuget_test" value="${_nuget_url}" protocolVersion="${_v}" />
+    </packageSources>
+</configuration>
+EOF
+       _configfile="--configfile \"${_work_dir%/}/${_project_name%/}nuget.config\""
+    fi
+    if [[ ! "${_not_clear_all}" =~ ^[Yy] ]]; then
+        dotnet nuget locals --clear all
+    fi
+    eval "dotnet restore --no-cache ${_configfile} \"${_work_dir%/}/${_project_name%/}${_project_name}.csproj\""
+    # TODO: Unable to load the service index for source http://localhost:8081/repository/nuget.org/index.json
 }
 
 #_NEXUS_URL=http://node3281.standalone.localdomain:8081/ f_setup_docker
@@ -1174,6 +1224,27 @@ function f_setup_gitlfs() {
     if ! _is_repo_available "${_prefix}-hosted"; then
         _apiS '{"action":"coreui_Repository","method":"create","data":[{"attributes":{"storage":{"blobStoreName":"'${_bs_name}'","strictContentTypeValidation":true'${_extra_sto_opt}',"writePolicy":"ALLOW"},"cleanup":{"policyName":[]}},"name":"'${_prefix}'-hosted","format":"","type":"","url":"","online":true,"recipe":"gitlfs-hosted"}],"type":"rpc"}' || return $?
     fi
+}
+
+function f_setup_cargo() {
+    local __doc__="Create Cargo Proxy/Hosted/Group repositories (v3.73+)"
+    local _prefix="${1:-"cargo"}"
+    local _bs_name="${2:-"${r_BLOBSTORE_NAME:-"${_BLOBTORE_NAME}"}"}"
+    local _ds_name="${3:-"${r_DATASTORE_NAME:-"${_DATASTORE_NAME}"}"}"
+    local _extra_sto_opt=""
+    [ -z "${_bs_name}" ] && _bs_name="$(_get_blobstore_name)"
+    [ -z "${_ds_name}" ] && _ds_name="$(_get_datastore_name)"
+    [ -n "${_ds_name}" ] && _extra_sto_opt=',"dataStoreName":"'${_ds_name}'"'
+    if ! _is_repo_available "${_prefix}-proxy"; then
+        _apiS '{"action":"coreui_Repository","method":"create","data":[{"attributes":{"proxy":{"remoteUrl":"https://index.crates.io/","contentMaxAge":1440,"metadataMaxAge":1440},"replication":{"preemptivePullEnabled":false},"httpclient":{"blocked":false,"autoBlock":true,"connection":{"useTrustStore":false}},"storage":{"blobStoreName":"'${_bs_name}'","strictContentTypeValidation":true'${_extra_sto_opt}'},"negativeCache":{"enabled":true,"timeToLive":1440},"cleanup":{"policyName":[]}},"name":"'${_prefix}'-proxy","format":"","type":"","url":"","online":true,"routingRuleId":"","authEnabled":false,"httpRequestSettings":false,"recipe":"cargo-proxy"}],"type":"rpc"}' || return $?
+    fi
+    if ! _is_repo_available "${_prefix}-hosted"; then
+        _apiS '{"action":"coreui_Repository","method":"create","data":[{"attributes":{"storage":{"blobStoreName":"'${_bs_name}'","strictContentTypeValidation":true'${_extra_sto_opt}',"writePolicy":"ALLOW_ONCE"},"component":{"proprietaryComponents":false},"cleanup":{"policyName":[]}},"name":"'${_prefix}'-hosted","format":"","type":"","url":"","online":true,"recipe":"cargo-hosted"}],"type":"rpc"}' || return $?
+    fi
+    if ! _is_repo_available "${_prefix}-group"; then
+        _apiS '{"action":"coreui_Repository","method":"create","data":[{"attributes":{"storage":{"blobStoreName":"'${_bs_name}'","strictContentTypeValidation":true'${_extra_sto_opt}'},"group":{"memberNames":["'${_prefix}'-hosted","'${_prefix}'-proxy"]}},"name":"'${_prefix}'-group","format":"","type":"","url":"","online":true,"recipe":"cargo-group"}],"type":"rpc"}' || return $?
+    fi
+    echo "To test (me): curl -sSf -D- -o/dev/null -H \"Authorization: Basic <B64encoded_UserToken>\" ${_NEXUS_URL%/}/repository/${_prefix}-group/me"
 }
 
 #curl -D- -sSf -u 'admin:admin123' "http://localhost:8081/service/rest/v1/repositories/raw/hosted" -H "Content-Type: application/json" -d '{"name":"raw-hosted","online":true,"storage":{"blobStoreName":"default","strictContentTypeValidation":false,"writePolicy":"ALLOW"}}'
@@ -2364,6 +2435,7 @@ function f_setup_smtp_mailhog() {
 function f_start_ldap_server() {
     local __doc__="Install and start a dummy LDAP server with glauth"
     local _install_dir="${1:-"${_SHARE_DIR%/}/glauth"}"
+    local _port="${2:-389}"
     local _download_dir="/tmp"
     if [ ! -d "${_install_dir%/}" ]; then
         mkdir -v -p "${_install_dir%/}" || return $?
@@ -2377,7 +2449,13 @@ function f_start_ldap_server() {
             _log "INFO" "Downloading glauth v2.1.0 ..."
             curl -sf -o "${_download_dir%/}/${_fname}" -L "https://github.com/glauth/glauth/releases/download/v2.1.0/${_fname}" --compressed || return $?
         fi
-        unzip -d "${_install_dir%/}" "${_download_dir%/}/${_fname}"
+        if type unzip &>/dev/null; then
+            unzip -d "${_install_dir%/}" "${_download_dir%/}/${_fname}" || return $?
+        elif type tar &>/dev/null; then
+            tar -xzf "${_download_dir%/}/${_fname}" -C "${_install_dir%/}" || return $?
+        else
+            jar -xvf "${_download_dir%/}/${_fname}" -C "${_install_dir%/}" || return $?
+        fi
         chmod u+x "${_install_dir%/}/glauth" || return $?
     else
         _log "INFO" "glauth already exists. Skipping download v2.1.0 / unzip ..."
@@ -2513,22 +2591,6 @@ sources:
         repositoryName: ${_tgt_repo}
         connectionName: ${_src_repo}_to_${_tgt_repo}
 EOF
-}
-
-function f_register_script() {
-    local __doc__="Register a groovy script"
-    local _script_file="$1"
-    local _script_name="$2"
-    [ -s "${_script_file%/}" ] || return 1
-    [ -z "${_script_name}" ] && _script_name="$(basename ${_script_file} .groovy)"
-    local _script_text="$(cat ${_script_file} | JSON_ESCAPE=Y _sortjson)"
-    #python -c "import sys,json;print(json.dumps(open('${_script_file}').read()))" > ${_TMP%/}/${_script_name}_$$.out || return $?
-    echo "{\"name\":\"${_script_name}\",\"content\":${_script_text},\"type\":\"groovy\"}" > ${_TMP%/}/${_script_name}_$$.json
-    _log "INFO" "Delete ${_script_name} if exists (may return error if not exist)"
-    f_api "/service/rest/v1/script/${_script_name}" "" "DELETE"
-    f_api "/service/rest/v1/script" "$(cat ${_TMP%/}/${_script_name}_$$.json)" || return $?
-    echo "To run:
-    curl -u admin -X POST -H 'Content-Type: application/json' '${_NEXUS_URL%/}/service/rest/v1/script/${_script_name}/run' -d'{arg:value}'"
 }
 
 function f_upload_dummies_raw() {
@@ -3216,11 +3278,11 @@ function f_delete_all_assets() {
 }
 
 # 1. Create a new raw-test-hosted repo from Web UI (or API)
+#   f_api "/service/rest/v1/repositories/raw/hosted" '{"name":"raw-hosted","online":true,"storage":{"blobStoreName":"default","strictContentTypeValidation":false,"writePolicy":"ALLOW"}}'
 #   f_api "/service/rest/v1/repositories/raw/hosted" '{"name":"raw-test-hosted","online":true,"storage":{"blobStoreName":"default","strictContentTypeValidation":false,"writePolicy":"ALLOW"}}'
-# 2. curl -D- -u "admin:admin123" -T<(echo "test for f_staging_move") -L -k "${_NEXUS_URL%/}/repository/raw-test-hosted/test/nxrm3Staging.txt"
+# 2. curl -D- -u "admin:admin123" -T<(echo "test for f_staging_move") -L -k "${_NEXUS_URL%/}/repository/raw-hosted/test/nxrm3Staging.txt"
 # 3. f_staging_move "raw-test-hosted" "raw-test-tag" "repository=raw-hosted&name=*test/nxrm3Staging*.txt"
-#    ^ Tag is optional. Using "*" in name= as name|path in NewDB starts with "/"
-#   If just associate: (TODO) f_associate_tag "repository=raw-test-hosted&name=*test/nxrm3Staging*.txt" "raw-test-tag"
+#    NOTE: Tag is optional. Using "*" in 'name=' as name|path in NewDB starts with "/"
 # 4. f_staging_move "raw-hosted" "raw-test-tag" "repository=raw-test-hosted&name=*test/nxrm3Staging*.txt"
 # With maven2:
 #   export _NEXUS_URL="https://nxrm3ha-k8s.standalone.localdomain/"
@@ -3249,6 +3311,7 @@ function f_staging_move() {
     fi
     # Move!
     if [ -n "${_tag}" ]; then
+        # TODO: no 'wait' for staging/move?
         echo "# /service/rest/v1/staging/move/${_move_to_repo}?tag=${_tag}"
         f_api "/service/rest/v1/staging/move/${_move_to_repo}?tag=${_tag}" "" "POST" || return $?
     elif [ -n "${_search}" ]; then
@@ -3272,7 +3335,7 @@ function f_associate_tag() {
     # Ignoring if tag creation fails
     echo "# /service/rest/v1/tags -d '{\"name\":\"${_tag}\"}'"
     f_api "/service/rest/v1/tags" "{\"name\":\"${_tag}\"}"
-    echo "# /service/rest/v1/tags/associate/${_tag}?${_search}" # 'wait=true' for Elasticsearch to wait for calm down
+    echo "# /service/rest/v1/tags/associate/${_tag}?${_search}" # 'wait' (default is true) for Elasticsearch to wait for calm down
     f_api "/service/rest/v1/tags/associate/${_tag}?${_search}" "" "POST" || return $?
     sleep 3 # Just in case waiting for elastic search
     echo "To confirm:"
@@ -3319,7 +3382,43 @@ function f_test_download() {
     curl -sSf -w 'Status: %{http_code}, Elapsed: %{time_total}s\n' -u "${_usr}:${_pwd}" -k "${_NEXUS_URL%/}/repository/${_repo}/test/test_100MB.data" -o/dev/null
 }
 
-# K8s related but not in use yet | any more
+function f_register_script() {
+    local __doc__="Register a groovy script"
+    local _script_file="$1"
+    local _script_name="$2"
+    [ -s "${_script_file%/}" ] || return 1
+    [ -z "${_script_name}" ] && _script_name="$(basename ${_script_file} .groovy)"
+    local _script_text="$(cat ${_script_file} | JSON_ESCAPE=Y _sortjson)"
+    #python -c "import sys,json;print(json.dumps(open('${_script_file}').read()))" > ${_TMP%/}/${_script_name}_$$.out || return $?
+    echo "{\"name\":\"${_script_name}\",\"content\":${_script_text},\"type\":\"groovy\"}" > ${_TMP%/}/${_script_name}_$$.json
+    _log "INFO" "Delete ${_script_name} if exists (may return error if not exist)"
+    f_api "/service/rest/v1/script/${_script_name}" "" "DELETE"
+    f_api "/service/rest/v1/script" "$(cat ${_TMP%/}/${_script_name}_$$.json)" || return $?
+    echo "To run:
+    curl -u admin -X POST -H 'Content-Type: application/json' '${_NEXUS_URL%/}/service/rest/v1/script/${_script_name}/run' -d'{arg:value}'"
+}
+
+#_installDir="/opt/sonatype/nexus"
+#java -jar ${_installDir%/}/system/org/codehaus/groovy/groovy/3.0.19/groovy-3.0.19.jar -e 'println java.security.SecureRandom.getInstance("SHA1PRNG").algorithm'
+function f_run_groovy() {
+    local __doc__="Run groovy command (not via Nexus)"
+    local _script="${1}"
+    local _installDir="${2}"
+    local _groovy_jar="${_installDir%/}/system/org/codehaus/groovy/groovy-all/2.4.17/groovy-all-2.4.17.jar"
+    if [ ! -s "${_groovy_jar}" ]; then
+        _groovy_jar="$(find "${_installDir%/}/system/org/codehaus/groovy/groovy" -type f -name 'groovy-3.*.jar' 2>/dev/null | head -n1)"
+    fi
+    local _java="java"
+    if [ -n "${JAVA_HOME}" ]; then
+        _java="${JAVA_HOME%/}/bin/java"
+    fi
+    local _groovy_classpath="$(find ${_installDir%/}/system -type f -name '*.jar' | tr '\n' ':')"
+    ${_java:-"java"} -classpath ${_groovy_jar} org.codehaus.groovy.tools.GroovyStarter --main groovy.ui.GroovyMain --classpath "${_groovy_classpath%:}:." -e "${_script}" || return $?
+}
+
+
+
+### K8s related but not in use yet | any more
 function _pod_ready_waiter() {
     local _instance="${1}"
     local _namespace="${2:-"sonatype"}"
@@ -3356,6 +3455,9 @@ function _update_name_resolution() {    # no longer in use but leaving as an exa
     fi
 }
 
+
+
+### Database related
 function _export_postgres_config() {
     local _db_props_file="${1}"
     # TODO: if no nexus-store.properties, check "cat /proc/${_pid}/environ | tr '\0' '\n'"
@@ -3415,17 +3517,6 @@ function f_restore_postgresql_component() {
     grep -w ERROR ./psql_restore.log | grep -v "cannot drop constraint"
 }
 
-function f_set_log_level() {
-    local __doc__="Set / Change some logger's log level"
-    local _log_class="${1}"
-    local _log_level="${2:-"DEBUG"}"
-    if [ -z "${_log_class}" ]; then
-        _log "ERROR" "No logger class name is given."
-        return 1
-    fi
-    f_api "/service/rest/internal/ui/loggingConfiguration/${_log_class}" "{\"name\":\"${_log_class}\",\"level\":\"${_log_level}\"}" "PUT"
-}
-
 #f_query_postgresql ./sonatype-work/nexus3 "SELECT blob_ref FROM %TABLE%" "%_asset_blob"
 function f_query_postgresql() {
     local __doc__="Query against all assets or components"
@@ -3439,6 +3530,28 @@ function f_query_postgresql() {
         echo "# ${_q}" >&2
         PGGSSENCMODE=disable psql -h ${_DBHOST} -p ${_DBPORT:-"5432"} -U ${_DBUSER} -d ${_DBNAME} ${_psql_opts} -c "${_q}"
     done
+}
+
+
+
+### Misc.
+# f_set_log_level "root"
+function f_set_log_level() {
+    local __doc__="Set / Change some logger's log level"
+    # NOTE: if incorrect class name is used, may need to edit sonatype-work/nexus3/etc/logback/logback-overrides.xml
+    local _log_class="${1}"
+    local _log_level="${2:-"DEBUG"}"
+    if [ -z "${_log_class}" ]; then
+        _log "ERROR" "No logger class name is given."
+        return 1
+    fi
+    if [ "${_log_class}" == "root" ]; then
+        _log_class="ROOT"
+    elif [ "${_log_class}" == "RESET" ] || [ "${_log_class}" == "reset" ]; then
+        f_api "/service/rest/internal/ui/loggingConfiguration/reset" "" "POST"
+        return $?
+    fi
+    f_api "/service/rest/internal/ui/loggingConfiguration/${_log_class}" "{\"name\":\"${_log_class}\",\"level\":\"${_log_level}\"}" "PUT"
 }
 
 function f_setup_service() {

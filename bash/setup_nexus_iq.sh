@@ -142,23 +142,14 @@ function f_install_iq() {
         cp -p "${_cfg_file}" "${_cfg_file}.orig"
     fi
     # TODO: From v138, most of configs need to use API: https://help.sonatype.com/iqserver/automating/rest-apis/configuration-rest-api---v2
-    grep -qE '^hdsUrl:' "${_cfg_file}" || echo -e "hdsUrl: https://clm-staging.sonatype.com/\n$(cat "${_cfg_file}")" >"${_cfg_file}"
+    #grep -qE '^hdsUrl:' "${_cfg_file}" || echo -e "hdsUrl: https://clm-staging.sonatype.com/\n$(cat "${_cfg_file}")" >"${_cfg_file}"
     grep -qE '^licenseFile' "${_cfg_file}" || echo -e "licenseFile: ${_license_path%/}\n$(cat "${_cfg_file}")" >"${_cfg_file}"
     grep -qE '^\s*port: 8070' "${_cfg_file}" && sed -i.tmp 's/port: 8070/port: '${_port}'/g' "${_cfg_file}"
     grep -qE '^\s*port: 8071' "${_cfg_file}" && sed -i.tmp 's/port: 8071/port: '$((${_port} + 1))'/g' "${_cfg_file}"
 
     if [ -n "${_dbname}" ]; then
         # NOTE: currently assuming "database:" is the end of file
-        cat <<EOF >${_cfg_file}
-$(sed -n '/^database:/q;p' ${_cfg_file})
-database:
-  type: postgresql
-  hostname: $(hostname -f)
-  port: 5432
-  name: ${_dbname}
-  username: ${_dbusr}
-  password: ${_dbpwd}
-EOF
+        _update_db_config "${_cfg_file}" "${_dbname}" "${_dbusr}" "${_dbpwd}" "5432" "${_dirpath%/}" || return $?
         _log "INFO" "Creating database with \"${_dbusr}\" \"********\" \"${_dbname}\" in localhost:5432"
         if ! _RECREATE_DB=${_RECREATE_DB} _postgresql_create_dbuser "${_dbusr}" "${_dbpwd}" "${_dbname}"; then
             _log "WARN" "Failed to create ${_dbusr} or ${_dbname}"
@@ -181,6 +172,27 @@ EOF
             fi
         fi
     fi
+}
+function _update_db_config() {
+    local _cfg_file="${1}"
+    local _dbname="${2}"
+    local _dbusr="${3:-"nexus"}"
+    local _dbpwd="${4:-"${_dbusr}123"}"
+    local _dpport="${5:-"5432"}"
+    local _dirpath="${6:-"."}"
+    [ -z "${_cfg_file}" ] && _cfg_file="$(find ${_dirpath%/} -maxdepth 2 -type f -name 'config.yml' 2>/dev/null | sort | tail -n1)"
+    [ -z "${_cfg_file}" ] && return 12
+
+    cat << EOF >"${_cfg_file}"
+$(sed -n '/^database:/q;p' ${_cfg_file})
+database:
+  type: postgresql
+  hostname: $(hostname -f)
+  port: ${_dpport}
+  name: ${_dbname}
+  username: ${_dbusr}
+  password: ${_dbpwd}
+EOF
 }
 
 ### API related
@@ -355,6 +367,7 @@ function f_config_update() {
     #f_api_config "" "/features/internalFirewallOnboardingEnabled" "POST"  # to enable
     f_api_config "" "/features/internalFirewallOnboardingEnabled" "DELETE" &>/dev/null # this one can return 400
     #curl -u "admin:admin123" "${_IQ_URL%/}/api/v2/config/features/internalFirewallOnboardingEnabled" -X DELETE #POST
+    #curl -u "admin:admin123" "${_IQ_URL%/}/api/v2/config/features/defaultBranchMonitoring" -X DELETE #POST
 }
 
 function f_add_testuser() {

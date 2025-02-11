@@ -905,8 +905,8 @@ function f_count_lines() {
     fi
 }
 
-#f_hexTids_from_topH "top_netstat/top_0*"
-function f_hexTids_from_topH() {
+#f_check_topH "top_netstat/top_0*"
+function f_check_topH() {
     # grep top output and return PID (currently over 90% CUP one) for the user, then use printf to convert to hex
     local _file="${1}"  # file path or glob for rg
     local _user="${2:-"\\S+"}" # [^ ]+
@@ -1060,6 +1060,23 @@ function f_splitNetstats() {
         fi
     done
 }
+# Extract threads from some stdout log or jvm.log
+#curl -o /usr/local/bin/echolines -L https://github.com/hajimeo/samples/raw/master/misc/echolines_$(uname)_$(uname -m);
+#HTML_REMOVE=Y EXCL_REGEX="^\d\d\d\d-\d\d-\d\dT\d\d:\d\d:\d\d\.\d+" echolines "./sonatype-work/nexus3/log/jvm.log" "^\d\d\d\d-\d\d-\d\d \d\d:\d\d:\d\d$" "(^\s+(class space|Metaspace).+)" > "./threads.txt"
+function f_jvmlog2threads() {
+    local _files="${1:-"./jvm.log"}"
+    local _save_to="${2:-"./thread_dumps"}"
+    local _end_regex="$3"
+    local _from_regex="$4"
+    [ -z "${_from_regex}" ] && _from_regex="^\d\d\d\d-\d\d-\d\d \d\d:\d\d:\d\d$"
+    [ -z "${_end_regex}" ] && _end_regex="(^\s+class space.+|^\s+Metaspace\s+.+)"
+    if [ "$(ls -A "${_save_to}" 2>/dev/null)" ]; then
+        echo "${_save_to} is not empty"
+        return 1
+    fi
+    HTML_REMOVE=Y EXCL_REGEX="^\d\d\d\d-\d\d-\d\dT\d\d:\d\d:\d\d\.\d+" echolines "${_files}" "${_from_regex}" "${_end_regex}" "${_save_to}" || return $?
+    echo "_THREAD_FILE_GLOB=\"0*.out\" f_threads \"${_save_to}\""
+}
 
 function f_wrapper2threads() {
     local __doc__="Concatenate multiple wrapper.log in correct order and generate threads.txt (if 'echolines' is available)"
@@ -1113,20 +1130,10 @@ function f_splitScriptLog() {
         [ -s ./threads.txt ] && f_threads ./threads.txt
         if [ -s ./tops_netstats.txt ]; then
             f_splitTopNetstat ./tops_netstats.txt >/dev/null
-            f_hexTids_from_topH ./tops_netstats.txt
+            f_check_topH ./tops_netstats.txt
             f_check_netstat ./tops_netstats.txt
         fi
     fi
-}
-
-function f_jvm2threads() {
-    local _jvm_log="$1"
-    local _export_to="${2:-"./threads"}"
-    if [ "$(ls -A "${_export_to}" 2>/dev/null)" ]; then
-        echo "${_export_to} is not empty"
-        return 1
-    fi
-    HTML_REMOVE=Y echolines "${_jvm_log}" "^\d\d\d\d-\d\d-\d\d \d\d:\d\d:\d\d$" "(^\s+class space.+|^\s+Metaspace\s+.+)" "${_export_to}"
 }
 
 #f_splitByRegex threads.txt "^${_DATE_FORMAT}.+"
@@ -1375,7 +1382,7 @@ function f_analyse_multiple_dumps() {
 
     echo "### May also want to use:
      f_splitTopNetstat \"./tops_netstats.txt\"
-     f_hexTids_from_topH \"top_netstat/top_0*\"
+     f_check_topH \"top_netstat/top_0*\"
      f_check_netstat \"top_netstat/netstat_0*\""
     echo " "
 }
