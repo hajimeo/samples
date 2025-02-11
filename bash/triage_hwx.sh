@@ -97,7 +97,8 @@ function f_check_system() {
     mount &> ${_work_dir%/}/mount_df.out    # findmnt -T /path for specific location's mount options (util-linux)
     df -Th &> ${_work_dir%/}/mount_df.out
     grep -wE "(nfs|nfs4)" /proc/mounts > ${_work_dir%/}/mounts_nfs.out # to check NFS version (eg. nconnect for concurrency)
-    #echo sunrpc > /etc/modules-load.d/sunrpc.conf   But this should be dynamically adjusted
+    mountstats &> ${_work_dir%/}/mountstats.out
+    #echo sunrpc > /etc/modules-load.d/sunrpc.conf   But this should be dynamically adjusted, so only for old kernels
     sysctl sunrpc.tcp_max_slot_table_entries sunrpc.tcp_slot_table_entries >> ${_work_dir%/}/mounts_nfs.out
     vmstat 1 3 &> ${_work_dir%/}/vmstat.out &
     iostat -x -p -t 1 3 2>/dev/null || vmstat -d 1 3 &> ${_work_dir%/}/iostat.out &
