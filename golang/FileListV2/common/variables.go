@@ -49,9 +49,9 @@ var BlobIDFIle = ""
 var BlobIDFIleType = ""
 var RemoveDeleted bool
 var WriteIntoStr = ""
-var Query = "" // Not in use yet
-var RxSelect = regexp.MustCompile("(?i)^SELECT [^;]+;?$")
-var RxAnd = regexp.MustCompile("(?i)^ *AND ")
+var Query = ""
+var RxSelect = regexp.MustCompile(`(?i)^ *SELECT .*(?:\A|\z|\s)blob_id(?:\A|\z|\s)[^;]+;?$`)
+var RxAnd = regexp.MustCompile(`(?i)^ *AND `)
 var Container = "" // Azure: Container name, S3: Bucket name
 var Prefix = ""
 

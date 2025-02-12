@@ -57,7 +57,7 @@ func setGlobals() {
 	flag.StringVar(&common.DbConnStr, "db", "", "DB connection string or path to DB connection properties file")
 	flag.StringVar(&common.BlobIDFIle, "rF", "", "file path to read the blob IDs")
 	flag.StringVar(&common.BsName, "bsName", "", "eg. 'default'. If provided, the SQL query will be faster")
-	flag.StringVar(&common.Query, "query", "", "SQL statement (SELECT query only) to filter the data from the DB")
+	flag.StringVar(&common.Query, "query", "", "SQL 'SELECT blob_id ...' or 'SELECT blob_ref as blob_id ...' to filter the data from the DB")
 	flag.BoolVar(&common.RemoveDeleted, "RDel", false, "TODO: Remove 'deleted=true' from .properties. Requires -dF")
 	flag.StringVar(&common.WriteIntoStr, "wStr", "", "For testing. Write the string into the file (eg. deleted=true) NOTE: not updating S3 tag")
 	flag.StringVar(&common.DelDateFromStr, "dDF", "", "Deleted date YYYY-MM-DD (from). Used to search deletedDateTime")
@@ -110,8 +110,8 @@ func setGlobals() {
 		}
 		if len(common.Filter4FileName) == 0 {
 			// If Truth is set and DB connection is provided, probably want to check only .properties files
-			common.Filter4FileName = `\.` + common.PROPERTIES + `$`
-			h.Log("INFO", "Set '-f' to '"+common.Filter4FileName+"' as DB connection is provided.")
+			h.Log("INFO", "Setting '-f' with '"+common.PROPERTIES+"' as DB connection is provided.")
+			common.Filter4FileName = common.PROPERTIES
 			//common.WithProps = false	// but probably wouldn't need to automatically output the content of .properties
 		}
 
@@ -129,8 +129,15 @@ func setGlobals() {
 
 	if len(common.Query) > 0 {
 		if !common.RxSelect.MatchString(common.Query) {
-			panic("Query should start with 'SELECT'")
+			panic("Query should start with 'SELECT' and contain 'blob_id': " + common.Query)
 		}
+		if len(common.DbConnStr) == 0 {
+			panic("Query requires DB connection string")
+		}
+		if len(common.BlobIDFIle) > 0 {
+			panic("Currently -rF and -query can't be used togather")
+		}
+		common.BlobIDFIleType = "DB"
 	}
 
 	if len(common.DelDateFromStr) > 0 {
@@ -190,7 +197,7 @@ func setGlobals() {
 	}
 
 	if common.Truth == "BS" || common.Truth == "DB" {
-		if len(common.BlobIDFIle) == 0 && (len(common.DbConnStr) == 0 || len(common.BaseDir) == 0) {
+		if len(common.BlobIDFIle) == 0 && len(common.Query) == 0 && (len(common.DbConnStr) == 0 || len(common.BaseDir) == 0) {
 			panic("-src without -rF requires -b and -db")
 		}
 
@@ -198,7 +205,7 @@ func setGlobals() {
 		if len(common.DbConnStr) == 0 && len(common.BaseDir) == 0 {
 			panic("-src with -rF requires -b or -db")
 		}
-		if len(common.BlobIDFIle) > 0 {
+		if len(common.BlobIDFIle) > 0 && len(common.BlobIDFIleType) == 0 {
 			if len(common.DbConnStr) > 0 && len(common.BaseDir) > 0 {
 				h.Log("DEBUG", "-rF, -b, and -db are given, so using Blob IDs in -rF as if BS output.")
 				common.BlobIDFIleType = "BS"
@@ -234,7 +241,6 @@ func setGlobals() {
 			if err != nil {
 				panic(err)
 			}
-			h.Log("INFO", "Output will be saved into the file: "+common.SaveToFile)
 		}
 	}
 }
@@ -299,7 +305,7 @@ func extractBlobIdFromString(line string) string {
 
 func genBlobPath(blobId string, extension string) string {
 	// org.sonatype.nexus.blobstore.VolumeChapterLocationStrategy#location
-	// TODO: this will be changed in a newer version, with DB <format>_asset_blob.use_date_path flag
+	// TODO: Support the Date-based layout `nexus.blobstore.datebased.layout.enabled` or DB <format>_asset_blob.use_date_path column (NEXUS-43674)
 	// default@e60e55f0-2bce-43fd-b767-85b329ddbd20@2024-12-20T15:53 => content/2024/01/01/10/15/UUID.properties
 	if len(blobId) == 0 {
 		h.Log("WARN", "genBlobPath got empty blobId.")
@@ -641,7 +647,7 @@ func checkBlobIdDetailFromBS(maybeBlobId string) interface{} {
 		blobInfo, err := Client.GetFileInfo(propsPath)
 		if err != nil {
 			// As this is the check function, if not exist report
-			h.Log("WARN", fmt.Sprintf("No %s in BS (DeadBlob)", propsPath))
+			h.Log("WARN", fmt.Sprintf("Error %s : %s", propsPath, err))
 		} else {
 			args := bs_clients.PrintLineArgs{
 				Path:  propsPath,
@@ -900,6 +906,14 @@ func main() {
 	if len(common.DbConnStr) > 0 {
 		db = lib.OpenDb(common.DbConnStr)
 		defer db.Close()
+	}
+
+	// NOTE: when Query is set, BlobIdFile should be empty.
+	if len(common.Query) > 0 {
+		var tempDir = os.TempDir()
+		common.BlobIDFIle = filepath.Join(tempDir, "blob_ids_from_query.tsv")
+		lib.GetRows(common.Query, db, common.BlobIDFIle, 200)
+		h.Log("INFO", "Query result is saved into "+common.BlobIDFIle)
 	}
 
 	// NOTE: Header is written only when one file is used

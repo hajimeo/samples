@@ -7,6 +7,7 @@ import (
 	"fmt"
 	h "github.com/hajimeo/samples/golang/helpers"
 	_ "github.com/lib/pq"
+	"os"
 	"regexp"
 	"sort"
 	"strings"
@@ -96,7 +97,7 @@ func GetRow(rowCur *sql.Rows, cols []string) []interface{} {
 	return vals
 }
 
-func GetRows(query string, db *sql.DB, slowMs int64) [][]interface{} {
+func GetRows(query string, db *sql.DB, saveToFile string, slowMs int64) [][]interface{} {
 	// NOTE: Not using this GetRows function (just an example) because do not want to store all results in memory
 	rows := Query(query, db, slowMs)
 	if rows == nil { // Mainly for unit test
@@ -104,6 +105,17 @@ func GetRows(query string, db *sql.DB, slowMs int64) [][]interface{} {
 		return nil
 	}
 	defer rows.Close()
+
+	var fp *os.File
+	var err error
+	if len(saveToFile) > 0 {
+		fp, err = os.Create(saveToFile)
+		if err != nil {
+			panic(err)
+		}
+	}
+	defer fp.Close()
+
 	var cols []string
 	var rowsData [][]interface{}
 	for rows.Next() {
@@ -117,7 +129,15 @@ func GetRows(query string, db *sql.DB, slowMs int64) [][]interface{} {
 			sort.Strings(cols)
 		}
 		vals := GetRow(rows, cols)
-		rowsData = append(rowsData, vals)
+		if fp != nil {
+			result := h.ValsToString(vals, common.SEP)
+			_, err = fp.WriteString(result + "\n")
+			if err != nil {
+				panic(err)
+			}
+		} else {
+			rowsData = append(rowsData, vals)
+		}
 	}
 	return rowsData
 }

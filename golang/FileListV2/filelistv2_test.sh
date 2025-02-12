@@ -284,7 +284,6 @@ function test_7_TextFileToCheckBlobStore() {
     fi
 }
 
-
 function test_8_TextFileToCheckDatabase() {
     local _b="${1:-"${_TEST_BLOBSTORE}"}"
     local _p="${2:-"${_TEST_FILTER_PATH}"}"
@@ -316,6 +315,29 @@ function test_8_TextFileToCheckDatabase() {
         echo "TEST=OK (${_out_file}) expected:${_expected_num}, result:${_result_num}"
     else
         echo "TEST=ERROR: [ expected:${_expected_num} -eq result:${_result_num} ] is false (check /tmp/test_last.*)"
+        return 1
+    fi
+}
+
+function test_9_GenerateBlobIDsFileFromDB() {
+    local _b="${1:-"${_TEST_BLOBSTORE}"}"
+    local _p="${2:-"${_TEST_FILTER_PATH}"}"
+    local _work_dir="${3:-"${_TEST_WORKDIR}"}"
+
+    local _nexus_store="$(find ${_work_dir%/} -maxdepth 3 -name 'nexus-store.properties' -path '*/etc/fabric/*' -print | head -n1)"
+    if [ -z "${_nexus_store}" ]; then
+        echo "TEST=ERROR: Could not find nexus-store.properties in ${_work_dir}"
+        return 1
+    fi
+    [ -n "${_TEST_DB_CONN_PWD}" ] && export PGPASSWORD="${_TEST_DB_CONN_PWD}"
+
+    local _out_file="/tmp/test_blobIds_from_db.tsv"
+    _exec_filelist "filelist2 -b '${_b}' -db ${_nexus_store} -bsName $(basename "${_b}") -query \"select blob_ref as blob_id from raw_asset_blob where blob_ref like '$(basename "${_b}")@%' limit 10\" -H" "${_out_file}"
+    local _result_num="$(_line_num ${_out_file})"
+    if [ ${_result_num:-"0"} -gt 0 ]; then
+        echo "TEST=OK (${_out_file}) result:${_result_num}"
+    else
+        echo "TEST=ERROR: result:${_result_num} (check /tmp/test_last.*)"
         return 1
     fi
 }
