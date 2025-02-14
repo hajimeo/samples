@@ -461,6 +461,7 @@ function f_setup_saml_simplesaml() {
     fi
     if [ ! -s "${_idp_metadata}" ]; then
         _log "ERROR" "Missing IDP metadata file (_idp_metadata): ${_idp_metadata}"
+        echo "Please execute 'f_start_saml_server \"\" \"\" \"${_IQ_URL%/}/api/v2/config/saml/metadata\"'" >&2
         return 1
     fi
     if ! _curl "${_IQ_URL%/}/api/v2/config/saml" -X PUT -F identityProviderXml=@${_idp_metadata} -F samlConfiguration="{\"identityProviderName\":\"${_name}\",\"entityId\":\"${_IQ_URL%/}/api/v2/config/saml/metadata\",\"usernameAttributeName\":\"uid\",\"firstNameAttributeName\":\"givenName\",\"lastNameAttributeName\":\"sn\",\"emailAttributeName\":\"eduPersonPrincipalName\",\"groupsAttributeName\":\"eduPersonAffiliation\",\"validateResponseSignature\":false,\"validateAssertionSignature\":false}"; then
@@ -925,6 +926,23 @@ function f_prep_scan_target_for_proprietary_component() {
     cd "${_cwd}" || return $?
 }
 
+function f_import_sbom() {
+    local __doc__="https://help.sonatype.com/en/sbom-manager-api.html"
+    local _sbom_file="${1}"
+    local _app_pub_id="${2}"
+    local _app_ver="${3}"
+    local _app_int_id="$(f_api_appIntId "${_app_pub_id}")"
+    if [ -z "${_app_int_id}" ]; then
+        _log "ERROR" "Failed to get the application ID for '${_app_pub_id}'"
+        return 1
+    fi
+    if [ -z "${_app_ver}" ]; then
+        local _filename=$(basename -- "${_sbom_file}")
+        _app_ver="${_filename%.*}_$(date +'%Y%m%d%H%M%S')"
+    fi
+    _curl "${_IQ_URL%/}/api/v2/sbom/import?ignoreValidationError=true" -F file="@${_sbom_file}" -F applicationId="${_app_int_id}" -F applicationVersion="${_app_ver}" -X POST
+}
+
 function f_dummy_scans() {
     local __doc__="Generate dummy reports by scanning (dummy) scan targets against one application"
     local _scan_target="${1}"
@@ -1109,13 +1127,20 @@ function f_cli() {
     if [ ! -s "${_iq_cli_jar}" ]; then
         #local _tmp_iq_cli_jar="$(find ${_WORK_DIR%/}/sonatype -name 'nexus-iq-cli*.jar' 2>/dev/null | sort -r | head -n1)"
         [ ! -d "${_cli_dir}" ] && mkdir -p "${_cli_dir}"
-        if [ ! -s "$HOME/.nexus_executable_cache/nexus-iq-server-${_iq_cli_ver}-bundle.tar.gz" ] || ! tar -xvf $HOME/.nexus_executable_cache/nexus-iq-server-${_iq_cli_ver}-bundle.tar.gz -C "${_cli_dir}" nexus-iq-cli-${_iq_cli_ver}.jar; then
-            if ! curl -f -L "https://download.sonatype.com/clm/scanner/nexus-iq-cli-${_iq_cli_ver}.jar" -o "${_iq_cli_jar}"; then
-                local _cli_filename="$(curl -s -I -L "https://download.sonatype.com/clm/scanner/latest.jar" | grep -o "nexus-iq-cli-.*\.jar")"
-                _iq_cli_jar="$HOME/.nexus_executable_cache/${_cli_filename}"
-                if [ ! -s "${_iq_cli_jar}" ]; then
-                    curl -f -L "https://download.sonatype.com/clm/scanner/latest.jar" -o "${_iq_cli_jar}" || return $?
+        local _get_latest=true
+        if [[ "${_iq_cli_ver}" =~ ^1\.1([0-7]|8[0-5]) ]]; then
+            if [ ! -s "$HOME/.nexus_executable_cache/nexus-iq-server-${_iq_cli_ver}-bundle.tar.gz" ] || ! tar -xvf $HOME/.nexus_executable_cache/nexus-iq-server-${_iq_cli_ver}-bundle.tar.gz -C "${_cli_dir}" nexus-iq-cli-${_iq_cli_ver}.jar; then
+                if curl -f -L "https://download.sonatype.com/clm/scanner/nexus-iq-cli-${_iq_cli_ver}.jar" -o "${_iq_cli_jar}"; then
+                    _get_latest=false
                 fi
+            fi
+        fi
+        if ${_get_latest}; then
+            local _cli_filename="$(curl -s -I -L "https://download.sonatype.com/clm/scanner/latest.jar" | grep -o "nexus-iq-cli-.*\.jar")"
+            _iq_cli_jar="$HOME/.nexus_executable_cache/${_cli_filename}"
+            if [ ! -s "${_iq_cli_jar}" ]; then
+                _log "INFO" "Downloading the latest.jar (${_cli_filename})"
+                curl -f -L "https://download.sonatype.com/clm/scanner/latest.jar" -o "${_iq_cli_jar}" || return $?
             fi
         fi
     fi
@@ -1162,9 +1187,9 @@ function f_mvn() {
 
     #clm-maven-plugin:2.30.2-01:index | com.sonatype.clm:clm-maven-plugin:index to generate module.xml file
     local _cmd="mvn -f ${_file} com.sonatype.clm:clm-maven-plugin${_iq_mvn_ver}:evaluate -Dclm.serverUrl=${_iq_url} -Dclm.applicationId=${_iq_app_id} -Dclm.stage=${_iq_stage} -Dclm.username=admin -Dclm.password=admin123 -Dclm.resultFile=iq_result.json -Dclm.scan.dirExcludes=\"**/BOOT-INF/lib/**\" ${_mvn_opts}"
-    echo "[$(date +'%Y-%m-%d %H:%M:%S')] Executing: ${_cmd}" >&2
+    _log "INFO" "Executing: ${_cmd}"
     eval "${_cmd}"
-    echo "[$(date +'%Y-%m-%d %H:%M:%S')] Completed." >&2
+    _log "INFO" "Completed."
 }
 
 ## Utility functions
