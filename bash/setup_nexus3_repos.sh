@@ -115,7 +115,7 @@ _RESP_FILE=""
 ### Nexus installation functions ##############################################################################
 # To re-install: _RECREATE_ALL=Y f_install_nexus3 "<version>" "<dbname>"
 # To install HA instances (port is automatic): _NEXUS_ENABLE_HA=Y f_install_nexus3 "" "nxrm3740ha"
-# To upgrade (from ${_dirpath}/): tar -xvf $HOME/.nexus_executable_cache/nexus-3.77.0-08-mac.tgz
+# To upgrade (from ${_dirpath}/): tar -xvf $HOME/.nexus_executable_cache/nexus-3.75.1-01-mac.tgz
 function f_install_nexus3() {
     local __doc__="Install specific NXRM3 version (to recreate sonatype-work and DB, _RECREATE_ALL=Y)"
     local _ver="${1:-"${r_NEXUS_VERSION}"}"     # 'latest' or '3.71.0-03-java17'
@@ -1453,11 +1453,10 @@ function f_create_azure_blobstore() {
 }
 
 function f_create_google_blobstore() {
-    local __doc__="Create an Google blobstore. GOOGLE_ACCOUNT_KEY_FILE is required"
-    #https://learn.microsoft.com/en-us/azure/active-directory/develop/howto-create-service-principal-portal#get-tenant-and-app-id-values-for-signing-in
-    local _bs_name="${1:-"ggl-test"}"
+    local __doc__="Create an Google blobstore. GOOGLE_ACCOUNT_KEY_FILE is required (3.74+)"
+    local _bs_name="${1:-"gc-test"}"
     local _accountKeyFle="${2:-"${GOOGLE_ACCOUNT_KEY_FILE}"}"
-    local _bucket="${3-"${GOOGLE_BUCKET}"}"
+    local _bucket="${3:-"${GOOGLE_BUCKET}"}"
     local _prefix="${4:-"$(hostname -s)_${_bs_name}"}"
     local _region="${5:-"${GOOGLE_REGION:-"australia-southeast1"}"}"
     local _accountKeyFle_content="$(cat "${_accountKeyFle}" | JSON_ESCAPE=Y _sortjson)"
@@ -1469,9 +1468,9 @@ function f_create_google_blobstore() {
         return 1
     fi
     _log "DEBUG" "$(cat ${_TMP%/}/f_api_last.out)"
-    if [[ ! "${_NO_REPO_CREATE}" =~ [yY] ]] && ! _is_repo_available "raw-ggl-hosted"; then
-        _apiS '{"action":"coreui_Repository","method":"create","data":[{"attributes":{"storage":{"blobStoreName":"'${_bs_name}'","writePolicy":"ALLOW","strictContentTypeValidation":false'$(_get_extra_sto_opt)'},"cleanup":{"policyName":[]}},"name":"raw-ggl-hosted","format":"","type":"","url":"","online":true,"recipe":"raw-hosted"}],"type":"rpc"}' || return $?
-        _log "INFO" "Created raw-ggl-hosted"
+    if [[ ! "${_NO_REPO_CREATE}" =~ [yY] ]] && ! _is_repo_available "raw-gc-hosted"; then
+        _apiS '{"action":"coreui_Repository","method":"create","data":[{"attributes":{"storage":{"blobStoreName":"'${_bs_name}'","writePolicy":"ALLOW","strictContentTypeValidation":false'$(_get_extra_sto_opt)'},"cleanup":{"policyName":[]}},"name":"raw-gc-hosted","format":"","type":"","url":"","online":true,"recipe":"raw-hosted"}],"type":"rpc"}' || return $?
+        _log "INFO" "Created raw-gc-hosted"
     fi
     _log "TODO" "Google CLI command examples"
 }
@@ -2329,7 +2328,7 @@ function f_start_saml_server() {
     local _install_dir="${5:-"${_SHARE_DIR%/}/simplesaml"}"
     local _users_json="${6:-"${_install_dir%/}/simple-saml-idp.json"}"
     if [ -z "${_sp_meta_file}" ]; then
-        echo "Please specify _sp_meta_file"; return 1
+        echo "Please specify _sp_meta_file location."; return 1
     fi
     if [ -z "${_sp_meta_url}" ]; then
         if [ -n "${_NEXUS_URL%/}" ] && _isUrl "${_NEXUS_URL%/}/service/rest/v1/status" "Y"; then
@@ -2356,8 +2355,13 @@ function f_start_saml_server() {
     fi
 
     # If SP metadata file does not exist, download it
-    if [ -n "${_sp_meta_url}" ] && [ ! -s "${_sp_meta_file}" ]; then
-        curl -sS -L -o ${_sp_meta_file} -u "${_sp_meta_cred}" "${_sp_meta_url}"   # It's OK if fails
+    if [ -n "${_sp_meta_url}" ]; then
+        if [ ! -s "${_sp_meta_file}" ]; then
+            _log "INFO" "Downloading SP metafile from ${_sp_meta_url} ..."
+            curl -sS -L -o ${_sp_meta_file} -u "${_sp_meta_cred}" "${_sp_meta_url}" || return $?
+        else
+            _log "WARN" "Reusing the existing SP metafile ${_sp_meta_file} ..."
+        fi
     fi
     # If no key/cert, generate it
     if [ ! -s ${_install_dir%/}/myidp.key ]; then
