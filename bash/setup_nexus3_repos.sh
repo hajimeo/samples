@@ -115,7 +115,7 @@ _RESP_FILE=""
 ### Nexus installation functions ##############################################################################
 # To re-install: _RECREATE_ALL=Y f_install_nexus3 "<version>" "<dbname>"
 # To install HA instances (port is automatic): _NEXUS_ENABLE_HA=Y f_install_nexus3 "" "nxrm3740ha"
-# To upgrade (from ${_dirpath}/): tar -xvf $HOME/.nexus_executable_cache/nexus-3.75.1-01-mac.tgz
+# To upgrade (from ${_dirpath}/): tar -xvf $HOME/.nexus_executable_cache/nexus-3.70.3-01-mac.tgz
 function f_install_nexus3() {
     local __doc__="Install specific NXRM3 version (to recreate sonatype-work and DB, _RECREATE_ALL=Y)"
     local _ver="${1:-"${r_NEXUS_VERSION}"}"     # 'latest' or '3.71.0-03-java17'
@@ -3418,6 +3418,27 @@ function f_run_groovy() {
     fi
     local _groovy_classpath="$(find ${_installDir%/}/system -type f -name '*.jar' | tr '\n' ':')"
     ${_java:-"java"} -classpath ${_groovy_jar} org.codehaus.groovy.tools.GroovyStarter --main groovy.ui.GroovyMain --classpath "${_groovy_classpath%:}:." -e "${_script}" || return $?
+}
+
+function f_start_db_console() {
+    local _installDir="${1:-"."}"
+    local _webPort="${2:-"8082"}"
+    local _groovy_jar="${_installDir%/}/system/org/codehaus/groovy/groovy-all/2.4.17/groovy-all-2.4.17.jar"
+    local _groovy_cp=""
+    if [ ! -s "${_groovy_jar}" ]; then
+        _groovy_jar="$(find "${_installDir%/}/system/org/codehaus/groovy/groovy" -type f -name 'groovy-3.*.jar' 2>/dev/null | head -n1)"
+        _groovy_cp="$(find "${_installDir%/}/system/org/codehaus/groovy/groovy-sql" -type f -name 'groovy-sql-3.*.jar' 2>/dev/null | head -n1)"
+    fi
+    if [ ! -s "${_groovy_jar}" ]; then
+        echo "ERROR Groovy jar not found. Please make sure _installDir is correct." >&2
+        return 1
+    fi
+    local _java="java"
+    [ -n "${JAVA_HOME}" ] && _java="${JAVA_HOME%/}/bin/java"
+    local _groovy_cp="${_groovy_cp%:}:$(find "${_installDir%/}/system/org/postgresql/postgresql" -type f -name 'postgresql-*.jar' | tail -n1)"
+    local _groovy_cp="${_groovy_cp%:}:$(find "${_installDir%/}/system/com/h2database/h2" -type f -name 'h2-*.jar' | tail -n1)"
+    ${_java:-"java"} -Dgroovy.classpath="${_groovy_cp%:}" -jar "${_groovy_jar}" \
+        -e "org.h2.tools.Server.createWebServer(\"-webPort\", \"${_webPort}\", \"-webAllowOthers\", \"-ifExists\").start()"
 }
 
 
