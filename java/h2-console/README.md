@@ -73,10 +73,10 @@ echo "select <PK>, <TEXT_column> from <table_name>" | java -jar ~/IdeaProjects/s
 
 ## My note:
 ```shell
-#sed -i .bak 's/>1.4.196</>1.4.200</' ./pom.xml && mvn clean package && cp -v -p ./target/h2-console-1.0-SNAPSHOT.jar ../../misc/h2-console_v200.jar
 [ ! -s ./pom.xml.orig ] && cp -p -v ./pom.xml ./pom.xml.orig
 mvn clean package && cp -v -p ./target/h2-console-1.0-SNAPSHOT.jar ../../misc/h2-console.jar && \
-sed -i .tmp 's/>1.4.196</>2.2.224</' ./pom.xml && mvn clean package && cp -v -p ./target/h2-console-1.0-SNAPSHOT.jar ../../misc/h2-console_v224.jar && \
+sed -i .tmp 's/>1.4.196</>1.4.200</' ./pom.xml && mvn clean package && cp -v -p ./target/h2-console-1.0-SNAPSHOT.jar ../../misc/h2-console_v200.jar && \
+sed -i .tmp 's/>1.4.200</>2.2.224</' ./pom.xml && mvn clean package && cp -v -p ./target/h2-console-1.0-SNAPSHOT.jar ../../misc/h2-console_v224.jar && \
 sed -i .tmp 's/>2.2.224</>2.3.232</' ./pom.xml && JAVA_HOME="${JAVA_HOME_17}" mvn clean package && cp -v -p ./target/h2-console-1.0-SNAPSHOT.jar ../../misc/h2-console_v232.jar
 cp -p -f -v ./pom.xml.orig ./pom.xml
 ```
