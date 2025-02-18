@@ -3422,7 +3422,7 @@ function f_run_groovy() {
 
 function f_start_db_console() {
     local _installDir="${1:-"."}"
-    local _webPort="${2:-"8082"}"
+    local _webPort="${2:-"8282"}"
     local _java="java"  # In case needs to change to java 8 / java 17
     [ -n "${JAVA_HOME}" ] && _java="${JAVA_HOME%/}/bin/java"
     local _groovy_jar="${_installDir%/}/system/org/codehaus/groovy/groovy-all/2.4.17/groovy-all-2.4.17.jar"
