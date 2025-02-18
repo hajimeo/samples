@@ -1,6 +1,6 @@
 # Simple H2 client
 Limitation: only standard and SELECT SQL statements. H2 specific commands/queries may not work.  
-"h2-console_v200.jar" is for Nexus Repository Manager 3.
+"h2-console_v200.jar" is for Nexus Repository Manager 3 (_v224 = 3.70.0 and _v232 = 3.75.0)
 
 ## Download the latest version:
 ```
@@ -74,6 +74,10 @@ echo "select <PK>, <TEXT_column> from <table_name>" | java -jar ~/IdeaProjects/s
 ## My note:
 ```shell
 #sed -i .bak 's/>1.4.196</>1.4.200</' ./pom.xml && mvn clean package && cp -v -p ./target/h2-console-1.0-SNAPSHOT.jar ../../misc/h2-console_v200.jar
-mvn clean package && cp -v -p ./target/h2-console-1.0-SNAPSHOT.jar ../../misc/h2-console.jar && sed -i .bak 's/>1.4.196</>2.2.224</' ./pom.xml && mvn clean package && cp -v -p ./target/h2-console-1.0-SNAPSHOT.jar ../../misc/h2-console_v224.jar &&  mv -f -v ./pom.xml.bak ./pom.xml
+[ ! -s ./pom.xml.orig ] && cp -p -v ./pom.xml ./pom.xml.orig
+mvn clean package && cp -v -p ./target/h2-console-1.0-SNAPSHOT.jar ../../misc/h2-console.jar && \
+sed -i .tmp 's/>1.4.196</>2.2.224</' ./pom.xml && mvn clean package && cp -v -p ./target/h2-console-1.0-SNAPSHOT.jar ../../misc/h2-console_v224.jar && \
+sed -i .tmp 's/>2.2.224</>2.3.232</' ./pom.xml && JAVA_HOME="${JAVA_HOME_17}" mvn clean package && cp -v -p ./target/h2-console-1.0-SNAPSHOT.jar ../../misc/h2-console_v232.jar
+cp -p -f -v ./pom.xml.orig ./pom.xml
 ```
 
