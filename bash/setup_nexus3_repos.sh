@@ -3423,6 +3423,8 @@ function f_run_groovy() {
 function f_start_db_console() {
     local _installDir="${1:-"."}"
     local _webPort="${2:-"8082"}"
+    local _java="java"  # In case needs to change to java 8 / java 17
+    [ -n "${JAVA_HOME}" ] && _java="${JAVA_HOME%/}/bin/java"
     local _groovy_jar="${_installDir%/}/system/org/codehaus/groovy/groovy-all/2.4.17/groovy-all-2.4.17.jar"
     local _groovy_cp=""
     if [ ! -s "${_groovy_jar}" ]; then
@@ -3433,8 +3435,6 @@ function f_start_db_console() {
         echo "ERROR Groovy jar not found. Please make sure _installDir is correct." >&2
         return 1
     fi
-    local _java="java"
-    [ -n "${JAVA_HOME}" ] && _java="${JAVA_HOME%/}/bin/java"
     local _groovy_cp="${_groovy_cp%:}:$(find "${_installDir%/}/system/org/postgresql/postgresql" -type f -name 'postgresql-*.jar' | tail -n1)"
     local _groovy_cp="${_groovy_cp%:}:$(find "${_installDir%/}/system/com/h2database/h2" -type f -name 'h2-*.jar' | tail -n1)"
     ${_java:-"java"} -Dgroovy.classpath="${_groovy_cp%:}" -jar "${_groovy_jar}" \
