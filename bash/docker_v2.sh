@@ -19,23 +19,33 @@
 #   https://docs.docker.com/registry/spec/auth/token/
 #
 # NOTE: registry.hub.docker.com
+# Misc. testing curl commands
+#curl -H 'Forwarded: proto=https;host=docker.example.com:443' http://nexus.example.com:8081/repository/docker-repo/v2/ -v
+#curl -H 'Host:docker.example.com:443' http://nexus.example.com:8081/repository/docker-repo/v2/ -v
+#curl -H 'Host:docker.example.com' -H 'x-forwarded-port:443' http://nexus.example.com:8081/repository/docker-repo/v2/ -v
+
 
 # Use 'export' to overwrite
 : ${_USER:=""}      # admin
 : ${_PWD:=""}       # admin123
 #http://dh1:8081/repository/docker-proxy/v2/ratelimitpreview/test/manifests/latest
-: ${_IMAGE:="ratelimitpreview/test"}
-: ${_TAG="latest"}
+: ${_IMAGE:="library/alpine"}   # ratelimitpreview/test
+: ${_TAG="3.18"}                # latest
+: ${_DOCKER_METHOD="pull"}
+# Require export _IMAGE="library/alpine" _TAG="3.18"
+: ${_PATH:="/v2/library/alpine/blobs/sha256:de2b9975f8fd4ab0d5ea39f52592791fadff62c0592a6e7db5640dc0d6469a01"}
 #: ${_PATH="/v2/ratelimitpreview/test/blobs/sha256:edabd795951a0baa224f156b81ab1afa71c64c3cf10b1ded9225c2a6810f4a3d"}    # This path can be diff from Nexus's path
+: ${_UPLOAD_TEST:=""}   # eg. "alpine"
+
 #: ${_DOCKER_REGISTRY_URL:="http://localhost:8081/repository/docker-proxy/"}
 #: ${_TOKEN_SERVER_URL:="${_DOCKER_REGISTRY_URL%/}/v2/token"}
 : ${_DOCKER_REGISTRY_URL:="https://registry-1.docker.io"}                           # Basically 'remoteUrl'
 : ${_TOKEN_SERVER_URL:="https://auth.docker.io/token?service=registry.docker.io"}   #www-authenticate: Bearer realm="https://auth.docker.io/token",service="registry.docker.io"
 : ${_CURL_OPTS:="-D /dev/stderr"}   # if proxy is required, use export ALL_PROXY=http://proxyuser:proxypwd@dh1:28081/ (http_proxy, https_proxy)
 
+
 _CURL="curl -sfLk --compressed ${_CURL_OPTS}"
 _TMP="/tmp"
-_UPLOAD_TEST="" # eg. "alpine"
 
 function get_token() {
     local _token_server_url="${1:-"${_TOKEN_SERVER_URL}"}"
@@ -63,8 +73,71 @@ function decode_jwt() {
         _payload="${_payload}"'='
     fi
     echo "${_payload}" | tr '_-' '/+' | openssl enc -d -base64 || return $?
-    echo ""
+    echo "" >&2
 }
+
+main() {
+    # NOTE: Token server URL is decided by https://dh1:5000/v2/ then the header "HTTP/1.1 401 Unauthorized" and "www-authenticate: Bearer realm="https://dh1:5000/v2/token",service="https://dh1:5000/v2/token"
+    # example: token?service=registry.docker.io&scope=repository%3Alibrary%2Falpine%3Apull
+    echo "### Requesting '${_TOKEN_SERVER_URL}&scope=repository:${_IMAGE}:${_DOCKER_METHOD}'" >&2
+    _TOKEN="$(get_token)"
+
+    if [ -n "${_TOKEN}" ]; then
+        echo "### Got token (length: $(echo "${_TOKEN}" | wc -c)) for scope=repository:${_IMAGE}:${_DOCKER_METHOD}" >&2
+        #echo "${_TOKEN}" >&2
+        # For debugging (NOTE: Nexus's Docker bearer token can't be decoded)
+        echo "### [DEBUG] Decoding JWT" >&2
+        decode_jwt "${_TOKEN}" || return $?
+
+        # NOTE: curl with -I (HEAD) does not return RateLimit-Limit or RateLimit-Remaining
+        if [ -n "${_IMAGE}" ] && [ -n "${_TAG}" ]; then
+            echo "### Requesting '${_DOCKER_REGISTRY_URL%/}/v2/${_IMAGE}/manifests/${_TAG}'" >&2
+            ${_CURL} -H "Authorization: Bearer ${_TOKEN}" -o ${_TMP%/}/manifest_result.json -H "Accept: application/json" "${_DOCKER_REGISTRY_URL%/}/v2/${_IMAGE}/manifests/${_TAG}" || return $?
+            if [ -s ${_TMP%/}/manifest_result.json ]; then
+                if type python &>/dev/null; then
+                    echo "### [DEBUG] Parsing JSON | head -n10" >&2
+                    python -m json.tool ${_TMP%/}/manifest_result.json | head -n10
+                else
+                    echo "### [DEBUG] JSON" >&2
+                    ls -l ${_TMP%/}/manifest_result.json
+                fi
+            fi
+            echo "" >&2
+        fi
+
+        #if [ -n "${_IMAGE}" ]; then
+        #    echo "### Testing V1 API with search for '${_IMAGE}'" >&2
+        #    ${_CURL} -H "Authorization: Bearer ${_TOKEN}" -H "Accept: application/json" "${_DOCKER_REGISTRY_URL%/}/v1/search?n=10&q=${_IMAGE}"
+        #    echo "### Requesting Tags for '${_IMAGE}'" >&2
+        #    #${_CURL} -H "Authorization: Bearer ${_TOKEN}" "${_DOCKER_REGISTRY_URL%/}/v1/repositories/${_IMAGE}/tags"
+        #    ${_CURL} -H "Authorization: Bearer ${_TOKEN}" -H "Accept: application/json" "${_DOCKER_REGISTRY_URL%/}/v2/${_IMAGE}/tags/list"
+        #fi
+
+        if [ -n "${_PATH#/}" ]; then
+            echo "### Requesting '${_DOCKER_REGISTRY_URL%/}/${_PATH#/}'" >&2
+            # -H "Accept-Encoding: gzip,deflate"
+            ${_CURL} -H "Authorization: Bearer ${_TOKEN}" -o ${_TMP%/}/path_result.out "${_DOCKER_REGISTRY_URL%/}/${_PATH#/}"
+            if [ -s ${_TMP%/}/path_result.out ]; then
+                echo "### sha256 of ${_TMP%/}/path_result.out" >&2
+                sha256sum ${_TMP%/}/path_result.out
+            fi
+            echo "" >&2
+        fi
+
+        # TODO: probably doesn't work
+        if [ -n "${_UPLOAD_TEST}" ]; then
+            echo "### Requesting POST '${_DOCKER_REGISTRY_URL%/}/v2/${_UPLOAD_TEST}/blobs/uploads/'" >&2
+            # TODO: Bearer is send when "Allow anonymous docker pull" is enabled (forceBasicAuth is false), so need some check
+            ${_CURL} -H "Authorization: Bearer ${_TOKEN}" -X POST "${_DOCKER_REGISTRY_URL%/}/v2/${_UPLOAD_TEST}/blobs/uploads/"
+            #${_CURL} -u "${_USER}:${_PWD}" -X POST "${_DOCKER_REGISTRY_URL%/}/v2/${_UPLOAD_TEST}/blobs/uploads/"
+            # Then gets "Location:" header to upload with -X PATCH
+            echo "" >&2
+        fi
+    fi
+
+    echo "# Completed." >&2
+}
+
 
 function upload() {
     return  # TODO: Implement upload (PUT) test. not -d or --data (how about -T / --upload-file?)
@@ -102,51 +175,7 @@ DEBU[0000] PUT https://node-nxrm-ha1.standalone.localdomain:18183/v2/alpine/mani
 EOF
 }
 
-main() {
-    # NOTE: Token server URL is decided by https://dh1:5000/v2/ then the header "HTTP/1.1 401 Unauthorized" and "www-authenticate: Bearer realm="https://dh1:5000/v2/token",service="https://dh1:5000/v2/token"
-    echo "### Requesting '${_TOKEN_SERVER_URL}&scope=repository:${_IMAGE}:pull'" >&2
-    _TOKEN="$(get_token)"
 
-    if [ -n "${_TOKEN}" ]; then
-        echo "### Got token (length: $(echo "${_TOKEN}" | wc -c))" >&2
-        #echo "${_TOKEN}" >&2
-        # For debugging (NOTE: Nexus's Docker bearer token can't be decoded)
-        echo "### [DEBUG] Decoding JWT" >&2
-        decode_jwt "${_TOKEN}" || return $?
-
-        # NOTE: curl with -I (HEAD) does not return RateLimit-Limit or RateLimit-Remaining
-        if [ -n "${_IMAGE}" ] && [ -n "${_TAG}" ]; then
-            echo "### Requesting '${_DOCKER_REGISTRY_URL%/}/v2/${_IMAGE}/manifests/${_TAG}'" >&2
-            ${_CURL} -H "Authorization: Bearer ${_TOKEN}" -H "Accept: application/json" "${_DOCKER_REGISTRY_URL%/}/v2/${_IMAGE}/manifests/${_TAG}"
-        fi
-
-        #if [ -n "${_IMAGE}" ]; then
-        #    echo "### Testing V1 API with search for '${_IMAGE}'" >&2
-        #    ${_CURL} -H "Authorization: Bearer ${_TOKEN}" -H "Accept: application/json" "${_DOCKER_REGISTRY_URL%/}/v1/search?n=10&q=${_IMAGE}"
-        #    echo "### Requesting Tags for '${_IMAGE}'" >&2
-        #    #${_CURL} -H "Authorization: Bearer ${_TOKEN}" "${_DOCKER_REGISTRY_URL%/}/v1/repositories/${_IMAGE}/tags"
-        #    ${_CURL} -H "Authorization: Bearer ${_TOKEN}" -H "Accept: application/json" "${_DOCKER_REGISTRY_URL%/}/v2/${_IMAGE}/tags/list"
-        #fi
-
-        if [ -n "${_PATH#/}" ]; then
-            echo "### Requesting '${_DOCKER_REGISTRY_URL%/}/${_PATH#/}'" >&2
-            # -H "Accept-Encoding: gzip,deflate"
-            ${_CURL} -H "Authorization: Bearer ${_TOKEN}" -o ${_TMP%/}/path_result.out "${_DOCKER_REGISTRY_URL%/}/${_PATH#/}"
-            if [ -s ${_TMP%/}/path_result.out ]; then
-                echo "### sha256 of ${_PATH#/}" >&2
-                sha256sum ${_TMP%/}/path_result.out
-            fi
-        fi
-
-        if [ -n "${_UPLOAD_TEST}" ]; then
-            echo "### Requesting POST '${_DOCKER_REGISTRY_URL%/}/v2/${_UPLOAD_TEST}/blobs/uploads/'" >&2
-            # TODO: Bearer is send when "Allow anonymous docker pull" is enabled (forceBasicAuth is false), so need some check
-            ${_CURL} -H "Authorization: Bearer ${_TOKEN}" -X POST "${_DOCKER_REGISTRY_URL%/}/v2/${_UPLOAD_TEST}/blobs/uploads/"
-            #${_CURL} -u "${_USER}:${_PWD}" -X POST "${_DOCKER_REGISTRY_URL%/}/v2/${_UPLOAD_TEST}/blobs/uploads/"
-            # Then gets "Location:" header to upload with -X PATCH
-        fi
-    fi
-}
 
 if [ "$0" = "$BASH_SOURCE" ]; then
     main
