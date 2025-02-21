@@ -158,7 +158,7 @@ function f_install_nexus3() {
 
     if [[ "${_RECREATE_ALL}" =~ [yY] ]] && ! _isYes "${_NEXUS_ENABLE_HA:-"${r_NEXUS_ENABLE_HA}"}"; then
         if [ -d "${_dirpath%/}" ]; then
-            _log "WARN" "Removing ${_dirpath%/} (to avoid set _RECREATE_ALL)"; sleep 3
+            _log "WARN" "Removing ${_dirpath%/} (to avoid set _RECREATE_ALL='N')"; sleep 3
             rm -v -rf "${_dirpath%/}" || return $?
         fi
         [ -z "${_RECREATE_DB}" ] && _RECREATE_DB="Y"
@@ -170,7 +170,6 @@ function f_install_nexus3() {
     [ "`uname`" = "Darwin" ] && _tgz_name="nexus-${_tgz_ver}-mac.tgz"
     # download-staging.sonatype.com
     _prepare_install "${_dirpath}" "https://download.sonatype.com/nexus/${_ver%%.*}/${_tgz_name}" "${r_NEXUS_LICENSE_FILE}" || return $?
-    local _license_path="${_LICENSE_PATH}"
 
     if [ ! -d ${_dirpath%/}/sonatype-work/nexus3/etc/fabric ]; then
         mkdir -p ${_dirpath%/}/sonatype-work/nexus3/etc/fabric || return $?
@@ -181,7 +180,12 @@ function f_install_nexus3() {
     fi
 
     _upsert "${_prop}" "application-port" "${_port}" || return $?
-    _upsert "${_prop}" "nexus.licenseFile" "${_license_path}" || return $?
+    local _license_path="${_LICENSE_PATH}"
+    if [ ! -s "${_license_path}" ]; then
+        _log "WARN" "No license file: ${_license_path}"; sleep 3
+    else
+        _upsert "${_prop}" "nexus.licenseFile" "${_license_path}" || return $?
+    fi
     if _isYes "${_NEXUS_ENABLE_HA:-"${r_NEXUS_ENABLE_HA}"}"; then
         _log "INFO" "For HA, 'nexus.datastore.clustered.enabled=true' and 'nexus.zero.downtime.enabled=true'"
         _upsert "${_prop}" "nexus.datastore.clustered.enabled" "true" || return $?
@@ -926,6 +930,7 @@ function f_setup_helm() {
     if ! _is_repo_available "${_prefix}-sonatype-proxy"; then
         _apiS '{"action":"coreui_Repository","method":"create","data":[{"attributes":{"proxy":{"remoteUrl":"https://sonatype.github.io/helm3-charts","contentMaxAge":1440,"metadataMaxAge":1440},"httpclient":{"blocked":false,"autoBlock":true,"connection":{"useTrustStore":false}},"storage":{"blobStoreName":"'${_bs_name}'","strictContentTypeValidation":true'${_extra_sto_opt}'},"negativeCache":{"enabled":true,"timeToLive":1440},"cleanup":{"policyName":[]}},"name":"'${_prefix}'-sonatype-proxy","format":"","type":"","url":"","online":true,"routingRuleId":"","authEnabled":false,"httpRequestSettings":false,"recipe":"helm-proxy"}],"type":"rpc"}' || return $?
         #curl -O "https://sonatype.github.io/helm3-charts/nexus-iq-server-174.0.0.tgz"
+        # At least from 3.74, path stopped working
         #curl -D- -u admin:admin123 "http://localhost:8081/repository/helm-hosted/" -T nexus-iq-server-174.0.0.tgz
     fi
     # add some data for xxxx-proxy
@@ -973,17 +978,25 @@ function f_setup_conan() {
     if ! _is_repo_available "${_prefix}-proxy"; then
         # Used to be https://conan.bintray.com
         _apiS '{"action":"coreui_Repository","method":"create","data":[{"attributes":{"proxy":{"remoteUrl":"https://center.conan.io/","contentMaxAge":1440,"metadataMaxAge":1440},"httpclient":{"blocked":false,"autoBlock":true,"connection":{"useTrustStore":false}},"storage":{"blobStoreName":"'${_bs_name}'","strictContentTypeValidation":true'${_extra_sto_opt}'},"negativeCache":{"enabled":true,"timeToLive":1440},"cleanup":{"policyName":[]}},"name":"'${_prefix}'-proxy","format":"","type":"","url":"","online":true,"routingRuleId":"","authEnabled":false,"httpRequestSettings":false,"recipe":"conan-proxy"}],"type":"rpc"}' || return $?
+        #conan remote add conan-proxy "${_NEXUS_URL%/}/repository/conan-proxy" --force
     fi
     # TODO: add some data for xxxx-proxy
+    # conan download zlib/1.2.12@ -r conan-proxy
+    # From 3.74, conan v2 support
+    if ! _is_repo_available "${_prefix}-v2-proxy"; then
+        _apiS '{"action":"coreui_Repository","method":"create","data":[{"attributes":{"conan":{"conanVersion":"V2"},"proxy":{"remoteUrl":"https://center2.conan.io","contentMaxAge":1440,"metadataMaxAge":1440},"httpclient":{"blocked":false,"autoBlock":true,"connection":{"useTrustStore":false}},"storage":{"blobStoreName":"'${_bs_name}'","strictContentTypeValidation":true'${_extra_sto_opt}'},"negativeCache":{"enabled":true,"timeToLive":1440},"cleanup":{"policyName":[]}},"name":"'${_prefix}'-proxy","format":"","type":"","url":"","online":true,"routingRuleId":"","authEnabled":false,"httpRequestSettings":false,"recipe":"conan-proxy"}],"type":"rpc"}'
+        #conan remote add conan-v2-proxy "${_NEXUS_URL%/}/repository/conan-v2-proxy" --force
+    fi
 
     # If no xxxx-hosted, create it. From 3.35, so it's OK to fail
     if ! _is_repo_available "${_prefix}-hosted"; then
-        _apiS '{"action":"coreui_Repository","method":"create","data":[{"attributes":{"storage":{"blobStoreName":"'${_bs_name}'","strictContentTypeValidation":true,"writePolicy":"ALLOW"'${_extra_sto_opt}'},"cleanup":{"policyName":[]}},"name":"'${_prefix}'-hosted","format":"","type":"","url":"","online":true,"recipe":"conan-hosted"}],"type":"rpc"}'
+        _apiS '{"action":"coreui_Repository","method":"create","data":[{"attributes":{"storage":{"blobStoreName":"'${_bs_name}'","strictContentTypeValidation":true,"writePolicy":"ALLOW"'${_extra_sto_opt}'},"cleanup":{"policyName":[]}},"name":"'${_prefix}'-hosted","format":"","type":"","url":"","online":true,"recipe":"conan-hosted"}],"type":"rpc"}' || return $?
     fi
-    _upload_to_conan_hosted "${_prefix}"
+    _upload_to_conan_hosted2 "${_prefix}"
     return 0    # ignore the last function failure
 }
 function _upload_to_conan_hosted() {
+    # https://github.com/conan-io/docs/blob/develop2/tutorial/creating_packages/create_your_first_package.rst
     local _prefix="${1:-"conan"}"
     if ! type conan &>/dev/null; then
         _log "WARN" "_upload_to_conan_hosted requires 'conan'"
@@ -997,6 +1010,7 @@ function _upload_to_conan_hosted() {
     if ${_DEBUG}; then
         export CONAN_LOGGING_LEVEL=debug
     fi
+    # $HOME/.conan/profiles/default
     # Ignoring Remote 'conan-hosted' does not exist or if add fails
     conan remote remove ${_prefix}-hosted
     conan remote add ${_prefix}-hosted "${_NEXUS_URL%/}/repository/${_prefix}-hosted" false
@@ -1013,7 +1027,51 @@ function _upload_to_conan_hosted() {
     fi
     #conan user -c
     #conan user -p ${_ADMIN_PWD} -r "${_prefix}-hosted" ${_ADMIN_USER}
-    CONAN_LOGIN_USERNAME="${_ADMIN_USER}" CONAN_PASSWORD="${_ADMIN_PWD}" conan upload --confirm --all --retry 0 -r "${_prefix}-hosted" ${_pkg_ver}@${_usr_stable}
+    CONAN_LOGIN_USERNAME="${_ADMIN_USER}" CONAN_PASSWORD="${_ADMIN_PWD}" conan upload --confirm --all --retry 0 -r="${_prefix}-hosted" ${_pkg_ver}@${_usr_stable}
+    local _rc=$?
+    if [ ${_rc} != 0 ]; then
+        # /v1/users/check_credentials returns 401 if no realm
+        _log "ERROR" "Please make sure 'Conan Bearer Token Realm' (ConanToken) is enabled (f_put_realms)"
+    fi
+    cd -
+    if ${_DEBUG}; then
+        unset CONAN_LOGGING_LEVEL
+    fi
+    return ${_rc}
+}
+function _upload_to_conan_hosted2() {
+    local _prefix="${1:-"conan"}"
+    if ! type conan &>/dev/null; then
+        _log "WARN" "_upload_to_conan_hosted requires 'conan'"
+        return 1
+    fi
+    if ! type cmake &>/dev/null; then
+        _log "WARN" "_upload_to_conan_hosted requires 'cmake'"
+        # sudo snap install cmake --classic
+        return 1
+    fi
+    if ${_DEBUG}; then
+        export CONAN_LOGGING_LEVEL=debug
+    fi
+    # Ignoring Remote 'conan-hosted' does not exist or if add fails
+    #conan remote remove ${_prefix}-hosted
+    conan remote add ${_prefix}-hosted "${_NEXUS_URL%/}/repository/${_prefix}-hosted" --force || return $?
+
+    local _pkg="hello"
+    local _ver="0.2"
+    local _usr_stable="demo/testing"
+    local _build_dir="$(mktemp -d)"
+    cd "${_build_dir}" || return $?
+    if [ ! -s "$HOME/.conan2/profiles/default" ]; then
+        conan profile detect || return $?
+        sed -i.bak -e 's|compiler.version=.*|compiler.version=15|' $HOME/.conan2/profiles/default
+    fi
+    conan new cmake_lib -d name=${_pkg} -d version=${_ver} || return $?
+    if ! conan create . ; then  # -s arch=x86_64 -s os=Linux
+        cd -
+        return 1
+    fi
+    CONAN_LOGIN_USERNAME="${_ADMIN_USER}" CONAN_PASSWORD="${_ADMIN_PWD}" conan upload -r "${_prefix}-hosted" ${_pkg}/${_ver}
     local _rc=$?
     if [ ${_rc} != 0 ]; then
         # /v1/users/check_credentials returns 401 if no realm
@@ -2638,7 +2696,7 @@ function f_upload_dummies_raw() {
             _final_prefix="${_final_prefix}test_"
         fi
         echo "${_final_prefix}${i}${_file_suffix}"
-    done | xargs -I{} -P${_parallel} curl -sf -u "${_usr}:${_pwd}" -w '%{http_code} {} (%{time_total}s)\n' -T ${_TMP%/}/${FUNCNAME[0]}_$$.txt -L -k "${_repo_path%/}/{}"
+    done | xargs -I{} -P${_parallel} curl -sf -u "${_usr}:${_pwd}" -w '%{http_code} '${_path%/}/'{} (%{time_total}s)\n' -T ${_TMP%/}/${FUNCNAME[0]}_$$.txt -L -k "${_repo_path%/}/{}"
     # NOTE: xargs only stops if exit code is 255
 }
 
@@ -3420,9 +3478,11 @@ function f_run_groovy() {
     ${_java:-"java"} -classpath ${_groovy_jar} org.codehaus.groovy.tools.GroovyStarter --main groovy.ui.GroovyMain --classpath "${_groovy_classpath%:}:." -e "${_script}" || return $?
 }
 
+#JAVA_HOME=$JAVA_HOME_17 f_start_db_console ./nexus-3*
 function f_start_db_console() {
     local _installDir="${1:-"."}"
     local _webPort="${2:-"8282"}"
+    local _baseDir="${3:-"."}"
     local _java="java"  # In case needs to change to java 8 / java 17
     [ -n "${JAVA_HOME}" ] && _java="${JAVA_HOME%/}/bin/java"
     local _groovy_jar="${_installDir%/}/system/org/codehaus/groovy/groovy-all/2.4.17/groovy-all-2.4.17.jar"
@@ -3437,8 +3497,9 @@ function f_start_db_console() {
     fi
     local _groovy_cp="${_groovy_cp%:}:$(find "${_installDir%/}/system/org/postgresql/postgresql" -type f -name 'postgresql-*.jar' | tail -n1)"
     local _groovy_cp="${_groovy_cp%:}:$(find "${_installDir%/}/system/com/h2database/h2" -type f -name 'h2-*.jar' | tail -n1)"
+    echo "Starting H2 Console from \"${_baseDir}\" on http://localhost:${_webPort}/ ..." >&2
     ${_java:-"java"} -Dgroovy.classpath="${_groovy_cp%:}" -jar "${_groovy_jar}" \
-        -e "org.h2.tools.Server.createWebServer(\"-webPort\", \"${_webPort}\", \"-webAllowOthers\", \"-ifExists\").start()"
+        -e "org.h2.tools.Server.createWebServer(\"-webPort\", \"${_webPort}\", \"-webAllowOthers\", \"-ifExists\", \"-baseDir\", \"${_baseDir}\").start()"
 }
 
 
