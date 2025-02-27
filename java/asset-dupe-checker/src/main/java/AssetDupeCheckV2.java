@@ -321,10 +321,17 @@ public class AssetDupeCheckV2 {
                 indexes = db.getMetadata().getIndexManager().getIndexes();
                 log("[INFO] Current Indexes = " + indexes.size());
                 try {
-                    OClassImpl tbl = (OClassImpl) db.getMetadata().getSchema().getClass("browse_node");
-                    if (tbl != null) {
-                        log("[INFO] Truncating browse_node for export/import");
-                        tbl.truncate();
+                    // If IS_NO_INDEX_CHECK is NOT specified or if DUPE_COUNTER > 0, truncate browse_node.
+                    if (!IS_NO_INDEX_CHECK || DUPE_COUNTER > 0) {
+                        OClassImpl tbl = (OClassImpl) db.getMetadata().getSchema().getClass("browse_node");
+                        if (tbl != null) {
+                            if (DUPE_COUNTER > 0) {
+                                log("[INFO] Truncating browse_node just in case, as duplicates found (" + DUPE_COUNTER + ")");
+                            } else {
+                                log("[INFO] Truncating browse_node to make export/import faster");
+                            }
+                            tbl.truncate();
+                        }
                     }
                 } catch (IOException | OPageIsBrokenException ioe) {
                     log("[WARN] Ignoring TRUNCATE browse_node exception: " + ioe.getMessage());
