@@ -1,22 +1,52 @@
 // Copy of https://medium.com/@mlowicki/http-s-proxy-in-golang-in-less-than-100-lines-of-code-6a51c2f2c38c
+/*
+	curl -o /usr/local/bin/httpproxy -L https://github.com/hajimeo/samples/raw/master/misc/httpproxy_$(uname)_$(uname -m)
+	chmod a+x /usr/local/bin/httpproxy
+
+	curl -sSf -v --proxy http://localhost:8888/ -k -L https://www.google.com -o/dev/null
+*/
+
 package main
 
 import (
 	"crypto/tls"
 	"flag"
+	"fmt"
 	"io"
 	"log"
 	"net"
 	"net/http"
+	"strings"
 	"time"
 )
 
 var DelaySec int64
 var Debug bool
 
-func handleTunneling(w http.ResponseWriter, r *http.Request) {
+func out(format string, v ...any) {
+	log.Printf(format, v...)
+}
+
+func debug(format string, v ...any) {
 	if Debug {
-		log.Printf("DEBUG: Tunneling to %s\n", r.RequestURI)
+		out("DEBUG: "+format, v...)
+	}
+}
+
+func dumpKeyValues(m map[string][]string) []string {
+	var list []string
+	for name, values := range m {
+		for _, value := range values {
+			list = append(list, fmt.Sprintf("%s: \"%s\"", name, value))
+		}
+	}
+	return list
+}
+
+func handleTunneling(w http.ResponseWriter, r *http.Request) {
+	out("Tunneling to %s\n", r.RequestURI)
+	if Debug {
+		debug("ReqHeaders %s\n", "["+strings.Join(dumpKeyValues(r.Header), ", ")+"]")
 	}
 	dest_conn, err := net.DialTimeout("tcp", r.Host, 10*time.Second)
 	if err != nil {
@@ -34,26 +64,25 @@ func handleTunneling(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusServiceUnavailable)
 	}
 	if DelaySec > 0 {
-		if Debug {
-			log.Printf("DEBUG: Delay %s for %d seconds\n", r.RequestURI, DelaySec)
-		}
+		debug("Delay %s for %d seconds\n", r.RequestURI, DelaySec)
 		// sleep delay seconds
 		time.Sleep(time.Duration(DelaySec) * time.Second)
 	}
 	go transfer(dest_conn, client_conn)
 	go transfer(client_conn, dest_conn)
-	if Debug {
-		log.Printf("DEBUG: Completed %s\n", r.RequestURI)
-	}
+	debug("Completed %s\n", r.RequestURI)
 }
+
 func transfer(destination io.WriteCloser, source io.ReadCloser) {
 	defer destination.Close()
 	defer source.Close()
 	io.Copy(destination, source)
 }
+
 func handleHTTP(w http.ResponseWriter, req *http.Request) {
+	out("Connecting to %s\n", req.RequestURI)
 	if Debug {
-		log.Printf("DEBUG: Connectiong to %s\n", req.RequestURI)
+		debug("ReqHeaders %s\n", "["+strings.Join(dumpKeyValues(req.Header), ", ")+"]")
 	}
 	resp, err := http.DefaultTransport.RoundTrip(req)
 	if err != nil {
@@ -62,12 +91,14 @@ func handleHTTP(w http.ResponseWriter, req *http.Request) {
 	}
 	defer resp.Body.Close()
 	copyHeader(w.Header(), resp.Header)
+	if Debug {
+		debug("RspHeaders %s\n", "["+strings.Join(dumpKeyValues(resp.Header), ", ")+"]")
+	}
 	w.WriteHeader(resp.StatusCode)
 	io.Copy(w, resp.Body)
-	if Debug {
-		log.Printf("DEBUG: Completed %s\n", req.RequestURI)
-	}
+	debug("Completed %s\n", req.RequestURI)
 }
+
 func copyHeader(dst, src http.Header) {
 	for k, vv := range src {
 		for _, v := range vv {
@@ -75,6 +106,7 @@ func copyHeader(dst, src http.Header) {
 		}
 	}
 }
+
 func main() {
 	var pemPath string
 	flag.StringVar(&pemPath, "pem", "server.pem", "path to pem file")
