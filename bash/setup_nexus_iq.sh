@@ -103,7 +103,7 @@ function f_install_iq() {
     if [ -z "${_port}" ]; then
         _port="$(_find_port "8070" "" "^8071$")"
         [ -z "${_port}" ] && return 1
-        _log "INFO" "Using port: ${_port}" >&2
+        _log "WARN" "Using port: *** ${_port} ***"; sleep 1
     fi
     if [ -n "${_dbname}" ]; then
         if [[ "${_dbname}" =~ _ ]]; then
@@ -120,7 +120,7 @@ function f_install_iq() {
     fi
     if [[ "${_RECREATE_ALL-"Y"}" =~ [yY] ]]; then
         if [ -d "${_dirpath%/}" ]; then
-            _log "WARN" "Removing ${_dirpath%/} (to avoid set _RECREATE_ALL)"
+            _log "WARN" "Removing ${_dirpath%/} (to avoid set _RECREATE_ALL='N')"
             sleep 3
             rm -v -rf "${_dirpath%/}" || return $?
         fi
@@ -524,7 +524,7 @@ function f_setup_smtp_mailhog() {
     local _smtp_port="${1:-"1025"}"
     local _smtp_host="${2:-"localhost"}"
     local _from_addr="${3:-"smtptest@example.com"}"
-    _apiS "/api/v2/config/mail" '{"startTlsEnabled":false,"sslEnabled":false,"hostname":"'${_smtp_host}'","username":null,"systemEmail":"'${_from_addr}'","port":'${_smtp_port}',"password":null,"passwordIsIncluded":true}'
+    _apiS "/api/v2/config/mail" '{"startTlsEnabled":false,"sslEnabled":false,"hostname":"'${_smtp_host}'","username":null,"systemEmail":"'${_from_addr}'","port":'${_smtp_port}',"password":null,"passwordIsIncluded":true}' "PUT"
 }
 
 function f_setup_webhook() {
