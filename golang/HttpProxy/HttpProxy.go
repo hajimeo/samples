@@ -11,7 +11,13 @@ import (
 	"time"
 )
 
+var DelaySec int64
+var Debug bool
+
 func handleTunneling(w http.ResponseWriter, r *http.Request) {
+	if Debug {
+		log.Printf("DEBUG: Tunneling to %s\n", r.RequestURI)
+	}
 	dest_conn, err := net.DialTimeout("tcp", r.Host, 10*time.Second)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusServiceUnavailable)
@@ -27,8 +33,18 @@ func handleTunneling(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusServiceUnavailable)
 	}
+	if DelaySec > 0 {
+		if Debug {
+			log.Printf("DEBUG: Delay %s for %d seconds\n", r.RequestURI, DelaySec)
+		}
+		// sleep delay seconds
+		time.Sleep(time.Duration(DelaySec) * time.Second)
+	}
 	go transfer(dest_conn, client_conn)
 	go transfer(client_conn, dest_conn)
+	if Debug {
+		log.Printf("DEBUG: Completed %s\n", r.RequestURI)
+	}
 }
 func transfer(destination io.WriteCloser, source io.ReadCloser) {
 	defer destination.Close()
@@ -36,6 +52,9 @@ func transfer(destination io.WriteCloser, source io.ReadCloser) {
 	io.Copy(destination, source)
 }
 func handleHTTP(w http.ResponseWriter, req *http.Request) {
+	if Debug {
+		log.Printf("DEBUG: Connectiong to %s\n", req.RequestURI)
+	}
 	resp, err := http.DefaultTransport.RoundTrip(req)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusServiceUnavailable)
@@ -45,6 +64,9 @@ func handleHTTP(w http.ResponseWriter, req *http.Request) {
 	copyHeader(w.Header(), resp.Header)
 	w.WriteHeader(resp.StatusCode)
 	io.Copy(w, resp.Body)
+	if Debug {
+		log.Printf("DEBUG: Completed %s\n", req.RequestURI)
+	}
 }
 func copyHeader(dst, src http.Header) {
 	for k, vv := range src {
@@ -59,13 +81,18 @@ func main() {
 	var keyPath string
 	flag.StringVar(&keyPath, "key", "server.key", "path to key file")
 	var proto string
-	flag.StringVar(&proto, "proto", "https", "Proxy protocol (http or https)")
+	flag.StringVar(&proto, "proto", "http", "Proxy protocol (http or https)")
+	var port string
+	flag.StringVar(&port, "port", "8888", "Listen port")
+	flag.Int64Var(&DelaySec, "delay", -1, "Intentional delay in seconds")
+	flag.BoolVar(&Debug, "debug", false, "Debug / verbose output")
 	flag.Parse()
 	if proto != "http" && proto != "https" {
 		log.Fatal("Protocol must be either http or https")
 	}
+	log.Printf("Listening on port: %s\n", port)
 	server := &http.Server{
-		Addr: ":8888",
+		Addr: ":" + port,
 		Handler: http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			if r.Method == http.MethodConnect {
 				handleTunneling(w, r)
