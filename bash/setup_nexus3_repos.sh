@@ -140,7 +140,7 @@ function f_install_nexus3() {
     if [ -z "${_port}" ]; then
         _port="$(_find_port "8081" "" "^8082$")"
         [ -z "${_port}" ] && return 1
-        _log "INFO" "Using port: ${_port}"; sleep 1
+        _log "WARN" "Using port: *** ${_port} ***"; sleep 1
     fi
     if [ -n "${_dbname}" ]; then
         if [[ "${_dbname}" =~ _ ]]; then
@@ -1302,7 +1302,9 @@ function f_setup_cargo() {
     if ! _is_repo_available "${_prefix}-group"; then
         _apiS '{"action":"coreui_Repository","method":"create","data":[{"attributes":{"storage":{"blobStoreName":"'${_bs_name}'","strictContentTypeValidation":true'${_extra_sto_opt}'},"group":{"memberNames":["'${_prefix}'-hosted","'${_prefix}'-proxy"]}},"name":"'${_prefix}'-group","format":"","type":"","url":"","online":true,"recipe":"cargo-group"}],"type":"rpc"}' || return $?
     fi
-    echo "To test (me): curl -sSf -D- -o/dev/null -H \"Authorization: Basic <B64encoded_UserToken>\" ${_NEXUS_URL%/}/repository/${_prefix}-group/me"
+    echo "To test:
+    curl -sSf -D- -o/dev/null -H \"Authorization: Basic <B64encoded_UserToken>\" ${_NEXUS_URL%/}/repository/${_prefix}-hosted/config.json
+    curl -sSf -D- ${_NEXUS_URL%/}/repository/${_prefix}-group/me"   # To get the token (but User Token should be actually used
 }
 
 #curl -D- -sSf -u 'admin:admin123' "http://localhost:8081/service/rest/v1/repositories/raw/hosted" -H "Content-Type: application/json" -d '{"name":"raw-hosted","online":true,"storage":{"blobStoreName":"default","strictContentTypeValidation":false,"writePolicy":"ALLOW"}}'
@@ -1548,19 +1550,49 @@ function f_create_group_blobstore() {
     fi
 }
 
+_IQ_CONFIGURED=false
 function f_iq_quarantine() {
     local __doc__="Create Firewall Audit and Quarantine capability (also set up IQ connection)"
     local _repo_name="$1"
-    local _iq_url="${2:-"${_IQ_URL}"}"
-    if [ -z "${_iq_url}" ] || ! curl -sfI "${_iq_url}" &>/dev/null ; then
-        _log "WARN" "IQ ${_iq_url} is not reachable, but try creating the capability."
+    local _iq_url="${2-"${_IQ_URL}"}"   # accept empty string so that won't override with _IQ_URL
+    local _iq_user="${3:-"${_ADMIN_USER}"}"
+    local _iq_pwd="${4:-"${_ADMIN_PWD}"}"
+    if ! ${_IQ_CONFIGURED} && f_api "/service/rest/v1/iq" | grep -qE '"enabled" *: *true'; then
+        _log "INFO" "IQ is *probably* already configured."
+        _IQ_CONFIGURED=true
     fi
-    _apiS '{"action":"clm_CLM","method":"update","data":[{"enabled":true,"url":"'${_iq_url}'","authenticationType":"USER","username":"'${_ADMIN_USER}'","password":"'${_ADMIN_PWD}'","timeoutSeconds":null,"properties":"","showLink":true}],"type":"rpc"}' || return $?
+    if [ -z "${_iq_url}" ] && ! ${_IQ_CONFIGURED}; then
+        _log "ERROR" "IQ is not enabled and no _iq_url."
+        return 1
+    fi
+    if [ -n "${_iq_url}" ] && ! ${_IQ_CONFIGURED}; then
+        if ! curl -sfI "${_iq_url}" &>/dev/null ; then
+            _log "WARN" "IQ ${_iq_url} is not reachable, but try creating the capability."
+        fi
+        # Should use the API?
+        _log "INFO" "Configuring IQ ${_iq_url} with '${_iq_user}' ..."
+        _apiS '{"action":"clm_CLM","method":"update","data":[{"enabled":true,"url":"'${_iq_url}'","authenticationType":"USER","username":"'${_iq_user}'","password":"'${_iq_pwd}'","timeoutSeconds":null,"properties":"","showLink":true}],"type":"rpc"}' || return $?
+        _IQ_CONFIGURED=true
+    fi
     # To create IQ: Audit and Quarantine for this repository:
     if [ -n "${_repo_name}" ]; then
         _apiS '{"action":"capability_Capability","method":"create","data":[{"id":"NX.coreui.model.Capability-1","typeId":"firewall.audit","notes":"","enabled":true,"properties":{"repository":"'${_repo_name}'","quarantine":"true"}}],"type":"rpc"}' || return $?
         _log "INFO" "IQ: Audit and Quarantine for ${_repo_name} completed."
     fi
+}
+
+function f_iq_quarantine_all() {
+    local __doc__="Create Firewall Audit and Quarantine capabilities for all proxy repositories"
+    local _repo_name_regex="$1"
+    local _iq_url="${2-"${_IQ_URL}"}"   # accept empty string so that won't override with _IQ_URL
+    local _iq_user="${3:-"${_ADMIN_USER}"}"
+    local _iq_pwd="${4:-"${_ADMIN_PWD}"}"
+    f_api "/service/rest/v1/repositories" | grep -E '"type" *: *"proxy"' -B2 | grep '"name"' | sed -r 's/.*"name" *: *"([^"]+)".*/\1/g' | while read _repo_name; do
+        if [ -z "${_repo_name_regex}" ] || [[ "${_repo_name}" =~ ${_repo_name_regex} ]]; then
+            _log "INFO" "Setting IQ qurantine for ${_repo_name} ..."
+            f_iq_quarantine "${_repo_name}" "${_iq_url}" "${_iq_user}" "${_iq_pwd}"
+        fi
+    done
 }
 
 # f_get_and_upload_jars "maven" "junit" "junit" "3.8 4.0 4.1 4.2 4.3 4.4 4.5 4.6 4.7 4.8 4.9 4.10 4.11 4.12"
@@ -1726,7 +1758,7 @@ function _apiS() {
     [ -z "${_method}" ] && _method="GET"
 
     # Mac's /tmp is symlink so without the ending "/", would needs -L but does not work with -delete
-    find -L ${_TMP%/} -type f -name '.nxrm_c_*' -mmin +1 -delete 2>/dev/null
+    find -L ${_TMP%/} -maxdepth 1 -type f -name '.nxrm_c_*' -mmin +1 -delete 2>/dev/null
     local _c="${_TMP%/}/.nxrm_c_$$"
     if [ ! -s ${_c} ]; then
         curl -sf -D ${_TMP%/}/_apiS_header_$$.out -b ${_c} -c ${_c} -o ${_TMP%/}/_apiS_$$.out -k "${_nexus_url%/}/service/rapture/session" -d "${_user_pwd}"
@@ -2946,6 +2978,8 @@ function f_upload_dummy_npm() {
     f_upload_asset "${_repo_name}" -F "npm.asset=@${_uploading_file}" || return $?
     rm -v -f ${_TMP%/}/${_dummy_pkg_name}-${_ver}.tgz
 }
+#curl -sSf -o "${_TMP%/}/policy-demo-2.0.0.tgz" -L "https://registry.npmjs.org/@sonatype/policy-demo/-/policy-demo-2.0.0.tgz"
+#_update_npm_tgz "${_TMP%/}/policy-demo-2.0.0.tgz" "@ros/mof-ui-library" "9.9.9" "Y"
 function _update_npm_tgz() {
     local _tgz="$1"
     local _new_name="$2"
@@ -2972,6 +3006,9 @@ function _update_npm_tgz() {
     if [ -n "${_new_name}" ]; then
         sed -i.tmp -E 's;"name": ".+";"name": "'${_new_name}'";' ${_tmpdir%/}/package/package.json || return $?
         _tzg_name="${_new_name}"
+        if [[ "${_new_name}" =~ ([^/]+)/([^/]+) ]]; then
+            _tzg_name="${BASH_REMATCH[2]}"
+        fi
     fi
     if [ -n "${_new_ver}" ]; then
         sed -i.tmp -E 's/"version": ".+"/"version": "'${_new_ver}'"/' ${_tmpdir%/}/package/package.json || return $?
@@ -3343,7 +3380,10 @@ function f_delete_all_assets() {
 #   f_api "/service/rest/v1/repositories/raw/hosted" '{"name":"raw-hosted","online":true,"storage":{"blobStoreName":"default","strictContentTypeValidation":false,"writePolicy":"ALLOW"}}'
 #   f_api "/service/rest/v1/repositories/raw/hosted" '{"name":"raw-test-hosted","online":true,"storage":{"blobStoreName":"default","strictContentTypeValidation":false,"writePolicy":"ALLOW"}}'
 # 2. curl -D- -u "admin:admin123" -T<(echo "test for f_staging_move") -L -k "${_NEXUS_URL%/}/repository/raw-hosted/test/nxrm3Staging.txt"
-# 3. f_staging_move "raw-test-hosted" "raw-test-tag" "repository=raw-hosted&name=*test/nxrm3Staging*.txt"
+# 3. f_associate_tag "repository=raw-hosted" "raw-test-tag"
+#    f_staging_move "raw-test-hosted" "raw-test-tag"
+#  Or
+#    f_staging_move "raw-test-hosted" "raw-test-tag" "repository=raw-hosted&name=*test/nxrm3Staging*.txt"
 #    NOTE: Tag is optional. Using "*" in 'name=' as name|path in NewDB starts with "/"
 # 4. f_staging_move "raw-hosted" "raw-test-tag" "repository=raw-test-hosted&name=*test/nxrm3Staging*.txt"
 # With maven2:
@@ -3485,8 +3525,9 @@ function f_start_db_console() {
     local _baseDir="${3:-"."}"
     local _java="java"  # In case needs to change to java 8 / java 17
     [ -n "${JAVA_HOME}" ] && _java="${JAVA_HOME%/}/bin/java"
-    local _groovy_jar="${_installDir%/}/system/org/codehaus/groovy/groovy-all/2.4.17/groovy-all-2.4.17.jar"
     local _groovy_cp=""
+    local _groovy_jar="${_installDir%/}/system/org/codehaus/groovy/groovy-all/2.4.17/groovy-all-2.4.17.jar"
+    # If 3.67 and higher, use groovy v3
     if [ ! -s "${_groovy_jar}" ]; then
         _groovy_jar="$(find "${_installDir%/}/system/org/codehaus/groovy/groovy" -type f -name 'groovy-3.*.jar' 2>/dev/null | head -n1)"
         _groovy_cp="$(find "${_installDir%/}/system/org/codehaus/groovy/groovy-sql" -type f -name 'groovy-sql-3.*.jar' 2>/dev/null | head -n1)"
@@ -3495,8 +3536,8 @@ function f_start_db_console() {
         echo "ERROR Groovy jar not found. Please make sure _installDir is correct." >&2
         return 1
     fi
-    local _groovy_cp="${_groovy_cp%:}:$(find "${_installDir%/}/system/org/postgresql/postgresql" -type f -name 'postgresql-*.jar' | tail -n1)"
-    local _groovy_cp="${_groovy_cp%:}:$(find "${_installDir%/}/system/com/h2database/h2" -type f -name 'h2-*.jar' | tail -n1)"
+    _groovy_cp="${_groovy_cp%:}:$(find "${_installDir%/}/system/org/postgresql/postgresql" -type f -name 'postgresql-*.jar' | tail -n1)"
+    _groovy_cp="${_groovy_cp%:}:$(find "${_installDir%/}/system/com/h2database/h2" -type f -name 'h2-*.jar' | tail -n1)"
     echo "Starting H2 Console from \"${_baseDir}\" on http://localhost:${_webPort}/ ..." >&2
     ${_java:-"java"} -Dgroovy.classpath="${_groovy_cp%:}" -jar "${_groovy_jar}" \
         -e "org.h2.tools.Server.createWebServer(\"-webPort\", \"${_webPort}\", \"-webAllowOthers\", \"-ifExists\", \"-baseDir\", \"${_baseDir}\").start()"
@@ -3603,18 +3644,23 @@ function f_restore_postgresql_component() {
     grep -w ERROR ./psql_restore.log | grep -v "cannot drop constraint"
 }
 
-#f_query_postgresql ./sonatype-work/nexus3 "SELECT blob_ref FROM %TABLE%" "%_asset_blob"
+#f_query_postgresql ./sonatype-work/nexus3 "SELECT blob_ref FROM %FMT%_asset_blob"
+#f_query_postgresql ./sonatype-work/nexus3 "SELECT attributes FROM %FMT%_content_repository WHERE attributes is not null and attributes <> '{}'"
+#f_query_postgresql ./sonatype-work/nexus3 "UPDATE %FMT%_content_repository SET attributes = '{}'::jsonb WHERE attributes is not null and attributes <> '{}'"
 function f_query_postgresql() {
-    local __doc__="Query against all assets or components"
+    local __doc__="Query against all assets or components by using nexus-store.properties"
     local _workingDirectory="${1}"
-    local _query="${2}" # Use '%TABLE%'
-    local _table_name_like="${3:-"%_asset"}"
+    local _query="${2}" # Use '%FMT%'
+    local _dry_run="${3:-"${_DRY_RUN}"}"
     local _psql_opts="${4:-"${_PSQL_OPTS:-"-tA"}"}"
     _export_postgres_config "${_workingDirectory%/}/etc/fabric/nexus-store.properties" || return $?
-    PGGSSENCMODE=disable psql -h ${_DBHOST} -p ${_DBPORT:-"5432"} -U ${_DBUSER} -d ${_DBNAME} -tA -c "SELECT table_name FROM information_schema.tables WHERE table_name like '${_table_name_like}'" | while read -r _table; do
-        local _q="$(echo "${_query}" | sed "s/%TABLE%/${_table}/g")"
+    PGGSSENCMODE=disable psql -h ${_DBHOST} -p ${_DBPORT:-"5432"} -U ${_DBUSER} -d ${_DBNAME} -tA -c "SELECT distinct REGEXP_REPLACE(recipe_name, '-.+', '') AS fmt FROM repository" | while read -r _fmt; do
+        local _q="$(echo "${_query}" | sed "s/%FMT%/${_fmt}/g")"
         echo "# ${_q}" >&2
-        PGGSSENCMODE=disable psql -h ${_DBHOST} -p ${_DBPORT:-"5432"} -U ${_DBUSER} -d ${_DBNAME} ${_psql_opts} -c "${_q}"
+        if [[ "${_dry_run}" =~ ^[yY] ]]; then
+            continue
+        fi
+        PGGSSENCMODE=disable psql -h ${_DBHOST} -p ${_DBPORT:-"5432"} -U ${_DBUSER} -d ${_DBNAME} ${_psql_opts} -c "${_q}" || return $?
     done
 }
 
@@ -3628,8 +3674,8 @@ function f_set_log_level() {
     local _log_class="${1}"
     local _log_level="${2:-"DEBUG"}"
     if [ -z "${_log_class}" ]; then
-        _log "ERROR" "No logger class name is given."
-        return 1
+        _log "WARN" "RESET-ing the log levels"
+        _log_class="RESET"
     fi
     if [ "${_log_class}" == "root" ]; then
         _log_class="ROOT"
