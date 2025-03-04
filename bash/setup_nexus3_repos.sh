@@ -163,11 +163,24 @@ function f_install_nexus3() {
         fi
         [ -z "${_RECREATE_DB}" ] && _RECREATE_DB="Y"
     fi
-    # If no `-\d\d`, appending the wildcard
+    # If no `-\d\d`, appending the wildcard to pick from the local cache (downloading fails)
     local _tgz_ver="${_ver}"
     [[ "${_ver}" =~ ^3\.[0-9]+\.[0-9]+$ ]] && _tgz_ver="${_ver}-*"
+
     local _tgz_name="nexus-${_tgz_ver}-unix.tar.gz"
-    [ "`uname`" = "Darwin" ] && _tgz_name="nexus-${_tgz_ver}-mac.tgz"
+    # From version 3.78, the filename is different (eg. nexus-mac-x86-64-3.78.0-14.tar.gz, nexus-unix-x86-64-3.78.0-14.tar.gz)
+    if [[ "${_ver}" =~ ^3\.(7[8-9]\.|[89][0-9]\.|[1-9][0-9][0-9]).+ ]]; then
+        local _arch="$(uname -m)"
+        local _os="$(uname -s)"
+        [ "${_os}" = "Linux" ] && _os="unix"
+        [ "${_os}" = "Darwin" ] && _os="mac"
+        [ "${_arch}" = "x86_64" ] && _arch="x86-64"
+        [ "${_arch}" = "arm64" ] && _arch="aarch64"
+        _tgz_name="nexus-${_os}-${_arch}-${_tgz_ver}.tar.gz"
+    else
+        _tgz_name="nexus-${_tgz_ver}-unix.tar.gz"
+        [ "`uname`" = "Darwin" ] && _tgz_name="nexus-${_tgz_ver}-mac.tgz"
+    fi
     # download-staging.sonatype.com
     _prepare_install "${_dirpath}" "https://download.sonatype.com/nexus/${_ver%%.*}/${_tgz_name}" "${r_NEXUS_LICENSE_FILE}" || return $?
 
@@ -2291,6 +2304,8 @@ function f_create_cleanup_policy() {
 }
 #f_api "/service/rest/internal/cleanup-policies" "{\"name\":\"maven2-without-sort\",\"notes\":null,\"format\":\"maven2\",\"criteriaLastBlobUpdated\":1,\"criteriaReleaseType\":\"RELEASES\",\"retain\":\"10\"}"
 
+# To restrict DELETE for npm logout
+#f_create_csel "npm-logout" "format == 'npm' and path =^ '/-/user/token/'" "npm-hosted" "delete"
 function f_create_csel() {
     local __doc__="Create/add a test content selector"
     local _csel_name="${1:-"csel-test"}"
@@ -3668,6 +3683,7 @@ function f_query_postgresql() {
 
 ### Misc.
 # f_set_log_level "root"
+# f_set_log_level "org.eclipse.jetty.server.HttpChannel"
 function f_set_log_level() {
     local __doc__="Set / Change some logger's log level"
     # NOTE: if incorrect class name is used, may need to edit sonatype-work/nexus3/etc/logback/logback-overrides.xml
