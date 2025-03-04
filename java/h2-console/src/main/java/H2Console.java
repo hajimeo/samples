@@ -27,7 +27,8 @@ public class H2Console {
     static private Boolean isBatch;
     static final private List<String> numTypes = Arrays.asList("smallint", "integer", "int", "int4", "bigint", "decimal", "numeric", "real", "smallserial", "serial", "bigserial");
     static private String outputFormat = "csv";    // or json
-    static final private String H2_DEFAULT_OPTS = "DATABASE_TO_UPPER=FALSE;DEFAULT_LOCK_TIMEOUT=600000";
+    // IQ uses DATABASE_TO_UPPER=FALSE, but too inconvenient
+    static final private String H2_DEFAULT_OPTS = "CASE_INSENSITIVE_IDENTIFIERS=TRUE;DEFAULT_LOCK_TIMEOUT=600000";
     static private String prompt = "=> ";
     static private String h2Opts = "";
     static private String binaryField;
@@ -52,13 +53,13 @@ public class H2Console {
     }
 
     public static final Pattern describeNamePtn =
-            Pattern.compile("(info|describe|desc) (table|class|index) ([^;]+)", Pattern.CASE_INSENSITIVE);
+            Pattern.compile("^ *(info|describe|desc) (table|class|index) ([^;]+)", Pattern.CASE_INSENSITIVE);
     public static final Pattern exportNamePtn =
-            Pattern.compile("export ([^ ]+) to ([^;]+)", Pattern.CASE_INSENSITIVE);
+            Pattern.compile("^ *export ([^ ]+) to ([^;]+)", Pattern.CASE_INSENSITIVE);
     public static final Pattern importNamePtn =
-            Pattern.compile("import (.+)", Pattern.CASE_INSENSITIVE);
+            Pattern.compile("^ *import (.+)", Pattern.CASE_INSENSITIVE);
     public static final Pattern setPagingPtn =
-            Pattern.compile("(set) (page|paging|offset) ([0-9]+)", Pattern.CASE_INSENSITIVE);
+            Pattern.compile("^ *(set) (page|paging|offset) ([0-9]+)", Pattern.CASE_INSENSITIVE);
 
     private static void usage() {
         System.err.println("https://github.com/hajimeo/samples/blob/master/java/h2-console/README.md");
@@ -471,9 +472,22 @@ public class H2Console {
                 if (names.length > 1) {
                     where = " WHERE LOWER(TABLE_SCHEMA) = '" + names[0] + "' AND LOWER(TABLE_NAME) = '" + names[1] + "'";
                 }
-                execute(query + where);
-                query = "SELECT SQL FROM INFORMATION_SCHEMA.CONSTRAINTS";
-                execute(query + where);
+                try {
+                    execute(query + where);
+                    query = "SELECT SQL FROM INFORMATION_SCHEMA.CONSTRAINTS";
+                    execute(query + where);
+                } catch (RuntimeException e2) {
+                    // H2 V2 doesn't have 'SQL' column, so if RuntimeException in here, try again with different query
+                    query = "SELECT COLUMN_NAME, DATA_TYPE, IS_IDENTITY, DEFAULT_ON_NULL, IS_GENERATED, GENERATION_EXPRESSION FROM INFORMATION_SCHEMA.COLUMNS";
+                    where = " WHERE LOWER(TABLE_NAME) = '" + names[0] + "'";
+                    if (names.length > 1) {
+                        where = " WHERE LOWER(TABLE_SCHEMA) = '" + names[0] + "' AND LOWER(TABLE_NAME) = '" + names[1] + "'";
+                    }
+                    execute(query + where + " ORDER BY ORDINAL_POSITION");
+                    System.out.println();
+                    query = "SELECT INDEX_NAME, INDEX_TYPE_NAME, NULLS_DISTINCT, IS_GENERATED, REMARKS FROM INFORMATION_SCHEMA.INDEXES";
+                    execute(query + where + " ORDER BY INDEX_NAME");
+                }
             } else {
                 log("No match found from " + input, isDebug);
             }
@@ -720,11 +734,21 @@ public class H2Console {
             path = new File(path).getAbsolutePath();
         }
         path = path.replaceAll("\\.(h2|mv)\\.db", "");
+        String url = "jdbc:h2:" + path.replaceAll(";\\s*$", "") + ";" + h2Opts.replaceAll("^;", "");
         try {
-            String url = "jdbc:h2:" + path.replaceAll(";\\s*$", "") + ";" + h2Opts.replaceAll("^;", "");
-            System.err.println("# " + url);
             org.h2.Driver.load();
-            conn = DriverManager.getConnection(url, dbUser, dbPwd);
+            // As H2 v1 doesn't support, if the exception is 'org.h2.jdbc.JdbcSQLException: Unsupported connection setting "CASE_INSENSITIVE_IDENTIFIERS"'
+            try {
+                conn = DriverManager.getConnection(url, dbUser, dbPwd);
+            } catch (SQLException e) {
+                if (e.getMessage().contains("Unsupported connection setting")) {
+                    url = url.replaceAll("(?i)CASE_INSENSITIVE_IDENTIFIERS=TRUE", "DATABASE_TO_UPPER=FALSE");
+                    conn = DriverManager.getConnection(url, dbUser, dbPwd);
+                } else {
+                    throw e;
+                }
+            }
+            System.err.println("# " + url);
             // Making sure auto commit is on as default
             conn.setAutoCommit(true);
             stat = conn.createStatement();
