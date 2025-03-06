@@ -2427,26 +2427,29 @@ function f_start_saml_server() {
     # SAML server: https://github.com/hajimeo/samples/blob/master/golang/SamlTester/README.md
     local __doc__="Install and start a dummy SAML service"
     local _idp_base_url="${1:-"http://localhost:2080/"}"
-    local _sp_meta_file="${2:-"${_TMP%/}/metadata.xml"}"
-    local _sp_meta_url="${3}"   # If IQ: http://localhost:8070/api/v2/config/saml/metadata
+    local _sp_meta_file="${2}"
+    local _sp_meta_url="${3}"   # If IQ: http://localhost:8070/api/v2/config/saml/metadata (cab be multiple with space delimiter)
     local _sp_meta_cred="${4-"admin:admin123"}"
     local _install_dir="${5:-"${_SHARE_DIR%/}/simplesaml"}"
     local _users_json="${6:-"${_install_dir%/}/simple-saml-idp.json"}"
-    if [ -z "${_sp_meta_file}" ]; then
-        echo "Please specify _sp_meta_file location."; return 1
-    fi
+    
     if [ -z "${_sp_meta_url}" ]; then
-        if [ -n "${_NEXUS_URL%/}" ] && _isUrl "${_NEXUS_URL%/}/service/rest/v1/status" "Y"; then
+        if [ -n "${_NEXUS_URL%/}" ]; then   # && _isUrl "${_NEXUS_URL%/}/service/rest/v1/status" "Y"
             _sp_meta_url="${_NEXUS_URL%/}/service/rest/v1/security/saml/metadata"
-        elif [ -n "${_IQ_URL%/}" ] && _isUrl "${_IQ_URL%/}/ping" "Y"; then
-            _sp_meta_url="${_IQ_URL%/}/api/v2/config/saml/metadata"
+        else
+            _sp_meta_url="http://localhost:8081/service/rest/v1/security/saml/metadata"
         fi
-    fi
-    if [ ! -d "${_install_dir%/}" ]; then
-        mkdir -v -p "${_install_dir%/}" || return $?
+        if [ -n "${_IQ_URL%/}" ]; then   # && _isUrl "${_IQ_URL%/}/ping" "Y"
+            _sp_meta_url="${_sp_meta_url} ${_IQ_URL%/}/api/v2/config/saml/metadata"
+        else
+            _sp_meta_url="${_sp_meta_url} http://localhost:8070/api/v2/config/saml/metadata"
+        fi
     fi
 
     # Installing simplesamlidp
+    if [ ! -d "${_install_dir%/}" ]; then
+        mkdir -v -p "${_install_dir%/}" || return $?
+    fi
     local _cmd="simplesamlidp"  # If not in the PATH, download it
     if ! type ${_cmd} &>/dev/null; then
         if [ ! -s "${_install_dir%/}/simplesamlidp" ]; then
@@ -2459,14 +2462,24 @@ function f_start_saml_server() {
         curl -sSf -o "${_users_json}" -L "https://raw.githubusercontent.com/hajimeo/samples/master/misc/simple-saml-idp.json" --compressed  || return $?
     fi
 
-    # If SP metadata file does not exist, download it
-    if [ -n "${_sp_meta_url}" ]; then
-        if [ ! -s "${_sp_meta_file}" ]; then
-            _log "INFO" "Downloading SP metafile from ${_sp_meta_url} ..."
-            curl -sS -L -o ${_sp_meta_file} -u "${_sp_meta_cred}" "${_sp_meta_url}" || return $?
-        else
-            _log "WARN" "Reusing the existing SP metafile ${_sp_meta_file} ..."
-        fi
+    # If SP metadata file does not exist, download it as samplesamlidp does not support authentication.
+    if [ -n "${_sp_meta_url}" ] && [ -z "${_sp_meta_file}" ]; then
+        local index=0
+        for _url in ${_sp_meta_url}; do
+            if [ -n "${_url}" ]; then
+                index=$((index + 1))
+                local _tmp_file="${_TMP%/}/sp_metadata_${index}.xml"
+                _log "INFO" "Downloading SP metafile from ${_url} ..."
+                curl -sSf -L -o "${_tmp_file}" -u "${_sp_meta_cred}" "${_url}"
+                if [ -s "${_tmp_file}" ]; then
+                    if [ -z "${_sp_meta_file}" ]; then
+                        _sp_meta_file="${_tmp_file}"
+                    else
+                        _sp_meta_file="${_sp_meta_file},${_tmp_file}"
+                    fi
+                fi
+            fi
+        done
     fi
     # If no key/cert, generate it
     if [ ! -s ${_install_dir%/}/myidp.key ]; then
@@ -2474,12 +2487,14 @@ function f_start_saml_server() {
     fi
 
     export IDP_KEY="${_install_dir%/}/myidp.key" IDP_CERT="${_install_dir%/}/myidp.crt" USER_JSON="${_users_json}" IDP_BASE_URL="${_idp_base_url}" SERVICE_METADATA_URL="${_sp_meta_file}"
+    _log "INFO" "Starting IdP with SERVICE_METADATA_URL SP metafiles from ${SERVICE_METADATA_URL} ..."
     eval "${_cmd}" &> ${_TMP%/}/simplesamlidp_$$.log &
     local _pid="$!"
     sleep 2
     curl -sf -o ${_TMP%/}/idp_metadata.xml "${_idp_base_url%/}/metadata" || return $?
     echo "[INFO] Running simplesamlidp in background ..."
     echo "       PID: ${_pid}  Log: ${_TMP%/}/simplesamlidp_$$.log"
+    echo "       USER_JSON: ${USER_JSON}"
     echo "       IdP metadata: ${_TMP%/}/idp_metadata.xml"
     #echo "       curl -D- -X PUT -u admin:admin123 http://localhost:8070/api/v2/roleMemberships/global/role/b9646757e98e486da7d730025f5245f8/group/ipausers"
     if [ ! -s "${_sp_meta_file}" ]; then
@@ -2487,8 +2502,8 @@ function f_start_saml_server() {
         #echo "       So, eduPersonPrincipalName can be used for 'email', eduPersonAffiliation for 'groups'."
         echo "[INFO] Execute 'f_setup_saml_for_simplesaml'"
         echo "[INFO] Restart this IdP if some login issue."
-        echo "       If necessary, save '${_sp_meta_url}' into ${_sp_meta_file}:"
-        echo "       curl -o ${_sp_meta_file} -u \"admin\" \"${_sp_meta_url}\""
+        #echo "       If necessary, save '${_sp_meta_url}' into ${_sp_meta_file}:"
+        #echo "       curl -o ${_sp_meta_file} -u \"admin\" \"${_sp_meta_url}\""
     fi
 }
 function f_setup_saml_for_simplesaml() {
