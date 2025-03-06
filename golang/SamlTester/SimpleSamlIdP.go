@@ -15,6 +15,7 @@ package main
 
 import (
 	"crypto"
+	"crypto/md5"
 	"crypto/x509"
 	"encoding/json"
 	"encoding/pem"
@@ -101,8 +102,15 @@ func main() {
 
 	// Loading (putting) users from the json file
 	addUsers(userJsonFilename, idpServer, logr)
-	// Currently only one service is supported
-	addService(idpServer, idpBaseURL, serviceUrlOrXml, logr)
+	// split serviceUrlOrXml by "," and iterate over the list
+	serviceUrls := strings.Split(serviceUrlOrXml, ",")
+	for _, serviceUrl := range serviceUrls {
+		serviceUrl = strings.TrimSpace(serviceUrl)
+		if serviceUrl == "" {
+			continue
+		}
+		addService(idpServer, idpBaseURL, serviceUrl, logr)
+	}
 
 	flag.Set("bind", ":"+idpBaseURL.Port())
 
@@ -130,7 +138,8 @@ func submitService(idpBaseURL *url.URL, serviceName string, respBody io.Reader) 
 }
 
 func addService(idpServer *samlidp.Server, idpBaseURL *url.URL, serviceUrlOrXml string, logr *log.Logger) {
-	serviceName := "sample-service"
+	// set serviceName with md5 of serviceUrlOrXml
+	serviceName := fmt.Sprintf("%x", md5.Sum([]byte(serviceUrlOrXml)))
 	queryMetaData := func() error {
 		return nil
 	}
