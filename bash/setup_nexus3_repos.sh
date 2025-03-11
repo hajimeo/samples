@@ -140,7 +140,9 @@ function f_install_nexus3() {
     if [ -z "${_port}" ]; then
         _port="$(_find_port "8081" "" "^8082$")"
         [ -z "${_port}" ] && return 1
-        _log "WARN" "Using port: *** ${_port} ***"; sleep 1
+        if [ "${_port}" != "8081" ]; then
+            _log "WARN" "Using port: *** ${_port} ***"; sleep 1
+        fi
     fi
     if [ -n "${_dbname}" ]; then
         if [[ "${_dbname}" =~ _ ]]; then
@@ -258,7 +260,7 @@ EOF
     if [ "${_port}" != "8081" ]; then
         echo "      May need to execute 'export _NEXUS_URL=\"http://localhost:${_port}/\"'"
     fi
-    _isYes "${_NEXUS_ENABLE_HA:-"${r_NEXUS_ENABLE_HA}"}" && echo "      Make sure 'blobs' use full path or symlinked"
+    _isYes "${_NEXUS_ENABLE_HA:-"${r_NEXUS_ENABLE_HA}"}" && _log "WARN" "Make sure 'blobs' use fullpath or symlinked"
 }
 
 function f_uninstall_nexus3() {
@@ -1318,6 +1320,22 @@ function f_setup_cargo() {
     echo "To test:
     curl -sSf -D- -o/dev/null -H \"Authorization: Basic <B64encoded_UserToken>\" ${_NEXUS_URL%/}/repository/${_prefix}-hosted/config.json
     curl -sSf -D- ${_NEXUS_URL%/}/repository/${_prefix}-group/me"   # To get the token (but User Token should be actually used
+}
+
+function f_setup_composer() {
+    local __doc__="Create PHP Composer Proxy repository (v3.75+)"
+    local _prefix="${1:-"composer"}"
+    local _bs_name="${2:-"${r_BLOBSTORE_NAME:-"${_BLOBTORE_NAME}"}"}"
+    local _ds_name="${3:-"${r_DATASTORE_NAME:-"${_DATASTORE_NAME}"}"}"
+    local _extra_sto_opt=""
+    [ -z "${_bs_name}" ] && _bs_name="$(_get_blobstore_name)"
+    [ -z "${_ds_name}" ] && _ds_name="$(_get_datastore_name)"
+    [ -n "${_ds_name}" ] && _extra_sto_opt=',"dataStoreName":"'${_ds_name}'"'
+    if ! _is_repo_available "${_prefix}-proxy"; then
+        _apiS '{"action":"coreui_Repository","method":"create","data":[{"attributes":{"proxy":{"remoteUrl":"https://packagist.org","contentMaxAge":1440,"metadataMaxAge":1440},"replication":{"preemptivePullEnabled":false},"httpclient":{"blocked":false,"autoBlock":true,"connection":{"useTrustStore":false}},"storage":{"dataStoreName":"nexus","blobStoreName":"'${_bs_name}'","strictContentTypeValidation":true'${_extra_sto_opt}'},"negativeCache":{"enabled":true,"timeToLive":1440},"cleanup":{"policyName":[]}},"name":"'${_prefix}'-proxy","format":"","type":"","url":"","online":true,"routingRuleId":"","authEnabled":false,"httpRequestSettings":false,"recipe":"composer-proxy"}],"type":"rpc"}' || return $?
+    fi
+    echo "To test:
+    curl -sSf -D- ${_NEXUS_URL%/}/repository/${_prefix}-proxy/packages.json"
 }
 
 #curl -D- -sSf -u 'admin:admin123' "http://localhost:8081/service/rest/v1/repositories/raw/hosted" -H "Content-Type: application/json" -d '{"name":"raw-hosted","online":true,"storage":{"blobStoreName":"default","strictContentTypeValidation":false,"writePolicy":"ALLOW"}}'
@@ -2429,10 +2447,11 @@ function f_start_saml_server() {
     local _idp_base_url="${1:-"http://localhost:2080/"}"
     local _sp_meta_file="${2}"
     local _sp_meta_url="${3}"   # If IQ: http://localhost:8070/api/v2/config/saml/metadata (cab be multiple with space delimiter)
-    local _sp_meta_cred="${4-"admin:admin123"}"
-    local _install_dir="${5:-"${_SHARE_DIR%/}/simplesaml"}"
-    local _users_json="${6:-"${_install_dir%/}/simple-saml-idp.json"}"
-    
+    local _sp_uid="${4-"${_ADMIN_USER}"}"
+    local _sp_pwd="${5-"${_ADMIN_PWD}"}"
+    local _install_dir="${6:-"${_SHARE_DIR%/}/simplesaml"}"
+    local _users_json="${7:-"${_install_dir%/}/simple-saml-idp.json"}"
+
     if [ -z "${_sp_meta_url}" ]; then
         if [ -n "${_NEXUS_URL%/}" ]; then   # && _isUrl "${_NEXUS_URL%/}/service/rest/v1/status" "Y"
             _sp_meta_url="${_NEXUS_URL%/}/service/rest/v1/security/saml/metadata"
@@ -2480,13 +2499,19 @@ function f_start_saml_server() {
                 fi
             fi
         done
+        if [ -z "${_sp_meta_file}" ]; then
+            _log "WARN" "No SP metadata file downloaded. Please check the service is configured for SAML (f_setup_saml_simplesaml for RM3 or IQ)"
+            _log "WARN" "But still starting to save the IDP metadata to ${_TMP%/}/idp_metadata.xml ..."
+            _log "WARN" "As RM3 and IQ requires authentication, may need to restart this IdP."
+            _sp_meta_file="${_sp_meta_url}"
+        fi
     fi
     # If no key/cert, generate it
     if [ ! -s ${_install_dir%/}/myidp.key ]; then
         openssl req -x509 -newkey rsa:2048 -keyout ${_install_dir%/}/myidp.key -out ${_install_dir%/}/myidp.crt -days 3650 -nodes -subj "/CN=$(hostname -f)" || return $?
     fi
 
-    export IDP_KEY="${_install_dir%/}/myidp.key" IDP_CERT="${_install_dir%/}/myidp.crt" USER_JSON="${_users_json}" IDP_BASE_URL="${_idp_base_url}" SERVICE_METADATA_URL="${_sp_meta_file}"
+    export IDP_KEY="${_install_dir%/}/myidp.key" IDP_CERT="${_install_dir%/}/myidp.crt" USER_JSON="${_users_json}" IDP_BASE_URL="${_idp_base_url}" SERVICE_METADATA_URL="${_sp_meta_file}" SERVICE_UID="${_sp_uid}" SERVICE_PWD="${_sp_pwd}"
     _log "INFO" "Starting IdP with SERVICE_METADATA_URL SP metafiles from ${SERVICE_METADATA_URL} ..."
     eval "${_cmd}" &> ${_TMP%/}/simplesamlidp_$$.log &
     local _pid="$!"
@@ -2500,13 +2525,13 @@ function f_start_saml_server() {
     if [ ! -s "${_sp_meta_file}" ]; then
         #echo "       Example Attr: {uid=[samluser], eduPersonPrincipalName=[samluser@standalone.localdomain], eduPersonAffiliation=[users], givenName=[saml], sn=[user], cn=[Saml User]}"
         #echo "       So, eduPersonPrincipalName can be used for 'email', eduPersonAffiliation for 'groups'."
-        echo "[INFO] Execute 'f_setup_saml_for_simplesaml'"
+        echo "[INFO] Execute 'f_setup_saml_simplesaml'"
         echo "[INFO] Restart this IdP if some login issue."
         #echo "       If necessary, save '${_sp_meta_url}' into ${_sp_meta_file}:"
         #echo "       curl -o ${_sp_meta_file} -u \"admin\" \"${_sp_meta_url}\""
     fi
 }
-function f_setup_saml_for_simplesaml() {
+function f_setup_saml_simplesaml() {
     local __doc__="Setup SAML for Nexus3 with PUT /v1/security/saml"
     local _entityId="${1:-"${_NEXUS_URL%/}/service/rest/v1/security/saml/metadata"}"
     local _idp_metadata="${2:-"${_TMP%/}/idp_metadata.xml"}"
@@ -2590,7 +2615,11 @@ function f_start_ldap_server() {
     fi
     _log "INFO" "Starting glauth with ${_install_dir%/}/glauth-simple.cfg ..."
     # listening 0.0.0.0:389
-    ${_install_dir%/}/glauth -c ${_install_dir%/}/glauth-simple.cfg
+    eval "${_install_dir%/}/glauth -c ${_install_dir%/}/glauth-simple.cfg" &> ${_TMP%/}/glauth_$$.log &
+    local _pid="$!"
+    sleep 2
+    echo "[INFO] Running glauth in background ..."
+    echo "       PID: ${_pid}  Log: ${_TMP%/}/glauth_$$.log"
 }
 function f_gen_glauth_groups_config() {
     local __doc__="Generate glauth groups config"
