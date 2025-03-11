@@ -4,7 +4,7 @@ go 1.19
 
 require (
 	github.com/crewjam/saml v0.4.13
-	github.com/hajimeo/samples/golang v0.0.0-20221104063308-0992795ec5eb
+	github.com/hajimeo/samples/golang/helpers v0.0.0-20250129042006-343f0c67d913
 	github.com/pkg/errors v0.9.1
 	github.com/zenazn/goji v1.0.1
 	golang.org/x/crypto v0.12.0

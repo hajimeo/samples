@@ -80,7 +80,9 @@ func main() {
 	// TODO: Use same format as glauth
 	userJsonFilename := os.Getenv("USER_JSON")
 	idpBaseUrlString := os.Getenv("IDP_BASE_URL")
-	serviceUrlOrXml := os.Getenv("SERVICE_METADATA_URL")
+	serviceUrlOrXml := os.Getenv("SERVICE_METADATA_URL") // can be multiple with " " as delimiter
+	serviceUid := os.Getenv("SERVICE_UID")
+	servicePwd := os.Getenv("SERVICE_PWD")
 
 	// If URL ends with "/", many places won't work.
 	idpBaseUrlString = strings.TrimRight(idpBaseUrlString, "/")
@@ -102,14 +104,14 @@ func main() {
 
 	// Loading (putting) users from the json file
 	addUsers(userJsonFilename, idpServer, logr)
-	// split serviceUrlOrXml by "," and iterate over the list
-	serviceUrls := strings.Split(serviceUrlOrXml, ",")
+	// split serviceUrlOrXml by " " and iterate over the list
+	serviceUrls := strings.Split(serviceUrlOrXml, " ")
 	for _, serviceUrl := range serviceUrls {
 		serviceUrl = strings.TrimSpace(serviceUrl)
 		if serviceUrl == "" {
 			continue
 		}
-		addService(idpServer, idpBaseURL, serviceUrl, logr)
+		addService(idpServer, idpBaseURL, serviceUrl, serviceUid, servicePwd, logr)
 	}
 
 	flag.Set("bind", ":"+idpBaseURL.Port())
@@ -137,7 +139,7 @@ func submitService(idpBaseURL *url.URL, serviceName string, respBody io.Reader) 
 	return nil
 }
 
-func addService(idpServer *samlidp.Server, idpBaseURL *url.URL, serviceUrlOrXml string, logr *log.Logger) {
+func addService(idpServer *samlidp.Server, idpBaseURL *url.URL, serviceUrlOrXml string, serviceUid string, servicePwd string, logr *log.Logger) {
 	// set serviceName with md5 of serviceUrlOrXml
 	serviceName := fmt.Sprintf("%x", md5.Sum([]byte(serviceUrlOrXml)))
 	queryMetaData := func() error {
@@ -161,8 +163,20 @@ func addService(idpServer *samlidp.Server, idpBaseURL *url.URL, serviceUrlOrXml 
 
 		queryMetaData = func() error {
 			logr.Println("Accessing " + serviceURL.String())
+			var samlResp *http.Response
+			var err error
 			// read saml metadata from url
-			samlResp, err := http.Get(serviceURL.String())
+			if len(serviceUid) > 0 {
+				req, err2 := http.NewRequest("GET", serviceURL.String(), nil)
+				if err2 != nil {
+					return err2
+				}
+				req.SetBasicAuth(serviceUid, servicePwd)
+				samlResp, err = http.DefaultClient.Do(req)
+			} else {
+				samlResp, err = http.Get(serviceURL.String())
+			}
+
 			if err != nil {
 				return err
 			}
