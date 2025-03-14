@@ -478,7 +478,7 @@ public class H2Console {
                     execute(query + where);
                 } catch (RuntimeException e2) {
                     // H2 V2 doesn't have 'SQL' column, so if RuntimeException in here, try again with different query
-                    query = "SELECT COLUMN_NAME, DATA_TYPE, IS_IDENTITY, DEFAULT_ON_NULL, IS_GENERATED, GENERATION_EXPRESSION FROM INFORMATION_SCHEMA.COLUMNS";
+                    query = "SELECT COLUMN_NAME, DATA_TYPE, IS_IDENTITY, IDENTITY_GENERATION, DEFAULT_ON_NULL, IS_GENERATED, GENERATION_EXPRESSION FROM INFORMATION_SCHEMA.COLUMNS";
                     where = " WHERE LOWER(TABLE_NAME) = '" + names[0] + "'";
                     if (names.length > 1) {
                         where = " WHERE LOWER(TABLE_SCHEMA) = '" + names[0] + "' AND LOWER(TABLE_NAME) = '" + names[1] + "'";
