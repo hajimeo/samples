@@ -288,6 +288,7 @@ function _update_hosts_for_k8s() {
 
 # NOTE: If docker-desktop: docker run --rm -it --privileged --pid=host debian nsenter -t 1 -m -u -n -i sh
 #       and check /containers/services/docker/rootfs/
+#       No longer works with m1 mac. If log, $HOME/Library/Containers/com.docker.docker/Data/log/vm/dockerd.log
 #_CONTAINER_CMD="microk8s ctr containers"
 function _k8s_nsenters() {
     # To run one command to multiple pods

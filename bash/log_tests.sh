@@ -511,7 +511,7 @@ function t_system() {
     _test_template "$(rg -g jmx.json 'MaxMetaspaceSize')" "WARN" "MaxMetaspaceSize is specified"
     _test_template "$(rg -g jmx.json -- '-Djavax\.net\.ssl..+=')" "WARN" "javax.net.ssl.* (eg. trustStore) is used in jmx.json"
     _test_template "$(rg -g jmx.json 'add-exports=' | rg -v 'java.base/sun.security.\S+=ALL-UNNAMED')" "WARN" "add-exports=java.base/sun.security.\S+=ALL-UNNAMED might be missing in jmx.json (eg: NEXUS-44004)"   # TODO: this is wrong
-    _test_template "$(rg -g jmx.json -m1 '1\.8\.0.(29[2-9]|30[01])\b')" "WARN" "Java version might be 1.8.0_292, which has critical bug: https://bugs.java.com/bugdatabase/view_bug?bug_id=JDK-8266929 (JDK-8266261)" "java.security.NoSuchAlgorithmException: unrecognized algorithm name: PBEWithSHA1AndDESede"
+    _test_template "$(rg -g jmx.json -m1 '1\.8\.0.(29[2-9]|30[01])\b')" "WARN" "Java version might be 1.8.0_292, which has SAML bug: https://bugs.java.com/bugdatabase/view_bug?bug_id=JDK-8266929 (JDK-8266261)" "java.security.NoSuchAlgorithmException: unrecognized algorithm name: PBEWithSHA1AndDESede"
 
     if ! _rg -g jmx.json -q -w 'x86_64'; then
         if ! _rg -g jmx.json -q -w 'amd64'; then

@@ -299,7 +299,8 @@ function test_https() {
 
 # Test email server's (SMTP) connectivity for STARTTLS
 # Below are not perfect as it won't send STARTTLS
-#curl -v -sf -k --ssl-reqd "smtps://localhost:25"
+#curl -v -sf -k --ssl-reqd "smtps://localhost:465"
+#curl -v -sf -k "smtps://localhost:465" --mail-from "testemail@hajigle.com" --mail-rcpt "hosako@sonatype.com" -T<(echo "TEST")
 #keytool -J-Djavax.net.debug=ssl:record:plaintext -printcert -sslserver localhost:25
 function test_smtps() {
     local _host_port="${1}" # smtp.office365.com:587

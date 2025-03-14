@@ -85,6 +85,7 @@ function _postgresql_configure() {
 
     ### Performance tuning (so not mandatory). Expecting the server has at least 4GB RAM
     # @see: https://pgtune.leopard.in.ua/#/ and https://pgpedia.info/index.html
+    #       https://docs.aws.amazon.com/prescriptive-guidance/latest/tuning-postgresql-parameters/logging-parameters.html
     _psql_adm "ALTER SYSTEM SET max_connections TO '200'"   # NOTE: work_mem * max_conn < shared_buffers.
     _psql_adm "ALTER SYSTEM SET statement_timeout TO '8h'" # NOTE: ALTER ROLE nexus SET statement_timeout = '1h';
     _psql_adm "ALTER SYSTEM SET shared_buffers TO '1024MB'" # Default 8MB. RAM * 25%. Make sure enough kernel.shmmax (ipcs -l) and /dev/shm if very old Linux or BSD
@@ -106,9 +107,6 @@ function _postgresql_configure() {
     [ -d /var/log/postgresql ] && _psql_adm "ALTER SYSTEM SET log_directory TO ''/var/log/postgresql' '"
 
     #_upsert ${_postgresql_conf} "log_destination" "stderr" "#log_destination"  # stderr
-    _psql_adm "ALTER SYSTEM SET log_error_verbosity TO 'verbose'"  # default
-    _psql_adm "ALTER SYSTEM SET log_connections TO 'on'"
-    _psql_adm "ALTER SYSTEM SET log_disconnections TO 'on'"
     #_upsert ${_postgresql_conf} "log_duration" "on" "#log_duration"    # This output many lines, so log_min_duration_statement would be better
     _psql_adm "ALTER SYSTEM SET log_lock_waits TO 'on'"
     _psql_adm "ALTER SYSTEM SET log_temp_files TO '1kB'"    # -1
@@ -120,12 +118,18 @@ function _postgresql_configure() {
 
     # @see: https://github.com/darold/pgbadger#POSTGRESQL-CONFIGURATION (brew install pgbadger)
     if [[ "${_verbose_logging}" =~ (y|Y) ]]; then
+        _psql_adm "ALTER SYSTEM SET log_error_verbosity TO 'verbose'"  # default
         # @see: https://www.eversql.com/enable-slow-query-log-postgresql/ for AWS RDS to log SQL
         _psql_adm "ALTER SYSTEM SET log_line_prefix TO ''%t [%p]: db=%d,user=%u,app=%a,client=%h ''"
         # NOTE: Below stays after restarting and requires superuser
         # ALTER system RESET ALL;
-        # ALTER system SET log_min_duration_statement = 1000;SELECT pg_reload_conf(); -- 'DATABASE :DBNAME' doesn't work?
+        # ALTER system SET log_min_duration_statement = 1000;ALTER SYSTEM SET log_statement_stats TO 'on';SELECT pg_reload_conf(); -- 'DATABASE :DBNAME' doesn't work?
+        # Moved connection/disconnection logs in here as it's too verbose for Nexus
+        _psql_adm "ALTER SYSTEM SET log_connections TO 'on'"
+        _psql_adm "ALTER SYSTEM SET log_disconnections TO 'on'"
         _psql_adm "ALTER SYSTEM SET log_min_duration_statement TO '0'"
+        #_psql_adm "ALTER SYSTEM SET log_statement_stats TO 'on'"   # too verbose
+        #_psql_adm "ALTER SYSTEM SET log_transaction_sample_rate TO '0.5'"
         _psql_adm "ALTER SYSTEM SET log_checkpoints TO 'on'"
         _psql_adm "ALTER SYSTEM SET log_autovacuum_min_duration TO '0'"
         # Also, make sure 'autovacuum' is 'on', autovacuum_analyze_scale_factor (0.1), autovacuum_analyze_threshold (50)
@@ -139,7 +143,8 @@ function _postgresql_configure() {
     fi
     # NOTE: ALTER system generates postgresql.auto.conf
 
-    # "CREATE EXTENSION" creates in the current database. "" to check
+    # "CREATE EXTENSION" creates in the current database. To check:
+    #SELECT current_database() as "dbname", r.rolname as "owner", n.nspname as "schema", e.* from pg_extension e join pg_roles r on r.oid = e.extowner join pg_namespace n on n.oid = e.extnamespace;
     local _shared_preload_libraries="auto_explain"
     # https://www.postgresql.org/docs/current/pgstatstatements.html
     if ${_psql_as_admin} -d template1 -c "CREATE EXTENSION IF NOT EXISTS pg_stat_statements schema public;"; then
@@ -161,7 +166,7 @@ function _postgresql_configure() {
     fi
 
     _psql_adm "ALTER SYSTEM SET auto_explain.log_min_duration TO '5000'"
-    # To check:
+    # To check (it's not in pg_extension:
     # SELECT setting, pending_restart FROM pg_settings WHERE name = 'shared_preload_libraries';
     # ALTER system SET auto_explain.log_min_duration TO '0';
     # SELECT pg_reload_conf();

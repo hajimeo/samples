@@ -110,7 +110,7 @@ function f_setup_scala() {
 }
 
 function f_setup_groovy() {
-    local _ver="${1:-"2.4.17"}"   # This version is for NXRM3
+    local _ver="${1:-"2.4.17"}"   # TODO: This version is no longer default for NXRM3
     local _extract_dir="${2:-"${_JAVA_DIR}"}"
     local _inst_dir="${3:-"/usr/local/groovy"}"
 

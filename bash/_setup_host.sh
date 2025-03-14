@@ -772,12 +772,14 @@ function f_apache_reverse_proxy() {
 
     # If this apache uses https (if server.key and cert exists)
     if [ -s /etc/apache2/ssl/server.key ]; then
-        echo "
+        cat << EOF >>"${_conf}"
     SSLEngine on
     SSLCertificateFile /etc/apache2/ssl/server.crt
     SSLCertificateKeyFile /etc/apache2/ssl/server.key
+    RequestHeader set X-Forwarded-Host "${_sever_host}"
+    RequestHeader set X-Forwarded-Port "${_port}"
     RequestHeader set X-Forwarded-Proto https
-" >>${_conf}
+EOF
     fi
 
     if [ -s "${_keytab_file}" ]; then
@@ -1852,13 +1854,14 @@ function f_postfix() {
 
     postconf -e 'inet_protocols = ipv4'
 
-    # Below (smtpd_tls_wrappermode) seems to enable TLS always
+    # Below (smtpd_tls_wrappermode) seems to enable StartTLS always (not smtps)
+    # For "smtps", check /etc/postfix/master.cf for the line starts with '#smtps'
     #postconf -e 'smtpd_tls_wrappermode = yes'
+    postconf -e 'smtpd_sasl_auth_enable = yes'
     postconf -e 'smtp_tls_security_level = may'
     postconf -e 'smtpd_tls_security_level = may'
     postconf -e 'smtpd_tls_auth_only = no'
     postconf -e 'smtp_tls_note_starttls_offer = yes'
-    postconf -e 'smtpd_sasl_auth_enable = yes'
     # Ubuntu's postfix uses /etc/ssl/private/ssl-cert-snakeoil.key so actually don't need below
     #if [ -s /var/tmp/share/cert/standalone.localdomain.key ]; then
     #    postconf -e "smtpd_tls_cert_file = /var/tmp/share/cert/standalone.localdomain.crt"

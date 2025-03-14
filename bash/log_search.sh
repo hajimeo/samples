@@ -155,7 +155,7 @@ function f_topErrors() {
     [ -z "${_regex}" ] && _regex="\b(WARN|ERROR|SEVERE|FATAL|SHUTDOWN|Caused by|.+?Exception|FAILED)\b.+"
     [ -n "${_date_regex}" ] && _regex="${_date_regex}.*${_regex}"
     [ -n "${_max_N}" ] && _max_N_opt="-m ${_max_N}"
-    echo "# rg -c \"${_regex}\" ... | rg -v \"${_exclude_regex}\""
+    echo "# rg \"${_regex}\" ${_glob} | rg -v \"${_exclude_regex}\""
     if [ -f "${_glob}" ]; then
         rg -z -c "${_regex}" -H "${_glob}" && echo " "
         rg -z --no-line-number --no-filename "${_regex}" ${_max_N_opt} "${_glob}"
@@ -868,7 +868,7 @@ function f_jmap_histo2csv() {
     local _file="${1}"      # File path which contains one jmap histo output
     local _save_to="${2}"   # Saving path. If empty $(basename "${_file%.*}").csv
     local _class_ex="${3-".*sonatype.*"}"   # If not empty, count classes which contains this word
-    local _key="${4}"       # Used for the first column. Expecting date_time but if empty file name
+    local _key="${4}"       # Used for the first column. Expecting date_time but if empty, then the file name
     [ -z "${_key}" ] && _key="$(basename "${_file%.*}")"    # Not using "%%.*"
     [ -z "${_key}" ] && _key="$(basename "${_file}")"
     [ -z "${_save_to}" ] && _save_to="./$(basename "${_file%.*}").csv"
