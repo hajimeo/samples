@@ -48,6 +48,8 @@ Read one file and output only necessary lines.
         If the log is for multithreading application, provide regex to capture thread Id (eg: "\[([^\]]+)")
     ELAPSED_DIVIDE_MS=<integer milliseconds>
         To deside the width of ascii chart
+    ELAPSED_MIN_MS=<integer milliseconds>
+        Lower than this duration won't be shown in the ascii chart
     ASCII_DISABLED=Y
         To disable ascii chart (for slightly faster processing)
     ASCII_ROTATE_NUM=<num>
@@ -70,10 +72,11 @@ Read one file and output only necessary lines.
 
 ## Durations
 ### For each line per thread #with thread+username+classnames:
-	export ELAPSED_REGEX="^\d\d\d\d-\d\d-\d\d.(\d\d:\d\d:\d\d.\d\d\d)"
-	rg 'FelixStartLevel' ./log/nexus.log | echolines "" "^\d\d\d\d-\d\d-\d\d.\d\d:\d\d:\d\d.\d\d\d" "^\d\d\d\d-\d\d-\d\d.\d\d:\d\d:\d\d.\d\d\d" | rg '^# '
-    export ELAPSED_REGEX="^\d\d\d\d-\d\d-\d\d.(\d\d:\d\d:\d\d.\d\d\d)" ASCII_DISABLED=Y ELAPSED_KEY_REGEX="(\[qtp\S+\s\S*\s\S+)"
+    export ELAPSED_REGEX="^\d\d\d\d-\d\d-\d\d.(\d\d:\d\d:\d\d.\d\d\d)" ASCII_DISABLED=Y #ELAPSED_KEY_REGEX="(\[qtp\S+\s\S*\s\S+)"
     rg 'qtp1529377038-106' ./nexus.log | echolines "" "^\d\d\d\d-\d\d-\d\d.\d\d:\d\d:\d\d.\d\d\d" "^\d\d\d\d-\d\d-\d\d.\d\d:\d\d:\d\d.\d\d\d" | rg '^# ' | sort -t'|' -k3n
+	export ELAPSED_REGEX="^\d\d\d\d-\d\d-\d\d.(\d\d:\d\d:\d\d.\d\d\d)" ELAPSED_MIN_MS=100 ELAPSED_KEY_REGEX="\[FelixStartLevel\]\s+\S+\s+(\S+)" ASCII_DISABLED=Y
+	rg '\[FelixStartLevel\]' ./log/nexus.log | echolines "" "^\d\d\d\d-\d\d-\d\d.\d\d:\d\d:\d\d.\d\d\d" "^\d\d\d\d-\d\d-\d\d.\d\d:\d\d:\d\d.\d\d\d" | rg '^# ' | sort -n
+    # For the above example, including "jetty-main-1" may be useful but could be too noisy 
 ### (Not so useful but) similar to the above but excluding empty username:
     export ELAPSED_REGEX="^\d\d\d\d-\d\d-\d\d.(\d\d:\d\d:\d\d.\d\d\d)" ASCII_DISABLED=Y ELAPSED_KEY_REGEX="(\[dw\-[^\]]+\]\s\S+\s\S+)"
     echolines "_hourly_logs/clm-server_2024-09-13_16.out" "^\d\d\d\d-\d\d-\d\d.\d\d:\d\d:\d\d.\d\d\d" "^\d\d\d\d-\d\d-\d\d.\d\d:\d\d:\d\d.\d\d\d" | rg '^# ' | sort -t'|' -k3n
@@ -144,6 +147,7 @@ var START_DATETIMES = make(map[string]string)
 var FILE_NAME_PFXS = make(map[string]string)
 var FIRST_START_TIME time.Time
 var ELAPSED_DIVIDE_MS = helpers.GetEnvInt64("ELAPSED_DIVIDE_MS", -1)
+var ELAPSED_MIN_MS = helpers.GetEnvInt64("ELAPSED_MIN_MS", -1)
 var ASCII_DISABLED = helpers.GetBoolEnv("ASCII_DISABLED", false)
 var KEY_PADDING = 0
 var FOUND_COUNT = 0
@@ -414,6 +418,10 @@ func echoDurations(duras []Duration) {
 }
 
 func echoDurationInner(dura Duration, maxKeyLen int, divideMs int64) {
+	// Even if dura.durationMs == 0, still output. Only if ELAPSED_MIN_MS is set, skip.
+	if ELAPSED_MIN_MS > 0 && dura.durationMs < ELAPSED_MIN_MS {
+		return
+	}
 	if KEY_PADDING == 0 {
 		// min 11, max 32 for now
 		KEY_PADDING = 0 - maxKeyLen
@@ -425,7 +433,7 @@ func echoDurationInner(dura Duration, maxKeyLen int, divideMs int64) {
 		_dlog("KEY_PADDING = " + strconv.Itoa(KEY_PADDING))
 	}
 	if ELAPSED_DIVIDE_MS > 0 {
-		// if ELAPSED_DIVIDE_MS is specified, using
+		// if ELAPSED_DIVIDE_MS is specified, override the value
 		divideMs = ELAPSED_DIVIDE_MS
 	}
 
