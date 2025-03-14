@@ -119,6 +119,7 @@ function _get_iq_url() {
 #
 #  TRUNCATE TABLE http_client_configuration;
 #  INSERT INTO http_client_configuration (id, proxy) VALUES (1, '{"http": {"host": "localhost", "port": 28080, "enabled": true, "authentication": null}, "https": null, "nonProxyHosts": null}' FORMAT JSON);
+alias rmStart="nxrmStart"
 function nxrmStart() {
     local _base_dir="${1:-"."}"
     # Adding monitor and heap=sites (and cpu=times) make the process too slow
@@ -133,7 +134,8 @@ function nxrmStart() {
     #local _java_opts=${@:2}
     _base_dir="$(realpath "${_base_dir}")"
     local _debug_opts="-Xrunjdwp:transport=dt_socket,server=y,address=5005,suspend=${_SUSPEND:-"n"}"
-    if ! curl -m1 -sIf -k "http://127.0.0.1:5005" &>/dev/null; then
+    # If the debug port is NOT in use (can't check with curl as not http/https)
+    if ! lsof -ti:5005 -sTCP:LISTEN; then
         if [ -n "${_java_opts}" ]; then
             _java_opts="${_java_opts} ${_debug_opts}"
         else
@@ -207,7 +209,8 @@ function nxrmStart() {
         # TODO: may need to ick h2-console_v200 for older versions
         # TODO: no support for OrientDB
         if [ -s "${_sonatype_work:-"."}/db/nexus.mv.db" ]; then
-            if type h2-console_v224 &>/dev/null; then
+            if type h2-console_v232 &>/dev/null; then   # TODO: should switch h2-console by nexus version?
+                # To avoid this backup, touch ./sonatype-work/nexus3/db/nexus.mv.db.gz
                 if [ -s "${_sonatype_work:-"."}/db/nexus.mv.db" ] && [ ! -f "${_sonatype_work:-"."}/db/nexus.mv.db.gz" ]; then
                     echo "No ${_sonatype_work:-"."}/db/nexus.mv.db.gz. Gzip-ing nexus.mv.db file ..."; sleep 3
                     gzip -k "$(readlink -f "${_sonatype_work:-"."}/db/nexus.mv.db")" || return $?
@@ -248,15 +251,16 @@ function nxrmStart() {
 function _rm3StartSQLs_h2() {
     # TODO: May need to reset 'admin' user, and also use below query (after modifying for H2/PostgreSQL/OrientDB)
     cat << 'EOF'
-UPDATE BLOB_STORE_CONFIGURATION SET TYPE = 'File', ATTRIBUTES = ('{"file":{"path":"s3/'||NAME||'"}}') FORMAT JSON where TYPE = 'S3';
+UPDATE BLOB_STORE_CONFIGURATION SET TYPE = 'File', ATTRIBUTES = (JSON'{"file":{"path":"s3/'||NAME||'"}}') where TYPE = 'S3';
 UPDATE CAPABILITY_STORAGE_ITEM SET ENABLED = false WHERE TYPE IN ('firewall.audit', 'clm', 'webhook.repository', 'healthcheck', 'crowd');
 #UPDATE REALM_CONFIGURATION SET REALM_NAMES = '["NexusAuthenticatingRealm", "NexusAuthorizingRealm"]'  FORMAT JSON where ID = 1;
 UPDATE SECURITY_USER SET PASSWORD='$shiro1$SHA-512$1024$NE+wqQq/TmjZMvfI7ENh/g==$V4yPw8T64UQ6GfJfxYq2hLsVrBY8D1v+bktfOxGdt4b/9BthpWPNUy/CBk6V9iA0nHpzYzJFWO8v/tZFtES8CA==' WHERE ID='admin';
 DELETE FROM USER_ROLE_MAPPING WHERE USER_ID = 'admin';
 INSERT INTO USER_ROLE_MAPPING (USER_ID, SOURCE, ROLES) VALUES ('admin', 'default', JSON'["nx-admin"]');
-#DELETE FROM nuget_asset WHERE path = '/index.json';
+#DELETE FROM nuget_asset WHERE path = '/index.json';  # NEXUS-36090
 TRUNCATE TABLE HTTP_CLIENT_CONFIGURATION;
-INSERT INTO HTTP_CLIENT_CONFIGURATION (ID, PROXY) VALUES (1, '{"http": {"host": "localhost", "port": 28080, "enabled": true, "authentication": null}, "https": null, "nonProxyHosts": "*.sonatype.com"}' FORMAT JSON);
+# TODO: this is broken and causing `Error attempting to get column 'PROXY' from result set`
+INSERT INTO HTTP_CLIENT_CONFIGURATION (ID, PROXY) VALUES (1, JSON'{"http": {"host": "localhost", "port": 28080, "enabled": true, "authentication": null}, "https": null, "nonProxyHosts": "*.sonatype.com"}');
 EOF
 }
 function _rm3StartSQLs_psql() {
@@ -268,7 +272,7 @@ UPDATE capability_storage_item SET enabled = false WHERE type IN ('firewall.audi
 UPDATE security_user SET password='$shiro1$SHA-512$1024$NE+wqQq/TmjZMvfI7ENh/g==$V4yPw8T64UQ6GfJfxYq2hLsVrBY8D1v+bktfOxGdt4b/9BthpWPNUy/CBk6V9iA0nHpzYzJFWO8v/tZFtES8CA==' WHERE id='admin';
 DELETE FROM user_role_mapping WHERE user_id = 'admin';
 INSERT INTO user_role_mapping (user_id, source, roles) VALUES ('admin', 'default', '["nx-admin"]'::jsonb);
-#DELETE FROM nuget_asset WHERE path = '/index.json';
+#DELETE FROM nuget_asset WHERE path = '/index.json'; # NEXUS-36090
 TRUNCATE TABLE http_client_configuration;
 INSERT INTO http_client_configuration (id, proxy) VALUES (1, '{"http": {"host": "localhost", "port": 28080, "enabled": true, "authentication": null}, "https": null, "nonProxyHosts": "*.sonatype.com"}'::jsonb);
 EOF
@@ -276,8 +280,10 @@ EOF
 
 function _updateNexusProps() {
     local _cfg_file="$1"
-    local _port="$2"
+    local _port="${2}"  # if empty, will try to find available port
+    local _port_ssl="${3:-"8443"}"
     local _current_port="$(grep -E '^application-port=' "${_cfg_file}" | awk -F'=' '{print $2}')"
+    local _current_port_ssl="$(grep -E '^application-port-ssl=' "${_cfg_file}" | awk -F'=' '{print $2}')"
 
     if [ -s "${_cfg_file}" ] && [ ! -f "${_cfg_file}.orig" ]; then
         cp -p "${_cfg_file}" "${_cfg_file}.orig"
@@ -302,26 +308,47 @@ function _updateNexusProps() {
     #grep -qE '^#?nexus.orient.httpListenerEnabled' "${_cfg_file}" || echo "nexus.orient.httpListenerEnabled=true" >> "${_cfg_file}"
     #grep -qE '^#?nexus.orient.dynamicPlugins' "${_cfg_file}" || echo "nexus.orient.dynamicPlugins=true" >> "${_cfg_file}"
 
-    #change the port automatically if different from _current_port
-    if [ -n "${_port}" ] && [ "${_port}" == "${_current_port}" ]; then
-        return 0
-    fi
-
+    # If no port specified, checking if the default port 8081 is available
+    # If the port is specified and if it's not available, starting this Nexus should fail.
     if [ -z "${_port}" ]; then
-        for _p in 8081 8083 8084 8085 8086 8087; do
-            # Mac's netstat is too different, and lsof may not be available
-            if ! curl -m1 -sIf -k "http://127.0.0.1:${_p}" &>/dev/null; then
+        for _p in 8081 8083 8084 8085 ${_current_port:-8081}; do # if 8081 is not in use, use it so using in the last ${_current_port:-8081}
+            # Mac's netstat is too different, and lsof may not be available, but curl needs http or https
+            if ! lsof -ti:${_p} -sTCP:LISTEN &>/dev/null; then
                 _port="${_p}"
                 break
             fi
         done
     fi
-    if [ -n "${_port}" ] && [ "${_port}" != "8081" ]; then
-        echo "WARN: Updating port to *** '${_port}' *** !!" >&2; sleep 5;
+
+    # update the config with the port
+    if [ -n "${_port}" ]; then
+        if [ "${_port}" != "8081" ]; then
+            echo "WARN: Using non default port *** '${_port}' !!" >&2; sleep 5;
+        elif [ "${_port}" != "${_current_port}" ]; then
+            echo "WARN: Changing port to *** '${_port}' *** from ${_current_port} !!" >&2; sleep 3;
+        fi
         sed -i '' -E "s/^application-port=.*/application-port=${_port}/" "${_cfg_file}"
         if ! grep -qE "^application-port=${_port}" "${_cfg_file}"; then
-            echo "ERROR: Failed to update port to '${_port}'" >&2; sleep 5;
+            echo "ERROR: Failed to confirm port: '${_port}' in ${_cfg_file}" >&2; sleep 5;
             return 1
+        fi
+    fi
+
+    if [ -n "${_current_port_ssl}" ]; then
+        for _p in 8443 8444 8445 ${_current_port_ssl:-8443}; do
+            if ! lsof -ti:${_p} -sTCP:LISTEN &>/dev/null; then
+                _port_ssl="${_p}"
+                break
+            fi
+        done
+
+        if [ -n "${_port_ssl}" ] && [ "${_port_ssl}" != ${_current_port_ssl:-8443} ]; then
+            echo "WARN: Updating HTTPS port to *** '${_port_ssl}' *** !!" >&2; sleep 3;
+            sed -i '' -E "s/^application-port-ssl=.*/application-port-ssl=${_port_ssl}/" "${_cfg_file}"
+            if ! grep -qE "^application-port-ssl=${_port_ssl}" "${_cfg_file}"; then
+                echo "ERROR: Failed to update HTTPS port to '${_port_ssl}'" >&2; sleep 3;
+                return 1
+            fi
         fi
     fi
 }
@@ -577,8 +604,8 @@ $(sed -n "/^  loggers:/,\$p" ${_cfg_file} | grep -v '^  loggers:')" > "${_cfg_fi
 
         local _console=""
         if [ -s "${_work_dir:-"."}/data/ods.h2.db" ]; then
-            if type h2-console &>/dev/null; then
-                _console="h2-console ${_work_dir:-"."}/data/ods.h2.db"
+            if [ -s "${HOME%/}/IdeaProjects/samples/misc/h2-console.jar" ]; then
+                _console="${_java} -jar ${HOME%/}/IdeaProjects/samples/misc/h2-console.jar ${_work_dir:-"."}/data/ods.h2.db"
             fi
         elif type psql &>/dev/null; then
             eval "$(grep "^database:" -A7 "${_cfg_file}" | sed -n -E 's/^ +([^:]+): *(.+)$/\1=\2/p')"

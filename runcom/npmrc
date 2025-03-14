@@ -1,7 +1,9 @@
 ;npmrc example
 strict-ssl=false
 email=npmtest@example.com
-registry=http://nxrm3pg-k8s.standalone.localdomain/repository/npm-group/
 ;always-auth=true
 ; _auth needs to use base64, so for example, admin admin123
+registry=http://nxrm3pg-k8s.standalone.localdomain/repository/npm-group/
 _auth="YWRtaW46YWRtaW4xMjM="
+;npm WARN config `_auth`, `_authToken`, `username` and `_password` must be scoped to a registry. see `npm help npmrc` for more information.
+;TODO: not sure if this works;//nxrm3pg-k8s.standalone.localdomain/repository/:_auth="YWRtaW46YWRtaW4xMjM="

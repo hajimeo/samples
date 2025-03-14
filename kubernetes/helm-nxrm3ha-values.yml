@@ -20,7 +20,7 @@
 #$ helm search repo ${HELM_NAME}/nxrm-ha --versions | head
 
 # Install / reinstall / upgrade:
-#$ helm repo update ${HELM_NAME}
+#$ helm repo update ${HELM_NAME} && helm search repo ${HELM_NAME}/nxrm-ha --versions | head
 #$ #helm uninstall ${RELEASE_NAME} -n ${NAME_SPACE}
 #$ eval "echo \"$(cat ./helm-nxrm3ha-values.yml | grep -v '^\s*#')\"" > ./${RELEASE_NAME}_values.yaml
 #$ helm upgrade -i ${RELEASE_NAME} ${HELM_NAME}/nxrm-ha -f ./${RELEASE_NAME}_values.yaml -n ${NAME_SPACE} #--version 72.0.0  --debug --dry-run
@@ -28,7 +28,7 @@
 
 # For troubleshooting:
 #$ git -C ~/IdeaProjects/nxrm3-ha-repository pull && git -C ~/IdeaProjects/nxrm3-ha-repository fetch
-#$ helm upgrade ${RELEASE_NAME} ~/IdeaProjects/nxrm3-ha-repository/nxrm-ha -f ./${RELEASE_NAME}_values.yaml --dry-run > ${RELEASE_NAME}_dry-run.yaml
+#$ helm upgrade -i ${RELEASE_NAME} ~/IdeaProjects/nxrm3-ha-repository/nxrm-ha -f ./${RELEASE_NAME}_values.yaml -n ${NAME_SPACE} # --debug --dry-run
 #$ helm template nxrm3ha sonatype-helm/nxrm-ha -f ./helm-nxrm3ha-values.yml -n sonatype-helm >./helm-nxrm3ha-deploying.yaml
 #$ kubectl -n sonatype-helm apply -f ./helm-nxrm3ha-deploying.yaml
 
@@ -91,20 +91,12 @@ statefulset:
     env:
       nexusDBName: nxrm3helmha
       nexusDBPort: 5432
-      #\\nleakDetectionThreshold=20000
       install4jAddVmParams: '-Xms2g -Xmx2g -Dcom.redhat.fips=false -Dnexus.scripts.allowCreation=true -Dnexus.datastore.nexus.maximumPoolSize=10 -Dnexus.datastore.nexus.advanced=maxLifetime=30000'
       jdbcUrlParams: null # Must start with a '?' e.g. '?foo=bar&baz=foo'
       zeroDowntimeEnabled: true
-  livenessProbe:
-    failureThreshold: 6
-    initialDelaySeconds: 120
-    path: /
-    periodSeconds: 60
-  readinessProbe:
-    failureThreshold: 6
-    initialDelaySeconds: 120
-    path: /
-    periodSeconds: 60
+    additionalEnv:
+      - name: NEXUS_LICENSE_FILE
+        value: '/var/nexus-repo-license/nexus-repo-license.lic'
   imagePullSecrets: {}
 
 pvc:

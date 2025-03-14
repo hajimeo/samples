@@ -250,6 +250,8 @@ alias jkCli='java -jar $HOME/Apps/jenkins-cli.jar -s http://localhost:8080/ -aut
 [ -f $HOME/IdeaProjects/samples/misc/h2-console.jar ] && alias h2-console="java -jar $HOME/IdeaProjects/samples/misc/h2-console.jar"
 [ -f $HOME/IdeaProjects/samples/misc/h2-console_v200.jar ] && alias h2-console_v200="java -jar $HOME/IdeaProjects/samples/misc/h2-console_v200.jar"
 [ -f $HOME/IdeaProjects/samples/misc/h2-console_v224.jar ] && alias h2-console_v224="java -jar $HOME/IdeaProjects/samples/misc/h2-console_v224.jar"
+# requires Java 11 or higher
+[ -f $HOME/IdeaProjects/samples/misc/h2-console_v232.jar ] && alias h2-console_v232="/opt/homebrew/opt/openjdk\@17/libexec/openjdk.jdk/Contents/Home/bin/java -jar $HOME/IdeaProjects/samples/misc/h2-console_v232.jar"
 [ -f $HOME/IdeaProjects/samples/misc/pg-console.jar ] && alias pg-console="java -jar $HOME/IdeaProjects/samples/misc/pg-console.jar"
 #[ -f $HOME/IdeaProjects/samples/misc/blobpath.jar ] && alias blobpathJ="java -jar $HOME/IdeaProjects/samples/misc/blobpath.jar"
 # JAVA_HOME_11 is set in bash_profile.sh
@@ -265,6 +267,7 @@ alias chrome-work='open -na "Google Chrome" --args --user-data-dir=$HOME/.chrome
 alias chrome-dh1='open -na "Google Chrome" --args --user-data-dir=$HOME/.chromep/dh1 --proxy-server=http://dh1:28080'
 alias k8s-dh1='open -na "Google Chrome" --args --user-data-dir=$HOME/.chromep/k8s-dh1 --proxy-server=socks5://dh1:38081'
 alias hblog='open -na "Google Chrome" --args --user-data-dir=$HOME/.chromep/hajigle https://www.blogger.com/blogger.g?blogID=9018688091574554712&pli=1#allposts'
+alias gemini='open -na "Google Chrome" --args --app="https://gemini.google.com/u/1/app"'   # --user-data-dir=$HOME/.chromep/hosako
 # pretending windows chrome on Linux
 alias winchrome='/opt/google/chrome/chrome --user-data-dir=$HOME/.chromep --proxy-server=socks5://localhost:38080  --user-agent="Mozilla/5.0 (Windows NT 10.0; WOW64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/88.0.4324.96 Safari/537.36"'
 
@@ -445,6 +448,18 @@ function multiexec() {
     local _ttl="${2:-"1"}"    # How many times
     local _con="${3:-"1"}"    # Concurrency
     echo "$(seq 1 ${_ttl})" | xargs -I{} -P${_con} -t bash -c "${_cmd}"
+}
+# monitorexec ./db-migrator-2025-02-17T14-23.log "low heap memory" "jmap -dump:format=b,file=./db-mig_$(date +"%Y%m%d%H%M%S").hprof $PID" 5
+function monitorexec() {
+    local _file="$1"
+    local _regex="$2"
+    local _cmd="$3"
+    local _how_many="${4:-"1"}"
+    for _i in $(seq 1 ${_how_many}); do
+        tail -n -1 -F "${_file}" | grep --line-buffered -m1 -E "${_regex}" && eval "${_cmd}"
+        echo "# [$(date +'%Y-%m-%d %H:%M:%S')] ${_i} : '${_cmd}'"
+        sleep 1
+    done
 }
 # make a directory and cd
 function mcd() {
@@ -859,7 +874,9 @@ function cleanOldDBs() {
 function listLargeDirs() {
     local _src="${1:-"/Volumes/Samsung_T5/hajime/cases"}"
     local _n="${2:-"20"}"
-    gdu -ahx -d1 ${_src} | sort -hr | head -n "${_n}" | while read -r _size_dir; do
+    local _du="du"
+    type gdu &>/dev/null && _du="gdu"
+    ${_du} -ahx -d1 ${_src} | sort -hr | head -n "${_n}" | while read -r _size_dir; do
         if [[ "${_size_dir}" =~ ^[[:space:]]*([0-9\.]+G)[[:space:]]+(.+) ]]; then
             echo "${BASH_REMATCH[1]} $(ls -dl "${BASH_REMATCH[2]}" | cut -d' ' -f9-)"
         fi
@@ -1030,8 +1047,9 @@ function backupC() {
             mdfind 'kMDItemFSSize > 209715200 && kMDItemContentModificationDate < $time.now(-2419200)' | LC_ALL=C sort | rg -v -w 'cases_local' | while read -r _l;do ls -lh "${_l}"; done | sort -k5 -h | tail -n40
         fi
     else
-        echo "# du -Shx ${_src} | sort -h | tail -n40" >&2
-        du -Shx ${_src} | sort -h | tail -n40
+        listLargeDirs "${_src}" 20
+        #echo "# du -Shx ${_src} | sort -h | tail -n40" >&2
+        #du -Shx ${_src} | sort -h | tail -n40
     fi
 
     # Currently updatedb may not index external drive (maybe because exFat?)

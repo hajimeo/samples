@@ -176,6 +176,7 @@ spec:
                 -Dcom.sun.management.jmxremote=true -Dcom.sun.management.jmxremote.port=9000 -Dcom.sun.management.jmxremote.rmi.port=9000 -Dcom.sun.management.jmxremote.authenticate=false -Dcom.sun.management.jmxremote.ssl=false -Dcom.sun.management.jmxremote.local.only=true -Djava.rmi.server.hostname=127.0.0.1 \
                 -Djava.util.prefs.userRoot=/nexus-data/javaprefs \
                 -Dnexus.licenseFile=/etc/sonatype/sonatype-license.lic \
+                -Dnexus.assetBlobCleanupTask.blobCreatedDelayMinute=1 \
                 -Dnexus.scripts.allowCreation=true \
                 -Dnexus.app.scan.enabled=true \
                 -Dnexus.datastore.enabled=true \
