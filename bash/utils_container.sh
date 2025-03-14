@@ -158,7 +158,7 @@ function _docker_login() {
     [ -z "${_cmd}" ] && return 1
 
     if [ -n "${_backup_ports}" ]; then
-        if [ -z "${_host_port}" ] || [[ "${_host_port}" =~ ^https?://([^:/]+) ]]; then
+        if [ -z "${_host_port}" ] || [[ "${_host_port}" =~ ^https?://([^:/]+) ]] || [[ "${_host_port}" =~ ^([^:/]+)$ ]]; then
             local _host="${BASH_REMATCH[1]}"
             local _test_host="${_host:-"localhost"}"
             for __p in ${_backup_ports}; do
