@@ -74,11 +74,11 @@ Using previously saved response file and NO interviews:
 }
 
 ## Global variables
-: ${_DOMAIN:=".standalone.localdomain"}
+: ${_DOMAIN:="standalone.localdomain"}
 : ${_ADMIN_USER:="admin"}
 : ${_ADMIN_PWD:="admin123"}
 : ${_IQ_URL:="http://localhost:8070/"}
-: ${_IQ_TEST_URLS:="http://localhost:8070/ http://utm-ubuntu:8070/ https://nxiqha-k8s${_DOMAIN}/"}
+: ${_IQ_TEST_URLS:="http://localhost:8070/ http://utm-ubuntu:8070/ https://nxiqha-k8s.${_DOMAIN#.}/"}
 _TMP="/tmp" # for downloading/uploading assets
 _DEBUG=false
 
@@ -568,17 +568,9 @@ function f_setup_scm() {
     local _git_url="${2}" # https://github.com/sonatype/support-apac-scm-test https://github.com/hajimeo/private-repo
     local _provider="${3:-"github"}"
     local _branch="${4:-"main"}"
-    local _username="${5}"
-    local _token="${6:-"${_IQ_GIT_TOKEN:-"${GIT_TOKEN}"}"}"
-    local _parent_org="${7:-"${_IQ_PARENT_ORG}"}"
+    local _token="${5:-"${_IQ_GIT_TOKEN:-"${GIT_TOKEN}"}"}"
+    local _parent_org="${6:-"${_IQ_PARENT_ORG}"}"
     [ -z "${_org_name}" ] && _org_name="${_provider:-"scmtest"}-org"
-    if [ -z "${_username}" ]; then
-        if [[ "${_provider}" =~ ^(azure|bitbucket)$ ]]; then
-            _username="${_IQ_GIT_USER:-"${GIT_USER}"}"
-        fi
-        _username="${_IQ_GIT_USER:-"${GIT_USER}"}"
-        [ -z "${_username}" ] && _username="${_IQ_GIT_USER:-"${GIT_USER}"}"
-    fi
 
     # Automatic Source Control Configuration. It's OK if fails
     _log "INFO" "Enabling Automatic Source Control Configuration ..."
@@ -726,7 +718,7 @@ EOF
 
 function f_setup_gitlab() {
     local __doc__="Setup GitLab with Docker"
-    local _hostname="${1:-"gitlab${_DOMAIN}"}"
+    local _hostname="${1:-"gitlab.${_DOMAIN#.}"}"
     local _tag="${2:-"latest"}"
     local _port_pfx="${3-5900}"
     local _gitlab_home="${4:-"${HOME%/}/share/gitlab"}"
@@ -1116,43 +1108,57 @@ function f_cli() {
     local _iq_cli_opt="${6:-${_IQ_CLI_OPT}}" # -D fileIncludes="**/package-lock.json"
     local _iq_cred="${7:-${_IQ_CRED:-"${_ADMIN_USER}:${_ADMIN_PWD}"}}"
     local _simple_scan="${8:-"${_SIMPLE_SCAN:-"N"}"}" # Y: simple, N: full
+    local _use_docker="${9:-"${_USE_DOCKER}"}"
 
     _iq_url="$(_get_iq_url "${_iq_url}")" || return $?
     if [ -z "${_iq_cli_ver}" ]; then
         _iq_cli_ver="$(curl -m3 -sf "${_iq_url%/}/rest/product/version" | python -c "import sys,json;a=json.loads(sys.stdin.read());print(a['version'])")"
     fi
-
-    local _iq_cli_jar="${_IQ_CLI_JAR:-"$HOME/.nexus_executable_cache/nexus-iq-cli-${_iq_cli_ver}.jar"}"
-    local _cli_dir="$(dirname "${_iq_cli_jar}")"
-    if [ ! -s "${_iq_cli_jar}" ]; then
-        #local _tmp_iq_cli_jar="$(find ${_WORK_DIR%/}/sonatype -name 'nexus-iq-cli*.jar' 2>/dev/null | sort -r | head -n1)"
-        [ ! -d "${_cli_dir}" ] && mkdir -p "${_cli_dir}"
-        local _get_latest=true
-        if [[ "${_iq_cli_ver}" =~ ^1\.1([0-7]|8[0-5]) ]]; then
-            if [ ! -s "$HOME/.nexus_executable_cache/nexus-iq-server-${_iq_cli_ver}-bundle.tar.gz" ] || ! tar -xvf $HOME/.nexus_executable_cache/nexus-iq-server-${_iq_cli_ver}-bundle.tar.gz -C "${_cli_dir}" nexus-iq-cli-${_iq_cli_ver}.jar; then
-                if curl -f -L "https://download.sonatype.com/clm/scanner/nexus-iq-cli-${_iq_cli_ver}.jar" -o "${_iq_cli_jar}"; then
-                    _get_latest=false
-                fi
-            fi
-        fi
-        if ${_get_latest}; then
-            local _cli_filename="$(curl -s -I -L "https://download.sonatype.com/clm/scanner/latest.jar" | grep -o "nexus-iq-cli-.*\.jar")"
-            _iq_cli_jar="$HOME/.nexus_executable_cache/${_cli_filename}"
-            if [ ! -s "${_iq_cli_jar}" ]; then
-                _log "INFO" "Downloading the latest.jar (${_cli_filename})"
-                curl -f -L "https://download.sonatype.com/clm/scanner/latest.jar" -o "${_iq_cli_jar}" || return $?
-            fi
-        fi
-    fi
     local _java="java"
     if [[ "${_iq_cli_ver}" =~ ^1\.1[89] ]] && [ -n "${JAVA_HOME_17}" ]; then
         _java="${JAVA_HOME_17%/}/bin/java"
     fi
+
+    if [[ ! "${_use_docker}" =~ ^[yY] ]]; then
+        local _iq_cli_jar="${_IQ_CLI_JAR:-"$HOME/.nexus_executable_cache/nexus-iq-cli-${_iq_cli_ver}.jar"}"
+        local _cli_dir="$(dirname "${_iq_cli_jar}")"
+        if [ ! -s "${_iq_cli_jar}" ]; then
+            #local _tmp_iq_cli_jar="$(find ${_WORK_DIR%/}/sonatype -name 'nexus-iq-cli*.jar' 2>/dev/null | sort -r | head -n1)"
+            [ ! -d "${_cli_dir}" ] && mkdir -p "${_cli_dir}"
+            local _get_latest=true
+            if [[ "${_iq_cli_ver}" =~ ^1\.1([0-7]|8[0-5]) ]]; then
+                if [ ! -s "$HOME/.nexus_executable_cache/nexus-iq-server-${_iq_cli_ver}-bundle.tar.gz" ] || ! tar -xvf $HOME/.nexus_executable_cache/nexus-iq-server-${_iq_cli_ver}-bundle.tar.gz -C "${_cli_dir}" nexus-iq-cli-${_iq_cli_ver}.jar; then
+                    if curl -f -L "https://download.sonatype.com/clm/scanner/nexus-iq-cli-${_iq_cli_ver}.jar" -o "${_iq_cli_jar}"; then
+                        _get_latest=false
+                    fi
+                fi
+            fi
+            if ${_get_latest}; then
+                local _cli_filename="$(curl -s -I -L "https://download.sonatype.com/clm/scanner/latest.jar" | grep -o "nexus-iq-cli-.*\.jar")"
+                _iq_cli_jar="$HOME/.nexus_executable_cache/${_cli_filename}"
+                if [ ! -s "${_iq_cli_jar}" ]; then
+                    _log "INFO" "Downloading the latest.jar (${_cli_filename})"
+                    curl -f -L "https://download.sonatype.com/clm/scanner/latest.jar" -o "${_iq_cli_jar}" || return $?
+                fi
+            fi
+        fi
+    else
+        if [[ ! "${_iq_cli_ver}" =~ ^1\.1([0-7]|8[0-5]) ]]; then
+            # TODO: from 186, cli uses different version number
+            _iq_cli_ver="latest"
+        fi
+    fi
+
+    local _cmd="${_java} -jar ${_iq_cli_jar}"
+    if [[ "${_use_docker}" =~ ^[yY] ]]; then
+        # TODO: need to add -v some_dir:/target, and also SSLHandshakeException: PKIX path building failed
+        _cmd="docker run --name nexus-iq-cli_${_iq_cli_ver} sonatype/nexus-iq-cli:${_iq_cli_ver} /sonatype/evaluate"
+    fi
+    _cmd="${_cmd} -s ${_iq_url} -a \"${_iq_cred}\" -i ${_iq_app_id} -t ${_iq_stage} ${_iq_cli_opt}"
     # NOTE: -X/--debug outputs to STDOUT
     #       Mac uses "TMPDIR" (and can't change), which is like java.io.tmpdir = /var/folders/ct/cc2rqp055svfq_cfsbvqpd1w0000gn/T/ + nexus-iq
     #       Newer IQ CLI removes scan-6947340794864341803.xml.gz (if no -k), so no point of changing the tmpdir...
-    # -D includeSha256=true is for BFS
-    local _cmd="${_java} -jar ${_iq_cli_jar} ${_iq_cli_opt} -s ${_iq_url} -a \"${_iq_cred}\" -i ${_iq_app_id} -t ${_iq_stage}"
+    #       '-D includeSha256=true' is for BFS
     if [[ ! "${_simple_scan}" =~ ^[yY] ]]; then
         _cmd="${_cmd} -D includeSha256=true -r ./iq_result.json -k -X"
     fi

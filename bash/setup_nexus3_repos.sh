@@ -85,7 +85,7 @@ Just get the repositories setting:
 #TODO: : ${_NO_ASSET_UPLOAD:=""}
 : ${_ADMIN_USER:="admin"}
 : ${_ADMIN_PWD:="admin123"}
-: ${_DOMAIN:=".standalone.localdomain"}
+: ${_DOMAIN:="standalone.localdomain"}
 : ${_NEXUS_URL:="http://localhost:8081/"}   # or https://local.standalone.localdomain:8443/ for docker
 : ${_NEXUS_DOCKER_HOSTNAME:="local.${_DOMAIN#.}"}
 : ${_IQ_URL:="http://localhost:8070/"}
@@ -578,7 +578,7 @@ function f_setup_docker() {
     #local _opts="--tls-verify=false"    # TODO: only for podman. need an *easy* way to use http for 'docker'
 
     # NOTE: How to test Docker subdomain connector https://help.sonatype.com/en/docker-subdomain-connector.html
-    #curl -I -H 'Host: docker-proxy${_DOMAIN}:8443' "${_NEXUS_URL%/}/repository/docker-proxy/v2/"
+    #curl -I -H 'Host: docker-proxy.${_DOMAIN#.}:8443' "${_NEXUS_URL%/}/repository/docker-proxy/v2/"
 
     # If no xxxx-proxy, create it
     if ! _is_repo_available "${_prefix}-proxy"; then
@@ -593,14 +593,6 @@ function f_setup_docker() {
         # Need docker version older than 27
         #docker pull local.standalone.localdomain:18169/coreos/clair:v2.1.2
     fi
-    # add some data for xxxx-proxy
-    _log "INFO" "Populating ${_prefix}-proxy repository with some image ..."
-    if ! _populate_docker_proxy; then
-        _log "WARN" "_populate_docker_proxy failed. May need f_setup_https (and FQDN) or 'Docker Bearer Token Realm' (not only for anonymous access)."
-        if [ -n "${_NEXUS_DOCKER_HOSTNAME}" ]; then
-            _populate_docker_proxy "" "${_NEXUS_DOCKER_HOSTNAME}:18179" || _log "WARN" "_populate_docker_proxy \"${_NEXUS_DOCKER_HOSTNAME}:18179\" also failed"
-        fi
-    fi
 
     if [ -n "${_source_nexus_url}" ] && [ -n "${_extra_sto_opt}" ] && ! _is_repo_available "${_prefix}-repl-proxy"; then
         _apiS '{"action":"coreui_Repository","method":"create","data":[{"attributes":{"docker":{"httpPort":null,"httpsPort":null,"forceBasicAuth":false,"v1Enabled":true},"proxy":{"remoteUrl":"'${_source_nexus_url%/}'/repository/'${_prefix}'-hosted/","contentMaxAge":-1,"metadataMaxAge":60},"replication":{"preemptivePullEnabled":true,"assetPathRegex":""},"dockerProxy":{"indexType":"HUB","cacheForeignLayers":false,"useTrustStoreForIndexAccess":false},"httpclient":{"blocked":false,"autoBlock":true,"connection":{"useTrustStore":true}},"storage":{"blobStoreName":"'${_bs_name}'","strictContentTypeValidation":true'${_extra_sto_opt}'},"negativeCache":{"enabled":true,"timeToLive":1440},"cleanup":{"policyName":[]}},"name":"'${_prefix}'-repl-proxy","format":"","type":"","url":"","online":true,"routingRuleId":"","authEnabled":false,"httpRequestSettings":false,"recipe":"docker-proxy"}],"type":"rpc"}' || return $?
@@ -611,13 +603,24 @@ function f_setup_docker() {
         # Using "httpPort":18181 - 18182,
         _apiS '{"action":"coreui_Repository","method":"create","data":[{"attributes":{"docker":{"httpPort":18181,"httpsPort":18182,"forceBasicAuth":true,"v1Enabled":true},"storage":{"blobStoreName":"'${_bs_name}'","writePolicy":"ALLOW","strictContentTypeValidation":true'${_extra_sto_opt}'},"cleanup":{"policyName":[]}},"name":"'${_prefix}'-hosted","format":"","type":"","url":"","online":true,"recipe":"docker-hosted"}],"type":"rpc"}' || return $?
     fi
+
+    # If no xxxx-group, create it
+    if ! _is_repo_available "${_prefix}-group"; then
+        # Using "httpPort":4999, httpsPort: 15000
+        _apiS '{"action":"coreui_Repository","method":"create","data":[{"attributes":{"docker":{"httpPort":4999,"httpsPort":15000,"forceBasicAuth":true,"v1Enabled":true},"storage":{"blobStoreName":"'${_bs_name}'","strictContentTypeValidation":true'${_extra_sto_opt}'},"group":{"groupWriteMember":"'${_prefix}'-hosted","memberNames":["'${_prefix}'-hosted","'${_prefix}'-proxy"]}},"name":"'${_prefix}'-group","format":"","type":"","url":"","online":true,"recipe":"docker-group"}],"type":"rpc"}' || return $?
+    fi
+
+
+    # add some data for xxxx-proxy
+    _log "INFO" "Populating ${_prefix}-proxy repository with some image ..."
+    if ! _populate_docker_proxy; then
+        _log "WARN" "_populate_docker_proxy failed. May need f_setup_https (and FQDN) or 'Docker Bearer Token Realm' (not only for anonymous access)."
+    fi
+
     # add some data for xxxx-hosted
     _log "INFO" "Populating ${_prefix}-hosted repository with some image ..."
     if ! _populate_docker_hosted; then
         _log "WARN" "_populate_docker_hosted failed. May need f_setup_https (and FQDN) or 'Docker Bearer Token Realm' (not only for anonymous access)."
-        if [ -n "${_NEXUS_DOCKER_HOSTNAME}" ]; then
-            _populate_docker_hosted "" "${_NEXUS_DOCKER_HOSTNAME}:18182" || _log "WARN" "_populate_docker_hosted \"${_NEXUS_DOCKER_HOSTNAME}:18182\" also failed"
-        fi
     fi
     if type helm &>/dev/null; then
         if [ -s "${_TMP%/}/helm-oci-demo-0.1.0.tgz" ] || curl -sf -o ${_TMP%/}/helm-oci-demo-0.1.0.tgz -L "https://github.com/hajimeo/samples/raw/refs/heads/master/misc/helm-oci-demo-0.1.0.tgz"; then
@@ -627,24 +630,15 @@ function f_setup_docker() {
         fi
     fi
 
-    # If no xxxx-group, create it
-    if ! _is_repo_available "${_prefix}-group"; then
-        # Using "httpPort":4999, httpsPort: 15000
-        _apiS '{"action":"coreui_Repository","method":"create","data":[{"attributes":{"docker":{"httpPort":4999,"httpsPort":15000,"forceBasicAuth":true,"v1Enabled":true},"storage":{"blobStoreName":"'${_bs_name}'","strictContentTypeValidation":true'${_extra_sto_opt}'},"group":{"groupWriteMember":"'${_prefix}'-hosted","memberNames":["'${_prefix}'-hosted","'${_prefix}'-proxy"]}},"name":"'${_prefix}'-group","format":"","type":"","url":"","online":true,"recipe":"docker-group"}],"type":"rpc"}' || return $?
-    fi
     # add some data for xxxx-group
     _log "INFO" "Populating ${_prefix}-group repository with some image via docker proxy repo ..."
-    if ! _populate_docker_proxy "hello-world" "${r_DOCKER_GROUP}" "15000 4999"; then
-        if [ -n "${_NEXUS_DOCKER_HOSTNAME}" ]; then
-            _populate_docker_proxy "hello-world" "${_NEXUS_DOCKER_HOSTNAME}:15000"
-        fi
-    fi
+    _populate_docker_proxy "hello-world" "" "15000 4999"
 }
 
 #_populate_docker_proxy "" "m1mac.standalone.localdomain:15000"
 function _populate_docker_proxy() {
     local _img_name="${1:-"alpine:3.7"}"    # To test OCI image: jenkins/jenkins:lts
-    local _host_port="${2:-"${r_DOCKER_PROXY:-"${r_DOCKER_GROUP:-"${r_NEXUS_URL:-"${_NEXUS_URL}"}"}"}"}"
+    local _host_port="${2:-"${r_DOCKER_PROXY:-"${r_DOCKER_GROUP:-"${r_NEXUS_URL:-"${_NEXUS_DOCKER_HOSTNAME:-"${_NEXUS_URL}"}"}"}"}"}"
     local _backup_ports="${3-"18179 18178 15000 443"}"
     local _cmd="${4-"${r_DOCKER_CMD}"}"
     [ -z "${_cmd}" ] && _cmd="$(_docker_cmd)"
@@ -665,13 +659,13 @@ function _populate_docker_proxy() {
 # Example 2: with ssh port forwarding
 #   ssh -2CNnqTxfg -L18182:localhost:18182 node3250    #ps aux | grep 2CNnqTxfg
 #   _populate_docker_hosted "" "local.standalone.localdomain:18182"
-# Example 3: Group repo test by creating an image which uses blobs from proxy (pull & push from group repo)
+# Example 3: *Group* repo test by creating an image which uses blobs from proxy (pull & push from group repo)
 #   # After deleting alpine_hosted (and 'docker system prune -a -f'):
 #   _populate_docker_hosted "local.standalone.localdomain:15000/alpine:latest" "local.standalone.localdomain:15000"
 #   _TAG_TO="thrivent-web/doi-invite:latest" _populate_docker_hosted "local.standalone.localdomain:15000/alpine:latest" "local.standalone.localdomain:15000"
 function _populate_docker_hosted() {
     local _base_img="${1:-"alpine:latest"}"    # dh1.standalone.localdomain:15000/alpine:3.7
-    local _host_port="${2:-"${r_DOCKER_PROXY:-"${r_DOCKER_GROUP:-"${r_NEXUS_URL:-"${_NEXUS_URL}"}"}"}"}"
+    local _host_port="${2:-"${r_DOCKER_PROXY:-"${r_DOCKER_GROUP:-"${r_NEXUS_URL:-"${_NEXUS_DOCKER_HOSTNAME:-"${_NEXUS_URL}"}"}"}"}"}"
     local _tag_to="${3:-"${_TAG_TO}"}"
     local _num_layers="${4:-"${_NUM_LAYERS:-"1"}"}" # Can be used to test overwriting image
     local _backup_ports="${5-"18182 18181 15000 443"}"
@@ -1332,7 +1326,8 @@ function f_setup_composer() {
     [ -z "${_ds_name}" ] && _ds_name="$(_get_datastore_name)"
     [ -n "${_ds_name}" ] && _extra_sto_opt=',"dataStoreName":"'${_ds_name}'"'
     if ! _is_repo_available "${_prefix}-proxy"; then
-        _apiS '{"action":"coreui_Repository","method":"create","data":[{"attributes":{"proxy":{"remoteUrl":"https://packagist.org","contentMaxAge":1440,"metadataMaxAge":1440},"replication":{"preemptivePullEnabled":false},"httpclient":{"blocked":false,"autoBlock":true,"connection":{"useTrustStore":false}},"storage":{"dataStoreName":"nexus","blobStoreName":"'${_bs_name}'","strictContentTypeValidation":true'${_extra_sto_opt}'},"negativeCache":{"enabled":true,"timeToLive":1440},"cleanup":{"policyName":[]}},"name":"'${_prefix}'-proxy","format":"","type":"","url":"","online":true,"routingRuleId":"","authEnabled":false,"httpRequestSettings":false,"recipe":"composer-proxy"}],"type":"rpc"}' || return $?
+        # https://packagist.org is deprecated from Feb 2025
+        _apiS '{"action":"coreui_Repository","method":"create","data":[{"attributes":{"proxy":{"remoteUrl":"https://repo.packagist.org","contentMaxAge":1440,"metadataMaxAge":1440},"replication":{"preemptivePullEnabled":false},"httpclient":{"blocked":false,"autoBlock":true,"connection":{"useTrustStore":false}},"storage":{"dataStoreName":"nexus","blobStoreName":"'${_bs_name}'","strictContentTypeValidation":true'${_extra_sto_opt}'},"negativeCache":{"enabled":true,"timeToLive":1440},"cleanup":{"policyName":[]}},"name":"'${_prefix}'-proxy","format":"","type":"","url":"","online":true,"routingRuleId":"","authEnabled":false,"httpRequestSettings":false,"recipe":"composer-proxy"}],"type":"rpc"}' || return $?
     fi
     echo "To test:
     curl -sSf -D- ${_NEXUS_URL%/}/repository/${_prefix}-proxy/packages.json"
@@ -1570,14 +1565,14 @@ function f_create_group_blobstore() {
     local __doc__="Create a new group blob store. Not promoting to group"
     local _bs_name="${1:-"bs-group"}"
     local _member_pfx="${2:-"member"}"
-    local _repo_name="${2:-"raw-grpbs-hosted"}"
+    local _file_policy="${3:-"writeToFirst"}"   # writeToFirst or roundRobin
+    local _repo_name="${4-"raw-grpbs-hosted"}"
     f_create_file_blobstore "${_member_pfx}1"
     f_create_file_blobstore "${_member_pfx}2"
-    # writeToFirst or roundRobin
-    f_api '/service/rest/v1/blobstores/group' '{"name":"'${_bs_name}'","members":["'${_member_pfx}'1","'${_member_pfx}'2"],"fillPolicy":"roundRobin"}' || return $?
-    if ! _is_repo_available "${_repo_name}"; then
+    f_api '/service/rest/v1/blobstores/group' '{"name":"'${_bs_name}'","members":["'${_member_pfx}'1","'${_member_pfx}'2"],"fillPolicy":"'${_file_policy}'"}' || return $?
+    if [ -n "${_repo_name}" ] && ! _is_repo_available "${_repo_name}"; then
         _apiS '{"action":"coreui_Repository","method":"create","data":[{"attributes":{"storage":{"blobStoreName":"'${_bs_name}'","writePolicy":"ALLOW","strictContentTypeValidation":true'$(_get_extra_sto_opt)'},"cleanup":{"policyName":[]}},"name":"'${_repo_name}'","format":"","type":"","url":"","online":true,"recipe":"raw-hosted"}],"type":"rpc"}' || return $?
-        _log "INFO" "Created ${_repo_name}"
+        _log "INFO" "Created ${_repo_name} (no asset)"
     fi
 }
 
@@ -1602,7 +1597,7 @@ function f_iq_quarantine() {
         fi
         # Should use the API?
         _log "INFO" "Configuring IQ ${_iq_url} with '${_iq_user}' ..."
-        _apiS '{"action":"clm_CLM","method":"update","data":[{"enabled":true,"url":"'${_iq_url}'","authenticationType":"USER","username":"'${_iq_user}'","password":"'${_iq_pwd}'","timeoutSeconds":null,"properties":"","showLink":true}],"type":"rpc"}' || return $?
+        f_iq_connection "${_iq_url}" "true" "${_iq_user}" "${_iq_pwd}" || return $?
         _IQ_CONFIGURED=true
     fi
     # To create IQ: Audit and Quarantine for this repository:
@@ -1610,6 +1605,15 @@ function f_iq_quarantine() {
         _apiS '{"action":"capability_Capability","method":"create","data":[{"id":"NX.coreui.model.Capability-1","typeId":"firewall.audit","notes":"","enabled":true,"properties":{"repository":"'${_repo_name}'","quarantine":"true"}}],"type":"rpc"}' || return $?
         _log "INFO" "IQ: Audit and Quarantine for ${_repo_name} completed."
     fi
+}
+
+function f_iq_connection() {
+    local __doc__="Create IQ connection"
+    local _iq_url="${1:-"${_IQ_URL}"}"   # accept empty string so that won't override with _IQ_URL
+    local _enabled="${2:-"true"}"
+    local _iq_user="${3:-"${_ADMIN_USER}"}"
+    local _iq_pwd="${4:-"${_ADMIN_PWD}"}"
+    _apiS '{"action":"clm_CLM","method":"update","data":[{"enabled":'${_enabled}',"url":"'${_iq_url}'","authenticationType":"USER","username":"'${_iq_user}'","password":"'${_iq_pwd}'","timeoutSeconds":null,"properties":"","showLink":true}],"type":"rpc"}'
 }
 
 function f_iq_quarantine_all() {
@@ -2320,6 +2324,8 @@ function f_create_cleanup_policy() {
     #{"name":"all","notes":"","format":"*","criteriaLastBlobUpdated":"1","criteriaLastDownloaded":"1","criteriaReleaseType":null,"criteriaAssetRegex":null,"retain":null,"sortBy":null}
     f_api "/service/rest/internal/cleanup-policies" "{\"name\":\"${_policy_name}\",\"notes\":\"\",\"format\":\"${_format:-"*"}\",\"criteriaLastBlobUpdated\":${_age_days:-"null"},\"criteriaLastDownloaded\":${_usage_days:-"null"},\"criteriaReleaseType\":null,\"criteriaAssetRegex\":${_asset_matcher:-"null"},\"retain\":null,\"sortBy\":null}" || return $?
 }
+#UPDATE docker_asset SET last_downloaded = (created - interval '240 days') WHERE kind = 'MANIFEST' AND created > (now() - interval '1 day');
+#UPDATE docker_asset_blob SET blob_created = (blob_created - interval '1000 days') WHERE added_to_repository > (now() - interval '1 day');
 #f_api "/service/rest/internal/cleanup-policies" "{\"name\":\"maven2-without-sort\",\"notes\":null,\"format\":\"maven2\",\"criteriaLastBlobUpdated\":1,\"criteriaReleaseType\":\"RELEASES\",\"retain\":\"10\"}"
 
 # To restrict DELETE for npm logout
@@ -2489,7 +2495,7 @@ function f_start_saml_server() {
                 index=$((index + 1))
                 local _tmp_file="${_TMP%/}/sp_metadata_${index}.xml"
                 _log "INFO" "Downloading SP metafile from ${_url} ..."
-                curl -sSf -L -o "${_tmp_file}" -u "${_sp_meta_cred}" "${_url}"
+                curl -sSf -L -o "${_tmp_file}" -u "${_sp_uid}:${_sp_pwd}" "${_url}"
                 if [ -s "${_tmp_file}" ]; then
                     if [ -z "${_sp_meta_file}" ]; then
                         _sp_meta_file="${_tmp_file}"
@@ -2516,17 +2522,20 @@ function f_start_saml_server() {
     eval "${_cmd}" &> ${_TMP%/}/simplesamlidp_$$.log &
     local _pid="$!"
     sleep 2
+    if ! jobs -l | grep -w "${_pid}" | grep -q -w Running; then
+        _log "ERROR" "simplesamlidp failed to start. Please check ${_TMP%/}/simplesamlidp_$$.log"
+        return 1
+    fi
     curl -sf -o ${_TMP%/}/idp_metadata.xml "${_idp_base_url%/}/metadata" || return $?
     echo "[INFO] Running simplesamlidp in background ..."
     echo "       PID: ${_pid}  Log: ${_TMP%/}/simplesamlidp_$$.log"
-    echo "       USER_JSON: ${USER_JSON}"
+    echo "       users/groups: ${USER_JSON}"
     echo "       IdP metadata: ${_TMP%/}/idp_metadata.xml"
     #echo "       curl -D- -X PUT -u admin:admin123 http://localhost:8070/api/v2/roleMemberships/global/role/b9646757e98e486da7d730025f5245f8/group/ipausers"
     if [ ! -s "${_sp_meta_file}" ]; then
         #echo "       Example Attr: {uid=[samluser], eduPersonPrincipalName=[samluser@standalone.localdomain], eduPersonAffiliation=[users], givenName=[saml], sn=[user], cn=[Saml User]}"
         #echo "       So, eduPersonPrincipalName can be used for 'email', eduPersonAffiliation for 'groups'."
-        echo "[INFO] Execute 'f_setup_saml_simplesaml'"
-        echo "[INFO] Restart this IdP if some login issue."
+        echo "[INFO] Please execute 'f_setup_saml_simplesaml'. If some login issue, please restart this IdP."
         #echo "       If necessary, save '${_sp_meta_url}' into ${_sp_meta_file}:"
         #echo "       curl -o ${_sp_meta_file} -u \"admin\" \"${_sp_meta_url}\""
     fi
@@ -2618,16 +2627,22 @@ function f_start_ldap_server() {
     eval "${_install_dir%/}/glauth -c ${_install_dir%/}/glauth-simple.cfg" &> ${_TMP%/}/glauth_$$.log &
     local _pid="$!"
     sleep 2
+    if ! jobs -l | grep -w "${_pid}" | grep -q -w Running; then
+        _log "ERROR" "glauth failed to start. Please check ${_TMP%/}/glauth_$$.log"
+        return 1
+    fi
     echo "[INFO] Running glauth in background ..."
     echo "       PID: ${_pid}  Log: ${_TMP%/}/glauth_$$.log"
+    echo "       LDAP config: ${_install_dir%/}/glauth-simple.cfg"
 }
 function f_gen_glauth_groups_config() {
-    local __doc__="Generate glauth groups config"
+    local __doc__="Generate/output glauth groups config"
     # @see: https://pkg.go.dev/github.com/gwelch-contegix/glauth/v2/pkg/config
     local _groups="${1}"    # File or space delimited group names
     local _user_name="${2}"
     local _gid_num="${3:-6501}"
     local _uid_num="${4:-5101}"
+    local _mail_domain="${5:-"mail.${_DOMAIN#.}"}"
     local _group_lines=""
     if [ -s "${_groups}" ]; then
         _group_lines="$(cat "${_groups}")"
@@ -2642,7 +2657,6 @@ function f_gen_glauth_groups_config() {
 [[groups]]
 name = "${_line}"
 gidnumber = ${_gid_num}
-
 EOF
 #includegroups = [ ${include_uid} ]    <<< probably for nested group
         if [ -z "${__other_groups}" ]; then
@@ -2652,22 +2666,31 @@ EOF
         fi
         __gid_num=$(( __gid_num + 1 ))
     done <<< "${_group_lines}"
-    if [ -n "${_user_name}" ]; then
-        local _mail="${_user_name}"
-        [[ "${_user_name}" =~ ^([^@]+)@ ]] && _mail="${BASH_REMATCH[1]}@standalone.localdomain"
-        cat << EOF
+    if [ -n "${_othergroups}" ]; then
+        echo ""
+    fi
 
+    if [ -n "${_user_name}" ]; then
+        local _mail="${_user_name}@${_mail_domain}"
+        local _userid="${_user_name}"
+        # If user_name contains "@" use it as email
+        if [[ "${_user_name}" =~ ^([^@]+)@.+ ]]; then
+            _mail="${_user_name}"
+            _userid="${BASH_REMATCH[1]}"
+        fi
+        cat << EOF
 [[users]]
 name = "${_user_name}"
-givenname="ldap$$"
-sn="user$$"
+givenname="GN${_userid}"
+sn="SN${_userid}"
 mail = "${_mail}"
 uidnumber = ${_uid_num}
 primarygroup = ${_gid_num}
-othergroups = [ ${__other_groups} ]
-# ldapuser
-passsha256 = "f8a94cd57abda9f0d388a3b279fb3afea239b435b6235ba7b5f195bf2eada67b"
+passsha256 = "$(echo -n "${_user_name}" | sha256sum | cut -d' ' -f1)"
 EOF
+        if [ -n "${_othergroups}" ]; then
+            echo "othergroups = [ ${__other_groups} ]"
+        fi
     fi
 }
 function f_setup_ldap_glauth() {
@@ -3646,6 +3669,7 @@ function _update_name_resolution() {    # no longer in use but leaving as an exa
 ### Database related
 function _export_postgres_config() {
     local _db_props_file="${1}"
+    [ ! -s "${_db_props_file}" ] && return 1
     # TODO: if no nexus-store.properties, check "cat /proc/${_pid}/environ | tr '\0' '\n'"
     #local _pid="$(ps auxwww | grep -F 'org.sonatype.nexus.karaf.NexusMain' | grep -vw grep | awk '{print $2}' | tail -n1)"
     source "${_db_props_file}" || return $?
@@ -3703,23 +3727,29 @@ function f_restore_postgresql_component() {
     grep -w ERROR ./psql_restore.log | grep -v "cannot drop constraint"
 }
 
-#f_query_postgresql ./sonatype-work/nexus3 "SELECT blob_ref FROM %FMT%_asset_blob"
-#f_query_postgresql ./sonatype-work/nexus3 "SELECT attributes FROM %FMT%_content_repository WHERE attributes is not null and attributes <> '{}'"
-#f_query_postgresql ./sonatype-work/nexus3 "UPDATE %FMT%_content_repository SET attributes = '{}'::jsonb WHERE attributes is not null and attributes <> '{}'"
-function f_query_postgresql() {
+#f_psql "SELECT blob_ref FROM %FMT%_asset_blob"
+#f_psql "SELECT attributes FROM %FMT%_content_repository WHERE attributes is not null and attributes <> '{}'"
+#f_psql "UPDATE %FMT%_content_repository SET attributes = '{}'::jsonb WHERE attributes is not null and attributes <> '{}'"
+function f_psql() {
     local __doc__="Query against all assets or components by using nexus-store.properties"
-    local _workingDirectory="${1}"
-    local _query="${2}" # Use '%FMT%'
+    local _query="${1}" # Use '%FMT%'
+    local _workingDirectory="${2:-"."}"
     local _dry_run="${3:-"${_DRY_RUN}"}"
     local _psql_opts="${4:-"${_PSQL_OPTS:-"-tA"}"}"
-    _export_postgres_config "${_workingDirectory%/}/etc/fabric/nexus-store.properties" || return $?
-    PGGSSENCMODE=disable psql -h ${_DBHOST} -p ${_DBPORT:-"5432"} -U ${_DBUSER} -d ${_DBNAME} -tA -c "SELECT distinct REGEXP_REPLACE(recipe_name, '-.+', '') AS fmt FROM repository" | while read -r _fmt; do
+    local _prop="$(find "${_workingDirectory%/}" -maxdepth 5 -name nexus-store.properties -path '*/etc/fabric/*' | head -n1)"
+    _export_postgres_config "${_prop}" || return $?
+    local _cmd="psql -h ${_DBHOST} -p ${_DBPORT:-"5432"} -U ${_DBUSER} -d ${_DBNAME}"
+    if [ -z "${_query}" ]; then
+        ${_cmd}
+        return $?
+    fi
+    ${_cmd} -tA -c "SELECT distinct REGEXP_REPLACE(recipe_name, '-.+', '') AS fmt FROM repository" | while read -r _fmt; do
         local _q="$(echo "${_query}" | sed "s/%FMT%/${_fmt}/g")"
         echo "# ${_q}" >&2
         if [[ "${_dry_run}" =~ ^[yY] ]]; then
             continue
         fi
-        PGGSSENCMODE=disable psql -h ${_DBHOST} -p ${_DBPORT:-"5432"} -U ${_DBUSER} -d ${_DBNAME} ${_psql_opts} -c "${_q}" || return $?
+        ${_cmd} ${_psql_opts} -c "${_q}" || return $?
     done
 }
 
@@ -3734,7 +3764,7 @@ function f_set_log_level() {
     local _log_class="${1}"
     local _log_level="${2:-"DEBUG"}"
     if [ -z "${_log_class}" ]; then
-        _log "WARN" "RESET-ing the log levels"
+        _log "INFO" "RESET-ing the log levels"
         _log_class="RESET"
     fi
     if [ "${_log_class}" == "root" ]; then
