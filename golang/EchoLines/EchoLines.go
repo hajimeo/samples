@@ -61,7 +61,7 @@ Read one file and output only necessary lines.
 
 ## Thread dumps
 ### NXRM2 thread dumps (not perfect. still contains some junk lines):
-    EXCL_REGEX="^jvm 1\s+\|\s+\d\d\d\d-\d\d-\d\d \d\d:\d\d:\d\d.+" echolines "wrapper.log.2,wrapper.log.1,wrapper.log" "^jvm 1\s+\|\s+\d\d\d\d-\d\d-\d\d \d\d:\d\d:\d\d$" "(^\s+class space.+)" | sed 's/^jvm 1    | //' > threads.txt
+    EXCL_REGEX="^(jvm 1\s+\|\s+\d\d\d\d-\d\d-\d\d \d\d:\d\d:\d\d.+|.+Pause reading child output to share cycles.+)" echolines "wrapper.log.2,wrapper.log.1,wrapper.log" "^jvm 1\s+\|\s+\d\d\d\d-\d\d-\d\d \d\d:\d\d:\d\d$" "(^\s+class space.+)" | sed 's/^jvm 1    | //' > threads.txt
 ### NXRM3 thread dumps:
     HTML_REMOVE=Y echolines "./jvm.log" "^\d\d\d\d-\d\d-\d\d \d\d:\d\d:\d\d$" "(^\s+class space.+|^\s+Metaspace\s+.+)" "threads"
     _THREAD_FILE_GLOB="0*.out" f_threads ./threads/
@@ -100,6 +100,9 @@ Read one file and output only necessary lines.
 ### NXRM3: DEBUG cooperation2.datastore.internal.CooperatingFuture
     export ELAPSED_REGEX="\d\d\d\d-\d\d-\d\d.(\d\d:\d\d:\d\d.\d\d\d)" ELAPSED_KEY_REGEX="\[(qtp[^\]]+)"
     rg -F '/dotenv?null' -m2000 nexus.log | echolines "" "Requesting" "(^.+Completing.+)" | rg '^# (.+)' -o -r '$1' > bytes_duration_summary.tsv
+### NXRM3: Yum group merging duration
+    export ELAPSED_REGEX="^\d\d\d\d-\d\d-\d\d.(\d\d:\d\d:\d\d.\d\d\d)" ASCII_DISABLED=Y ELAPSED_KEY_REGEX="(\[qtp\S+\s\S*\s\S+)"
+    rg YumGroupMergerImpl ./nexus3.log | echolines "" ".+ starting$" "(^.+ completed)$" | rg '^#'
 
 ### IQ: Evaluating a File, and sort by threadId and time
     rg 'POST /rest/scan/.+Scheduling scan task (\S+)' -o -r '$1' log/clm-server.log | xargs -I{} rg -w "{}" ./log/clm-server.log | sort | uniq > scan_tasks.log
