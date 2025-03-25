@@ -4,7 +4,7 @@
 # LIMITATION:
 #   Can't (or need to be careful) use special characters such as double-quotes and dollar mark.
 
-#$ export HELM_NAME="sonatype-helm" NAME_SPACE="nexusrepo" RELEASE_NAME="nxrm3ha" ADMIN_PWD="admin123" LICENSE_B64="$(base64 -i $HOME/share/sonatype/sonatype-license.lic)" DB_SERVER="192.168.4.31";export NFS_SERVER="192.168.4.31" SHARE_DIR="/var/tmp/share/sonatype/${RELEASE_NAME}-nfs"
+#$ export NAME_SPACE="nexusrepo" RELEASE_NAME="nxrm3ha" ADMIN_PWD="admin123" LICENSE_B64="$(base64 -i $HOME/share/sonatype/sonatype-license.lic)" DB_SERVER="192.168.4.31";export NFS_SERVER="192.168.4.31" SHARE_DIR="/var/tmp/share/sonatype/${RELEASE_NAME}-nfs"
 #$ export TAG="3.72.0"
 # NOTE: to decode: kubectl get secrets nexus-repo-license.lic -n nexusrepo -o jsonpath="{.data.nexus-repo-license\.lic}" | base64 -d >/tmp/my-test2.lic
 
@@ -16,19 +16,19 @@
 #$ eval "echo \"$(cat ./k8s-nfs-pv-pvc-tmpl.yaml | grep -v '^\s*#')\"" > ./${RELEASE_NAME}-nfs-pv-pvc.yaml
 #$ kubectl apply -f ./${RELEASE_NAME}-nfs-pv-pvc.yaml -n ${NAME_SPACE}
 ### Adding sonatype helm repo (and search for versions to confirm)
-#$ helm repo add ${HELM_NAME} https://sonatype.github.io/helm3-charts/
-#$ helm search repo ${HELM_NAME}/nxrm-ha --versions | head
+#$ helm repo add sonatype-helm https://sonatype.github.io/helm3-charts/
+#$ helm search repo sonatype-helm/nxrm-ha --versions | head
 
 # Install / reinstall / upgrade:
-#$ helm repo update ${HELM_NAME} && helm search repo ${HELM_NAME}/nxrm-ha --versions | head
+#$ helm repo update sonatype-helm && helm search repo sonatype-helm/nxrm-ha --versions | head
 #$ #helm uninstall ${RELEASE_NAME} -n ${NAME_SPACE}
 #$ eval "echo \"$(cat ./helm-nxrm3ha-values.yml | grep -v '^\s*#')\"" > ./${RELEASE_NAME}_values.yaml
-#$ helm upgrade -i ${RELEASE_NAME} ${HELM_NAME}/nxrm-ha -f ./${RELEASE_NAME}_values.yaml -n ${NAME_SPACE} #--version 72.0.0  --debug --dry-run
+#$ helm upgrade -i ${RELEASE_NAME} sonatype-helm/nxrm-ha -f ./${RELEASE_NAME}_values.yaml -n ${NAME_SPACE} #--version 72.0.0  --debug --dry-run
 
 
 # For troubleshooting:
 #$ git -C ~/IdeaProjects/nxrm3-ha-repository pull && git -C ~/IdeaProjects/nxrm3-ha-repository fetch
-#$ helm upgrade -i ${RELEASE_NAME} ~/IdeaProjects/nxrm3-ha-repository/nxrm-ha -f ./${RELEASE_NAME}_values.yaml -n ${NAME_SPACE} # --debug --dry-run
+#$ helm upgrade -i ${RELEASE_NAME} ~/IdeaProjects/nxrm3-ha-repository/nxrm-ha -f ./${RELEASE_NAME}_values.yaml -n ${NAME_SPACE} --set-file secret.nexusSecret.secretKeyfile=./nexus-secrets.json  # --debug --dry-run
 #$ helm template nxrm3ha sonatype-helm/nxrm-ha -f ./helm-nxrm3ha-values.yml -n sonatype-helm >./helm-nxrm3ha-deploying.yaml
 #$ kubectl -n sonatype-helm apply -f ./helm-nxrm3ha-deploying.yaml
 
@@ -139,6 +139,8 @@ secret:
   nexusAdminSecret:
     enabled: true
     adminPassword: '${ADMIN_PWD}'
+  nexusSecret:
+    enabled: true
   license:
     name: nexus-repo-license.lic
     licenseSecret:
