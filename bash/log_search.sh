@@ -944,20 +944,22 @@ function f_check_topH() {
 
 function f_check_netstat() {
     local _file="${1}"  # file path or glob for rg
-    local _port="${2:-"8081"}"
+    local _port="${2}"
     #rg '^Proto' "${_file}"
     #if [ ! -f "${_file}" ]; then
     #    _file="-g ${_file}"
     #fi
-    echo "# Large Receive / Send Q from netstat against ${_port}"
-    rg "^(Proto|tcp\s+(\d{4,}\s+\d+|\d+\s+\d{4,})\s+[^ ]+:${_port}\s+.+/)" ${_file}
+    echo "# Large Receive / Send Q from netstat"
+    rg "^(Proto|tcp\s+(\d{5,}\s+\d+|\d+\s+\d{5,})\s+[^ ]+:${_port:-"[0-9]+"}\s+.+/)" ${_file}
     echo ""
     echo "# Counting _WAIT|SYN_RECV"
     rg "\s+([^ ]+_WAIT[0-9]?|SYN_RECV)\s+" -o -r '$1' ${_file} | sort | uniq -c
-    echo "# Counting _WAIT against Local Address:${_port}"
-    rg "\s+[^ ]+:${_port}\s+([^:]+):\d+\s+([^ ]+_WAIT)\s+" -o -r '$1 $2' ${_file} | sort | uniq -c
-    echo "# Counting _WAIT against Foreign Address:${_port} (top 10)"
-    rg "\s+[^ ]+:${_port}\s+([^:]+:\d+)\s+([^ ]+_WAIT)\s+" -o -r '$1 $2' --no-filename ${_file} | sort | uniq -c | rg -v '^\s+1\s+' | sort -nr | head -n10
+    if [ -n "${_port}" ]; then
+        echo "# Counting _WAIT against Local Address:${_port}"
+        rg "\s+[^ ]+:${_port}\s+([^:]+):\d+\s+([^ ]+_WAIT)\s+" -o -r '$1 $2' ${_file} | sort | uniq -c
+        echo "# Counting _WAIT against Foreign Address:${_port} (top 10)"
+        rg "\s+[^ ]+:${_port}\s+([^:]+:\d+)\s+([^ ]+_WAIT)\s+" -o -r '$1 $2' --no-filename ${_file} | sort | uniq -c | rg -v '^\s+1\s+' | sort -nr | head -n10
+    fi
     echo "(check /proc/sys/net/ipv4/tcp_tw_reuse)"
 }
 
@@ -1334,9 +1336,26 @@ function f_threads() {
 
     echo "### Counting thread states"
     _thread_state_sum "${_file}"
+    echo " "
+
+    echo "### (Java 17 only) top 10 long running qtp thread from elapsed"
+    # below will include QTP pool (waiting) threads
+    #rg '^("[^\"]+").+cpu=(\S+).+elapsed=(\S+)' -o -r '$1,$2,$3' ${_file} | rg '^"qtp' | sort -t',' -k3nr | head -n5
+    f_threads_cpu_elapsed "${_save_dir%/}" | rg '^"qtp' | sort -t',' -k3nr | head -n10
+    echo " "
 
     echo "### _threads_extra_check (product specific issues)"
     _threads_extra_check "${_file}"
+}
+function f_threads_cpu_elapsed() {  # Java 17 only
+    local _dir="$1"
+    local _running_thread_search_re="${2:-".sonatype."}"
+    local _times="${3:-"3"}"
+    rg "${_running_thread_search_re}" -l "${_dir}" | while read -r _file; do
+        _t_c_e="$(rg '^("[^\"]+").+cpu=(\S+).+elapsed=(\S+)' -o -r '$1,$2,$3' ${_file})"
+        _state="$(head -n2 ${_file} | rg -i 'java.lang.Thread.State:\s*(.+)$' -o -r '$1')"
+        echo "${_t_c_e},\"${_state:-"(unknown)"}\""
+    done
 }
 function f_analyse_multiple_dumps() {
     local _individual_thread_dir="${1:-"."}"

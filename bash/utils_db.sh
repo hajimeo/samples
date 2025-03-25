@@ -340,10 +340,13 @@ function _postgresql_create_role_and_db() {
     # NOTE: need to be superuser. 'usename' (no 'r') is correct. options: -t --tuples-only, -A --no-align, -F --field-separator
     #       Also, double-quote for case sensitivity but not using for now.
     _psql_adm "SELECT usename FROM pg_shadow" "-tA" | grep -q "^${_dbusr}$" || _psql_adm "CREATE USER \"${_dbusr}\" WITH LOGIN PASSWORD '${_dbpwd}';"    # not giving SUPERUSER
-    if [ "${_DB_ADMIN}" != "postgres" ] && [ "${_DB_ADMIN}" != "$USER" ]; then
-        # NOTE: This ${_DB_ADMIN%@*} is for Azure
-        _psql_adm "GRANT \"${_dbusr}\" TO \"${_DB_ADMIN%@*}\";"
-    fi
+    # This ${_DB_ADMIN%@*} is for Azure PostgreSQL Flexible server
+    #if [ -n "${_DB_ADMIN}" ] && [ "${_DB_ADMIN}" != "postgres" ] && [ "${_DB_ADMIN}" != "$USER" ]; then
+    #    _psql_adm "GRANT \"${_dbusr}\" TO \"${_DB_ADMIN%@*}\";"
+    #fi
+    #if [ -n "${_prev_dbuser}" ]; then
+        #_psql_adm "REASSIGN OWNED BY \"${_prev_dbuser}\" TO \"${_dbusr}\";"
+    #fi
 
     local _create_option="ENCODING 'UTF8'"
     if [ -n "${_ts_location}" ]; then

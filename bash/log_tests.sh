@@ -529,9 +529,16 @@ function t_pg_config() {
     local _pg_cfg_glob="${1:-"dbFileInfo.txt"}"
     local _excl_regex="${2-"\\\s*[:=]\\\s*"}"   #\",\"[^\"]+\",
     [ ! -s "${_pg_cfg_glob}" ] && _pg_cfg_glob="-g ${_pg_cfg_glob}"
-    #_test_template "$(rg --no-filename -i '^["]?max_connections'${_excl_regex}'(\d{1,2}|100)\b' ${_pg_cfg_glob})" "WARN" "max_connections might be too small"
+    local _max_connections="$(rg --no-filename -i '^["]?max_connections\b[^0-9]*([0-9]+)' -o -r '$1' ${_pg_cfg_glob})"
+    if [ -n "${_max_connections}" ]; then
+        if [ ${_max_connections:-0} -lt 305 ]; then
+            _head "WARN" "max_connections (${_max_connections}) in ${_pg_cfg_glob} might be too small"
+        elif [ ${_max_connections:-0} -lt 1000 ]; then
+            _head "WARN" "max_connections (${_max_connections}) in ${_pg_cfg_glob} might be too large (check work_mem)"
+        fi
+    fi
     #TODO: _test_template "$(rg --no-filename -i '^["]?shared_buffers'${_excl_regex}'([1-4]\d{1,5}|\d{1,5}|[1-3]\d{1,3}kb|\d{1,6}kb|[1-3]\d{1,3}mb|\d{1,3}mb|[1-3]gb)\b' ${_pg_cfg_glob})" "WARN" "shared_buffers might be too small"
-    _test_template "$(rg --no-filename -i "^\s*['\"]?(max_connections|shared_buffers|work_mem|effective_cache_size|synchronous_standby_names)\b" ${_pg_cfg_glob})" "WARN" "Please review DB configs"
+    _test_template "$(rg --no-filename -i "^\s*['\"]?(max_connections|shared_buffers|work_mem|effective_cache_size|synchronous_standby_names)\b" ${_pg_cfg_glob})" "WARN" "Please review DB configs" "https://help.sonatype.com/en/advanced-database-memory-tuning.html"
 }
 function t_mounts() {
     _basic_check "" "${_FILTERED_DATA_DIR%/}/system-filestores.json" || return

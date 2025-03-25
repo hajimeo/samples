@@ -134,7 +134,8 @@ function f_install_nexus3() {
     fi
 
     if [ -z "${_ver}" ] || [ "${_ver}" == "latest" ]; then
-      _ver="$(curl -s -I https://github.com/sonatype/nexus-public/releases/latest | sed -n -E '/^location/ s/^location: http.+\/release-([0-9\.-]+).*$/\1/p')"
+        # API: https://api.github.com/repos/sonatype/nexus-public/tags does not contain latest
+        _ver="$(curl -s -I https://github.com/sonatype/nexus-public/releases/latest | sed -n -E '/^location/ s/^location: http.+\/release-([0-9\.-]+).*$/\1/p')"
     fi
     [ -z "${_ver}" ] && return 1
     if [ -z "${_port}" ]; then
@@ -3202,8 +3203,9 @@ function f_upload_dummies_docker() {
     local _host_port="${1}"
     local _how_many="${2:-"10"}"    # this number * _parallel is the actual number of images
     local _parallel="${3:-"1"}"
-    local _usr="${4:-"${_ADMIN_USER}"}"
-    local _pwd="${5:-"${_ADMIN_PWD}"}"
+    local _base_img="${4:-"${_BASE_IMG:-"alpine:latest"}"}"    # "redhat/ubi9:9.4-1181"
+    local _usr="${5:-"${_ADMIN_USER}"}"
+    local _pwd="${6:-"${_ADMIN_PWD}"}"
     local _cmd="$(_docker_cmd)"
     local _seq_start="${_SEQ_START:-1}"
     local _seq_end="$((${_seq_start} + ${_how_many} - 1))"
@@ -3213,7 +3215,7 @@ function f_upload_dummies_docker() {
     for i in $(eval "${_seq}"); do
         for j in $(eval "seq 1 ${_parallel}"); do
             local _img="dummy${i}-${j}:tag$(date +'%H%M%S')"
-            (_DOCKER_NO_LOGIN="Y" _populate_docker_hosted "" "${_host_port}" "${_img}" &>/dev/null &&  echo "[$(date +'%H:%M:%S')] Pushed dummy image '${_img}' to ${_host_port}") &
+            (_DOCKER_NO_LOGIN="Y" _populate_docker_hosted "${_base_img}" "${_host_port}" "${_img}" &>/dev/null &&  echo "[$(date +'%H:%M:%S')] Pushed dummy image '${_img}' to ${_host_port}") &
         done
         wait
     done 2>/tmp/f_upload_dummies_docker_$$.err
