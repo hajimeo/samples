@@ -133,3 +133,4 @@ eval "$(gh copilot alias -- bash)"
 
 # rust / cargo installation added the below
 . "$HOME/.cargo/env"
+#eval "$(jenv init -)"

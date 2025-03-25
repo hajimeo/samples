@@ -141,7 +141,7 @@ alias xml_path='python -c "import sys,pprint;from lxml import etree;t=etree.pars
 # Strip XML / HTML to get text. NOTE: using sys.stdin.read. (TODO: maybe </br> without new line should add new line)
 alias strip_tags='python3 -c "import sys,html,re;rx=re.compile(r\"<[^>]+>\");print(html.unescape(rx.sub(\"\",sys.stdin.read())))"'
 alias escape4json='python3 -c "import sys,json;print(json.dumps(sys.stdin.read()))"'
-alias jp='pyvN && jupyter-lab &> /tmp/jupyter-lab.out'   # not using & as i forget to stop
+alias jp='pyvN && jupyter-lab --AiExtension.allowed_providers=ollama &> /tmp/jupyter-lab.out'   # not using & as I tend to forget to stop
 alias jn='pyvN && jupyter-notebook &> /tmp/jupyter-notebook.out'
 # php -S 0.0.0.0:7999
 alias startWeb='python3 -m http.server' # specify port (default:8000) if python2: python -m SimpleHTTPServer 8000
