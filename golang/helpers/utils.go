@@ -127,6 +127,14 @@ func GetEnv(key string, fallback string) string {
 	return fallback
 }
 
+func SetEnv(key string, value string) {
+	if len(key) == 0 {
+		return
+	}
+	err := os.Setenv(key, value)
+	PanicIfErr(err)
+}
+
 func GetEnvInt(key string, fallback int) int {
 	value, exists := os.LookupEnv(key)
 	if exists {

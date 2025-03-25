@@ -387,3 +387,27 @@ func TestValsToString_CustomDelimiter_ReturnsJoinedStringWithDelimiter(t *testin
 	result := ValsToString([]interface{}{"a", "b", "c"}, "|")
 	assert.Equal(t, "a|b|c", result)
 }
+
+func TestSetEnv_ValidKeyValue_SetsEnvironmentVariable(t *testing.T) {
+	key := "TEST_KEY"
+	value := "TEST_VALUE"
+	SetEnv(key, value)
+	result := os.Getenv(key)
+	assert.Equal(t, value, result)
+}
+
+func TestSetEnv_EmptyKey_NotSetsEnvironmentVariable(t *testing.T) {
+	key := ""
+	value := "TEST_VALUE"
+	SetEnv(key, value)
+	result := os.Getenv(key)
+	assert.Equal(t, "", result)
+}
+
+func TestSetEnv_EmptyValue_SetsEnvironmentVariable(t *testing.T) {
+	key := "TEST_KEY"
+	value := ""
+	SetEnv(key, value)
+	result := os.Getenv(key)
+	assert.Equal(t, value, result)
+}
