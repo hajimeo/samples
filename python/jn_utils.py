@@ -51,6 +51,8 @@ Convert current time or string date to Unix timestamp
   or
     $ q "select (julianday('2020-05-01 00:10:00') - 2440587.5)*86400.0"
     1588291800.0000045
+Get application started time
+    UDF_TIMESTAMP_MS(date_time_with_ms_str)
 Get request started time by concatenating today and the time string from 'date' column, then convert to Unix-timestamp
     TIME(CAST((julianday(DATE('now')||' '||substr(date,13,8))  - 2440587.5) * 86400.0 - elapsedTime/1000 AS INT), 'unixepoch') as started_time
   or, NOTE: (4*60*60) is for the timezone offst -0400
@@ -80,7 +82,7 @@ How to count the request per second (very expensive):
 import sys, os, io, fnmatch, gzip, re, json, sqlite3, ast, tempfile
 from sqlite3 import OperationalError
 from time import time
-from datetime import datetime
+from datetime import datetime, timezone
 from dateutil import parser
 # At this moment, many pandas functions do not work with modin.
 # import modin.pandas as pd
@@ -844,6 +846,21 @@ def udf_strftime(format, date_time):
         date_time = date_str + " " + time_str
     return parser.parse(date_time).strftime(format)
 
+def udf_timestamp_to_date(unix_timestamp):
+    """
+    Converts a Unix timestamp (milliseconds) to ISO 8601 format (but not 'T') with UTC and milliseconds.
+    eg: SELECT UDF_TIMESTAMP_TO_DATE(unix_timestamp) as iso_datetime, ...
+    :param unix_timestamp: unix timestamp in seconds or milliseconds
+    :return:          String - ISO 8601 format date time string
+    >>> udf_timestamp_to_date(1618382382123)
+    2021-04-14 06:39:42.123+00:00
+    """
+    # Default is assuming seconds
+    unix_timestamp_sec = float(unix_timestamp)
+    if len(str(unix_timestamp)) > 10:   #1618382382123
+        unix_timestamp_sec = unix_timestamp / 1000.0
+    dt_object = datetime.fromtimestamp(unix_timestamp_sec, tz=timezone.utc)
+    return dt_object.isoformat(timespec='milliseconds', sep=' ')
 
 def udf_timestamp(date_time):
     """
@@ -866,16 +883,55 @@ def udf_timestamp(date_time):
     if bool(date_time) is False:
         return None
     if date_time.count(":") >= 3:
-        # assuming the date_time uses "%d/%b/%Y:%H:%M:%S %z". This format doesn't work with parse, so changing.
+        # assuming the date_time uses "%d/%b/%Y:%H:%M:%S %z". This format doesn't work with the 'parse', so changing.
         date_str, time_str = date_time.split(":", 1)
         date_time = date_str + " " + time_str
     # Seems mktime calculates offset string unnecessarily, so don't use mktime
     return int(parser.parse(date_time).timestamp())
 
+def udf_timestamp_ms(datetime_str):
+    """
+    Sqlite UDF for converting date_time string to Unix timestamp with milliseconds
+    eg: SELECT UDF_TIMESTAMP_MS(some_datetime) as unix_timestamp_with_ms, ...
+
+    NOTE: SQLite's STRFTIME('%s', 'YYYY-MM-DD hh:mm:ss.sss') returns without milliseconds.
+    :param datetime_str: ISO date string (or Date/Time column but SQLite doesn't have date/time columns)
+    :return:          Integer of Unix Timestamp
+    >>> udf_timestamp_ms("2021-04-14 06:39:42")
+    1618382382000
+    >>> udf_timestamp_ms("2021-04-14 06:39:42,123")
+    1618382382123
+    >>> udf_timestamp_ms("2021-04-14 06:39:42.123")
+    1618382382123
+    >>> udf_timestamp_ms("2021-04-14 06:39:42+0000")
+    1618382382000
+    >>> udf_timestamp_ms("2021-04-14 06:39:42,123+0000")
+    1618382382123
+    >>> udf_timestamp_ms("2021-04-14 06:39:42 +0000")
+    1618382382000
+    >>> udf_timestamp_ms("2021-04-14 06:39:42,123 +0000")
+    1618382382123
+    """
+    fmt = "%Y-%m-%d %H:%M:%S.%f"
+    # Check if datetime_str contains a comma or a dot
+    if ',' in datetime_str:
+        fmt = "%Y-%m-%d %H:%M:%S,%f"
+    elif '.' not in datetime_str:
+        fmt = "%Y-%m-%d %H:%M:%S"
+    last_6dgits = datetime_str[-6:]
+    if last_6dgits.startswith(' +') or last_6dgits.startswith(' -'):
+        fmt = fmt + " %z"
+    elif '+' in last_6dgits or '-' in last_6dgits:
+        fmt = fmt + "%z"
+    else:
+        datetime_str = datetime_str + " +0000"
+        fmt = fmt + " %z"
+
+    dt_obj = datetime.strptime(datetime_str, fmt)
+    unix_timestamp_ms = int(dt_obj.timestamp() * 1000)
+    return unix_timestamp_ms
 
 RE_STARTED = re.compile('(.+) *([-+]\d{4})$')
-
-
 def udf_started_time(date_time, elapsed_ms):
     """
     Doing below calculation:
@@ -1001,6 +1057,8 @@ def _register_udfs(conn):
         conn.create_function("UDF_STR2SQLDT", 1, udf_str2sqldt)
         conn.create_function("UDF_STRFTIME", 2, udf_strftime)
         conn.create_function("UDF_TIMESTAMP", 1, udf_timestamp)
+        conn.create_function("UDF_TIMESTAMP_MS", 1, udf_timestamp_ms)
+        conn.create_function("UDF_TIMESTAMP_TO_DATE", 1, udf_timestamp_to_date)
         conn.create_function("UDF_STARTED_TIME", 2, udf_started_time)
         conn.create_function("UDF_STR_TO_INT", 1, udf_str_to_int)
         conn.create_function("UDF_NUM_HUMAN_READABLE", 1, udf_num_human_readable)
