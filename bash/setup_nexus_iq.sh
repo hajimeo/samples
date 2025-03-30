@@ -273,7 +273,7 @@ function f_api_role_mapping() {
     local _external_id="$2" # login username, LDAP/AD groupname etc.
     local _apporg_name="${3:-"Root Organization"}"
     local _user_or_group="${4:-"group"}"
-    local _app_or_org="organization" # TODO: application is not supported yet
+    local _app_or_org="${5:-"organization"}"    # or 'application'
     local _role_int_id="$(_curl "${_IQ_URL%/}/api/v2/roles" | python -c "import sys,json
 a=json.loads(sys.stdin.read())
 for r in a['roles']:
@@ -370,15 +370,27 @@ function f_config_update() {
     #curl -u "admin:admin123" "${_IQ_URL%/}/api/v2/config/features/defaultBranchMonitoring" -X DELETE #POST
 }
 
-function f_add_testuser() {
+function f_create_testuser() {
     local __doc__="Add/Create a test IQ user with test-role"
     local _username="${1:-"testuser"}"
     local _password="${2:-"${_username}123"}"
-    local _apporg_name="${3:-"Root Organization"}"
-    _apiS "/rest/user" '{"firstName":"'${_username}'","lastName":"test","email":"'${_username}'@example.com","username":"'${_username}'","password":"'${_password}'"}'
+    local _apporg_name="${3-"sandbox-application"}" # NOTE: Sometimes no 'Root Organization'
+    local _app_or_org="${4:-"application"}"
+    if _apiS "/rest/user" '{"firstName":"'${_username}'","lastName":"test","email":"'${_username}'@example.com","username":"'${_username}'","password":"'${_password}'"}'; then
+        _log "INFO" "Created user '${_username}'"
+    fi
     _apiS "/rest/security/roles" '{"name":"test-role","description":"test_role_desc","builtIn":false,"permissionCategories":[{"displayName":"Administrator","permissions":[{"id":"VIEW_ROLES","displayName":"View","description":"All Roles","allowed":false}]},{"displayName":"IQ","permissions":[{"id":"MANAGE_PROPRIETARY","displayName":"Edit","description":"Proprietary Components","allowed":false},{"id":"CLAIM_COMPONENT","displayName":"Claim","description":"Components","allowed":false},{"id":"WRITE","displayName":"Edit","description":"IQ Elements","allowed":false},{"id":"READ","displayName":"View","description":"IQ Elements","allowed":true},{"id":"EDIT_ACCESS_CONTROL","displayName":"Edit","description":"Access Control","allowed":false},{"id":"EVALUATE_APPLICATION","displayName":"Evaluate","description":"Applications","allowed":true},{"id":"EVALUATE_COMPONENT","displayName":"Evaluate","description":"Individual Components","allowed":true},{"id":"ADD_APPLICATION","displayName":"Add","description":"Applications","allowed":false},{"id":"MANAGE_AUTOMATIC_APPLICATION_CREATION","displayName":"Manage","description":"Automatic Application Creation","allowed":false},{"id":"MANAGE_AUTOMATIC_SCM_CONFIGURATION","displayName":"Manage","description":"Automatic Source Control Configuration","allowed":false}]},{"displayName":"Remediation","permissions":[{"id":"WAIVE_POLICY_VIOLATIONS","displayName":"Waive","description":"Policy Violations","allowed":true},{"id":"CHANGE_LICENSES","displayName":"Change","description":"Licenses","allowed":false},{"id":"CHANGE_SECURITY_VULNERABILITIES","displayName":"Change","description":"Security Vulnerabilities","allowed":false},{"id":"LEGAL_REVIEWER","displayName":"Review","description":"Legal obligations for components licenses","allowed":false}]}]}' || return $?
-    # Some times no root organization
-    f_api_role_mapping "test-role" "testuser" "${_apporg_name}" "user"
+    _log "INFO" "Created role 'test-role'"
+    if [ -n "${_apporg_name}" ]; then
+        f_api_role_mapping "test-role" "${_username}" "${_apporg_name}" "user" "${_app_or_org}" || return $?
+        _log "INFO" "Mapped 'test-role' for '${_username}' (user) with '${_apporg_name}'"
+        _log "    " "${_IQ_URL%/}/assets/index.html#/roles"
+        if [ "${_app_or_org}" == "application" ]; then
+            _log "INFO" "To test some scan with ${_username}"
+            _log "    " "    f_prep_maven_pom_for_scan"
+            _log "    " "    _IQ_CRED=\"${_username}:${_password}\" f_cli . \"${_apporg_name}\""
+        fi
+    fi
 }
 
 function f_setup_https() {
@@ -476,7 +488,7 @@ function f_setup_ldap_glauth() {
     local __doc__="Setup LDAP for GLAuth server."
     local _name="${1:-"glauth"}"
     local _host="${2:-"localhost"}"
-    local _port="${3:-"389"}" # 636
+    local _port="${3:-"8389"}" # 636
     #[ -z "${_LDAP_PWD}" ] && _log "WARN" "Missing _LDAP_PWD" && sleep 3
     local _server_id="$(_apiS "/rest/config/ldap" | JSON_SEARCH_KEY="id,name" _sortjson | sed -nE 's/([^,]+),'${_name}'$/\1/p')"
     local _um_id="null"
@@ -790,6 +802,7 @@ function f_prep_maven_pom_for_scan() {
     local __doc__="TODO: generate a pom.xml with dependencies for Maven scan"
     local _tmpdir="$(mktemp -d)" || return $?
     cd "${_tmpdir}" || return $?
+    # Example: https://github.com/sonatype/maven-policy-demo
     # https://help.sonatype.com/en/java-application-analysis.html#example--pom-xml
     # Does the pom.xml require `dependencyManagement`?
     cat <<'EOF' >./pom.xml
@@ -1178,13 +1191,13 @@ function f_cli() {
 }
 
 function f_mvn() {
-    local __doc__="Start mvn with IQ plugin https://help.sonatype.com/display/NXI/Sonatype+CLM+for+Maven"
+    local __doc__="Start mvn with IQ plugin https://help.sonatype.com/en/sonatype-clm-for-maven.html"
     # overwrite-able global variables
     local _iq_app_id="${1:-${_IQ_APP_ID:-"sandbox-application"}}"
     local _iq_stage="${2:-${_IQ_STAGE:-"build"}}" #develop|build|stage-release|release|operate
     local _iq_url="${3:-${_IQ_URL}}"
     local _file="${4:-"."}"
-    local _mvn_opts="${5:-"-X"}" # no -U
+    local _mvn_opts="${5:-"${_MVN_OPTS:-"-X"}"}" # -s ~/IdeaProjects/m2_settings.xml   No -U
     #local _iq_tmp="${_IQ_TMP:-"./iq-tmp"}" # does not generate anything
 
     local _iq_mvn_ver="${_IQ_MVN_VER}" # empty = latest
@@ -1192,7 +1205,11 @@ function f_mvn() {
     _iq_url="$(_get_iq_url "${_iq_url}")" || return $?
 
     #clm-maven-plugin:2.30.2-01:index | com.sonatype.clm:clm-maven-plugin:index to generate module.xml file
-    local _cmd="mvn -f ${_file} com.sonatype.clm:clm-maven-plugin${_iq_mvn_ver}:evaluate -Dclm.serverUrl=${_iq_url} -Dclm.applicationId=${_iq_app_id} -Dclm.stage=${_iq_stage} -Dclm.username=admin -Dclm.password=admin123 -Dclm.resultFile=iq_result.json -Dclm.scan.dirExcludes=\"**/BOOT-INF/lib/**\" ${_mvn_opts}"
+    if [ ! -d /tmp/iq_mvn_local_repo ]; then
+        mkdir -v -p /tmp/iq_mvn_local_repo || return $?
+    fi
+    # -Bpackage (?) -f ${_file:-"./pom.xml"} -Dmaven.repo.local=./iq_mvn_local_repo
+    local _cmd="mvn com.sonatype.clm:clm-maven-plugin${_iq_mvn_ver}:evaluate -Dclm.serverUrl=${_iq_url} -Dclm.applicationId=${_iq_app_id} -Dclm.stage=${_iq_stage} -Dclm.username=admin -Dclm.password=admin123 -Dclm.resultFile=iq_result.json -Dclm.scan.dirExcludes=\"**/BOOT-INF/lib/**\" ${_mvn_opts}"
     _log "INFO" "Executing: ${_cmd}"
     eval "${_cmd}"
     _log "INFO" "Completed."

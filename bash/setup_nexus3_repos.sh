@@ -2594,7 +2594,7 @@ function f_setup_smtp_mailhog() {
 function f_start_ldap_server() {
     local __doc__="Install and start a dummy LDAP server with glauth"
     local _install_dir="${1:-"${_SHARE_DIR%/}/glauth"}"
-    local _port="${2:-389}"
+    local _port="${2:-8389}"
     local _download_dir="/tmp"
     if [ ! -d "${_install_dir%/}" ]; then
         mkdir -v -p "${_install_dir%/}" || return $?
@@ -2602,6 +2602,8 @@ function f_start_ldap_server() {
     local _fname="$(uname | tr '[:upper:]' '[:lower:]')$(uname -m).zip"
     if [ "$(uname -m)" == "x86_64" ]; then
         _fname="$(uname | tr '[:upper:]' '[:lower:]')amd64.zip"
+    elif [ "$(uname -m)" == "aarch64" ]; then
+        _fname="$(uname | tr '[:upper:]' '[:lower:]')arm64.zip"
     fi
     if [ ! -s "${_install_dir%/}/glauth" ]; then
         if [ ! -s "${_download_dir%/}/${_fname}" ]; then
@@ -2624,7 +2626,7 @@ function f_start_ldap_server() {
         curl -sSf -o ${_install_dir%/}/glauth-simple.cfg -L "https://raw.githubusercontent.com/hajimeo/samples/master/misc/glauth-simple.cfg" --compressed || return $?
     fi
     _log "INFO" "Starting glauth with ${_install_dir%/}/glauth-simple.cfg ..."
-    # listening 0.0.0.0:389
+    # listening 0.0.0.0:8389
     eval "${_install_dir%/}/glauth -c ${_install_dir%/}/glauth-simple.cfg" &> ${_TMP%/}/glauth_$$.log &
     local _pid="$!"
     sleep 2
@@ -2698,7 +2700,7 @@ function f_setup_ldap_glauth() {
     local __doc__="Setup LDAP for GLAuth server."
     local _name="${1:-"glauth"}"
     local _host="${2:-"localhost"}"
-    local _port="${3:-"389"}"   # 636
+    local _port="${3:-"8389"}"   # 636
     #[ -z "${_LDAP_PWD}" ] && _log "WARN" "Missing _LDAP_PWD" && sleep 3
     #nc -z ${_host} ${_port} || return $?
     _apiS '{"action":"ldap_LdapServer","method":"create","data":[{"id":"","name":"'${_name}'","protocol":"ldap","host":"'${_host}'","port":"'${_port}'","searchBase":"dc=standalone,dc=localdomain","authScheme":"simple","authUsername":"admin@standalone.localdomain","authPassword":"'${_LDAP_PWD:-"secret12"}'","connectionTimeout":"30","connectionRetryDelay":"300","maxIncidentsCount":"3","template":"Posix%20with%20Dynamic%20Groups","userBaseDn":"ou=users","userSubtree":true,"userObjectClass":"posixAccount","userLdapFilter":"","userIdAttribute":"uid","userRealNameAttribute":"cn","userEmailAddressAttribute":"mail","userPasswordAttribute":"","ldapGroupsAsRoles":true,"groupType":"dynamic","userMemberOfAttribute":"memberOf"}],"type":"rpc"}' #|| return $?
