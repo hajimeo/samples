@@ -17,6 +17,7 @@ type _import &>/dev/null || _import() {
 }
 _import "utils.sh"
 
+
 function f_prepare() {
     # commands which may require sudo, but minimum (not including screen)
     if ! which brew &>/dev/null; then
@@ -34,7 +35,16 @@ function f_prepare() {
     fi
     #python@3.7: The x86_64 architecture is required for this software.
     #https://diewland.medium.com/how-to-install-python-3-7-on-macbook-m1-87c5b0fcb3b5
-    if type python3 &>/dev/null; then
+    if ! type python3 &>/dev/null; then
+        if type python &>/dev/null; then
+            # check if this python is python version 3, and if so, create alias
+            local _ver="$(python -V 2>&1 | grep -oE 'Python [0-9]+\.[0-9]+' | grep -oE '[0-9]+\.[0-9]+')"
+            if [ -n "${_ver}" ] && [[ "${_ver}" =~ 3 ]]; then
+                _log "INFO" "Creating alias python3 -> python in this shell"
+                alias python3='python'
+            fi
+    fi
+    if ! type python3 &>/dev/null; then
         _log "WARN" "No python3 installed. You might want to install python3.7"
         return 1
     fi
@@ -301,6 +311,7 @@ function f_setup_python() {
     python3 -m pip install -U ${_i_opt} ipython || return $?  #prettytable==0.7.2
     #python3 -m pip install -U ${_i_opt} modin[ray] --log /tmp/pip_$$.log    # it's OK if fails
     python3 -m pip install -U ${_i_opt} jupyter jupyterlab pandas dfsql --log /tmp/pip_$$.log || return $?   #ipython
+    python3 -m pip install -U ${_i_opt} pandasai langchain-ollama --log /tmp/pip_$$.log
     # Reinstall: python3 -m pip uninstall -y jupyterlab && python3 -m pip install jupyterlab
 
     # Must-have packages. NOTE: Initially I thought pandasql looked good but it's actually using sqlite, and slow, and doesn't look like maintained any more.
