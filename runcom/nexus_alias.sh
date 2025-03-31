@@ -164,7 +164,7 @@ function nxrmStart() {
     local _jetty_https="$(find ${_base_dir%/} -maxdepth 4 -path '*/etc/*' -type f -name 'jetty-https.xml' 2>/dev/null | sort | tail -n1)"
     local _karaf_conf="$(find . -maxdepth 4 -type f -name 'config.properties' -path '*/etc/karaf/*' | head -n1)"
     if [ -n "${_karaf_conf}" ] && ! grep -q 'org.openjdk.btrace' ${_karaf_conf}; then
-        sed -i '' '/^org.osgi.framework.bootdelegation = /a \
+        sed -i'' '/^org.osgi.framework.bootdelegation = /a \
         org.openjdk.btrace.*, \\
     ' ${_karaf_conf}
     fi
@@ -327,7 +327,7 @@ function _updateNexusProps() {
         elif [ "${_port}" != "${_current_port}" ]; then
             echo "WARN: Changing port to *** '${_port}' *** from ${_current_port} !!" >&2; sleep 3;
         fi
-        sed -i '' -E "s/^application-port=.*/application-port=${_port}/" "${_cfg_file}"
+        sed -i'' -E "s/^application-port=.*/application-port=${_port}/" "${_cfg_file}"
         if ! grep -qE "^application-port=${_port}" "${_cfg_file}"; then
             echo "ERROR: Failed to confirm port: '${_port}' in ${_cfg_file}" >&2; sleep 5;
             return 1
@@ -344,7 +344,7 @@ function _updateNexusProps() {
 
         if [ -n "${_port_ssl}" ] && [ "${_port_ssl}" != ${_current_port_ssl:-8443} ]; then
             echo "WARN: Updating HTTPS port to *** '${_port_ssl}' *** !!" >&2; sleep 3;
-            sed -i '' -E "s/^application-port-ssl=.*/application-port-ssl=${_port_ssl}/" "${_cfg_file}"
+            sed -i'' -E "s/^application-port-ssl=.*/application-port-ssl=${_port_ssl}/" "${_cfg_file}"
             if ! grep -qE "^application-port-ssl=${_port_ssl}" "${_cfg_file}"; then
                 echo "ERROR: Failed to update HTTPS port to '${_port_ssl}'" >&2; sleep 3;
                 return 1
@@ -480,8 +480,8 @@ function nxrm3Install() {
 #export INSTALL4J_ADD_VM_PARAMS="${INSTALL4J_ADD_VM_PARAMS} -Dnexus.datastore.enabled=true -Dnexus.h2.httpListenerEnabled=true"
 alias rmDocker='nxrmDocker'
 function nxrmDocker() {
-    local _name="${1}"
-    local _tag="${2:-"latest"}" # 3.45.1 (no minor version), 3.70.1-java17-ubi
+    local _tag="${1:-"latest"}" # 3.45.1 (no minor version), 3.70.1-java17-ubi
+    local _name="${2-"${_tag}"}"
     local _ports="${3:-"8081:8081 8443:8443 8082:8082 15000:15000"}"
     local _extra_opts="${4}"    # this is docker options not INSTALL4J_ADD_VM_PARAMS. eg --platform=linux/amd64
 
@@ -676,8 +676,8 @@ function iqInstall() {
 
 #iqDocker "nxiq-test" "" "8170" "8171" "8544" #"--read-only -v /tmp/nxiq-test:/tmp"
 function iqDocker() {
-    local _name="${1}"
-    local _tag="${2:-"latest"}"
+    local _tag="${1:-"latest"}"
+    local _name="${2-"${_tag}"}"
     local _ports="${3:-"8070:8070 8071:8071 8444:8444"}"
     local _extra_opts="${4}"    # --platform=linux/amd64
 
