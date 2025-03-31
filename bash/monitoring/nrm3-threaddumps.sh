@@ -168,14 +168,14 @@ function tailStdout() {
     rm -f /tmp/.tailStdout.run || return $?
 
     if [ -f /proc/${_pid}/fd/1 ]; then
-        _cmd="tail -n0 -f /proc/${_pid}/fd/1"
+        _cmd="tail -n -1 -f /proc/${_pid}/fd/1"
     elif [ -n "${_installDir}" ] && [[ "$(ps wwwp ${_pid})" =~ XX:LogFile=([^[:space:]]+) ]]; then
         local jvmLog="${BASH_REMATCH[1]}"
         # Default is karaf.data (or PWD) + LogFile. Also, LogFile can be absolute path
         if [[ "${jvmLog}" =~ ^/ ]]; then
-            _cmd="tail -n0 -f ${jvmLog}"
+            _cmd="tail -n -1 -f ${jvmLog}"
         else
-            _cmd="tail -n0 -f ${_installDir%/}/${jvmLog#/}"
+            _cmd="tail -n -1 -f ${_installDir%/}/${jvmLog#/}"
         fi
     elif readlink -f /proc/${_pid}/fd/1 2>/dev/null | grep -q '/pipe:'; then
         #_cmd="cat /proc/${_pid}/fd/1"
@@ -326,7 +326,7 @@ main() {
     [ -z "${_REGEX}" ] && echo "'-f' is provided but no '-r'" >&2 && return 1
     echo "Monitoring ${_LOG_FILE} with '${_REGEX}' ..." >&2
     while true; do
-        if tail -n0 -F "${_LOG_FILE}" | grep --line-buffered -m1 -E "${_REGEX}"; then
+        if tail -n -1 -F "${_LOG_FILE}" | grep --line-buffered -m1 -E "${_REGEX}"; then
             trap "_stopping" SIGINT
             takeDumps "${_PID}" "${_COUNT}" "${_INTERVAL}" "${_PROP_FILE}" "${_INSTALL_DIR%/}" "${_outDir%/}"
             sleep 1
