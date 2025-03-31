@@ -7,6 +7,13 @@ alias fd='find . -name'
 alias sha1R='find . -type f -exec sha1sum "{}" \;'
 alias fcv='fc -e vim'
 alias vim0='vim -u NONE -N -c "syn off" -c "set nowrap"'   # handy when you process large text
+if ! type mvim &>/dev/null && [ -x "/Applications/MacVim.app/Contents/bin/mvim" ]; then
+    alias mvim='/Applications/MacVim.app/Contents/bin/mvim'
+    #alias mvim='open -na "MacVim"'
+fi
+if ! type mvimdiff &>/dev/null && [ -x "/Applications/MacVim.app/Contents/bin/mvimdiff" ]; then
+    alias mvimdiff='/Applications/MacVim.app/Contents/bin/mvimdiff'
+fi
 # like dos2unix
 alias crlf2lf='vim -c "set ff=unix" -c ":x"'
 # 'time' with format
@@ -1196,9 +1203,12 @@ function startCommonUtils() {
     #chrome-work
     #open -na "Google Chrome"
 
-    #if type ollama &>/dev/null; then
-    #    ollama serve &>/tmp/ollama.log &
-    #fi
+    if type ollama &>/dev/null; then
+        ollama serve &>/tmp/ollama.log &
+        sleep 3
+        ollama list
+    fi
+    # no webUI required for pandasai or jupyterlab-ai
     #if  [ -s "$HOME/.vnevAi/bin/open-webui" ]; then
     #    source $HOME/.vnevAi/bin/activate && open-webui serve --host 127.0.0.1 --port 48080 &>/tmp/open-webui.log &
     #fi
