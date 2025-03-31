@@ -2471,6 +2471,21 @@ def df2files(df, filepath_prefix, extension="", columns=None, overwriting=False,
                 f2.write(row.to_csv(sep=sep))
 
 
+def df2smart(df, model):
+    """
+    Convert a DataFrame to a SmartDataframe
+    May require 'pip install pandasai langchain-ollama'
+    :param df: dataframe object (may need at least one Date/Time object in a column)
+    :param model: string. Already installed Ollama model. e.g. "mistral"
+    :return: SmartDataframe object
+    """
+    # TODO: check if generating a new model always could cause any problem
+    from langchain_ollama import OllamaLLM
+    from pandasai import SmartDataframe
+    llm = OllamaLLM(model=model)
+    return SmartDataframe(df, config={"llm": llm})
+
+
 def update_check(file=None, baseurl="https://raw.githubusercontent.com/hajimeo/samples/master/python"):
     """
     (almost) Alias of update()
