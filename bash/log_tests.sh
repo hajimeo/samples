@@ -273,7 +273,7 @@ function _check_log_stop_start() {
     [ ! -s "${_log_path}" ] && _log_path="-g \"${_log_path}\""
     # NXRM2 stopping/starting, NXRM3 stopping/starting, IQ stopping/starting (IQ doesn't clearly say stopped so that checking 'Stopping')
     # NXRM2: org.sonatype.nexus.bootstrap.jetty.JettyServer - Stopped
-    _rg --no-filename '(org.sonatype.nexus.bootstrap.jsw.JswLauncher - Stopping with code:|org.eclipse.jetty.server.AbstractConnector - Stopped ServerConnector|org.sonatype.nexus.events.EventSubscriberHost - Initialized|org.sonatype.nexus.webapp.WebappBootstrap - Initialized|org.eclipse.jetty.server.Server - Started|Started InstrumentedSelectChannelConnector|Received signal: SIGTERM|org.sonatype.nexus.extender.NexusContextListener - Uptime:|org.sonatype.nexus.extender.NexusLifecycleManager - Shutting down|org.sonatype.nexus.extender.NexusLifecycleManager - Stop KERNEL|org.sonatype.nexus.bootstrap.jetty.JettyServer - Stopped|org.sonatype.nexus.pax.logging.NexusLogActivator - start|com.sonatype.insight.brain.service.InsightBrainService - Stopping Nexus IQ Server|Disabled session validation scheduler|Initializing Nexus IQ Server)' ${_log_path} | sort | uniq | tail -n10
+    _rg --no-filename '(org.sonatype.nexus.bootstrap.jsw.JswLauncher - Stopping with code:|org.eclipse.jetty.server.AbstractConnector - Stopped ServerConnector|org.sonatype.nexus.events.EventSubscriberHost - Initialized|org.sonatype.nexus.webapp.WebappBootstrap - Initialized|org.eclipse.jetty.server.Server - Started|Started InstrumentedSelectChannelConnector|Received signal: SIGTERM|org.sonatype.nexus.extender.NexusContextListener - Uptime:|org.sonatype.nexus.extender.NexusLifecycleManager - Shutting down|org.sonatype.nexus.extender.NexusLifecycleManager - Stop KERNEL|org.sonatype.nexus.bootstrap.jetty.JettyServer - Stopped|SonatypeNexusRepositoryApplication - Starting SonatypeNexusRepositoryApplication|org.sonatype.nexus.pax.logging.NexusLogActivator - start|com.sonatype.insight.brain.service.InsightBrainService - Stopping Nexus IQ Server|Disabled session validation scheduler|Initializing Nexus IQ Server)' ${_log_path} | sort | uniq | tail -n10
 }
 function _head() {
     local _X="###"
@@ -371,7 +371,7 @@ function _split_log() {
     [ -z "${_log_path}" ] && return 1
     if [[ "${_log_path}" =~ (nexus)[^*]*log[^*]* ]]; then
         #_start_log_line=".*org.sonatype.nexus.(webapp.WebappBootstrap|events.EventSubscriberHost) - Initialized"  # NXRM2 (if no DEBUG)
-        _start_log_line="(SonatypeNexusRepositoryApplication - Starting SonatypeNexusRepositoryApplication|.*org.sonatype.nexus.pax.logging.NexusLogActivator - start|.*org.sonatype.nexus.events.EventSubscriberHost - Initialized)" # NXRM3|NXRM2
+        _start_log_line="(.*SonatypeNexusRepositoryApplication - Starting SonatypeNexusRepositoryApplication|.*org.sonatype.nexus.pax.logging.NexusLogActivator - start|.*org.sonatype.nexus.events.EventSubscriberHost - Initialized)" # NXRM3|NXRM2
     elif [[ "${_log_path}" =~ (clm-server)[^*]*log[^*]* ]]; then
         _start_log_line=".* Initializing Nexus IQ Server .*"   # IQ
     fi
