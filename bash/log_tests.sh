@@ -371,7 +371,7 @@ function _split_log() {
     [ -z "${_log_path}" ] && return 1
     if [[ "${_log_path}" =~ (nexus)[^*]*log[^*]* ]]; then
         #_start_log_line=".*org.sonatype.nexus.(webapp.WebappBootstrap|events.EventSubscriberHost) - Initialized"  # NXRM2 (if no DEBUG)
-        _start_log_line="(.*org.sonatype.nexus.pax.logging.NexusLogActivator - start|.*org.sonatype.nexus.events.EventSubscriberHost - Initialized)" # NXRM3|NXRM2
+        _start_log_line="(SonatypeNexusRepositoryApplication - Starting SonatypeNexusRepositoryApplication|.*org.sonatype.nexus.pax.logging.NexusLogActivator - start|.*org.sonatype.nexus.events.EventSubscriberHost - Initialized)" # NXRM3|NXRM2
     elif [[ "${_log_path}" =~ (clm-server)[^*]*log[^*]* ]]; then
         _start_log_line=".* Initializing Nexus IQ Server .*"   # IQ
     fi
@@ -529,16 +529,54 @@ function t_pg_config() {
     local _pg_cfg_glob="${1:-"dbFileInfo.txt"}"
     local _excl_regex="${2-"\\\s*[:=]\\\s*"}"   #\",\"[^\"]+\",
     [ ! -s "${_pg_cfg_glob}" ] && _pg_cfg_glob="-g ${_pg_cfg_glob}"
+    local _level="INFO"
     local _max_connections="$(rg --no-filename -i '^["]?max_connections\b[^0-9]*([0-9]+)' -o -r '$1' ${_pg_cfg_glob})"
     if [ -n "${_max_connections}" ]; then
-        if [ ${_max_connections:-0} -lt 305 ]; then
-            _head "WARN" "max_connections (${_max_connections}) in ${_pg_cfg_glob} might be too small"
-        elif [ ${_max_connections:-0} -lt 1000 ]; then
-            _head "WARN" "max_connections (${_max_connections}) in ${_pg_cfg_glob} might be too large (check work_mem)"
+        if [ ${_max_connections:-0} -lt 105 ]; then
+            _head "ERROR" "max_connections (${_max_connections}) in \"${_pg_cfg_glob}\" is too small"
+        elif [ ${_max_connections:-0} -lt 305 ]; then
+            _head "WARN" "max_connections (${_max_connections}) in \"${_pg_cfg_glob}\" might be too small"
+        elif [ ${_max_connections:-0} -gt 1000 ]; then
+            # ideally would like to check if HA.
+            _head "WARN" "max_connections (${_max_connections}) in \"${_pg_cfg_glob}\" might be too large (check work_mem)"
         fi
+    else
+        _level="WARN"
     fi
-    #TODO: _test_template "$(rg --no-filename -i '^["]?shared_buffers'${_excl_regex}'([1-4]\d{1,5}|\d{1,5}|[1-3]\d{1,3}kb|\d{1,6}kb|[1-3]\d{1,3}mb|\d{1,3}mb|[1-3]gb)\b' ${_pg_cfg_glob})" "WARN" "shared_buffers might be too small"
-    _test_template "$(rg --no-filename -i "^\s*['\"]?(max_connections|shared_buffers|work_mem|effective_cache_size|synchronous_standby_names)\b" ${_pg_cfg_glob})" "WARN" "Please review DB configs" "https://help.sonatype.com/en/advanced-database-memory-tuning.html"
+    local _effective_cache_size="$(_search_size_in_bytes "^[\"]?effective_cache_size\b" "${_pg_cfg_glob}")"
+    if [ -n "${_effective_cache_size}" ]; then
+        local _effective_cache_size_hf=$(_human_friendly "${_effective_cache_size}" "0")
+        if [ ${_effective_cache_size:-0} -lt $((4 * 1024 * 1024 * 1024)) ]; then
+            _head "ERROR" "effective_cache_size (${_effective_cache_size_hf}) in \"${_pg_cfg_glob}\" is too small"
+        elif [ ${_effective_cache_size:-0} -lt $((8 * 1024 * 1024 * 1024)) ]; then
+            _head "WARN" "effective_cache_size (${_effective_cache_size_hf}) in \"${_pg_cfg_glob}\" might be too small"
+        fi
+    else
+        _level="WARN"
+    fi
+    local _shared_buffers="$(_search_size_in_bytes "^[\"]?shared_buffers\b" "${_pg_cfg_glob}")"
+    if [ -n "${_shared_buffers}" ]; then
+        local _shared_buffers_hf=$(_human_friendly "${_shared_buffers}" "0")
+        if [ ${_shared_buffers:-0} -lt $((1 * 1024 * 1024 * 1024)) ]; then
+            _head "ERROR" "shared_buffers (${_shared_buffers_hf}) in \"${_pg_cfg_glob}\" is too small"
+        elif [ ${_shared_buffers:-0} -lt $((4 * 1024 * 1024 * 1024)) ]; then
+            _head "WARN" "shared_buffers (${_shared_buffers_hf}) in \"${_pg_cfg_glob}\" might be too small"
+        fi
+    else
+        _level="WARN"
+    fi
+    local _work_mem="$(_search_size_in_bytes "^[\"]?work_mem\b" "${_pg_cfg_glob}")"
+    if [ -n "${_work_mem}" ]; then
+        local _work_mem_hf=$(_human_friendly "${_work_mem}" "0")
+        if [ ${_work_mem:-0} -lt $((4 * 1024 * 1024)) ]; then
+            _head "ERROR" "work_mem (${_work_mem_hf}) in \"${_pg_cfg_glob}\" is too small"
+        elif [ ${_work_mem:-0} -lt $((8 * 1024 * 1024)) ]; then
+            _head "WARN" "work_mem (${_work_mem_hf}) in \"${_pg_cfg_glob}\" might be too small"
+        fi
+    else
+        _level="WARN"
+    fi
+    _test_template "$(rg --no-filename -i "^\s*['\"]?(max_connections|shared_buffers|work_mem|effective_cache_size|synchronous_standby_names|maintenance_work_mem)\b" ${_pg_cfg_glob})" "${_level}" "Please review DB configs" "https://help.sonatype.com/en/advanced-database-memory-tuning.html"
 }
 function t_mounts() {
     _basic_check "" "${_FILTERED_DATA_DIR%/}/system-filestores.json" || return

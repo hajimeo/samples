@@ -508,14 +508,6 @@ function f_setup_ldap_glauth() {
         _apiS "/rest/config/ldap/${_server_id}/userMapping" '{"id":'${_um_id}',"serverId":"'${_server_id}'","userBaseDN":"ou=users","userSubtree":true,"userObjectClass":"posixAccount","userFilter":"","userIDAttribute":"uid","userRealNameAttribute":"cn","userEmailAttribute":"mail","userPasswordAttribute":"","groupMappingType":"DYNAMIC","groupBaseDN":"","groupSubtree":true,"groupObjectClass":null,"groupIDAttribute":null,"groupMemberAttribute":null,"groupMemberFormat":null,"userMemberOfGroupAttribute":"memberOf","dynamicGroupSearchEnabled":true}' "PUT"
     fi | _sortjson || return $?
     # Dynamic/Static use admin to check if the user exists
-    echo "To test group mappings (space may need to be changed to %20):"
-    echo "    curl -v -u \"cn=ldapadmin,dc=standalone,dc=localdomain\" -k \"ldap://${_host:-"localhost"}:${_port:-"389"}/ou=users,dc=standalone,dc=localdomain?dn,cn,mail,memberof?sub?(&(objectClass=posixAccount)(uid=ldapuser))\"" # + userFilter
-    # echo "To test: LDAPTLS_REQCERT=never ldapsearch -H ldap://${_host}:${_port} -b 'dc=standalone,dc=localdomain' -D 'admin@standalone.localdomain' -w '${_LDAP_PWD:-"secret12"}' -s sub '(&(objectClass=posixAccount)(uid=*))'"
-    # TODO: Bind request: curl -v -u "cn=ldapuser,ou=ipausers,ou=users,dc=standalone,dc=localdomain:ldapuser" -k "ldap://${_host:-"localhost"}:${_port:-"389"}/dc=standalone,dc=localdomain""   # + userFilter
-    if [ "${_LDAP_GROUP_MAPPING_TYPE}" == "STATIC" ]; then
-        # groupIDAttribute is returned
-        echo "    curl -v -u \"cn=ldapadmin,dc=standalone,dc=localdomain\" -k \"ldap://${_host:-"localhost"}:${_port:-"389"}/ou=users,dc=standalone,dc=localdomain?cn?sub?(&(objectClass=posixGroup)(cn=*)(memberUid=ldapuser))\"" # + userFilter
-    fi
     echo "To start glauth, execute f_start_ldap_server from setup_nexus3_repo.sh"
 }
 

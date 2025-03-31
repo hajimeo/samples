@@ -2635,8 +2635,17 @@ function f_start_ldap_server() {
         return 1
     fi
     echo "[INFO] Running glauth in background ..."
-    echo "       PID: ${_pid}  Log: ${_TMP%/}/glauth_$$.log"
-    echo "       LDAP config: ${_install_dir%/}/glauth-simple.cfg"
+    echo "    PID: ${_pid}  Log: ${_TMP%/}/glauth_$$.log"
+    echo "    LDAP config: ${_install_dir%/}/glauth-simple.cfg"
+    echo "To test:"
+    echo "    curl -v -u \"admin@standalone.localdomain\" -k \"ldap://${_host}:${_port}/ou=users,dc=standalone,dc=localdomain?uid,cn,mail,memberof?sub?(&(objectClass=posixAccount)(uid=*))\""   # + userFilter
+    echo "To test group mappings (space may need to be changed to %20):"
+    echo "    curl -v -u \"cn=ldapadmin,dc=standalone,dc=localdomain\" -k \"ldap://${_host:-"localhost"}:${_port:-"389"}/ou=users,dc=standalone,dc=localdomain?dn,cn,mail,memberof?sub?(&(objectClass=posixAccount)(uid=ldapuser))\"" # + userFilter
+    # echo "To test: LDAPTLS_REQCERT=never ldapsearch -H ldap://${_host}:${_port} -b 'dc=standalone,dc=localdomain' -D 'admin@standalone.localdomain' -w '${_LDAP_PWD:-"secret12"}' -s sub '(&(objectClass=posixAccount)(uid=*))'"
+    # TODO: Bind request: curl -v -u "cn=ldapuser,ou=ipausers,ou=users,dc=standalone,dc=localdomain:ldapuser" -k "ldap://${_host:-"localhost"}:${_port:-"389"}/dc=standalone,dc=localdomain""   # + userFilter
+    echo "    # For STATIC group mapping type:"
+    # groupIDAttribute is returned
+    echo "    curl -v -u \"cn=ldapadmin,dc=standalone,dc=localdomain\" -k \"ldap://${_host:-"localhost"}:${_port:-"389"}/ou=users,dc=standalone,dc=localdomain?cn?sub?(&(objectClass=posixGroup)(cn=*)(memberUid=ldapuser))\"" # + userFilter
 }
 function f_gen_glauth_groups_config() {
     local __doc__="Generate/output glauth groups config"
@@ -2706,7 +2715,6 @@ function f_setup_ldap_glauth() {
     _apiS '{"action":"ldap_LdapServer","method":"create","data":[{"id":"","name":"'${_name}'","protocol":"ldap","host":"'${_host}'","port":"'${_port}'","searchBase":"dc=standalone,dc=localdomain","authScheme":"simple","authUsername":"admin@standalone.localdomain","authPassword":"'${_LDAP_PWD:-"secret12"}'","connectionTimeout":"30","connectionRetryDelay":"300","maxIncidentsCount":"3","template":"Posix%20with%20Dynamic%20Groups","userBaseDn":"ou=users","userSubtree":true,"userObjectClass":"posixAccount","userLdapFilter":"","userIdAttribute":"uid","userRealNameAttribute":"cn","userEmailAddressAttribute":"mail","userPasswordAttribute":"","ldapGroupsAsRoles":true,"groupType":"dynamic","userMemberOfAttribute":"memberOf"}],"type":"rpc"}' #|| return $?
     # RM3 doesn't have groupSubtree?
     _apiS '{"action":"coreui_Role","method":"create","data":[{"version":"","source":"LDAP","id":"ipausers","name":"ipausers-role","description":"ipausers-role-desc","privileges":["nx-repository-view-*-*-*","nx-search-read","nx-component-upload"],"roles":[]}],"type":"rpc"}'
-    echo "To test: curl -v -u \"admin@standalone.localdomain\" -k \"ldap://${_host}:${_port}/ou=users,dc=standalone,dc=localdomain?uid,cn,mail,memberof?sub?(&(objectClass=posixAccount)(uid=*))\""   # + userFilter
 }
 
 function f_setup_ldap_freeipa_Deprecated() {

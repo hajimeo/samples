@@ -1338,10 +1338,9 @@ function f_threads() {
     _thread_state_sum "${_file}"
     echo " "
 
-    echo "### (Java 17 only) top 10 long running qtp thread from elapsed"
-    # below will include QTP pool (waiting) threads
+    echo "### (Java 17 only) top 5 CPU consuming non GC etc, running threads"
     #rg '^("[^\"]+").+cpu=(\S+).+elapsed=(\S+)' -o -r '$1,$2,$3' ${_file} | rg '^"qtp' | sort -t',' -k3nr | head -n5
-    f_threads_cpu_elapsed "${_save_dir%/}" | rg '^"qtp' | sort -t',' -k3nr | head -n10
+    f_threads_cpu_elapsed "${_save_dir%/}" | rg 'RUNNABLE' | sort -t',' -k2nr | head -n5
     echo " "
 
     echo "### _threads_extra_check (product specific issues)"
@@ -2151,20 +2150,58 @@ function _search_json() {
     fi
     # If human friendly output is on and the value/result is an integer
     if [[ "${_h}" =~ ^(y|Y) ]] && [[ "${_result}" =~ [1-9]+ ]]; then
-        if [[ "${_result}" -gt 1099511627776 ]]; then
-            _result="$(bc <<<"scale=2;${_result} / 1099511627776") TB"
-        elif [[ "${_result}" -gt 1073741824 ]]; then
-            _result="$(bc <<<"scale=2;${_result} / 1073741824") GB"
-        elif [[ "${_result}" -gt 1048576 ]]; then
-            _result="$(bc <<<"scale=2;${_result} / 1048576") MB"
-        elif [[ "${_result}" -gt 1024 ]]; then
-            _result="$(bc <<<"scale=2;${_result} / 1024") KB"
-        fi
+        _result="$(_human_friendly "${_result}")"
     fi
     echo "{\"${_search}\": ${_result}}"
 }
 
+function _search_size_in_bytes() {
+    local _search_prefix="$1"   # ^["]?shared_buffers\b
+    local _search_target="$2"   # -g dbFileInfo.txt
+    local _result="$(rg --no-filename -i "${_search_prefix}[^0-9]*([0-9]+)\s*TB\b" -o -r '$1' ${_search_target})"
+    if [ -n "${_result}" ]; then
+        echo "$(bc <<<"${_result} * 1099511627776")"
+        return
+    fi
+    _result="$(rg --no-filename -i "${_search_prefix}[^0-9]*([0-9]+)\s*GB\b" -o -r '$1' ${_search_target})"
+    if [ -n "${_result}" ]; then
+        echo "$(bc <<<"${_result} * 1073741824")"
+        return
+    fi
+    _result="$(rg --no-filename -i "${_search_prefix}[^0-9]*([0-9]+)\s*MB\b" -o -r '$1' ${_search_target})"
+    if [ -n "${_result}" ]; then
+        echo "$(bc <<<"${_result} * 1048576")"
+        return
+    fi
+    _result="$(rg --no-filename -i "${_search_prefix}[^0-9]*([0-9]+)\s*KB\b" -o -r '$1' ${_search_target})"
+    if [ -n "${_result}" ]; then
+        echo "$(bc <<<"${_result} * 1024")"
+        return
+    fi
+    # Not perfect but assuming as bytes
+    _result="$(rg --no-filename -i "${_search_prefix}[^0-9]*([0-9]+)\s*B?\b" -o -r '$1' ${_search_target})"
+    if [ -n "${_result}" ]; then
+        echo "$(bc <<<"${_result} * 1024")"
+        return
+    fi
+}
+
 function _human_friendly() {
+    local _result="$1"
+    local _scale="${2:-"2"}"
+    if [[ "${_result}" -gt 1099511627776 ]]; then
+        _result="$(bc <<<"scale=${_scale};${_result} / 1099511627776") TB"
+    elif [[ "${_result}" -gt 1073741824 ]]; then
+        _result="$(bc <<<"scale=${_scale};${_result} / 1073741824") GB"
+    elif [[ "${_result}" -gt 1048576 ]]; then
+        _result="$(bc <<<"scale=${_scale};${_result} / 1048576") MB"
+    elif [[ "${_result}" -gt 1024 ]]; then
+        _result="$(bc <<<"scale=${_scale};${_result} / 1024") KB"
+    fi
+    echo "${_result}"
+}
+
+function _human_friendly_todo() {
     # TODO: Too slow
     local _num=$1
     # NOTE: requires jn_utils.py in PYTHON_PATH (for python3)
