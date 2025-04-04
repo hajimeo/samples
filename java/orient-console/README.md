@@ -36,6 +36,8 @@ echo "SQL SELECT statement" | java -DexportPath=./result.json -jar orient-consol
 
 # Pagenation for extreamly large result set
 echo "<*SIMPLE* SELECT statement which returns so many rows>" | java -DexportPath=./result_paged.json -Dpaging=10000 -jar orient-console.jar <directory path|.bak file path>
+# If 'WARN: 'paging' is given but query may not contain '@rid as pid' happens, add `@rid as pid` to the SQL statement.
+echo "SELECT @rid as rid, * FROM asset" | java -DexportPath=./result_paged.json -Dpaging=10000 -jar orient-console.jar <directory path|.bak file path>
 ```
 
 ### Example of parsing the generated json file
