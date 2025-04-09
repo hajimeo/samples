@@ -28,6 +28,7 @@
 
 # For troubleshooting:
 #$ git -C ~/IdeaProjects/nxrm3-ha-repository pull && git -C ~/IdeaProjects/nxrm3-ha-repository fetch
+# Shouldn't need to because of ZDU but: kubectl scale -n nexusrepo statefulset/nxrm3ha-nxrm-ha --replicas=0
 #$ helm upgrade -i ${RELEASE_NAME} ~/IdeaProjects/nxrm3-ha-repository/nxrm-ha -f ./${RELEASE_NAME}_values.yaml -n ${NAME_SPACE} --set-file secret.nexusSecret.secretKeyfile=./nexus-secrets.json  # --debug --dry-run
 #$ helm template nxrm3ha sonatype-helm/nxrm-ha -f ./helm-nxrm3ha-values.yml -n sonatype-helm >./helm-nxrm3ha-deploying.yaml
 #$ kubectl -n sonatype-helm apply -f ./helm-nxrm3ha-deploying.yaml
@@ -61,18 +62,31 @@ statefulset:
     - name: nexus-blobs-volume
       persistentVolumeClaim:
         claimName: ${RELEASE_NAME}-blobs-nfs-pv-claim
-  initContainer:
-    args:
-      - -c
-      - >-
-        mkdir -p /nexus-data/etc/logback &&
-        mkdir -p /nexus-data/log/tasks &&
-        mkdir -p /nexus-data/log/audit &&
-        touch -a /nexus-data/log/tasks/allTasks.log &&
-        touch -a /nexus-data/log/audit/audit.log &&
-        touch -a /nexus-data/log/request.log &&
-        find /nexus-data -mindepth 0 -maxdepth 3 -type d -not -path "*/blobs/*" ! -user 200 | xargs -P3 -I{} -t chown 200:200 {}
-  #     Not expecting "blobs" directory under this location, so maxdepth 3 would be OK
+  initContainers:
+    # It seems all values under initContainers are required
+    - name: chown-nexusdata-owner-to-nexus-and-init-log-dir
+      image: busybox:1.33.1
+      command: [/bin/sh]
+      args:
+        - -c
+        - >-
+          mkdir -p /nexus-data/etc/logback &&
+          mkdir -p /nexus-data/log/tasks &&
+          mkdir -p /nexus-data/log/audit &&
+          touch -a /nexus-data/log/tasks/allTasks.log &&
+          touch -a /nexus-data/log/audit/audit.log &&
+          touch -a /nexus-data/log/request.log &&
+          find /nexus-data -mindepth 0 -maxdepth 3 -type d -not -path "*/blobs/*" ! -user 200 | xargs -P3 -I{} -t chown 200:200 {}
+      volumeMounts:
+        - name: nexus-data
+          mountPath: /nexus-data
+      resources:
+        limits:
+          cpu: "0.2"
+          memory: "512Mi"
+        requests:
+          cpu: "0.1"
+          memory: "256Mi"
   container:
     image:
       repository: sonatype/nexus3
@@ -95,6 +109,7 @@ statefulset:
       jdbcUrlParams: null # Must start with a '?' e.g. '?foo=bar&baz=foo'
       zeroDowntimeEnabled: true
     additionalEnv:
+      # TODO: utilise NEXUS_SECURITY_INITIAL_PASSWORD
       - name: NEXUS_LICENSE_FILE
         value: '/var/nexus-repo-license/nexus-repo-license.lic'
   imagePullSecrets: {}

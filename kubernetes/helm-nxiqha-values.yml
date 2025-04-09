@@ -7,6 +7,7 @@
 
 # To upgrade:
 #$ helm repo update sonatype && helm search repo sonatype/nexus-iq-server-ha --versions | head
+#$ kubectl scale -n sonatype-ha deployment/nxiqha-iq-server-deployment --replicas=0
 #$ helm upgrade -i nxiqha sonatype/nexus-iq-server-ha -f ./helm-nxiqha-values.yml -n sonatype-ha #--dry-run
 
 # Installing from github (eg: older versions due to CLM-28041)

@@ -187,6 +187,7 @@ spec:
                 -Dnexus.datastore.nexus.maximumPoolSize=10 \
                 -Dnexus.datastore.nexus.advanced=maxLifetime=30000 \
                 -Dnexus.datastore.nexus.advanced=leakDetectionThreshold=20000'
+            # TODO: utilise NEXUS_SECURITY_INITIAL_PASSWORD
           volumeMounts:
             - name: sonatype-license-volume
               mountPath: /etc/sonatype
