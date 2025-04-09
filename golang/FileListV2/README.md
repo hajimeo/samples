@@ -24,10 +24,14 @@ NOTE: The arguments, which name starts with a Capital letter, are boolean type. 
 filelist2 -b "./sonatype-work/nexus3/blobs/default/content"
 filelist2 -b "file://sonatype-work/nexus3/blobs/default/content"
 #export AWS_ACCESS_KEY_ID="*******" AWS_SECRET_ACCESS_KEY="*********************" AWS_REGION="ap-southeast-2"
-filelist2 -b "s3://s3-test-bucket/s3-test-prefix/content"
+filelist2 -b "s3://${AWS_BLOB_STORE_NAME}/content" -n 5
 #export AZURE_STORAGE_ACCOUNT_NAME="********" AZURE_STORAGE_ACCOUNT_KEY="*********************"
-filelist2 -b "az://azure-test-container/content"
-TODO: filelist2 -b "gs://google-test-storage/google-test-prefix/content"
+filelist2 -b "az://${AZURE_STORAGE_CONTAINER_NAME}/content"
+TODO: filelist2 -b "gc://google-test-storage/google-test-prefix/content"
+```
+#### List files which matches with specific repo and updated recently
+```
+filelist2 -b "$BLOB_STORE -P -pRx "@Bucket.repo-name=maven-group," -mDF $(date +%Y-%m-%d) 2>/dev/null
 ```
 #### List files which path matches with `-p "path-filter"` with the concurrency N `-c N`, and save to a file with `-s "save-to-file-path"`
 ```
@@ -118,8 +122,15 @@ cat ./docker-proxy_soft_deleted.tsv | cut -d '.' -f1 | xargs -I{} -t rm -v -f {}
 ```
 Expecting the strings up to the first `.` is the full or relative path of the target files, then deleting both .properties and .bytes files.
 
-### For OrientDB
+### Example of generating blob_ref|blobId from OrientDB
 ```
 cd ./sonatype-work/nexus3/
 echo "select blob_ref from asset where bucket.repository_name = 'xxxxxxx'" | orient-console ./db/component/
+```
+
+### Update|reset the deletion marker
+```
+filelist2 -b s3://apac-support-bucket/filelist-test/content/ -p 2025 -pRx "deleted=true" -wStr "deleted=true"
+# To confirm
+filelist2 -b s3://apac-support-bucket/filelist-test -pRx "deleted=true" -T
 ```

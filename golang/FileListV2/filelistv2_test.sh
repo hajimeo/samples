@@ -11,7 +11,7 @@
 #
 # HOW TO RUN EXAMPLE:
 #   ./filelistv2_test.sh <blobstore> <path/prefix>
-#   export _TEST_WORKDIR="$HOME/Documents/tests/nxrm_3.70.3-01_rmfilelisttest/sonatype-work/nexus3"
+#   export _TEST_WORKDIR="$HOME/Documents/tests/nxrm_3.77.1-01_filelist_test/sonatype-work/nexus3"
 #
 # If File type blobstore:
 #   $HOME/IdeaProjects/samples/golang/FileListV2/filelistv2_test.sh "${_TEST_WORKDIR%/}/blobs/default"

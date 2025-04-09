@@ -59,7 +59,7 @@ func setGlobals() {
 	flag.StringVar(&common.BsName, "bsName", "", "eg. 'default'. If provided, the SQL query will be faster")
 	flag.StringVar(&common.Query, "query", "", "SQL 'SELECT blob_id ...' or 'SELECT blob_ref as blob_id ...' to filter the data from the DB")
 	flag.BoolVar(&common.RemoveDeleted, "RDel", false, "TODO: Remove 'deleted=true' from .properties. Requires -dF")
-	flag.StringVar(&common.WriteIntoStr, "wStr", "", "For testing. Write the string into the file (eg. deleted=true) NOTE: not updating S3 tag")
+	flag.StringVar(&common.WriteIntoStr, "wStr", "", "For testing. Write the string into the file (eg. deleted=true)")
 	flag.StringVar(&common.DelDateFromStr, "dDF", "", "Deleted date YYYY-MM-DD (from). Used to search deletedDateTime")
 	flag.StringVar(&common.DelDateToStr, "dDT", "", "Deleted date YYYY-MM-DD (to). To exclude newly deleted assets")
 	flag.StringVar(&common.ModDateFromStr, "mDF", "", "File modification date YYYY-MM-DD (from)")
