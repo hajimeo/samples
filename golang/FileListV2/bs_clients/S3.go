@@ -14,6 +14,7 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/s3/types"
 	h "github.com/hajimeo/samples/golang/helpers"
 	"github.com/pkg/errors"
+	"io"
 	"regexp"
 	"sort"
 	"strings"
@@ -47,6 +48,10 @@ func getS3Object(key string) (*s3.GetObjectOutput, error) {
 	if len(common.Container) == 0 {
 		common.Container, common.Prefix = lib.GetContainerAndPrefix(common.BaseDir)
 	}
+	if len(common.Container) == 0 {
+		panic("Container is not set (baseDir: " + common.BaseDir + ", prefix: " + common.Prefix + ")")
+	}
+	// S3 key should contain the S3 prefix, so using only container
 	input := &s3.GetObjectInput{
 		Bucket: &common.Container,
 		Key:    &key,
@@ -97,10 +102,41 @@ func (s *S3Client) WriteToPath(key string, contents string) error {
 	}
 	// if 'contents' contain 'deleted=true', then add tag
 	if common.RxDeleted.MatchString(contents) {
+		h.Log("DEBUG", fmt.Sprintf("Key: %s. Adding deletion marker tag", key))
 		// Currently do not care about the error. Also replaceTag() will log the warn.
 		_ = replaceTag(key, "deleted", "true")
 	}
 	return nil
+}
+
+func (s *S3Client) GetPath(key string, localPath string) error {
+	if common.Debug {
+		defer h.Elapsed(time.Now().UnixMilli(), "Get "+key, int64(0))
+	} else {
+		defer h.Elapsed(time.Now().UnixMilli(), "Slow file copy for key:"+key, common.SlowMS*2)
+	}
+
+	outFile, err := CreateLocalFile(localPath)
+	if err != nil {
+		h.Log("WARN", err.Error())
+		return err
+	}
+	defer outFile.Close()
+
+	inFile, err := getS3Object(key)
+	if err != nil {
+		err2 := fmt.Errorf("failed to get key: %s %s with error: %s", common.Container, key, err.Error())
+		return err2
+	}
+	defer inFile.Body.Close()
+
+	bytesWritten, err := io.Copy(outFile, inFile.Body)
+	if err != nil {
+		err2 := fmt.Errorf("failed to copy key: %s into %s with error: %s", key, localPath, err.Error())
+		return err2
+	}
+	h.Log("DEBUG", fmt.Sprintf("Wrote %d bytes to %s", bytesWritten, localPath))
+	return err
 }
 
 func replaceTag(key string, tagKey string, tagVal string) error {
@@ -318,6 +354,7 @@ func (s *S3Client) GetFileInfo(key string) (BlobInfo, error) {
 
 	// for Owner
 	if common.WithOwner {
+		//h.Log("DEBUG", fmt.Sprintf("Retrieving Owner for %s ...", key))
 		input2 := &s3.GetObjectAclInput{
 			Bucket: &common.Container,
 			Key:    &key,
@@ -333,18 +370,7 @@ func (s *S3Client) GetFileInfo(key string) (BlobInfo, error) {
 
 	// for Tags
 	if common.WithTags {
-		input3 := &s3.GetObjectTaggingInput{
-			Bucket: &common.Container,
-			Key:    &key,
-		}
-		tagObj, err3 := getS3Api().GetObjectTagging(context.TODO(), input3)
-		if err3 != nil {
-			h.Log("WARN", fmt.Sprintf("GetObjectTagging for %s failed with %v", key, err3))
-		}
-		if tagObj != nil && tagObj.TagSet != nil && len(tagObj.TagSet) > 0 {
-			jsonTags, _ := json.Marshal(tagObj.TagSet)
-			tags = string(jsonTags)
-		}
+		tags = getTags(key)
 	}
 
 	blobInfo := BlobInfo{
@@ -360,14 +386,39 @@ func (s *S3Client) GetFileInfo(key string) (BlobInfo, error) {
 func (s *S3Client) Convert2BlobInfo(f interface{}) BlobInfo {
 	item := f.(types.Object)
 	owner := ""
+	tags := ""
 	if item.Owner != nil && item.Owner.DisplayName != nil {
 		owner = *item.Owner.DisplayName
+	}
+	// S3 item does not have tags, so need to retrieve it separately
+	if common.WithTags {
+		tags = getTags(*item.Key)
 	}
 	blobInfo := BlobInfo{
 		Path:    *item.Key,
 		ModTime: *item.LastModified,
 		Size:    *item.Size,
 		Owner:   owner,
+		Tags:    tags,
 	}
 	return blobInfo
+}
+
+func getTags(key string) string {
+	tags := ""
+	//h.Log("DEBUG", fmt.Sprintf("Retrieving tags from %s ...", key))
+	input3 := &s3.GetObjectTaggingInput{
+		Bucket: &common.Container,
+		Key:    &key,
+	}
+	tagObj, err3 := getS3Api().GetObjectTagging(context.TODO(), input3)
+	if err3 != nil {
+		h.Log("WARN", fmt.Sprintf("GetObjectTagging for %s failed with %v", key, err3))
+	}
+	if tagObj != nil && tagObj.TagSet != nil && len(tagObj.TagSet) > 0 {
+		h.Log("DEBUG", fmt.Sprintf("Retrieved tags %v ", tagObj.TagSet))
+		jsonTags, _ := json.Marshal(tagObj.TagSet)
+		tags = string(jsonTags)
+	}
+	return tags
 }

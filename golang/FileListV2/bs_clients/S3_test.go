@@ -1,11 +1,13 @@
 package bs_clients
 
 import (
+	"FileListV2/common"
 	"fmt"
 	"github.com/aws/aws-sdk-go-v2/service/s3"
 	h "github.com/hajimeo/samples/golang/helpers"
 	"github.com/stretchr/testify/assert"
 	"io"
+	"os"
 	"strings"
 	"testing"
 )
@@ -77,4 +79,42 @@ func TestRemoveDeleted_ValidPath_RemovesTags_S3(t *testing.T) {
 func TestGetDirs_S3(t *testing.T) {
 	t.Log("TODO: Not implemented GetDirs tests yet")
 	t.SkipNow()
+}
+
+func TestGetPath_ValidKey_CopiesFileToLocalPath_S3(t *testing.T) {
+	someEnv := h.GetEnv("AWS_ACCESS_KEY_ID", "")
+	if someEnv == "" {
+		//AWS_ACCESS_KEY_ID,AWS_SECRET_ACCESS_KEY,AWS_REGION
+		t.Skip("AWS_ACCESS_KEY_ID is not set")
+	}
+	someEnv = h.GetEnv("AWS_SECRET_ACCESS_KEY", "")
+	if someEnv == "" {
+		t.Skip("AWS_SECRET_ACCESS_KEY is not set")
+	}
+	someEnv = h.GetEnv("AWS_REGION", "")
+	if someEnv == "" {
+		t.Skip("AWS_REGION is not set")
+	}
+
+	container := h.GetEnv("AWS_BLOB_STORE_NAME", "apac-support-bucket")
+	if container == "" {
+		t.Skip("AWS_BLOB_STORE_NAME is not set")
+	}
+	t.Logf("container: %s\n", container)
+	common.BaseDir = "s3://" + container
+	client := &S3Client{}
+	// S3 Key should include the prefix.
+	key := "filelist-test/metadata.properties"
+	localPath := "local/paths3.txt"
+
+	common.Debug = true
+	err := client.GetPath(key, localPath)
+	assert.NoError(t, err)
+
+	contents, err := os.ReadFile(localPath)
+	assert.NoError(t, err)
+	assert.Contains(t, string(contents), "type=s3")
+
+	t.Logf("contents: %s\n", contents)
+	os.Remove(localPath)
 }
