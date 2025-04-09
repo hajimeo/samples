@@ -534,7 +534,7 @@ function t_pg_config() {
     if [ -n "${_max_connections}" ]; then
         if [ ${_max_connections:-0} -lt 105 ]; then
             _head "ERROR" "max_connections (${_max_connections}) in \"${_pg_cfg_glob}\" is too small"
-        elif [ ${_max_connections:-0} -lt 305 ]; then
+        elif [ ${_max_connections:-0} -lt 200 ]; then
             _head "WARN" "max_connections (${_max_connections}) in \"${_pg_cfg_glob}\" might be too small"
         elif [ ${_max_connections:-0} -gt 1000 ]; then
             # ideally would like to check if HA.
@@ -576,7 +576,7 @@ function t_pg_config() {
     else
         _level="WARN"
     fi
-    _test_template "$(rg --no-filename -i "^\s*['\"]?(max_connections|shared_buffers|work_mem|effective_cache_size|synchronous_standby_names|maintenance_work_mem)\b" ${_pg_cfg_glob})" "${_level}" "Please review DB configs" "https://help.sonatype.com/en/advanced-database-memory-tuning.html"
+    _test_template "$(rg --no-filename -i "^\s*['\"]?(max_connections|effective_cache_size|shared_buffers|work_mem|maintenance_work_mem|synchronous_standby_names)\b" ${_pg_cfg_glob})" "${_level}" "Please review DB configs" "https://help.sonatype.com/en/advanced-database-memory-tuning.html"
 }
 function t_mounts() {
     _basic_check "" "${_FILTERED_DATA_DIR%/}/system-filestores.json" || return

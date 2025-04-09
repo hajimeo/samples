@@ -785,6 +785,8 @@ FLUSH PRIVILEGES;"
     #curl -i -H "X-Requested-By:ambari" -u admin:admin -X DELETE "http://$AMBARI_SERVER:8080/api/v1/clusters/$CLUSTER/artifacts/kerberos_descriptor"
 }
 
+# Simple way
+#rg -i 'real=[^0]\d\S+' gc.2025-03-28_21-48-30.log
 # Generate chart for one specific class size (should check count?)
 #rg '(^20\d\d.\d\d.\d\d.+Class Histogram \(before full gc\)|org.sonatype.nexus.repository.content.store.AssetBlobData)' gc.2023-01-13_09-12-22.log.0 | paste - - | rg '^(\d\d\d\d.\d\d.\d\d.\d\d:\d\d:\d\d\.\d\d\d).+ (\d+)\s+org.sonatype.nexus.repository.content.store.AssetBlobData' -o -r '$1 $2' | bar_chart.py -A
 #f_gc_overview gc.2021-10-30_15-03-15.log.0.current.gz "" "M" "2021-12-28.0[5678]:\d\d:\d\d.\d+"

@@ -115,7 +115,7 @@ _RESP_FILE=""
 ### Nexus installation functions ##############################################################################
 # To re-install: _RECREATE_ALL=Y f_install_nexus3 "<version>" "<dbname>"
 # To install HA instances (port is automatic): _NEXUS_ENABLE_HA=Y f_install_nexus3 "" "nxrm3740ha"
-# To upgrade (from ${_dirpath}/): tar -xvf $HOME/.nexus_executable_cache/nexus-3.70.3-01-mac.tgz
+# To upgrade (from ${_dirpath}/): tar -xvf $HOME/.nexus_executable_cache/nexus-mac-aarch64-3.79.0-09.tar.gz
 function f_install_nexus3() {
     local __doc__="Install specific NXRM3 version (to recreate sonatype-work and DB, _RECREATE_ALL=Y)"
     local _ver="${1:-"${r_NEXUS_VERSION}"}"     # 'latest' or '3.71.0-03-java17'
@@ -512,7 +512,7 @@ function f_setup_nuget() {
         # Hosted first
         _apiS '{"action":"coreui_Repository","method":"create","data":[{"attributes":{"storage":{"blobStoreName":"'${_bs_name}'","strictContentTypeValidation":true'${_extra_sto_opt}'},"group":{"memberNames":["'${_prefix}'-hosted","'${_prefix}'-v3-proxy"]}},"name":"'${_prefix}'-v3-group","format":"","type":"","url":"","online":true,"recipe":"nuget-group"}],"type":"rpc"}' || return $?
     fi
-    # add some data for xxxx-group
+    # add some data for xxxx-group. This may not work if proxy is directly used
     _ASYNC_CURL="Y" f_get_asset "${_prefix}-v3-group" "/v3/content/nlog/3.1.0/nlog.3.1.0.nupkg"  # this one may fail on some Nexus version
 }
 
@@ -2954,11 +2954,12 @@ function f_upload_dummies_maven() {
 
     _gen_dummy_jar "${_TMP%/}/dummy.jar" || return $?
 
-    # Does not work with Mac's bash...
+    # The below 'export' does not work with Mac's bash...
     #export -f f_upload_asset
     for i in $(eval "${_seq}"); do
       echo "$i${_ver_sfx}"
     done | xargs -I{} -P${_parallel} curl -sf -u "${_usr}:${_pwd}" -w "%{http_code} ${_g}:${_a}:{} (%{time_total}s)\n" -H "accept: application/json" -H "Content-Type: multipart/form-data" -X POST -k "${_NEXUS_URL%/}/service/rest/v1/components?repository=${_repo_name}" -F maven2.groupId=${_g} -F maven2.artifactId=${_a} -F maven2.version={} -F maven2.asset1=@${_TMP%/}/dummy.jar -F maven2.asset1.extension=jar
+    # TODO: -F maven2.generate-pom=true is not working
     # NOTE: xargs only stops if exit code is 255
 }
 
@@ -2974,6 +2975,7 @@ for g in {1..3}; do
   done
 done; wait
 EOF
+
 function f_upload_dummies_maven_snapshot() {
     local __doc__="Upload dummy jar files into maven snapshot hosted repository. Requires 'mvn' command"
     local _repo_name="${1:-"maven-snapshots"}"
@@ -2992,16 +2994,24 @@ function f_upload_dummies_maven_snapshot() {
     fi
 
     # _SEQ_START is for continuing
-    local _seq_start="${_SEQ_START:-1}"
+    f_upload_dummies_with_mvn "${_repo_name}" "${_how_many}" "${_group}" "${_name}" "${_ver}" "${_SEQ_START}" || return $?
+}
+
+function f_upload_dummies_with_mvn {
+    local _repo_name="${1:-"maven-releases"}"
+    local _how_many="${2:-"5"}"     # 10 takes longer
+    local _group="${3:-"com.example"}"
+    local _name="${4:-"my-app"}"
+    local _ver="${5}"
+    local _seq_start="${6:-1}"
     local _seq_end="$((${_seq_start} + ${_how_many} - 1))"
     local _seq="seq ${_seq_start} ${_seq_end}"
     [[ "${_how_many}" =~ ^[0-9]+[[:space:]]+[0-9]+$ ]] && _seq="seq ${_how_many}"
     local _repo_url="${_NEXUS_URL%/}/repository/${_repo_name%/}/"
 
     _gen_dummy_jar "${_TMP%/}/dummy.jar" || return $?
-
-    for _ in $(eval "${_seq}"); do
-        f_deploy_maven "${_repo_name}" "${_TMP%/}/dummy.jar" "${_group}:${_name}:${_ver}" "-Dpackaging=jar -DcreateChecksum=true" || break
+    for _s in $(eval "${_seq}"); do
+        f_deploy_maven "${_repo_name}" "${_TMP%/}/dummy.jar" "${_group}:${_name}:${_ver:-"${_s}"}" "-Dpackaging=jar -DcreateChecksum=true -DgeneratePom=true" || break
     done
 }
 
@@ -3481,9 +3491,10 @@ function f_delete_all_assets() {
 #    NOTE: Tag is optional. Using "*" in 'name=' as name|path in NewDB starts with "/"
 # 4. f_staging_move "raw-hosted" "raw-test-tag" "repository=raw-test-hosted&name=*test/nxrm3Staging*.txt"
 # With maven2:
-#   export _NEXUS_URL="https://nxrm3ha-k8s.standalone.localdomain/"
 #   f_upload_dummies_maven "maven-hosted" "" "" "com.example" "my-app-staging"
 #   f_staging_move "maven-releases" "maven-test-tag" "repository=maven-hosted&name=my-app-staging"
+#   f_upload_dummies_maven
+#   f_staging_move "maven-hosted" "" "repository=maven-releases&group=setup.nexus3.repos&name=dummy&version=3"
 # Just search components with the tag
 #   f_api "/service/rest/v1/search?tag=raw-test-tag"
 function f_staging_move() {
@@ -3770,6 +3781,7 @@ function f_psql() {
 ### Misc.
 # f_set_log_level "root"
 # f_set_log_level "org.eclipse.jetty.server.HttpChannel"
+# f_set_log_level "org.eclipse.jetty.util.thread"
 function f_set_log_level() {
     local __doc__="Set / Change some logger's log level"
     # NOTE: if incorrect class name is used, may need to edit sonatype-work/nexus3/etc/logback/logback-overrides.xml
