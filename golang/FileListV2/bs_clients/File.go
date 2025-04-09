@@ -53,6 +53,31 @@ func (c *FileClient) WriteToPath(path string, contents string) error {
 	return err
 }
 
+func (c *FileClient) GetPath(path string, localPath string) error {
+	if common.Debug {
+		defer h.Elapsed(time.Now().UnixMilli(), "Get "+path, int64(0))
+	} else {
+		defer h.Elapsed(time.Now().UnixMilli(), "Slow file copy for path:"+path, common.SlowMS*2)
+	}
+
+	outFile, err := CreateLocalFile(localPath)
+	if err != nil {
+		h.Log("WARN", err.Error())
+		return err
+	}
+	defer outFile.Close()
+
+	inFile, err := os.Open(path)
+	if err != nil {
+		err2 := fmt.Errorf("failed to open path: %s with %s", path, err.Error())
+		return err2
+	}
+	defer inFile.Close()
+	bytesCopied, err := io.Copy(outFile, inFile)
+	h.Log("DEBUG", fmt.Sprintf("Copied %d bytes from %s to %s", bytesCopied, path, localPath))
+	return err
+}
+
 func (c *FileClient) RemoveDeleted(path string, contents string) error {
 	// if the contents is empty, read from the key
 	if len(contents) == 0 {
