@@ -873,7 +873,7 @@ function cleanOldDBs() {
     #${_find} "${_test_dir%/}" -type f -mtime +120 -delete 2>/dev/null
     #${_find} ${_test_dir%/}/* -type d -mtime +2 -empty -print -delete
     echo "# DELETE statements for Not updated databases and above databases:" >&2
-    psql -d template1 -tAc "SELECT 'DROP DATABASE '||datname||';    -- '||pg_database_size(datname)||' bytes' FROM pg_stat_database WHERE datname NOT IN ('', 'template0', 'template1', 'postgres', CURRENT_USER) AND stats_reset < (now() - interval '60 days') ORDER BY stats_reset"
+    #psql -d template1 -tAc "SELECT 'DROP DATABASE '||datname||';    -- '||pg_database_size(datname)||' bytes' FROM pg_stat_database WHERE datname NOT IN ('', 'template0', 'template1', 'postgres', CURRENT_USER) AND stats_reset < (now() - interval '60 days') ORDER BY stats_reset"
     psql -d template1 -tAc "SELECT 'DROP DATABASE '||datname||';    -- '||pg_database_size(datname)||' bytes' FROM pg_stat_database WHERE datname ilike 'to_be_deleted_%' ORDER BY datname"
     #psql -tAc "SELECT datname FROM pg_database WHERE datname LIKE 'to_be_deleted_%'" | while read -r _db; do psql -d template1 -c "DROP DATABASE ${_db}" || break; done
 }
@@ -990,8 +990,8 @@ function backupC() {
     echo ""
     echo "#### Synchronising a few Github repositories into 'oldmac' ####" >&2
     echo ""
-    syncGitReposWithRemotePC "oldmac" "$USER" "IdeaProjects/samples" "$HOME" || return $?
-    syncGitReposWithRemotePC "oldmac" "$USER" "IdeaProjects/work" "$HOME" || return $?
+    syncGitReposWithRemotePC "oldmac" "$USER" "IdeaProjects/samples" "$HOME" #|| return $?
+    syncGitReposWithRemotePC "oldmac" "$USER" "IdeaProjects/work" "$HOME" #|| return $?
 
     echo ""
     echo "#### Cleaning up old temp/test data (120 days) ####" >&2

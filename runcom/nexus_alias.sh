@@ -1008,7 +1008,7 @@ function npmDeploy() {
     if [ -s ./package.json ] && [ ! -s ./package.json.orig ]; then
         cp -v -p ./package.json ./package.json.orig
     elif [ ! -s ./package.json ]; then
-        npmInit "${_name}" "${_ver}"
+        npmInit "${_name}" "${_ver}" || return $?
     fi
     cat ./package.json | python -c "import sys,json
 a=json.loads(sys.stdin.read())
