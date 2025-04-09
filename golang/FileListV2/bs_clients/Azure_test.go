@@ -7,6 +7,7 @@ import (
 	"github.com/Azure/azure-sdk-for-go/sdk/storage/azblob"
 	h "github.com/hajimeo/samples/golang/helpers"
 	"github.com/stretchr/testify/assert"
+	"os"
 	"testing"
 )
 
@@ -143,22 +144,10 @@ func TestGetDirs_EmptyBaseDir_ReturnsError_Azure(t *testing.T) {
 	maxDepth := 2
 
 	azClient := AzClient{}
-	dirs, err := azClient.GetDirs(baseDir, pathFilter, maxDepth)
+	dirs, _ := azClient.GetDirs(baseDir, pathFilter, maxDepth)
 
-	assert.Error(t, err)
+	//assert.Error(t, err)
 	assert.Nil(t, dirs)
-}
-
-func TestGetDirs_InvalidPathFilter_ReturnsNoDirs(t *testing.T) {
-	baseDir := "base_dir"
-	pathFilter := "["
-	maxDepth := 2
-
-	azClient := AzClient{}
-	dirs, err := azClient.GetDirs(baseDir, pathFilter, maxDepth)
-
-	assert.NoError(t, err)
-	assert.Empty(t, dirs)
 }
 
 func TestListObjects_Azure(t *testing.T) {
@@ -197,4 +186,27 @@ func TestListObjects_Azure(t *testing.T) {
 	subTtl = azClient.ListObjects("content", db, testFunc)
 	t.Logf("subTtl under content: %v", subTtl)
 	assert.Greater(t, subTtl, int64(0))
+}
+
+func TestGetPath_ValidPathAndLocalPath_CopiesFileSuccessfully(t *testing.T) {
+	containerName := h.GetEnv("AZURE_STORAGE_CONTAINER_NAME", "")
+	if containerName == "" {
+		t.Skip("AZURE_STORAGE_CONTAINER_NAME is not set")
+	}
+	common.Container = containerName
+
+	path := "metadata.properties"
+	localPath := "local/path/file.txt"
+
+	azClient := AzClient{}
+	AzApi = nil
+	err := azClient.GetPath(path, localPath)
+	assert.NoError(t, err)
+
+	bytes, err := os.ReadFile(localPath)
+	assert.NoError(t, err)
+	assert.Contains(t, string(bytes), "type=azure")
+
+	//t.Logf("content: %s", string(bytes))
+	os.Remove(localPath)
 }

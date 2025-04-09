@@ -12,7 +12,9 @@ import (
 	"github.com/Azure/azure-sdk-for-go/sdk/storage/azblob/container"
 	h "github.com/hajimeo/samples/golang/helpers"
 	"github.com/pkg/errors"
+	"io"
 	"path/filepath"
+	"reflect"
 	"regexp"
 	"sort"
 	"strings"
@@ -25,8 +27,11 @@ var AzApi *azblob.Client
 var AzContainer *container.Client
 
 func getAzApi() *azblob.Client {
-	if AzApi != nil && AzApi.URL() != "" {
-		return AzApi
+	if AzApi != nil {
+		method := reflect.ValueOf(AzApi).MethodByName("URL")
+		if method.IsValid() {
+			return AzApi
+		}
 	}
 
 	// TODO: https://pkg.go.dev/github.com/Azure/azure-sdk-for-go/sdk/azidentity#readme-environment-variables
@@ -83,16 +88,13 @@ func setAzObject(path string, contents string) (azblob.UploadStreamResponse, err
 
 func (a *AzClient) ReadPath(path string) (string, error) {
 	if common.Debug {
-		// Record the elapsed time
 		defer h.Elapsed(time.Now().UnixMilli(), "Read "+path, int64(0))
 	} else {
-		// As S3, using *2
 		defer h.Elapsed(time.Now().UnixMilli(), "Slow file read for path:"+path, common.SlowMS*2)
 	}
-
 	resp, err := getAzObject(path)
 	if err != nil {
-		h.Log("DEBUG", fmt.Sprintf("getS3Object for %s failed with %s.", path, err.Error()))
+		h.Log("DEBUG", fmt.Sprintf("getAzObject for %s failed with %s.", path, err.Error()))
 		return "", err
 	}
 	buf := new(bytes.Buffer)
@@ -118,6 +120,36 @@ func (a *AzClient) WriteToPath(path string, contents string) error {
 		return err
 	}
 	return nil
+}
+
+func (a *AzClient) GetPath(path string, localPath string) error {
+	if common.Debug {
+		defer h.Elapsed(time.Now().UnixMilli(), "Get "+path, int64(0))
+	} else {
+		defer h.Elapsed(time.Now().UnixMilli(), "Slow file copy for path:"+path, common.SlowMS*2)
+	}
+
+	outFile, err := CreateLocalFile(localPath)
+	if err != nil {
+		h.Log("WARN", err.Error())
+		return err
+	}
+	defer outFile.Close()
+
+	inFile, err := getAzObject(path)
+	if err != nil {
+		err2 := fmt.Errorf("getAzObject for %s failed with %s", path, err.Error())
+		return err2
+	}
+	defer inFile.Body.Close()
+
+	bytesWritten, err := io.Copy(outFile, inFile.Body)
+	if err != nil {
+		err2 := fmt.Errorf("failed to copy path: %s into %s with error: %s", path, localPath, err.Error())
+		return err2
+	}
+	h.Log("DEBUG", fmt.Sprintf("Wrote %d bytes to %s", bytesWritten, localPath))
+	return err
 }
 
 func (a *AzClient) RemoveDeleted(path string, contents string) error {
