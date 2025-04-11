@@ -11,12 +11,16 @@ _ORIENT_DB_API_URL="${3:-"http://localhost:2480/command/component/sql"}"
 
 function f_query_db {
     local _file_path="$1"
-    local _blob_id="$(basename "${_file_path}" ".properties")"
     local _repo_name="$(sed -n 's/^@Bucket\.repo-name=//p' "${_file_path}")"
     if [ -z "${_repo_name}" ]; then
         echo "Invalid file: ${_file_path}"
         return 1
     fi
+    if grep -q '^deleted=true' "${_file_path}"; then
+        echo "[DEBUG] Skipping soft-deleted blob: ${_file_path} (${_repo_name})" >&2
+        return 0
+    fi
+    local _blob_id="$(basename "${_file_path}" ".properties")"
     # Somehow '%' needs to be url-encoded to '%25' in the query
     local _result_json="$(curl -sSf -u "admin:admin" -X POST "${_ORIENT_DB_API_URL}" -d "SELECT blob_ref FROM asset WHERE bucket.repository_name = '${_repo_name}' AND blob_ref like '%25@${_blob_id}' LIMIT 1")"
     local _rc="$?"
@@ -33,4 +37,4 @@ export _ORIENT_DB_API_URL
 
 # To avoid checking the newly created/modified files
 touch /tmp/until_$$.tmp
-find ${_FILE_BLOB_STORE_VOL_PATH%/} -maxdepth 2 -name '*.properties' -not -newer /tmp/until_$$.tmp -print0 | head -n1 | xargs -t -0 -I @@ -P${_PARALLELISM} bash -c 'f_query_db "@@"'
+find ${_FILE_BLOB_STORE_VOL_PATH%/} -maxdepth 2 -name '*.properties' -not -newer /tmp/until_$$.tmp -print0 | head -n1 | xargs -0 -I @@ -P${_PARALLELISM} bash -c 'f_query_db "@@"'
