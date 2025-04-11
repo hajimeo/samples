@@ -169,20 +169,21 @@ function f_install_nexus3() {
     # If no `-\d\d`, appending the wildcard to pick from the local cache (downloading fails)
     local _tgz_ver="${_ver}"
     [[ "${_ver}" =~ ^3\.[0-9]+\.[0-9]+$ ]] && _tgz_ver="${_ver}-*"
-
-    local _tgz_name="nexus-${_tgz_ver}-unix.tar.gz"
-    # From version 3.78, the filename is different (eg. nexus-mac-x86-64-3.78.0-14.tar.gz, nexus-unix-x86-64-3.78.0-14.tar.gz)
-    if [[ "${_ver}" =~ ^3\.(7[8-9]\.|[89][0-9]\.|[1-9][0-9][0-9]).+ ]]; then
-        local _arch="$(uname -m)"
-        local _os="$(uname -s)"
-        [ "${_os}" = "Linux" ] && _os="unix"
-        [ "${_os}" = "Darwin" ] && _os="mac"
+    local _os="unix"
+    [ "$(uname -s)" == "Darwin" ] && _os="mac"
+    local _arch="$(uname -m)"
+    local _tgz_name="nexus-${_tgz_ver}-${_os}.tar.gz"
+    if [[ "${_ver}" =~ ^3\.(79\.[1-9]|[89][0-9]\.|[1-9][0-9][0-9]).* ]]; then
+        # From version 3.79.1, nexus-3.79.1-04-linux-aarch_64.tar.gz
+        [ "$(uname -s)" == "Linux" ] && _os="linux"
+        [ "${_arch}" = "x86_64" ] && _arch="x86_64"
+        [ "${_arch}" = "arm64" ] && _arch="aarch_64"
+        _tgz_name="nexus-${_tgz_ver}-${_os}-${_arch}.tar.gz"
+    elif [[ "${_ver}" =~ ^3\.(78|79\.0).* ]]; then
+        # From version 3.78 and until 3.79.0, nexus-unix-x86-64-3.78.0-14.tar.gz
         [ "${_arch}" = "x86_64" ] && _arch="x86-64"
         [ "${_arch}" = "arm64" ] && _arch="aarch64"
         _tgz_name="nexus-${_os}-${_arch}-${_tgz_ver}.tar.gz"
-    else
-        _tgz_name="nexus-${_tgz_ver}-unix.tar.gz"
-        [ "`uname`" = "Darwin" ] && _tgz_name="nexus-${_tgz_ver}-mac.tgz"
     fi
     # download-staging.sonatype.com
     _prepare_install "${_dirpath}" "https://download.sonatype.com/nexus/${_ver%%.*}/${_tgz_name}" "${r_NEXUS_LICENSE_FILE}" || return $?
