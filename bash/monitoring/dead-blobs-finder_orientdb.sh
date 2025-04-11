@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # HOW TO:
-#   bash ./dead-blobs-finder_orientdb.sh "/path/to/blobs/some_blob_store/content/vol-*" | tee -a ./orphaned_result.txt
+#   NOTE: Start OrientDB in another terminal first: java -Dserver=true -jar ./orient-console.jar ./component
+#   bash ./dead-blobs-finder_orientdb.sh "/path/to/blob_store/content/vol-*" | tee -a ./orphaned_result.txt
 
 ### Global variables ######################################################
 # If you would like to check par 'vol-<n>' for multi-processing, change this path
