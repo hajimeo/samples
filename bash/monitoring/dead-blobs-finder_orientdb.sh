@@ -17,6 +17,7 @@ function f_query_db {
         echo "Invalid file: ${_file_path}"
         return 1
     fi
+    # Somehow '%' needs to be url-encoded to '%25' in the query
     local _result_json="$(curl -sSf -u "admin:admin" -X POST "${_ORIENT_DB_API_URL}" -d "SELECT blob_ref FROM asset WHERE bucket.repository_name = '${_repo_name}' AND blob_ref like '%25@${_blob_id}' LIMIT 1")"
     local _rc="$?"
     if [ "${_rc}" -ne 0 ] || [ -z "${_result_json}" ]; then
