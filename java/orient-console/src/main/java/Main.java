@@ -49,57 +49,32 @@ import static java.lang.String.valueOf;
 
 public class Main {
     static final private String PROMPT = "=> ";
-
     static final private String DEFAULT_JSON_FORMAT = "rid,attribSameRow,alwaysFetchEmbedded,fetchPlan:*:0";
-
     static private String jsonFormat = DEFAULT_JSON_FORMAT;
-
     static private Terminal terminal;
-
     static private History history;
-
     static private String historyPath;
-
     static private String extractDir;
-
     static private String exportPath;
-
     static private String binaryField;
-
     static private String[] fieldNames;
-
     static private String paging = "";
-
+    static private String binaryPort = "2424-2430";
+    static private String httpPort = "2480-2499";
     static private int pageCount = 1;
-
     static private String ridName = "rid";
-
     static private int lastRows = 0;
-
     static private String lastRid = "#-1:-1";
-
     static private String dbUser = "admin";
-
     static private String dbPwd = "admin";
-
     static private Boolean isServer;
-
     static private Boolean isDebug;
-
     static private OServer server;
-
     private static final ObjectMapper objectMapper = new ObjectMapper(new SmileFactory());
-
     private static final Gson gson = new Gson();
-
-    public static final Pattern indexNamePtn =
-            Pattern.compile("(rebuild|list) indexes ([^;]+)", Pattern.CASE_INSENSITIVE);
-
-    public static final Pattern describeNamePtn =
-            Pattern.compile("(info|describe|desc) (table|class|index) ([^;]+)", Pattern.CASE_INSENSITIVE);
-
-    public static final Pattern exportPathPtn =
-            Pattern.compile("set exportPath ([^;]+)", Pattern.CASE_INSENSITIVE);
+    public static final Pattern indexNamePtn = Pattern.compile("(rebuild|list) indexes ([^;]+)", Pattern.CASE_INSENSITIVE);
+    public static final Pattern describeNamePtn = Pattern.compile("(info|describe|desc) (table|class|index) ([^;]+)", Pattern.CASE_INSENSITIVE);
+    public static final Pattern exportPathPtn = Pattern.compile("set exportPath ([^;]+)", Pattern.CASE_INSENSITIVE);
 
     private Main() {
     }
@@ -149,8 +124,7 @@ public class Main {
         long usable_space = Files.getFileStore(new File(dirPath).toPath()).getUsableSpace();
         long zip_file_size = (new File(zipFilePath)).length();
         if (zip_file_size * 10 > usable_space) {
-            log(dirPath + " (usable:" + usable_space + ") may not be enough for extracting " + zipFilePath + " (size:" +
-                    zip_file_size + ")");
+            log(dirPath + " (usable:" + usable_space + ") may not be enough for extracting " + zipFilePath + " (size:" + zip_file_size + ")");
             return false;
         }
         return true;
@@ -187,15 +161,13 @@ public class Main {
         if (path == null || !path.toFile().exists()) {
             return;
         }
-        Files.walk(path)
-                .sorted(Comparator.reverseOrder())
-                .forEach(p -> {
-                    try {
-                        Files.delete(p);
-                    } catch (IOException e) {
-                        log(e.getMessage());
-                    }
-                });
+        Files.walk(path).sorted(Comparator.reverseOrder()).forEach(p -> {
+            try {
+                Files.delete(p);
+            } catch (IOException e) {
+                log(e.getMessage());
+            }
+        });
     }
 
     // TODO: changing to List<?> breaks toJSON()
@@ -399,8 +371,7 @@ public class Main {
 
             lastRows = ((List<ODocument>) oDocs).size();
             if (isPaging && lastRows > 0) {
-                lastRid = ((ODocument) ((ODocument) ((List<ODocument>) oDocs).get((lastRows - 1))).field(ridName)).getIdentity()
-                        .toString();
+                lastRid = ((ODocument) ((ODocument) ((List<ODocument>) oDocs).get((lastRows - 1))).field(ridName)).getIdentity().toString();
             }
         }
     }
@@ -451,12 +422,9 @@ public class Main {
         if (indexName.length() > 0 && !indexName.equals("*")) {
             whereAppend = " AND name like '" + indexName.replaceAll("\\*", "%") + "'";
         }
-        String query =
-                "SELECT indexDefinition.className as table, name, type from (select expand(indexes) from metadata:indexmanager) where indexDefinition.className is not null " +
-                        whereAppend + " order by table, name LIMIT -1";
+        String query = "SELECT indexDefinition.className as table, name, type from (select expand(indexes) from metadata:indexmanager) where indexDefinition.className is not null " + whereAppend + " order by table, name LIMIT -1";
         //log(query);
-        List<ODocument> oDocs = db.command(new OCommandSQL(query))
-                .execute();
+        List<ODocument> oDocs = db.command(new OCommandSQL(query)).execute();
         printListAsJson(oDocs, false);
         return oDocs;
     }
@@ -513,8 +481,7 @@ public class Main {
             }
             return true;
         }
-        if (input.toLowerCase().startsWith("describe ") || input.toLowerCase().startsWith("desc ") ||
-                input.toLowerCase().startsWith("info ")) {
+        if (input.toLowerCase().startsWith("describe ") || input.toLowerCase().startsWith("desc ") || input.toLowerCase().startsWith("info ")) {
             Matcher matcher = describeNamePtn.matcher(input);
             if (matcher.find()) {
                 String descType = matcher.group(2);
@@ -532,8 +499,7 @@ public class Main {
             return true;
         }
         if (input.toLowerCase().startsWith("list classes") || input.toLowerCase().startsWith("list tables")) {
-            String query =
-                    "SELECT name from (SELECT expand(classes) from metadata:schema) WHERE NOT (name LIKE 'O%' OR name LIKE '_%') ORDER BY name LIMIT -1";
+            String query = "SELECT name from (SELECT expand(classes) from metadata:schema) WHERE NOT (name LIKE 'O%' OR name LIKE '_%') ORDER BY name LIMIT -1";
             log(query, isDebug);
             execQueries(db, query);
             return true;
@@ -591,9 +557,7 @@ public class Main {
 
     private static Set<String> genAutoCompWords(String fileName) {
         // at this moment, not considering some slowness by the file size as DEFAULT_HISTORY_SIZE should take care
-        Set<String> wordSet = new HashSet<>(Arrays
-                .asList("CREATE", "SELECT FROM", "UPDATE", "INSERT INTO", "DELETE FROM", "FROM", "WHERE", "BETWEEN", "AND",
-                        "DISTINCT", "DISTINCT", "LIKE", "LIMIT", "NOT"));
+        Set<String> wordSet = new HashSet<>(Arrays.asList("CREATE", "SELECT FROM", "UPDATE", "INSERT INTO", "DELETE FROM", "FROM", "WHERE", "BETWEEN", "AND", "DISTINCT", "DISTINCT", "LIKE", "LIMIT", "NOT"));
         try (BufferedReader br = new BufferedReader(new InputStreamReader(new FileInputStream(fileName)))) {
             String line;
             while ((line = br.readLine()) != null) {
@@ -612,29 +576,17 @@ public class Main {
     }
 
     private static LineReader setupReader() throws IOException {
-        terminal = TerminalBuilder.builder()
-                .system(true)
-                .dumb(true)
-                .build();
+        terminal = TerminalBuilder.builder().system(true).dumb(true).build();
         history = new DefaultHistory();
         historyPath = System.getProperty("user.home") + "/.orient-console_history";
         System.err.println("history path: " + historyPath);
         Set<String> words = genAutoCompWords(historyPath);
-        LineReader lr = LineReaderBuilder.builder()
-                .terminal(terminal)
-                .highlighter(new DefaultHighlighter())
-                .history(history)
-                .completer(new StringsCompleter(words))
-                .variable(LineReader.HISTORY_FILE, new File(historyPath))
-                .build();
+        LineReader lr = LineReaderBuilder.builder().terminal(terminal).highlighter(new DefaultHighlighter()).history(history).completer(new StringsCompleter(words)).variable(LineReader.HISTORY_FILE, new File(historyPath)).build();
         history.attach(lr);
         return lr;
     }
 
-    private static void startServer(String dbPath)
-            throws MalformedObjectNameException, NotCompliantMBeanException, InstanceAlreadyExistsException,
-            ClassNotFoundException, MBeanRegistrationException, IOException, InvocationTargetException,
-            NoSuchMethodException, InstantiationException, IllegalAccessException {
+    private static void startServer(String dbPath) throws MalformedObjectNameException, NotCompliantMBeanException, InstanceAlreadyExistsException, ClassNotFoundException, MBeanRegistrationException, IOException, InvocationTargetException, NoSuchMethodException, InstantiationException, IllegalAccessException {
         File databaseDir = new File(dbPath).getCanonicalFile().getParentFile();
         Path homeDir = databaseDir.toPath();
         System.setProperty("orient.home", homeDir.toString());
@@ -646,56 +598,36 @@ public class Main {
         // TODO: Still couldn't avoid 'SEVER ODefaultServerSecurity.loadConfig() Could not access the security JSON file'
         File securityFile = new File(databaseDir, "orient-console-security.json");
         FileWriter writer = new FileWriter(securityFile);
-        writer.write("{\n" +
-                "  \"enabled\": false\n" +
-                "}");
+        writer.write("{\n" + "  \"enabled\": false\n" + "}");
         writer.close();
 
         // https://gist.github.com/gokhankuyucak/b966d41426a08d3335826643f2305757
-        config.properties = new OServerEntryConfiguration[]{
-                new OServerEntryConfiguration("server.database.path", databaseDir.getPath()),
-                new OServerEntryConfiguration("server.security.file", securityFile.getPath())
-        };
+        config.properties = new OServerEntryConfiguration[]{new OServerEntryConfiguration("server.database.path", databaseDir.getPath()), new OServerEntryConfiguration("server.security.file", securityFile.getPath())};
         config.handlers = Lists.newArrayList();
         config.hooks = Lists.newArrayList();
         config.network = new OServerNetworkConfiguration();
-        config.network.protocols = Lists.newArrayList(
-                new OServerNetworkProtocolConfiguration("binary", ONetworkProtocolBinary.class.getName()),
-                new OServerNetworkProtocolConfiguration("http", ONetworkProtocolHttpDb.class.getName())
-        );
+        config.network.protocols = Lists.newArrayList(new OServerNetworkProtocolConfiguration("binary", ONetworkProtocolBinary.class.getName()), new OServerNetworkProtocolConfiguration("http", ONetworkProtocolHttpDb.class.getName()));
         OServerNetworkListenerConfiguration binaryListener = new OServerNetworkListenerConfiguration();
         binaryListener.ipAddress = "0.0.0.0";
-        binaryListener.portRange = "2424-2430";
+        binaryListener.portRange = binaryPort;
         binaryListener.protocol = "binary";
         binaryListener.socket = "default";
         OServerNetworkListenerConfiguration httpListener = new OServerNetworkListenerConfiguration();
         httpListener.ipAddress = "0.0.0.0";
-        httpListener.portRange = "2480-2486";
+        httpListener.portRange = httpPort;
         httpListener.protocol = "http";
         httpListener.socket = "default";
-        httpListener.parameters = new OServerParameterConfiguration[] {
-                new OServerParameterConfiguration("network.http.charset", "UTF-8"),
-                new OServerParameterConfiguration("network.http.jsonResponseError", "true")
-        };
+        httpListener.parameters = new OServerParameterConfiguration[]{new OServerParameterConfiguration("network.http.charset", "UTF-8"), new OServerParameterConfiguration("network.http.jsonResponseError", "true")};
         OServerCommandConfiguration getCommand = new OServerCommandConfiguration();
         getCommand.implementation = OServerCommandGetStaticContent.class.getName();
         getCommand.pattern = "GET|www GET|studio/ GET| GET|*.htm GET|*.html GET|*.xml GET|*.jpeg GET|*.jpg GET|*.png GET|*.gif GET|*.js GET|*.css GET|*.swf GET|*.ico GET|*.txt GET|*.otf GET|*.pjs GET|*.svg GET|*.json GET|*.woff GET|*.ttf GET|*.svgz";
-        getCommand.parameters = new OServerEntryConfiguration[] {
-                new OServerEntryConfiguration("http.cache:*.htm *.html", "Cache-Control: no-cache, no-store, max-age=0, must-revalidate\\r\\nPragma: no-cache"),
-                new OServerEntryConfiguration("http.cache:default", "Cache-Control: max-age=120")
-        };
-        httpListener.commands = new OServerCommandConfiguration[] {
-                getCommand
-        };
+        getCommand.parameters = new OServerEntryConfiguration[]{new OServerEntryConfiguration("http.cache:*.htm *.html", "Cache-Control: no-cache, no-store, max-age=0, must-revalidate\\r\\nPragma: no-cache"), new OServerEntryConfiguration("http.cache:default", "Cache-Control: max-age=120")};
+        httpListener.commands = new OServerCommandConfiguration[]{getCommand};
 
-        config.network.listeners = Lists.newArrayList(
-                binaryListener, httpListener
-        );
+        config.network.listeners = Lists.newArrayList(binaryListener, httpListener);
 
         config.storages = new OServerStorageConfiguration[]{};
-        config.users = new OServerUserConfiguration[]{
-                new OServerUserConfiguration(dbUser, dbPwd, "*")
-        };
+        config.users = new OServerUserConfiguration[]{new OServerUserConfiguration(dbUser, dbPwd, "*")};
 
         config.security = new OServerSecurityConfiguration();
         config.security.users = Lists.newArrayList();
@@ -734,6 +666,8 @@ public class Main {
             dbPwd = envOrientDBPwd;
         }
         isServer = Boolean.getBoolean("server");
+        binaryPort = System.getProperty("binaryPort", "2424-2430");
+        httpPort = System.getProperty("httpPort", "2480-2499");
     }
 
     public static void main(final String[] args) throws IOException {
@@ -792,8 +726,7 @@ public class Main {
             if (path.startsWith("remote:")) {
                 System.err.println("# connecting to " + path);
                 db = new ODatabaseDocumentTx(path);
-                db.setProperty(OStorageRemote.PARAM_CONNECTION_STRATEGY,
-                        OStorageRemote.CONNECTION_STRATEGY.STICKY.toString());
+                db.setProperty(OStorageRemote.PARAM_CONNECTION_STRATEGY, OStorageRemote.CONNECTION_STRATEGY.STICKY.toString());
             } else {
                 // Somehow without an ending /, OStorageException happens
                 if (!path.endsWith("/")) {
@@ -804,8 +737,7 @@ public class Main {
             }
 
             // Below hook does not work with 2.1.14
-            Orient.instance().getRecordConflictStrategy()
-                    .registerImplementation("ConflictHook", new OVersionRecordConflictStrategy());
+            Orient.instance().getRecordConflictStrategy().registerImplementation("ConflictHook", new OVersionRecordConflictStrategy());
 
             db.open(dbUser, dbPwd);
             System.err.println("# Type 'exit' or Ctrl+D to exit. Ctrl+C to cancel current query");
