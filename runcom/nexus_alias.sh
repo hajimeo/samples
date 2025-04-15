@@ -164,7 +164,8 @@ function nxrmStart() {
     local _jetty_https="$(find ${_base_dir%/} -maxdepth 4 -path '*/etc/*' -type f -name 'jetty-https.xml' 2>/dev/null | sort | tail -n1)"
     local _karaf_conf="$(find . -maxdepth 4 -type f -name 'config.properties' -path '*/etc/karaf/*' | head -n1)"
     if [ -n "${_karaf_conf}" ] && ! grep -q 'org.openjdk.btrace' ${_karaf_conf}; then
-        sed -i'' '/^org.osgi.framework.bootdelegation = /a \
+        # TODO: not sure if "-i ''" or "-i''"
+        sed -i '' '/^org.osgi.framework.bootdelegation = /a \
         org.openjdk.btrace.*, \\
     ' ${_karaf_conf}
     fi
@@ -281,7 +282,7 @@ EOF
 function _updateNexusProps() {
     local _cfg_file="$1"
     local _port="${2}"  # if empty, will try to find available port
-    local _port_ssl="${3:-"8443"}"
+    local _port_ssl="${3}"
     local _current_port="$(grep -E '^application-port=' "${_cfg_file}" | awk -F'=' '{print $2}')"
     local _current_port_ssl="$(grep -E '^application-port-ssl=' "${_cfg_file}" | awk -F'=' '{print $2}')"
 
@@ -311,13 +312,7 @@ function _updateNexusProps() {
     # If no port specified, checking if the default port 8081 is available
     # If the port is specified and if it's not available, starting this Nexus should fail.
     if [ -z "${_port}" ]; then
-        for _p in 8081 8083 8084 8085 ${_current_port:-8081}; do # if 8081 is not in use, use it so using in the last ${_current_port:-8081}
-            # Mac's netstat is too different, and lsof may not be available, but curl needs http or https
-            if ! lsof -ti:${_p} -sTCP:LISTEN &>/dev/null; then
-                _port="${_p}"
-                break
-            fi
-        done
+        _port="$(_find_app_port "${_current_port}" "8081")"
     fi
 
     # update the config with the port
@@ -334,15 +329,12 @@ function _updateNexusProps() {
         fi
     fi
 
+    if [ -z "${_port_ssl}" ]; then
+        _port_ssl="$(_find_app_port "${_current_port_ssl}" "8443")"
+    fi
+    # Change the SSL port only if the SSL port is already configured
     if [ -n "${_current_port_ssl}" ]; then
-        for _p in 8443 8444 8445 ${_current_port_ssl:-8443}; do
-            if ! lsof -ti:${_p} -sTCP:LISTEN &>/dev/null; then
-                _port_ssl="${_p}"
-                break
-            fi
-        done
-
-        if [ -n "${_port_ssl}" ] && [ "${_port_ssl}" != ${_current_port_ssl:-8443} ]; then
+        if [ -n "${_port_ssl}" ] && [ "${_port_ssl}" != ${_current_port_ssl} ]; then
             echo "WARN: Updating HTTPS port to *** '${_port_ssl}' *** !!" >&2; sleep 3;
             sed -i'' -E "s/^application-port-ssl=.*/application-port-ssl=${_port_ssl}/" "${_cfg_file}"
             if ! grep -qE "^application-port-ssl=${_port_ssl}" "${_cfg_file}"; then
@@ -351,6 +343,39 @@ function _updateNexusProps() {
             fi
         fi
     fi
+}
+function _find_app_port() {
+    local _current_port="${1}"
+    local _checking_port="${2:-"8081"}"
+    local _up_to="${3:-4}"
+    local _port=""
+
+    # If the current port is using totally different port, not finding alternative port
+    if [ -n "${_current_port}" ] && [ ${_current_port} -gt $((_checking_port + _up_to)) ]; then
+        echo "WARN: the port is customised, so not changing (${_current_port})" >&2;
+        return 0
+    fi
+
+    # If no port specified, checking if the _checking_port to _up_to is available
+    for _i in $(seq 0 ${_up_to}); do
+        _p=$((_checking_port + _i))
+        # Mac's netstat is too different, and lsof may not be available, but curl needs http or https
+        if ! lsof -ti:${_p} -sTCP:LISTEN &>/dev/null; then
+            _port="${_p}"
+            break
+        fi
+    done
+    if [ -z "${_port}" ] && [ -n "${_current_port}" ]; then
+        if ! lsof -ti:${_current_port} -sTCP:LISTEN &>/dev/null; then
+            _port="${_p}"
+        fi
+    fi
+
+    if [ -n "${_port}" ]; then
+        echo "${_port}"
+        return 0
+    fi
+    return 1
 }
 
 #_RECREATE_DB
