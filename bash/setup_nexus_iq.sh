@@ -567,7 +567,7 @@ function f_setup_webhook() {
 # Not so useful, but to check the result:
 #    f_api_audit    # but it contains only `"domain":"governance.evaluation.application","type":"evaluate" ... "stageId":"develop"'
 function f_setup_scm() {
-    local __doc__="Setup IQ SCM on the Organisation and app if _git_url is specified"
+    local __doc__="Setup IQ SCM on the Organisation and app if _git_url is specified. Prerequisites: https://help.sonatype.com/en/automated-pull-requests.html#prerequisites-162507"
     local _org_name="${1}"
     local _git_url="${2}" # https://github.com/sonatype/support-apac-scm-test https://github.com/hajimeo/private-repo
     local _provider="${3:-"github"}"
@@ -982,6 +982,8 @@ function f_dummy_scans() {
     done
 }
 
+#export _IQ_URL="https://nxiqha-k8s.standalone.localdomain/"
+#_CREATE_UNDER_ORG="test-org" f_dummy_scans_random
 function f_dummy_scans_random() {
     local __doc__="Generate dummy reports by scanning same target but different application"
     local _scan_target="${1}"
