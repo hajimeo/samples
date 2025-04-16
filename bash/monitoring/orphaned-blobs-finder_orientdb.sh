@@ -8,6 +8,7 @@
 _FILE_BLOB_STORE_VOL_PATH="$1" # eg. /opt/sonatype/nexus3/blobs/default/content/vol-*
 _PARALLELISM="${2:-"3"}"       # Number of parallel processes in xargs
 _ORIENT_DB_API_URL="${3:-"http://localhost:2480/command/component/sql"}"
+_MTIME="${4:-"1"}"
 ###########################################################################
 
 function f_query_db {
@@ -22,8 +23,8 @@ function f_query_db {
         return 0
     fi
     local _blob_id="$(basename "${_file_path}" ".properties")"
-    # Somehow '%' needs to be url-encoded to '%25' in the query
-    local _result_json="$(curl -sSf -u "admin:admin" -X POST "${_ORIENT_DB_API_URL}" -d "SELECT blob_ref FROM asset WHERE bucket.repository_name = '${_repo_name}' AND blob_ref like '%25@${_blob_id}' LIMIT 1")"
+    # Somehow '%' needs to be url-encoded to '%25' in the query. Without specifying repository_name, it takes twice longer.
+    local _result_json="$(curl -sSf -u "admin:admin" -X POST "${_ORIENT_DB_API_URL}" -d "SELECT blob_ref FROM asset WHERE bucket.repository_name = '${_repo_name}' AND blob_ref like '%25${_blob_id}' LIMIT 1")"
     local _rc="$?"
     if [ "${_rc}" -ne 0 ] || [ -z "${_result_json}" ]; then
         echo "[ERROR] querying the database for blob ID: ${_blob_id} failed (${_rc})" >&2
@@ -37,5 +38,5 @@ export -f f_query_db
 export _ORIENT_DB_API_URL
 
 # To avoid checking the newly created/modified files
-touch /tmp/until_$$.tmp
-find ${_FILE_BLOB_STORE_VOL_PATH%/} -maxdepth 2 -name '*.properties' -not -newer /tmp/until_$$.tmp -print0 | head -n1 | xargs -0 -I @@ -P${_PARALLELISM} bash -c 'f_query_db "@@"'
+#touch /tmp/until_$$.tmp; ... -not -newer /tmp/until_$$.tmp
+find ${_FILE_BLOB_STORE_VOL_PATH%/} -maxdepth 2 -mtime +${_MTIME} -name '*.properties' -print0 | head -n1 | xargs -0 -I @@ -P${_PARALLELISM} bash -c 'f_query_db "@@"'
