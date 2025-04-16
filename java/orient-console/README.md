@@ -60,10 +60,11 @@ orientdb {db=component}> list classes;    -- Check after importing counts to see
 echo "SQL SELECT statement" | java -DexportPath=./result.json -jar orient-console.jar <directory path|.bak file path>
 
 # Pagenation for extreamly large result set
-echo "<*SIMPLE* SELECT statement which returns so many rows>" | java -DexportPath=./result_paged.json -Dpaging=10000 -jar orient-console.jar <directory path|.bak file path>
-# If 'WARN: 'paging' is given but query may not contain '@rid as pid' happens, add `@rid as pid` to the SQL statement.
-echo "SELECT @rid as rid, * FROM asset" | java -DexportPath=./result_paged.json -Dpaging=10000 -jar orient-console.jar <directory path|.bak file path>
+echo "<*SIMPLE* SELECT statement which returns so many rows>" | java -DexportPath=./result_paged.jsonnd -Dpaging=10000 -jar orient-console.jar <directory path|.bak file path>
+# If 'WHERE' clause is used, use `@rid.asString() as rid` and `ORDER BY rid`
+echo "SELECT @rid.asString() as rid, * FROM asset WHERE aaaa=bbbb ORDER BY rid" | java -DexportPath=./result_paged.jsonnd -Dpaging=10000 -jar orient-console.jar <directory path|.bak file path>
 ```
+WARN: OrientDB 2.x does not sort with @rid even if it's specified with `ORDER BY @RID` if `WHERE` is used.
 
 ### Example of parsing the generated json file
 ```

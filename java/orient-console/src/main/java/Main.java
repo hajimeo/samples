@@ -183,10 +183,15 @@ public class Main {
             terminal.writer().println("\n[");
         }
         for (int i = 0; i < oDocs.size(); i++) {
-            if (!isPaging && i == (oDocs.size() - 1)) {
-                terminal.writer().println("  " + oDocs.get(i).toJSON(jsonFormat));
+            if (isPaging) {
+                // JSON-ND
+                terminal.writer().println(oDocs.get(i).toJSON(jsonFormat));
             } else {
-                terminal.writer().println("  " + oDocs.get(i).toJSON(jsonFormat) + ",");
+                if (i == (oDocs.size() - 1)) {
+                    terminal.writer().println("  " + oDocs.get(i).toJSON(jsonFormat));
+                } else {
+                    terminal.writer().println("  " + oDocs.get(i).toJSON(jsonFormat) + ",");
+                }
             }
             terminal.flush();
         }
@@ -251,10 +256,15 @@ public class Main {
                 bw.write("[\n");
             }
             for (int i = 0; i < oDocs.size(); i++) {
-                if (!isPaging && i == (oDocs.size() - 1)) {
-                    bw.write("  " + oDocs.get(i).toJSON(jsonFormat));
+                if (isPaging) {
+                    // JSON-ND
+                    bw.write(oDocs.get(i).toJSON(jsonFormat));
                 } else {
-                    bw.write("  " + oDocs.get(i).toJSON(jsonFormat) + ",");
+                    if (i == (oDocs.size() - 1)) {
+                        bw.write("  " + oDocs.get(i).toJSON(jsonFormat));
+                    } else {
+                        bw.write("  " + oDocs.get(i).toJSON(jsonFormat) + ",");
+                    }
                 }
                 bw.newLine();
             }
@@ -283,17 +293,29 @@ public class Main {
             try {
                 boolean isPaging = false;
                 if (paging != null && paging.trim().length() > 0 && q.toLowerCase().startsWith("select ")) {
-                    if (q.toLowerCase().contains(" order by ") || q.toLowerCase().contains(" limit ")) {
-                        log("\nERROR: 'paging' is given but query contains 'order by' or 'limit'.");
+                    if (q.toLowerCase().contains(" limit ")) {
+                        log("\nERROR: 'paging' is given but query contains 'limit'.");
                         continue;
                     }
+
                     if (!q.toLowerCase().contains(" where ")) {
-                        log("\nWARN: 'paging' is given but OrientDB 2.x pagination may not work with 'where' clause ... :(");
+                        log("\nWARN: 'paging' is given but OrientDB 2.x pagination may not work with 'where' clause.");
+                        if (q.toLowerCase().contains(" @rid.asString() ")) {
+                            log("\n      '@rid.asString() as " + ridName + "' is missing");
+                        }
+                        if (q.toLowerCase().contains(" order by " + ridName + " ")) {
+                            log("\n      'order by " + ridName + "' is missing.");
+                            continue;
+                        }
                     }
+                    else if (q.toLowerCase().contains(" order by ")) {
+                        log("\nWARN: 'paging' is given but query contains 'order by', which consume more memory and slow.");
+                    }
+
                     if (!q.toLowerCase().contains(" " + ridName + ",")) {  // TODO: should use regex
                         log("\nWARN: 'paging' is given but query may not contain '@rid as " + ridName + "'");
                     }
-                    log("\nINFO: pagination is enabled with paging size:" + paging + "");
+                    log("\nINFO: pagination is enabled with paging size:" + paging + " (Output becomes JSON-ND)");
                     isPaging = true;
                 }
 
@@ -329,6 +351,7 @@ public class Main {
                 query += " WHERE @rid > " + lastRid;
             }
             query += " LIMIT " + paging;
+            log("Paging query = " + query, isDebug);
         }
 
         //Object oDocs = db.query(new OCommandSQL(query));
@@ -371,7 +394,10 @@ public class Main {
 
             lastRows = ((List<ODocument>) oDocs).size();
             if (isPaging && lastRows > 0) {
-                lastRid = ((ODocument) ((ODocument) ((List<ODocument>) oDocs).get((lastRows - 1))).field(ridName)).getIdentity().toString();
+                // Get the last object from (List<ODocument>) oDocs
+                ODocument lastRow = ((List<ODocument>) oDocs).get((lastRows - 1));
+                lastRid = lastRow.field(ridName).toString();
+                log("lastRid = " + lastRid + ", lastRows = " + lastRows, isDebug);
             }
         }
     }
