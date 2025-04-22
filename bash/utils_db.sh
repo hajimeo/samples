@@ -101,6 +101,7 @@ function _postgresql_configure() {
     _psql_adm "ALTER SYSTEM SET min_wal_size TO '1GB'"    # Default 80MB
     _psql_adm "ALTER SYSTEM SET max_wal_size TO '4GB'"    # Default 1GB
     #_upsert ${_postgresql_conf} "max_slot_wal_keep_size" "100GB" "#max_slot_wal_keep_size"    # Default -1 and probably from v13?
+    _psql_adm "ALTER SYSTEM SET max_stack_depth TO '6MB'"    # Default 2048kB. To avoid 'stack depth limit exceeded'
     ### End of tuning ###
     _psql_adm "ALTER SYSTEM SET listen_addresses TO ''*''"
     [ -d /var/log/postgresql ] || mkdir -p -m 777 /var/log/postgresql
