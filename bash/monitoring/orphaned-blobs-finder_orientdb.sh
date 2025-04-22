@@ -1,14 +1,14 @@
 #!/usr/bin/env bash
 # HOW TO:
 #   NOTE: Start OrientDB in another terminal first: java -Dserver=true -jar ./orient-console.jar ./component
-#   bash ./dead-blobs-finder_orientdb.sh "/path/to/blob_store/content/vol-*" | tee -a ./orphaned_result.txt
+#   bash ./orphaned-blobs-finder_orientdb.sh "/path/to/blob_store/content/vol-*" | tee -a ./orphaned_result.txt
 
 ### Global variables ######################################################
 # If you would like to check par 'vol-<n>' for multi-processing, change this path
 _FILE_BLOB_STORE_VOL_PATH="$1" # eg. /opt/sonatype/nexus3/blobs/default/content/vol-*
 _PARALLELISM="${2:-"3"}"       # Number of parallel processes in xargs
 _ORIENT_DB_API_URL="${3:-"http://localhost:2480/command/component/sql"}"
-_MTIME="${4:-"1"}"
+_MTIME="${4:-"1"}"             # Do not want to check the newly created/modified files
 ###########################################################################
 
 function f_query_db {
