@@ -631,6 +631,8 @@ function t_psqlexception() {
     _test_template "$(_RG_MAX_FILESIZE="6G" _rg '^Caused by: org\.postgresql\.util\.PSQLException.+' -o -g "${_LOG_GLOB}" -g '*.log.gz' -g '\!jvm.log' -g '\!audit*log*'| sort | uniq -c | sort -nr | rg '^\s*\d\d+')" "WARN" "Many 'PSQLException' detected from ${_LOG_GLOB}"
 }
 function t_fips() {
+    # TODO: fips (if Windows HKEY_LOCAL_MACHINE\\SYSTEM\\CurrentControlSet\\Control\\Lsa\\FIPSAlgorithmPolicy)
+    #cat /proc/sys/crypto/fips_enabled
     _test_template "$(_rg -m1 '(KeyStore must be from provider SunPKCS11-NSS-FIPS|PBE AlgorithmParameters not available)' -g "${_LOG_GLOB}")" "WARN" "FIPS mode might be detected from ${_LOG_GLOB}" "-Dcom.redhat.fips=false"
 }
 function t_errors() {

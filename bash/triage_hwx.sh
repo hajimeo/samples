@@ -125,7 +125,8 @@ function f_check_system() {
     #sysctl -a &> ${_work_dir%/}/sysctl.out
     # file-max is OS limit (Too many open files)
     sysctl kernel.pid_max fs.file-max fs.file-nr kernel.threads-max vm.overcommit_memory vm.overcommit_ratio vm.swappiness vm.max_map_count &> ${_work_dir%/}/sysctl_various_limits.out
-    sysctl -a | grep fips &> ${_work_dir%/}/sysctl_rhel_fips.out
+    # fips (if Windows HKEY_LOCAL_MACHINE\\SYSTEM\\CurrentControlSet\\Control\\Lsa\\FIPSAlgorithmPolicy)
+    sysctl crypto.fips_enabled &> ${_work_dir%/}/sysctl_rhel_fips.out
     #sar -A &> ${_work_dir%/}/sar_A.out
     env &> ${_work_dir%/}/env.out  # to check PATH, LD_LIBRARY_PATH, JAVA_HOME, CLASSPATH
     wait

@@ -260,8 +260,9 @@ function miscChecks() {
     # disk / mount (nfs options)
     df -Th
     cat /proc/mounts
-    # selinux / fips
+    # selinux
     sestatus
+    # fips (if Windows HKEY_LOCAL_MACHINE\\SYSTEM\\CurrentControlSet\\Control\\Lsa\\FIPSAlgorithmPolicy)
     sysctl crypto.fips_enabled
     # is this k8s?
     cat /var/run/secrets/kubernetes.io/serviceaccount/namespace
