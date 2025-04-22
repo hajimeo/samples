@@ -170,20 +170,30 @@ function f_install_nexus3() {
     local _tgz_ver="${_ver}"
     [[ "${_ver}" =~ ^3\.[0-9]+\.[0-9]+$ ]] && _tgz_ver="${_ver}-*"
     local _os="unix"
-    [ "$(uname -s)" == "Darwin" ] && _os="mac"
     local _arch="$(uname -m)"
-    local _tgz_name="nexus-${_tgz_ver}-${_os}.tar.gz"
+    local _ext="tar.gz"
+    if [ "$(uname -s)" == "Darwin" ]; then
+        _os="mac"
+        if [[ ! "${_ver}" =~ ^3\.(7[89]|[89]).* ]]; then
+            _ext="tgz"
+        fi
+    fi
+    local _tgz_name="nexus-${_tgz_ver}-${_os}.${_ext}"
     if [[ "${_ver}" =~ ^3\.(79\.[1-9]|[89][0-9]\.|[1-9][0-9][0-9]).* ]]; then
         # From version 3.79.1, nexus-3.79.1-04-linux-aarch_64.tar.gz
         [ "$(uname -s)" == "Linux" ] && _os="linux"
         [ "${_arch}" = "x86_64" ] && _arch="x86_64"
         [ "${_arch}" = "arm64" ] && _arch="aarch_64"
-        _tgz_name="nexus-${_tgz_ver}-${_os}-${_arch}.tar.gz"
+        _tgz_name="nexus-${_tgz_ver}-${_os}-${_arch}.${_ext}"
     elif [[ "${_ver}" =~ ^3\.(78|79\.0).* ]]; then
         # From version 3.78 and until 3.79.0, nexus-unix-x86-64-3.78.0-14.tar.gz
         [ "${_arch}" = "x86_64" ] && _arch="x86-64"
         [ "${_arch}" = "arm64" ] && _arch="aarch64"
-        _tgz_name="nexus-${_os}-${_arch}-${_tgz_ver}.tar.gz"
+        _tgz_name="nexus-${_os}-${_arch}-${_tgz_ver}.${_ext}"
+    elif [[ "${_ver}" =~ ^3\.70\..* ]]; then
+        # 3.70.x offers java8 and java11, so using java8, also if macOS, tgz...
+        #https://download.sonatype.com/nexus/3/nexus-3.70.4-02-java8-mac.tgz
+        _tgz_name="nexus-${_tgz_ver}-java8-${_os}.${_ext}"
     fi
     # download-staging.sonatype.com
     _prepare_install "${_dirpath}" "https://download.sonatype.com/nexus/${_ver%%.*}/${_tgz_name}" "${r_NEXUS_LICENSE_FILE}" || return $?
