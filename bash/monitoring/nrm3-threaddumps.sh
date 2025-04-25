@@ -123,18 +123,21 @@ function setGlobals() { # Best effort. may not return accurate dir path
     local __doc__="Populate PID and directory path global variables etc."
     local _pid="${1:-"${_PID}"}"
     if [ -z "${_pid}" ]; then
-        _pid="$(ps auxwww | grep -F 'org.sonatype.nexus.karaf.NexusMain' | grep -vw grep | awk '{print $2}' | tail -n1)"
+        _pid="$(ps auxwww | grep -w -e 'NexusMain' -e 'sonatype-nexus-repository' | grep -vw grep | awk '{print $2}' | tail -n1)"
         _PID="${_pid}"
         [ -z "${_pid}" ] && return 1
     fi
     if [ ! -d "${_INSTALL_DIR}" ]; then
         if [ -n "${_pid}" ]; then
-            _INSTALL_DIR="$(ps wwwp ${_pid} | sed -n -E '/org.sonatype.nexus.karaf.NexusMain/ s/.+-Dexe4j.moduleName=([^ ]+)\/bin\/nexus .+/\1/p' | head -1)"
+            _INSTALL_DIR="$(ps wwwp ${_pid} | sed -n -E 's/.+-Dexe4j.moduleName=([^ ]+)\/bin\/nexus .+/\1/p' | head -1)"
+            if [ -z "${_INSTALL_DIR}" ]; then
+                _INSTALL_DIR="$(ps wwwp ${_pid} | sed -n -E 's/.+-jar ([^ ]+)\/bin\/sonatype-nexus-repository-.+/\1/p' | head -1)"
+            fi
         fi
         [ -d "${_INSTALL_DIR}" ] || return 1
     fi
     if [ ! -d "${_WORK_DIR}" ] && [ -d "${_INSTALL_DIR%/}" ]; then
-        _WORK_DIR="$(ps wwwp ${_pid} | sed -n -E '/org.sonatype.nexus.karaf.NexusMain/ s/.+-Dkaraf.data=([^ ]+) .+/\1/p' | head -n1)"
+        _WORK_DIR="$(ps wwwp ${_pid} | sed -n -E 's/.+-Dkaraf.data=([^ ]+) .+/\1/p' | head -n1)"
         [[ ! "${_WORK_DIR}" =~ ^/ ]] && _WORK_DIR="${_INSTALL_DIR%/}/${_WORK_DIR}"
         [ -d "${_WORK_DIR}" ] || return 1
     fi
