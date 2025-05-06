@@ -172,7 +172,8 @@ function nxrmStart() {
     local _cfg_file="${_sonatype_work%/}/etc/nexus.properties"
     if [ -n "${_nexus_vmopt}" ]; then   # This means NXRM3
         # To avoid 'Caused by: java.lang.IllegalStateException: Insufficient configured threads' https://support.sonatype.com/hc/en-us/articles/360000744687-Understanding-Eclipse-Jetty-9-4-Thread-Allocation#ReservedThreadExecutor
-        grep -qE -- '^\s*-XX:ActiveProcessorCount=' "${_nexus_vmopt}" || echo "-XX:ActiveProcessorCount=2" >> "${_nexus_vmopt}"
+        # Append only when not set (if commented, not adding)
+        grep -qE -- '^\s*#?-XX:ActiveProcessorCount=' "${_nexus_vmopt}" || echo "-XX:ActiveProcessorCount=2" >> "${_nexus_vmopt}"
 
         #nexus.licenseFile=/var/tmp/share/sonatype/sonatype-*.lic
         if [ ! -d "${_sonatype_work%/}/etc" ]; then
@@ -297,6 +298,7 @@ function _updateNexusProps() {
     # NOTE: this would not work if elasticsearch directory is empty
     #       or if upgraded from older than 3.39 due to https://sonatype.atlassian.net/browse/NEXUS-31285
     grep -qE '^#?nexus.elasticsearch.autoRebuild' "${_cfg_file}" || echo "nexus.elasticsearch.autoRebuild=false" >> "${_cfg_file}"
+    grep -qE '^#?nexus.search.updateIndexesOnStartup.enabled' "${_cfg_file}" || echo "nexus.search.updateIndexesOnStartup.enabled=false" >> "${_cfg_file}"
     grep -qE '^#?nexus.assetBlobCleanupTask.blobCreatedDelayMinute' "${_cfg_file}" || echo "nexus.assetBlobCleanupTask.blobCreatedDelayMinute=0" >> "${_cfg_file}"
     grep -qE '^#?nexus.malware.risk.enabled' "${_cfg_file}" || echo "nexus.malware.risk.enabled=false" >> "${_cfg_file}"
     grep -qE '^#?nexus.malware.risk.on.disk.enabled' "${_cfg_file}" || echo "nexus.malware.risk.on.disk.enabled=false" >> "${_cfg_file}"
@@ -308,6 +310,11 @@ function _updateNexusProps() {
     # For OrientDB studio (hostname:2480/studio/index.html) (removed)
     #grep -qE '^#?nexus.orient.httpListenerEnabled' "${_cfg_file}" || echo "nexus.orient.httpListenerEnabled=true" >> "${_cfg_file}"
     #grep -qE '^#?nexus.orient.dynamicPlugins' "${_cfg_file}" || echo "nexus.orient.dynamicPlugins=true" >> "${_cfg_file}"
+
+    if grep -q "^nexus.datastore.clustered.enabled=true" ${_cfg_file}; then
+        echo "WARN: nexus.datastore.clustered.enabled=true is set, so not changing the port from ${_current_port}" >&2
+        return 0
+    fi
 
     # If no port specified, checking if the default port 8081 is available
     # If the port is specified and if it's not available, starting this Nexus should fail.
