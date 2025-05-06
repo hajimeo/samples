@@ -76,7 +76,7 @@ function f_check_system() {
     timeout 3 time head -n 1 /dev/./urandom &> ${_work_dir%/}/random.out
     echo '-' 2>&1 >> ${_work_dir%/}/random.out
     timeout 3 time head -n 1 /dev/random 2>&1 >> ${_work_dir%/}/random.out
-    lslocks -u > ${_work_dir%/}/lslocks.out    # file system lock (/proc/locks)
+    lslocks -u > ${_work_dir%/}/lslocks.out    # if no lslock check /proc/locks and find / -inum {inode}
     cat /sys/fs/cgroup/cpuset/cpuset.cpus &> ${_work_dir%/}/cpuset.cpus.out # for kubernetes pod / docker container
 
     #top -b -n1 -c -o +%MEM  # '+' (default) for reverse order (opposite of 'ps')

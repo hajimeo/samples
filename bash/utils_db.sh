@@ -177,6 +177,19 @@ function _postgresql_configure() {
     if ${_restart} || ! ${_psql_as_admin} -d template1 -c "SELECT pg_reload_conf();"; then
         _log "INFO" "Updated postgresql config. Please restart or reload the service."
     fi
+
+    # TODO: how to change TOAST_TUPLE_THRESHOLD?
+    #   select relname from pg_class where oid = (select reltoastrelid from pg_class where relname = 'docker_asset');
+    #   select * from pg_toast.pg_toast_10970215;
+    # TODO: tcp keepalives (defaults are all 0 = uses the OS defaults)
+    #   tcp_keepalives_idle, tcp_keepalives_interval, tcp_keepalives_count
+    #    sudo sysctl -a | grep keepalive
+    #    net.ipv4.tcp_keepalive_intvl = 75
+    #    net.ipv4.tcp_keepalive_probes = 9
+    #    net.ipv4.tcp_keepalive_time = 7200
+    #
+    # Misc. note: an example statement to create an index on a JSONB column:
+    #   CREATE INDEX idx_docker_asset_content_digest ON docker_asset ((attributes->'docker'->>'content_digest'));
 }
 
 function _postresql_replication_common() {

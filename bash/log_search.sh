@@ -1069,17 +1069,27 @@ function f_splitNetstats() {
 #HTML_REMOVE=Y EXCL_REGEX="^\d\d\d\d-\d\d-\d\dT\d\d:\d\d:\d\d\.\d+" echolines "./sonatype-work/nexus3/log/jvm.log" "^\d\d\d\d-\d\d-\d\d \d\d:\d\d:\d\d$" "(^\s+(class space|Metaspace).+)" > "./threads.txt"
 function f_jvmlog2threads() {
     local _files="${1:-"./jvm.log"}"
-    local _save_to="${2:-"./thread_dumps"}"
+    local _save_to="${2-"./thread_dumps"}"
     local _end_regex="$3"
     local _from_regex="$4"
     [ -z "${_from_regex}" ] && _from_regex="^\d\d\d\d-\d\d-\d\d \d\d:\d\d:\d\d$"
     [ -z "${_end_regex}" ] && _end_regex="(^\s+class space.+|^\s+Metaspace\s+.+)"
-    if [ "$(ls -A "${_save_to}" 2>/dev/null)" ]; then
+    if [ -n "${_save_to}" ] && [ "$(ls -A "${_save_to}" 2>/dev/null)" ]; then
         echo "${_save_to} is not empty"
         return 1
     fi
-    HTML_REMOVE=Y EXCL_REGEX="^\d\d\d\d-\d\d-\d\dT\d\d:\d\d:\d\d\.\d+" echolines "${_files}" "${_from_regex}" "${_end_regex}" "${_save_to}" || return $?
-    echo "_THREAD_FILE_GLOB=\"0*.out\" f_threads \"${_save_to}\""
+    if [ -z "${_save_to}" ] && [ -s "./threads.txt" ]; then
+        echo "./threads.txt is not empty"
+        return 1
+    fi
+
+    local _cmd="HTML_REMOVE=Y EXCL_REGEX=\"^\d\d\d\d-\d\d-\d\dT\d\d:\d\d:\d\d\.\d+\" echolines \"${_files}\" \"${_from_regex}\" \"${_end_regex}\""
+    if [ -z "${_save_to}" ]; then
+        eval "${_cmd} > ./threads.txt" || return $?
+    else
+        eval "${_cmd} \"${_save_to}\"" || return $?
+        echo "_THREAD_FILE_GLOB=\"0*.out\" f_threads \"${_save_to}\""
+    fi
 }
 
 function f_wrapper2threads() {
@@ -1400,7 +1410,7 @@ function f_analyse_multiple_dumps() {
     done | sort -t":" -k1,1 -k2,2r
     echo " "
 
-    echo "### May also want to use:
+    echo "### May also want to use the below (need double-quotes):
      f_splitTopNetstat \"./tops_netstats.txt\"
      f_check_topH \"top_netstat/top_0*\"
      f_check_netstat \"top_netstat/netstat_0*\""

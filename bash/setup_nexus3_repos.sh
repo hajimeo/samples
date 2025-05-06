@@ -114,7 +114,7 @@ _RESP_FILE=""
 
 ### Nexus installation functions ##############################################################################
 # To re-install: _RECREATE_ALL=Y f_install_nexus3 "<version>" "<dbname>"
-# To install HA instances (port is automatic): _NEXUS_ENABLE_HA=Y f_install_nexus3 "" "nxrm3740ha"
+# To install HA instances (port is automatic): _NEXUS_ENABLE_HA=Y f_install_nexus3 "" "nxrmlatestha"
 # To upgrade (from ${_dirpath}/): tar -xvf $HOME/.nexus_executable_cache/nexus-mac-aarch64-3.79.0-09.tar.gz
 function f_install_nexus3() {
     local __doc__="Install specific NXRM3 version (to recreate sonatype-work and DB, _RECREATE_ALL=Y)"
@@ -224,6 +224,7 @@ function f_install_nexus3() {
     _upsert "${_prop}" "nexus.scripts.allowCreation" "true" || return $?
     if ! _isYes "${_NEXUS_NO_AUTO_TASKS:-"${r_NEXUS_NO_AUTO_TASKS}"}"; then
         _upsert "${_prop}" "nexus.elasticsearch.autoRebuild" "false" || return $?
+        _upsert "${_prop}" "nexus.search.updateIndexesOnStartup.enabled" "false" || return $?
         _upsert "${_prop}" "nexus.browse.component.tree.automaticRebuild" "false" || return $?
     fi
 
@@ -371,7 +372,6 @@ function f_setup_pypi() {
     _ASYNC_CURL="Y" f_get_asset "${_prefix}-proxy" "packages/unit/0.2.2/Unit-0.2.2.tar.gz"
     # NOTE: https://pypi.org/project/python-policy-demo/#history
     #for i in {1..3}; do f_get_asset "pypi-proxy" "packages/python_policy_demo/1.$i.0/python_policy_demo-1.$i.0-py3-none-any.whl"; done
-
 
     # If no xxxx-hosted, create it
     if ! _is_repo_available "${_prefix}-hosted"; then
@@ -3492,12 +3492,12 @@ function f_delete_all_assets() {
 }
 
 # 1. Create a new raw-test-hosted repo from Web UI (or API)
-#   f_api "/service/rest/v1/repositories/raw/hosted" '{"name":"raw-hosted","online":true,"storage":{"blobStoreName":"default","strictContentTypeValidation":false,"writePolicy":"ALLOW"}}'
+#   f_setup_raw
 #   f_api "/service/rest/v1/repositories/raw/hosted" '{"name":"raw-test-hosted","online":true,"storage":{"blobStoreName":"default","strictContentTypeValidation":false,"writePolicy":"ALLOW"}}'
 # 2. curl -D- -u "admin:admin123" -T<(echo "test for f_staging_move") -L -k "${_NEXUS_URL%/}/repository/raw-hosted/test/nxrm3Staging.txt"
 # 3. f_associate_tag "repository=raw-hosted" "raw-test-tag"
 #    f_staging_move "raw-test-hosted" "raw-test-tag"
-#  Or
+#  Or without tag but search query:
 #    f_staging_move "raw-test-hosted" "raw-test-tag" "repository=raw-hosted&name=*test/nxrm3Staging*.txt"
 #    NOTE: Tag is optional. Using "*" in 'name=' as name|path in NewDB starts with "/"
 # 4. f_staging_move "raw-hosted" "raw-test-tag" "repository=raw-test-hosted&name=*test/nxrm3Staging*.txt"
@@ -3764,27 +3764,43 @@ function f_restore_postgresql_component() {
 #f_psql "SELECT blob_ref FROM %FMT%_asset_blob"
 #f_psql "SELECT attributes FROM %FMT%_content_repository WHERE attributes is not null and attributes <> '{}'"
 #f_psql "UPDATE %FMT%_content_repository SET attributes = '{}'::jsonb WHERE attributes is not null and attributes <> '{}'"
+#f_psql "SELECT r.repo_name, sc.namespace, sc.search_component_name, sc.version, sc.last_modified, sc.tags FROM search_components sc JOIN r USING (repository_id) ORDER BY last_modified DESC"
 function f_psql() {
     local __doc__="Query against all assets or components by using nexus-store.properties"
     local _query="${1}" # Use '%FMT%'
     local _workingDirectory="${2:-"."}"
     local _dry_run="${3:-"${_DRY_RUN}"}"
-    local _psql_opts="${4:-"${_PSQL_OPTS:-"-tA"}"}"
+    local _psql_opts="${4-"${_PSQL_OPTS}"}" # -tAF,
     local _prop="$(find "${_workingDirectory%/}" -maxdepth 5 -name nexus-store.properties -path '*/etc/fabric/*' | head -n1)"
     _export_postgres_config "${_prop}" || return $?
     local _cmd="psql -h ${_DBHOST} -p ${_DBPORT:-"5432"} -U ${_DBUSER} -d ${_DBNAME}"
     if [ -z "${_query}" ]; then
+        # If no query, start the psql console
         ${_cmd}
         return $?
     fi
-    ${_cmd} -tA -c "SELECT distinct REGEXP_REPLACE(recipe_name, '-.+', '') AS fmt FROM repository" | while read -r _fmt; do
-        local _q="$(echo "${_query}" | sed "s/%FMT%/${_fmt}/g")"
-        echo "# ${_q}" >&2
-        if [[ "${_dry_run}" =~ ^[yY] ]]; then
-            continue
+
+    if [[ "${_query}" =~ %FMT% ]]; then
+        ${_cmd} -tA -c "SELECT distinct REGEXP_REPLACE(recipe_name, '-.+', '') AS fmt FROM repository ORDER BY fmt" | while read -r _fmt; do
+            local _q="$(echo "${_query}" | sed "s/%FMT%/${_fmt}/g")"
+            echo "# ${_q}" >&2
+            if [[ "${_dry_run}" =~ ^[yY] ]]; then
+                continue
+            fi
+            ${_cmd} ${_psql_opts} -c "${_q}" || return $?
+        done
+        return
+    fi
+
+    local _q_cte=""
+    for _fmt in $(psql -d nxrm3772ha -tA -c "SELECT distinct REGEXP_REPLACE(recipe_name, '-.+', '') AS fmt FROM repository ORDER BY fmt"); do
+        if [ -n "${_q_cte}" ]; then
+            _q_cte="${_q_cte} UNION ALL "
         fi
-        ${_cmd} ${_psql_opts} -c "${_q}" || return $?
+        _q_cte="${_q_cte}SELECT r.name as repo_name, cr.repository_id FROM ${_fmt}_content_repository cr join repository r on r.id = cr.config_repository_id"
     done
+    ${_cmd} ${_psql_opts} -c "WITH r AS (${_q_cte}) ${_query}"
+    return $?
 }
 
 

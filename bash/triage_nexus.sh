@@ -384,9 +384,10 @@ function f_mount_file() {
 
 function f_count_dirs() {
     local __doc__="sometimes having many files in a dir causes performance issue, so finding number of objects per directory"
-    local _dir="$1"
-    # ls -f is better than ls -1 for this purpose
-    find ${_dir%/} -type d -exec sh -c 'echo "$(ls -f {} | wc -l)\t{}"' \;    #\t$(date +"%H:%M:%S") # this is for checking performance
+    local _dir="${1:-"."}"
+    local _parallel="${2:-"3"}"
+    local _find="$(type gfind &>/dev/null && echo "gfind" || echo "find")"
+    find ${_dir%/} -type d -print0 | xargs -0 -P${_parallel} -I@@ sh -c "${_find} @@ -mindepth 1 -maxdepth 1 -type f -printf '%s\n' | awk '{ c+=1;s+=\$1 }; END { print \"Dir=@@, count=\"c\", size=\"s\"\" }'"
 }
 
 #find /opt/sonatype/sonatype-work/clm-server/report -mindepth 2 -maxdepth 2 -type d -print | while read -r _p; do grep -qw totalArtifactCount ${_p}/report.cache/summary.json || echo "${_p}/report.cache/summary.json: No totalArtifactCount"; done

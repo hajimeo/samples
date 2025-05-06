@@ -88,7 +88,7 @@ EOF
 function f_setup_scala() {
     local _ver="${1:-2.12.3}"
     local _extract_dir="${2:-"${_JAVA_DIR}"}"
-    local _inst_dir="${3:-/usr/local/scala}"
+    local _inst_dir="${3:-"/usr/local/opt/scala"}"
 
     if [ -d "$SCALA_HOME" ]; then
         echo "SCALA_HOME is already set so that skipping setup."
@@ -112,7 +112,7 @@ function f_setup_scala() {
 function f_setup_groovy() {
     local _ver="${1:-"2.4.17"}"   # TODO: This version is no longer default for NXRM3
     local _extract_dir="${2:-"${_JAVA_DIR}"}"
-    local _inst_dir="${3:-"/usr/local/groovy"}"
+    local _inst_dir="${3:-"/usr/local/opt/groovy"}"
 
     if [ -d "$GROOVY_HOME" ]; then
         echo "GROOVY_HOME is already set so that skipping setup."
@@ -134,9 +134,9 @@ function f_setup_groovy() {
 }
 
 function f_setup_spring_cli() {
-    local _ver="${1:-2.2.2}"
+    local _ver="${1:-"2.2.2"}"
     local _extract_dir="${2:-"${_JAVA_DIR}"}"
-    local _inst_dir="${3:-/usr/local/spring-boot-cli}"
+    local _inst_dir="${3:-"/usr/local/opt/spring-boot-cli"}"
 
     if [ -d "$SPRING_CLI_HOME" ]; then
         echo "SPRING_CLI_HOME is already set so that skipping setup."
