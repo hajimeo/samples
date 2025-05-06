@@ -43,7 +43,7 @@ namespaces:
 statefulset:
   name: nxrm-statefulset
   serviceName: nxrm-statefulset-service
-  replicaCount: 1
+  replicaCount: 2
   hostAliases:
    - ip: "192.168.4.31"
      hostnames:
@@ -94,11 +94,11 @@ statefulset:
     resources:
       # See help documentation, these are minimum system requirements
       requests:
-        cpu: 2
-        memory: '4Gi'
+        cpu: 1
+        memory: '3Gi'
       limits:
-        cpu: 2
-        memory: '4Gi'
+        cpu: 1
+        memory: '3Gi'
     containerPort: 8081
     pullPolicy: Always
     terminationGracePeriod: 120
