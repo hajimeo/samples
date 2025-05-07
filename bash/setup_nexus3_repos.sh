@@ -1503,18 +1503,25 @@ function f_create_s3_blobstore() {
         _prefix="${_prefix#/}"
         _prefix="${_prefix%/}/"
     fi
-    # NOTE 3.27 has ',"state":""'
-    # TODO: replace with /v1/blobstores/s3 POST
-    if ! _apiS '{"action":"coreui_Blobstore","method":"create","data":[{"type":"S3","name":"'${_bs_name}'","isQuotaEnabled":false,"property_region":"'${_region}'","property_bucket":"'${_bucket}'","property_prefix":"'${_prefix%/}'","property_expiration":1,"authEnabled":true,"property_accessKeyId":"'${_ak}'","property_secretAccessKey":"'${_sk}'","property_assumeRole":"","property_sessionToken":"","encryptionSettingsEnabled":false,"advancedConnectionSettingsEnabled":false,"attributes":{"s3":{"region":"'${_region}'","bucket":"'${_bucket}'","prefix":"'${_prefix%/}'","expiration":"2","accessKeyId":"'${_ak}'","secretAccessKey":"'${_sk}'","assumeRole":"","sessionToken":""}}}],"type":"rpc"}' > ${_TMP%/}/f_apiS_last.out; then
-        _log "ERROR" "Failed to create blobstore: ${_bs_name} ."
-        _log "ERROR" "$(cat ${_TMP%/}/f_apiS_last.out)"
-        return 1
+    # NOTE: 3.27 has ',"state":""'
+    #       From 3.80 'coreui_Blobstore' may not work
+    if ! f_api "/service/rest/v1/blobstores/s3" '{"name":"'${_bs_name}'","bucketConfiguration":{"bucket":{"region":"'${_region}'","prefix":"Hajimes-MacBook-Pro-2_s3-test","name":"'${_bucket}'"},"bucketSecurity":{"secretAccessKey":"'${_sk}'","accessKeyId":"'${_ak}'"},"encryption":null,"advancedBucketConnection":{"endpoint":"","forcePathStyle":false},"failoverBuckets":[],"activeRegion":null}}' > ${_TMP%/}/f_api_last.out; then
+        if ! _apiS '{"action":"coreui_Blobstore","method":"create","data":[{"type":"S3","name":"'${_bs_name}'","isQuotaEnabled":false,"property_region":"'${_region}'","property_bucket":"'${_bucket}'","property_prefix":"'${_prefix%/}'","property_expiration":1,"authEnabled":true,"property_accessKeyId":"'${_ak}'","property_secretAccessKey":"'${_sk}'","property_assumeRole":"","property_sessionToken":"","encryptionSettingsEnabled":false,"advancedConnectionSettingsEnabled":false,"attributes":{"s3":{"region":"'${_region}'","bucket":"'${_bucket}'","prefix":"'${_prefix%/}'","expiration":"2","accessKeyId":"'${_ak}'","secretAccessKey":"'${_sk}'","assumeRole":"","sessionToken":""}}}],"type":"rpc"}' > ${_TMP%/}/f_apiS_last.out; then
+            _log "ERROR" "Failed to create blobstore: ${_bs_name} ."
+            _log "ERROR" "$(cat ${_TMP%/}/f_api_last.out)"
+            _log "ERROR" "$(cat ${_TMP%/}/f_apiS_last.out)"
+            return 1
+        fi
     fi
     _log "DEBUG" "$(cat ${_TMP%/}/f_apiS_last.out)"
     if [[ ! "${_NO_REPO_CREATE}" =~ [yY] ]] && ! _is_repo_available "raw-s3-hosted"; then
         # Not sure why but the file created by `dd` doesn't work if strictContentTypeValidation is true
         _apiS '{"action":"coreui_Repository","method":"create","data":[{"attributes":{"storage":{"blobStoreName":"'${_bs_name}'","writePolicy":"ALLOW","strictContentTypeValidation":false'$(_get_extra_sto_opt)'},"cleanup":{"policyName":[]}},"name":"raw-s3-hosted","format":"","type":"","url":"","online":true,"recipe":"raw-hosted"}],"type":"rpc"}' || return $?
-        _log "INFO" "Created raw-s3-hosted"
+        if ! _is_repo_available "raw-s3-hosted"; then
+            _log "WARN" "Failed to create raw-s3-hosted"
+        else
+            _log "INFO" "Created raw-s3-hosted"
+        fi
     fi
     _log "INFO" "AWS CLI command examples (not AWS_REGION may matter):
 aws s3api get-bucket-acl --bucket ${_bucket}
@@ -1805,7 +1812,7 @@ function _apiS() {
     [ -z "${_method}" ] && _method="GET"
 
     # Mac's /tmp is symlink so without the ending "/", would needs -L but does not work with -delete
-    find -L ${_TMP%/} -maxdepth 1 -type f -name '.nxrm_c_*' -mmin +1 -delete 2>/dev/null
+    find -L ${_TMP%/} -maxdepth 1 -type f -name '.nxrm_c_*' -mmin +1 -exec rm {} \; 2>/dev/null
     local _c="${_TMP%/}/.nxrm_c_$$"
     if [ ! -s ${_c} ]; then
         curl -sf -D ${_TMP%/}/_apiS_header_$$.out -b ${_c} -c ${_c} -o ${_TMP%/}/_apiS_$$.out -k "${_nexus_url%/}/service/rapture/session" -d "${_user_pwd}"
@@ -3488,7 +3495,7 @@ function f_delete_all_assets() {
         fi
     done | xargs -I{} -P${_parallel} curl -sf -u "${_usr}:${_pwd}" -w '%{http_code} {} (%{time_total}s)\n' -X DELETE -L -k "${_nexus_url%/}{}"
     # To make this function faster, not using f_api "/service/rest/v1/assets/${BASH_REMATCH[1]}" "" "DELETE" (but now can't stop at the first error...)
-    _log "INFO" "Deleted ${_line_num} assets. 'Cleanup unused <format> blobs from <datastore> task' (assetBlob.cleanup) may need to be run."
+    _log "INFO" "Deleted ${_line_num} assets. 'After waiting for 'nexus.assetBlobCleanupTask.blobCreatedDelayMinute', Cleanup unused <format> blobs from <datastore> task' (f_run_tasks_by_type \"assetBlob.cleanup\") needs to be run."
 }
 
 # 1. Create a new raw-test-hosted repo from Web UI (or API)
@@ -3989,7 +3996,7 @@ function _is_repo_available() {
     local _repo_name="$1"
     local _nexus_url="${2:-"${r_NEXUS_URL:-"${_NEXUS_URL}"}"}"
     # At this moment, not always checking
-    find -L ${_TMP%/} -type f -name '_does_repo_exist*.out' -mmin +5 -delete 2>/dev/null
+    find -L ${_TMP%/} -type f -name '_does_repo_exist*.out' -mmin +5 --exec rm {} \; 2>/dev/null
     if [ ! -s ${_TMP%/}/_does_repo_exist$$.out ]; then
         _NEXUS_URL="${_nexus_url}" f_api "/service/rest/v1/repositories" | grep '"name":' > ${_TMP%/}/_does_repo_exist$$.out
     fi
@@ -4005,7 +4012,7 @@ function _is_blob_available() {
     local _bs_name="$1"
     local _nexus_url="${2:-"${r_NEXUS_URL:-"${_NEXUS_URL}"}"}"
     # At this moment, not always checking
-    find -L ${_TMP%/} -type f -name '_does_blob_exist*.out' -mmin +5 -delete 2>/dev/null
+    find -L ${_TMP%/} -type f -name '_does_blob_exist*.out' -mmin +5 -exec rm {} \; 2>/dev/null
     if [ ! -s ${_TMP%/}/_does_blob_exist$$.out ]; then
         _NEXUS_URL="${_nexus_url}" f_api "/service/rest/beta/blobstores" | grep '"name":' > ${_TMP%/}/_does_blob_exist$$.out
     fi
