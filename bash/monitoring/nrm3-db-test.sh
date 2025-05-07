@@ -27,7 +27,7 @@ _GROOVY_CLASSPATH=""
 
 function genDbConnTest() {
     local __doc__="Generate a DB connection script file"
-    local _dbConnFile="${1}"
+    local _dbConnFile="${1:-"${_DB_CONN_TEST_FILE:-"${_WORK_DIR%/}/tmp/DbConnTest.groovy"}"}"
     cat <<'EOF' >"${_dbConnFile}"
 import org.postgresql.*
 import groovy.sql.Sql
