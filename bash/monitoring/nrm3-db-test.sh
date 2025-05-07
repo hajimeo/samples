@@ -172,7 +172,7 @@ function setGlobals() { # Best effort. may not return accurate dir path
             _INSTALL_DIR="$(ps wwwp ${_pid} | sed -n -E 's/.+-Dexe4j.moduleName=([^ ]+)\/bin\/nexus .+/\1/p' | head -1)"
             if [ -z "${_INSTALL_DIR}" ]; then
                 # from 3.80+, this could be `-(jar|classpath) /path/to/sonatype-nexus-repository-{ver}.jar`
-                _INSTALL_DIR="$(ps wwwp ${_pid} | sed -n -E 's/.+ ([^ ]+)\/bin\/sonatype-nexus-repository\-[0-9.]+\-[0-9]+\.jar/\1/p' | head -1)"
+                _INSTALL_DIR="$(ps wwwp ${_pid} | sed -n -E 's/.+ ([^ ]+)\/bin\/sonatype-nexus-repository\-[0-9.]+\-[0-9]+\.jar.*/\1/p' | head -1)"
             fi
         fi
         [ -d "${_INSTALL_DIR}" ] || return 1
