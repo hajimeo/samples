@@ -22,6 +22,7 @@ EOF
 : "${_INSTALL_DIR:=""}"
 : "${_WORK_DIR:=""}"
 : "${_LIB_EXTRACT_DIR:=""}"
+: "${_QUERY_TIMEOUT_SEC:="180"}"
 : "${_TMP:="/tmp"}"     # in case /tmp is read-only
 _STORE_FILE=""
 _DB_CONN_TEST_FILE=""
@@ -160,7 +161,7 @@ function runDbQuery() {
     local __doc__="Run a query against DB connection specified in the _storeProp"
     local _query="$1"
     local _storeProp="${2:-"${_STORE_FILE}"}"
-    local _timeout="${3:-"30"}"
+    local _timeout="${3:-"${_QUERY_TIMEOUT_SEC:-"180"}"}"
     local _installDir="${4:-"${_INSTALL_DIR}"}"
     local _workDir="${5:-"${_WORK_DIR}"}"
     local _dbConnFile="${6:-"${_DB_CONN_TEST_FILE:-"${_workDir%/}/tmp/DbConnTest.groovy"}"}"
