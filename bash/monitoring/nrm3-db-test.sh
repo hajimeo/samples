@@ -23,6 +23,7 @@ _STORE_FILE=""
 _DB_CONN_TEST_FILE=""
 _PID=""
 _GROOVY_CLASSPATH=""
+_GROOVY_JAR=""
 # Also username, password, jdbcUrl
 
 function genDbConnTest() {
@@ -72,40 +73,83 @@ try {
 EOF
 }
 
-function prepareLibForSingleJar() {
-    local __doc__="Prepare the lib directory for single jar"
-    local _single_jar="${1}"
-    local _lib_extract_dir="${2:-"${_LIB_EXTRACT_DIR:-"${_WORK_DIR%/}/tmp"}"}"
-    if [ ! -s "${_single_jar}" ]; then
-        echo "ERROR:No single jar file provided." >&2
-        return 1
-    fi
-    if ! type unzip >/dev/null 2>&1; then
-        echo "ERROR:unzip not found, please install it." >&2
-        return 1
-    fi
-    local _groovy_ver="$(unzip -l "${_single_jar}" | sed -n -E 's/.+ BOOT-INF\/lib\/groovy-(3\..+)\.jar/\1/p')"
-    if [ -z "${_groovy_ver}" ]; then
-        echo "ERROR:No groovy jar file found in ${_single_jar}." >&2
-        return 1
-    fi
-    if [ -s "${_lib_extract_dir%/}/BOOT-INF/lib/groovy-${_groovy_ver}.jar" ]; then
-        # Assuming all good
+function prepareLibs() {
+    local __doc__="Prepare the library jars for groovy"
+    local _installDir="${1:-"${_INSTALL_DIR}"}"
+    local _workDir="${2:-"${_WORK_DIR}"}"
+    local _lib_extract_dir="${3:-"${_LIB_EXTRACT_DIR:-"${_workDir%/}/tmp/lib"}"}"
+
+    if [ -n "${_GROOVY_JAR}" ] && [ -n "${_GROOVY_CLASSPATH}" ]; then
+        echo "INFO: Using ${_GROOVY_JAR} and ${_GROOVY_CLASSPATH}" >&2
         return 0
     fi
-    local _postgres_ver="$(unzip -l "${_single_jar}" | sed -n -E 's/.+ BOOT-INF\/lib\/postgresql-(.+)\.jar/\1/p')"
-    if [ ! -d "${_lib_extract_dir%/}" ]; then
-        mkdir -v -p "${_lib_extract_dir%/}" || return $?
-    fi
-    if [ ! -s "${_lib_extract_dir%/}/BOOT-INF/lib/groovy-${_groovy_ver}.jar" ]; then
-        unzip -q -d "${_lib_extract_dir%/}" "${_single_jar}" "BOOT-INF/lib/groovy-${_groovy_ver}.jar"
-        unzip -q -d "${_lib_extract_dir%/}" "${_single_jar}" "BOOT-INF/lib/groovy-sql-${_groovy_ver}.jar"
-        unzip -q -d "${_lib_extract_dir%/}" "${_single_jar}" "BOOT-INF/lib/postgresql-${_postgres_ver}.jar"
-    fi
-    if [ ! -s "${_lib_extract_dir%/}/BOOT-INF/lib/groovy-${_groovy_ver}.jar" ]; then
-        echo "ERROR:Failed to unzip libs from ${_single_jar}." >&2
+    if [ -z "${_installDir}" ]; then
+        echo "ERROR: No _installDir (_workDir is optional)" >&2
         return 1
     fi
+
+    # For older versions
+    local _groovy_jar="${_installDir%/}/system/org/codehaus/groovy/groovy-all/2.4.17/groovy-all-2.4.17.jar"
+    local _pgJar=""
+    local _h2Jar=""
+    local _groovySqlJar=""
+    # For "around" 3.68+
+    if [ ! -s "${_groovy_jar}" ]; then
+        _groovy_jar="$(find "${_installDir%/}/system/org/codehaus/groovy/groovy" -type f -name 'groovy-3.*.jar' 2>/dev/null | head -n1)"
+        if [ -s "${_groovy_jar}" ]; then
+            _pgJar="$(find "${_installDir%/}/system/org/postgresql/postgresql" -type f -name 'postgresql-*.jar' 2>/dev/null | tail -n1)"
+            _h2Jar="$(find "${_installDir%/}/system/com/h2database/h2" -type f -name 'h2-*.jar' 2>/dev/null | tail -n1)"
+            _groovySqlJar="$(find "${_installDir%/}/system/org/codehaus/groovy/groovy-sql" -type f -name 'groovy-sql-3.*.jar' 2>/dev/null | tail -n1)"
+        fi
+    fi
+    # For 3.78+
+    if [ ! -s "${_groovy_jar}" ]; then
+        local _single_jar="$(find "${_installDir%/}/bin" -type f -name 'sonatype-nexus-repository-3.*.jar' 2>/dev/null | head -n1)"
+        if [ ! -s "${_single_jar}" ]; then
+            echo "ERROR: No single jar file found under ${_installDir%/}/bin." >&2
+            return 1
+        fi
+        if ! type unzip >/dev/null 2>&1; then
+            echo "ERROR: unzip not found, please install it." >&2
+            return 1
+        fi
+        local _tmp_list="$(unzip -l "${_single_jar}" | grep -E 'BOOT-INF/lib/(groovy|postgresql|h2)-.+\.jar')"
+        local _groovy_ver="$(echo "${_tmp_list}" | sed -n -E 's/.+ BOOT-INF\/lib\/groovy-(3\..+)\.jar/\1/p')"
+        if [ -z "${_groovy_ver}" ]; then
+            echo "ERROR: No groovy version detected from ${_single_jar}" >&2
+            return 1
+        fi
+        if [ ! -s "${_lib_extract_dir%/}/BOOT-INF/lib/groovy-${_groovy_ver}.jar" ]; then
+            local _postgres_ver="$(echo "${_tmp_list}" | sed -n -E 's/.+ BOOT-INF\/lib\/postgresql-(.+)\.jar/\1/p')"
+            local _h2_ver="$(echo "${_tmp_list}" | sed -n -E 's/.+ BOOT-INF\/lib\/h2-(.+)\.jar/\1/p')"
+
+            if [ ! -d "${_lib_extract_dir%/}" ]; then
+                mkdir -v -p "${_lib_extract_dir%/}" || return $?
+            fi
+            if [ ! -s "${_lib_extract_dir%/}/BOOT-INF/lib/groovy-${_groovy_ver}.jar" ]; then
+                unzip -q -d "${_lib_extract_dir%/}" "${_single_jar}" "BOOT-INF/lib/groovy-${_groovy_ver}.jar"
+                unzip -q -d "${_lib_extract_dir%/}" "${_single_jar}" "BOOT-INF/lib/groovy-sql-${_groovy_ver}.jar"
+                unzip -q -d "${_lib_extract_dir%/}" "${_single_jar}" "BOOT-INF/lib/postgresql-${_postgres_ver}.jar"
+                unzip -q -d "${_lib_extract_dir%/}" "${_single_jar}" "BOOT-INF/lib/h2-${_h2_ver}.jar"
+            fi
+            if [ ! -s "${_lib_extract_dir%/}/BOOT-INF/lib/groovy-${_groovy_ver}.jar" ]; then
+                echo "ERROR: Failed to unzip libs from ${_single_jar}." >&2
+                return 1
+            fi
+            _groovy_jar="${_lib_extract_dir%/}/BOOT-INF/lib/groovy-${_groovy_ver}.jar"
+            _groovySqlJar="${_lib_extract_dir%/}/BOOT-INF/lib/groovy-sql-${_groovy_ver}.jar"
+            _pgJar="${_lib_extract_dir%/}/BOOT-INF/lib/postgresql-${_postgres_ver}.jar"
+            _h2Jar="${_lib_extract_dir%/}/BOOT-INF/lib/h2-${_h2_ver}.jar"
+        fi
+    fi
+
+    if [ ! -s "${_groovy_jar}" ]; then
+        echo "ERROR: No groovy jar file under ${_installDir%/}." >&2
+        return 1
+    fi
+
+    [ -z "${_GROOVY_JAR}" ] && export _GROOVY_JAR="${_lib_extract_dir%/}/BOOT-INF/lib/groovy-${_groovy_ver}.jar"
+    [ -z "${_GROOVY_CLASSPATH}" ] && export _GROOVY_CLASSPATH="${_lib_extract_dir%/}/BOOT-INF/lib/groovy-sql-${_groovy_ver}.jar:${_lib_extract_dir%/}/BOOT-INF/lib/postgresql-${_postgres_ver}.jar:${_lib_extract_dir%/}/BOOT-INF/lib/h2-${_h2_ver}.jar"
 }
 
 function runDbQuery() {
@@ -113,50 +157,43 @@ function runDbQuery() {
     local _query="$1"
     local _storeProp="${2:-"${_STORE_FILE}"}"
     local _timeout="${3:-"30"}"
-    local _dbConnFile="${4:-"${_DB_CONN_TEST_FILE:-"${_WORK_DIR%/}/tmp/DbConnTest.groovy"}"}"
-    local _installDir="${5:-"${_INSTALL_DIR}"}"
+    local _installDir="${4:-"${_INSTALL_DIR}"}"
+    local _workDir="${5:-"${_WORK_DIR}"}"
+    local _dbConnFile="${6:-"${_DB_CONN_TEST_FILE:-"${_workDir%/}/tmp/DbConnTest.groovy"}"}"
+
     if [ ! -s "${_storeProp}" ] && [ -z "${jdbcUrl}" ]; then
-        echo "ERROR:No nexus-store.properties file and no jdbcUrl set." >&2
+        echo "ERROR: No nexus-store.properties file and no jdbcUrl set." >&2
         return 1
     fi
-    local _groovy_jar="${_installDir%/}/system/org/codehaus/groovy/groovy-all/2.4.17/groovy-all-2.4.17.jar"
-    # For "around" 3.68+
-    if [ ! -s "${_groovy_jar}" ]; then
-        _groovy_jar="$(find "${_installDir%/}/system/org/codehaus/groovy/groovy" -type f -name 'groovy-3.*.jar' 2>/dev/null | head -n1)"
-        if [ -s "${_groovy_jar}" ]; then
-            if [ -z "${_GROOVY_CLASSPATH}" ]; then
-                local _pgJar="$(find "${_installDir%/}/system/org/postgresql/postgresql" -type f -name 'postgresql-*.jar' 2>/dev/null | tail -n1)"
-                _GROOVY_CLASSPATH="${_pgJar}"
-                local _groovySqlJar="$(find "${_installDir%/}/system/org/codehaus/groovy/groovy-sql" -type f -name 'groovy-sql-3.*.jar' 2>/dev/null | tail -n1)"
-                [ -n "${_groovySqlJar}" ] && _GROOVY_CLASSPATH="${_GROOVY_CLASSPATH}:${_groovySqlJar}"
-            fi
-        fi
-    fi
-    # For 3.78+
-    if [ ! -s "${_groovy_jar}" ]; then
-        local _single_jar="$(find "${_installDir%/}/bin" -type f -name 'sonatype-nexus-repository-3.*.jar' 2>/dev/null | head -n1)"
-        if [ ! -s "${_single_jar}" ]; then
-            echo "ERROR:No single jar file found under ${_installDir%/}/bin." >&2
-            return 1
-        fi
-        prepareLibForSingleJar "${_single_jar}" "${_WORK_DIR%/}/tmp" || return $?
-        _groovy_jar="$(find "${_WORK_DIR%/}/tmp" -type f -name 'groovy-3.*.jar' 2>/dev/null | head -n1)"
-        local _pgJar="$(find "${_WORK_DIR%/}/tmp" -type f -name 'postgresql-*.jar' 2>/dev/null | tail -n1)"
-        _GROOVY_CLASSPATH="${_pgJar}"
-        local _groovySqlJar="$(find "${_WORK_DIR%/}/tmp" -type f -name 'groovy-sql-3.*.jar' 2>/dev/null | tail -n1)"
-        [ -n "${_groovySqlJar}" ] && _GROOVY_CLASSPATH="${_GROOVY_CLASSPATH}:${_groovySqlJar}"
-    fi
-    if [ ! -s "${_groovy_jar}" ]; then
-        echo "ERROR:No groovy jar file under ${_installDir%/}." >&2
-        return 1
-    fi
+
+    prepareLibs "${_installDir%/}" "${_workDir%/}/tmp/lib" || return $?
+
     if [ ! -s "${_dbConnFile}" ]; then
         genDbConnTest "${_dbConnFile}" || return $?
     fi
+
     local _java="java"
     [ -d "${JAVA_HOME%/}" ] && _java="${JAVA_HOME%/}/bin/java"
-    timeout ${_timeout}s ${_java} -Dgroovy.classpath="${_GROOVY_CLASSPATH}" -jar "${_groovy_jar}" \
+    timeout ${_timeout}s ${_java} -Dgroovy.classpath="${_GROOVY_CLASSPATH%:}" -jar "${_GROOVY_JAR}" \
         "${_dbConnFile}" "${_query}" "${_storeProp}"
+}
+
+#setGlobals; JAVA_HOME=$JAVA_HOME_17 startDbWebUi
+#_INSTALL_DIR=nexus-3.* JAVA_HOME=$JAVA_HOME_17 startDbWebUi "8282" "./sonatype-work/nexus3/db"
+function startDbWebUi() {
+    local __doc__="Run a query against DB connection specified in the _storeProp"
+    local _webPort="${1:-"8282"}"
+    local _baseDir="${2:-"."}"
+    local _installDir="${3:-"${_INSTALL_DIR}"}"
+    local _workDir="${4:-"${_WORK_DIR}"}"
+
+    prepareLibs "${_installDir%/}" "${_workDir%/}/tmp/lib" || return $?
+
+    echo "INFO: Starting H2 Console from \"${_baseDir}\" on http://localhost:${_webPort}/ ..." >&2
+    local _java="java"  # In case needs to change to java 8 / java 17
+    [ -n "${JAVA_HOME}" ] && _java="${JAVA_HOME%/}/bin/java"
+    ${_java} -Dgroovy.classpath="${_GROOVY_CLASSPATH%:}" -jar "${_GROOVY_JAR}" \
+        -e "org.h2.tools.Server.createWebServer(\"-webPort\", \"${_webPort}\", \"-webAllowOthers\", \"-ifExists\", \"-baseDir\", \"${_baseDir}\").start()"
 }
 
 function setGlobals() { # Best effort. may not return accurate dir path
