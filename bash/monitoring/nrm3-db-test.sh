@@ -124,10 +124,10 @@ function prepareLibs() {
             echo "ERROR: No groovy version detected from ${_single_jar}" >&2
             return 1
         fi
-        if [ ! -s "${_lib_extract_dir%/}/BOOT-INF/lib/groovy-${_groovy_ver}.jar" ]; then
-            local _postgres_ver="$(echo "${_tmp_list}" | sed -n -E 's/.+ BOOT-INF\/lib\/postgresql-(.+)\.jar/\1/p')"
-            local _h2_ver="$(echo "${_tmp_list}" | sed -n -E 's/.+ BOOT-INF\/lib\/h2-(.+)\.jar/\1/p')"
+        local _postgres_ver="$(echo "${_tmp_list}" | sed -n -E 's/.+ BOOT-INF\/lib\/postgresql-(.+)\.jar/\1/p')"
+        local _h2_ver="$(echo "${_tmp_list}" | sed -n -E 's/.+ BOOT-INF\/lib\/h2-(.+)\.jar/\1/p')"
 
+        if [ ! -s "${_lib_extract_dir%/}/BOOT-INF/lib/groovy-${_groovy_ver}.jar" ]; then
             if [ ! -d "${_lib_extract_dir%/}" ]; then
                 mkdir -v -p "${_lib_extract_dir%/}" || return $?
             fi
@@ -141,11 +141,11 @@ function prepareLibs() {
                 echo "ERROR: Failed to unzip libs from ${_single_jar}." >&2
                 return 1
             fi
-            _groovy_jar="${_lib_extract_dir%/}/BOOT-INF/lib/groovy-${_groovy_ver}.jar"
-            _groovySqlJar="${_lib_extract_dir%/}/BOOT-INF/lib/groovy-sql-${_groovy_ver}.jar"
-            _pgJar="${_lib_extract_dir%/}/BOOT-INF/lib/postgresql-${_postgres_ver}.jar"
-            _h2Jar="${_lib_extract_dir%/}/BOOT-INF/lib/h2-${_h2_ver}.jar"
         fi
+        _groovy_jar="${_lib_extract_dir%/}/BOOT-INF/lib/groovy-${_groovy_ver}.jar"
+        _groovySqlJar="${_lib_extract_dir%/}/BOOT-INF/lib/groovy-sql-${_groovy_ver}.jar"
+        _pgJar="${_lib_extract_dir%/}/BOOT-INF/lib/postgresql-${_postgres_ver}.jar"
+        _h2Jar="${_lib_extract_dir%/}/BOOT-INF/lib/h2-${_h2_ver}.jar"
     fi
 
     if [ ! -s "${_groovy_jar}" ]; then
