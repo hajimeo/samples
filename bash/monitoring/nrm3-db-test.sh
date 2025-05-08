@@ -7,6 +7,9 @@ USAGE:
     curl -O -sfL https://raw.githubusercontent.com/sonatype-nexus-community/nexus-monitoring/main/scripts/nrm3-db-test.sh --compressed
     bash ./nrm3-db-test.sh [-i <installDir>] [-s /path/to/nexus-store.properties] [-q "query"]
 
+# Count & Size per Repository (format, repo_name, count, bytes)
+    bash ./nrm3-db-test.sh 2>./elapsed.out | tee ./repo_count_size.out
+
 # If no 'nexus-store.properties', use 'export:
     export username="nxrm" password="nxrm123" jdbcUrl="jdbc:postgresql://localhost:5432/nxrm"
     bash ./nrm3-db-test.sh [-q "query"]
@@ -149,8 +152,8 @@ function prepareLibs() {
         return 1
     fi
 
-    [ -z "${_GROOVY_JAR}" ] && export _GROOVY_JAR="${_lib_extract_dir%/}/BOOT-INF/lib/groovy-${_groovy_ver}.jar"
-    [ -z "${_GROOVY_CLASSPATH}" ] && export _GROOVY_CLASSPATH="${_lib_extract_dir%/}/BOOT-INF/lib/groovy-sql-${_groovy_ver}.jar:${_lib_extract_dir%/}/BOOT-INF/lib/postgresql-${_postgres_ver}.jar:${_lib_extract_dir%/}/BOOT-INF/lib/h2-${_h2_ver}.jar"
+    [ -z "${_GROOVY_JAR}" ] && export _GROOVY_JAR="${_groovy_jar}"
+    [ -z "${_GROOVY_CLASSPATH}" ] && export _GROOVY_CLASSPATH="${_groovySqlJar}:${_pgJar}:${_h2Jar}"
 }
 
 function runDbQuery() {
@@ -167,7 +170,7 @@ function runDbQuery() {
         return 1
     fi
 
-    prepareLibs "${_installDir%/}" "${_workDir%/}/tmp/lib" || return $?
+    prepareLibs "${_installDir%/}" "${_workDir%/}" || return $?
 
     if [ ! -s "${_dbConnFile}" ]; then
         genDbConnTest "${_dbConnFile}" || return $?
@@ -188,7 +191,7 @@ function startDbWebUi() {
     local _installDir="${3:-"${_INSTALL_DIR}"}"
     local _workDir="${4:-"${_WORK_DIR}"}"
 
-    prepareLibs "${_installDir%/}" "${_workDir%/}/tmp/lib" || return $?
+    prepareLibs "${_installDir%/}" "${_workDir%/}" || return $?
 
     echo "INFO: Starting H2 Console from \"${_baseDir}\" on http://localhost:${_webPort}/ ..." >&2
     local _java="java"  # In case needs to change to java 8 / java 17
