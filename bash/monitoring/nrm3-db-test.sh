@@ -19,6 +19,7 @@ EOF
 : "${_INSTALL_DIR:=""}"
 : "${_WORK_DIR:=""}"
 : "${_LIB_EXTRACT_DIR:=""}"
+: "${_TMP:="/tmp"}"     # in case /tmp is read-only
 _STORE_FILE=""
 _DB_CONN_TEST_FILE=""
 _PID=""
@@ -247,10 +248,10 @@ function searchBlobId() {
             local _format="${BASH_REMATCH[1]}"
             echo "SELECT '${_format}' as format, r.name as repo_name, ab.asset_blob_id, ab.blob_ref, ab.blob_size, a.path, a.kind FROM ${_format}_asset_blob ab INNER JOIN ${_format}_asset a USING (asset_blob_id) INNER JOIN ${_format}_content_repository cr USING (repository_id) INNER JOIN repository r on cr.config_repository_id = r.id WHERE ab.blob_ref like '%${_blobId}';"
         fi
-    done >/tmp/.queries.sql
-    if [ -s /tmp/.queries.sql ]; then
+    done >${_TMP%/}/.queries.sql
+    if [ -s ${_TMP%/}/.queries.sql ]; then
         echo "# format, repo_name, asset_blob_id, blob_ref, blob_size, path, kind"
-        query="$(cat /tmp/.queries.sql)"
+        query="$(cat ${_TMP%/}/.queries.sql)"
     fi
     if [ -n "${query%;}" ]; then
         runDbQuery "${query%;}"
@@ -263,7 +264,7 @@ main() {
     setGlobals "${_PID}"
     if [ -z "${_INSTALL_DIR}" ]; then
         # Required to set the classpath
-        echo "Could not find install directory." >&2
+        echo "ERROR: Could not find install directory." >&2
         return 1
     fi
 
@@ -277,7 +278,7 @@ main() {
             fi
         done >/tmp/.queries.sql
         if [ -s /tmp/.queries.sql ]; then
-            echo "# format, repo_name, count, bytes"
+            echo "# Count & Size per Repository (format, repo_name, count, bytes)"
             query="$(cat /tmp/.queries.sql)"
         fi
     fi
