@@ -115,7 +115,7 @@ _RESP_FILE=""
 ### Nexus installation functions ##############################################################################
 # To re-install: _RECREATE_ALL=Y f_install_nexus3 "<version>" "<dbname>"
 # To install HA instances (port is automatic): _NEXUS_ENABLE_HA=Y f_install_nexus3 "" "nxrmlatestha"
-# To upgrade (from ${_dirpath}/): tar -xvf $HOME/.nexus_executable_cache/nexus-mac-aarch64-3.79.0-09.tar.gz
+# To upgrade (from ${_dirpath}/): tar -xvf $HOME/.nexus_executable_cache/nexus-mac-aarch64-3.79.1-*.tar.gz
 function f_install_nexus3() {
     local __doc__="Install specific NXRM3 version (to recreate sonatype-work and DB, _RECREATE_ALL=Y)"
     local _ver="${1:-"${r_NEXUS_VERSION}"}"     # 'latest' or '3.71.0-03-java17'
@@ -1812,7 +1812,7 @@ function _apiS() {
     [ -z "${_method}" ] && _method="GET"
 
     # Mac's /tmp is symlink so without the ending "/", would needs -L but does not work with -delete
-    find -L ${_TMP%/} -maxdepth 1 -type f -name '.nxrm_c_*' -mmin +1 -exec rm {} \; 2>/dev/null
+    find -L ${_TMP%/} -maxdepth 1 -type f -name '.nxrm_c_*' -mmin +1 -exec rm -f {} \; 2>/dev/null
     local _c="${_TMP%/}/.nxrm_c_$$"
     if [ ! -s ${_c} ]; then
         curl -sf -D ${_TMP%/}/_apiS_header_$$.out -b ${_c} -c ${_c} -o ${_TMP%/}/_apiS_$$.out -k "${_nexus_url%/}/service/rapture/session" -d "${_user_pwd}"
@@ -3473,10 +3473,10 @@ function f_check_all_assets() {
     _log "INFO" "Checked ${_line_num} assets"
 }
 function f_delete_all_assets() {
-    local __doc__="Delete all assets (not components) with Search REST API (require correct search index)"
+    local __doc__="Delete 'almost' all assets (not components) with Search REST API (require correct search index)"
     local _repo="$1"
     local _force="$2"
-    local _max_loop="$3"    # One loop gets 50 assets
+    local _max_loop="$3"    # One loop gets 50 assets. Default is 200, so 10K max
     local _parallel="${4:-"3"}"
     local _usr="${5:-"${_ADMIN_USER}"}"
     local _pwd="${6:-"${_ADMIN_PWD}"}"
@@ -3625,8 +3625,8 @@ function f_register_script() {
 
 #_installDir="/opt/sonatype/nexus"
 #java -jar ${_installDir%/}/system/org/codehaus/groovy/groovy/3.0.19/groovy-3.0.19.jar -e 'println java.security.SecureRandom.getInstance("SHA1PRNG").algorithm'
-function f_run_groovy() {
-    local __doc__="Run groovy command (not via Nexus)"
+function f_run_groovy_deprecated() {
+    local __doc__="DEPRECATED Run groovy command (not via Nexus). No longer works with 3.78 and higher."
     local _script="${1}"
     local _installDir="${2}"
     local _groovy_jar="${_installDir%/}/system/org/codehaus/groovy/groovy-all/2.4.17/groovy-all-2.4.17.jar"
@@ -3639,31 +3639,6 @@ function f_run_groovy() {
     fi
     local _groovy_classpath="$(find ${_installDir%/}/system -type f -name '*.jar' | tr '\n' ':')"
     ${_java:-"java"} -classpath ${_groovy_jar} org.codehaus.groovy.tools.GroovyStarter --main groovy.ui.GroovyMain --classpath "${_groovy_classpath%:}:." -e "${_script}" || return $?
-}
-
-#JAVA_HOME=$JAVA_HOME_17 f_start_db_console ./nexus-3*
-function f_start_db_console() {
-    local _installDir="${1:-"."}"
-    local _webPort="${2:-"8282"}"
-    local _baseDir="${3:-"."}"
-    local _java="java"  # In case needs to change to java 8 / java 17
-    [ -n "${JAVA_HOME}" ] && _java="${JAVA_HOME%/}/bin/java"
-    local _groovy_cp=""
-    local _groovy_jar="${_installDir%/}/system/org/codehaus/groovy/groovy-all/2.4.17/groovy-all-2.4.17.jar"
-    # If 3.67 and higher, use groovy v3
-    if [ ! -s "${_groovy_jar}" ]; then
-        _groovy_jar="$(find "${_installDir%/}/system/org/codehaus/groovy/groovy" -type f -name 'groovy-3.*.jar' 2>/dev/null | head -n1)"
-        _groovy_cp="$(find "${_installDir%/}/system/org/codehaus/groovy/groovy-sql" -type f -name 'groovy-sql-3.*.jar' 2>/dev/null | head -n1)"
-    fi
-    if [ ! -s "${_groovy_jar}" ]; then
-        echo "ERROR Groovy jar not found. Please make sure _installDir is correct." >&2
-        return 1
-    fi
-    _groovy_cp="${_groovy_cp%:}:$(find "${_installDir%/}/system/org/postgresql/postgresql" -type f -name 'postgresql-*.jar' | tail -n1)"
-    _groovy_cp="${_groovy_cp%:}:$(find "${_installDir%/}/system/com/h2database/h2" -type f -name 'h2-*.jar' | tail -n1)"
-    echo "Starting H2 Console from \"${_baseDir}\" on http://localhost:${_webPort}/ ..." >&2
-    ${_java:-"java"} -Dgroovy.classpath="${_groovy_cp%:}" -jar "${_groovy_jar}" \
-        -e "org.h2.tools.Server.createWebServer(\"-webPort\", \"${_webPort}\", \"-webAllowOthers\", \"-ifExists\", \"-baseDir\", \"${_baseDir}\").start()"
 }
 
 
@@ -3814,8 +3789,9 @@ function f_psql() {
 
 ### Misc.
 # f_set_log_level "root"
-# f_set_log_level "org.eclipse.jetty.server.HttpChannel"
-# f_set_log_level "org.eclipse.jetty.util.thread"
+# f_set_log_level "org.eclipse.jetty.server.HttpChannel" (outbound pool)
+# f_set_log_level "org.eclipse.jetty.util.thread" (thread pool)
+# f_set_log_level "com.zaxxer.hikari.pool.HikariPool" (db pool)
 function f_set_log_level() {
     local __doc__="Set / Change some logger's log level"
     # NOTE: if incorrect class name is used, may need to edit sonatype-work/nexus3/etc/logback/logback-overrides.xml
@@ -3996,7 +3972,7 @@ function _is_repo_available() {
     local _repo_name="$1"
     local _nexus_url="${2:-"${r_NEXUS_URL:-"${_NEXUS_URL}"}"}"
     # At this moment, not always checking
-    find -L ${_TMP%/} -type f -name '_does_repo_exist*.out' -mmin +5 --exec rm {} \; 2>/dev/null
+    find -L ${_TMP%/} -type f -name '_does_repo_exist*.out' -mmin +5 --exec rm -f {} \; 2>/dev/null
     if [ ! -s ${_TMP%/}/_does_repo_exist$$.out ]; then
         _NEXUS_URL="${_nexus_url}" f_api "/service/rest/v1/repositories" | grep '"name":' > ${_TMP%/}/_does_repo_exist$$.out
     fi
@@ -4012,7 +3988,7 @@ function _is_blob_available() {
     local _bs_name="$1"
     local _nexus_url="${2:-"${r_NEXUS_URL:-"${_NEXUS_URL}"}"}"
     # At this moment, not always checking
-    find -L ${_TMP%/} -type f -name '_does_blob_exist*.out' -mmin +5 -exec rm {} \; 2>/dev/null
+    find -L ${_TMP%/} -type f -name '_does_blob_exist*.out' -mmin +5 -exec rm -f {} \; 2>/dev/null
     if [ ! -s ${_TMP%/}/_does_blob_exist$$.out ]; then
         _NEXUS_URL="${_nexus_url}" f_api "/service/rest/beta/blobstores" | grep '"name":' > ${_TMP%/}/_does_blob_exist$$.out
     fi
