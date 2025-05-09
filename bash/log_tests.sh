@@ -75,11 +75,13 @@ _rg() {
     else
         rg -z "$@"
     fi 2>/tmp/._rg_last.err
-    local _rc=$?
+    local _rc="$?"
+    # To avoid too many lines in the log file, if stderr is not empty, then log it.
     if [ ${_rc:-0} -ne 0 ] && [ -s /tmp/._rg_last.err ]; then
-         echo "[$(date +'%Y-%m-%d %H:%M:%S')] rg (${_max_filesize}) $*" >> /tmp/_rg.log
-         cat /tmp/._rg_last.err >> /tmp/_rg.log
+        echo "[$(date +'%Y-%m-%d %H:%M:%S')] rg \"$*\" (${_max_filesize}|${_rc})" >> /tmp/_rg.log
+        cat /tmp/._rg_last.err >> /tmp/_rg.log
     fi
+    #echo "[$(date +'%Y-%m-%d %H:%M:%S')] DEBUG: Executed rg with \"$*\"" >&2
     return ${_rc}
 }
 _bar() {
@@ -260,7 +262,7 @@ function _extract_log_last_start() {
     echo "Zip taken time : ${_zip_taken_at}"
     echo "Server Timezone: ${_tz}"
     echo '```'
-    _head "LOGS" "Instance start time from ${_log_path}"
+    _head "LOGS" "Instance start time from ${_log_path:-"(not provided)"}"
     echo '```'
     _check_log_stop_start "${_log_path}"
     echo "# NOTE: slow/hang startup can be caused by org.apache.lucene.util.IOUtils.getFileStore as it checks all mount points of the OS (even app is not using)"
@@ -268,12 +270,12 @@ function _extract_log_last_start() {
 }
 function _check_log_stop_start() {
     local _log_path="$1"
-    [ -z "${_log_path}" ] && _log_path="$(find . -maxdepth 3 -type f -print | grep -m1 -E "/(${_NXRM_LOG}|${_NXIQ_LOG}|server.log)$")"
+    [ -z "${_log_path}" ] && _log_path="$(find . -maxdepth 3 -type f -print | grep -m1 -E "/(${_NXRM_LOG}|${_NXIQ_LOG}|server.log)$" | head -n1)"
     [ -z "${_log_path}" ] && return 1
-    [ ! -s "${_log_path}" ] && _log_path="-g \"${_log_path}\""
+    #[ ! -s "${_log_path}" ] && _log_path="-g \"${_log_path}\""
     # NXRM2 stopping/starting, NXRM3 stopping/starting, IQ stopping/starting (IQ doesn't clearly say stopped so that checking 'Stopping')
     # NXRM2: org.sonatype.nexus.bootstrap.jetty.JettyServer - Stopped
-    _rg --no-filename '(org.sonatype.nexus.bootstrap.jsw.JswLauncher - Stopping with code:|org.eclipse.jetty.server.AbstractConnector - Stopped ServerConnector|org.sonatype.nexus.events.EventSubscriberHost - Initialized|org.sonatype.nexus.webapp.WebappBootstrap - Initialized|org.eclipse.jetty.server.Server - Started|Started InstrumentedSelectChannelConnector|Received signal: SIGTERM|org.sonatype.nexus.extender.NexusContextListener - Uptime:|org.sonatype.nexus.extender.NexusLifecycleManager - Shutting down|org.sonatype.nexus.extender.NexusLifecycleManager - Stop KERNEL|org.sonatype.nexus.bootstrap.jetty.JettyServer - Stopped|SonatypeNexusRepositoryApplication - Starting SonatypeNexusRepositoryApplication|org.sonatype.nexus.pax.logging.NexusLogActivator - start|com.sonatype.insight.brain.service.InsightBrainService - Stopping Nexus IQ Server|Disabled session validation scheduler|Initializing Nexus IQ Server)' ${_log_path} | sort | uniq | tail -n10
+    _rg '(org.sonatype.nexus.bootstrap.jsw.JswLauncher - Stopping with code:|org.eclipse.jetty.server.AbstractConnector - Stopped ServerConnector|org.sonatype.nexus.events.EventSubscriberHost - Initialized|org.sonatype.nexus.webapp.WebappBootstrap - Initialized|org.eclipse.jetty.server.Server - Started|Started InstrumentedSelectChannelConnector|Received signal: SIGTERM|org.sonatype.nexus.extender.NexusContextListener - Uptime:|org.sonatype.nexus.extender.NexusLifecycleManager - Shutting down|org.sonatype.nexus.extender.NexusLifecycleManager - Stop KERNEL|org.sonatype.nexus.bootstrap.jetty.JettyServer - Stopped|SonatypeNexusRepositoryApplication - Starting SonatypeNexusRepositoryApplication|org.sonatype.nexus.pax.logging.NexusLogActivator - start|com.sonatype.insight.brain.service.InsightBrainService - Stopping Nexus IQ Server|Disabled session validation scheduler|Initializing Nexus IQ Server)' "${_log_path}" | sort | uniq | tail -n10
 }
 function _head() {
     local _X="###"
@@ -622,13 +624,13 @@ for key in fsDicts['system-filestores']:
 # TODO: For this one, checking without size limit (not _rg)?
 function t_oome() {
     # audit.log can contains `attribute.changes` which contains large test and some Nuget package mentions OutOfMemoryError
-    _test_template "$(_RG_MAX_FILESIZE="6G" _rg 'java.lang.OutOfMemoryError:.+' -m1 -B1 -g "${_LOG_GLOB}" -g '*.log.gz' -g '\!jvm.log' -g '\!audit*log*' | sort | uniq)" "ERROR" "OutOfMemoryError detected from ${_LOG_GLOB} (Xms is too small?)"
+    _test_template "$(_RG_MAX_FILESIZE="6G" _rg 'java.lang.OutOfMemoryError:.+' -m1 -B1 -g "${_LOG_GLOB}" -g '*.log.gz' | rg -vw '(jvm.log|audit*log*)' | sort | uniq)" "ERROR" "OutOfMemoryError detected from ${_LOG_GLOB} (Xms is too small?)"
 }
 function t_sofe() {
-    _test_template "$(_RG_MAX_FILESIZE="6G" _rg 'java.lang.StackOverflowError:.+' -m1 -B1 -g "${_LOG_GLOB}" -g '*.log.gz' -g '\!jvm.log' -g '\!audit*log*' | sort | uniq)" "ERROR" "StackOverflowError detected from ${_LOG_GLOB}"
+    _test_template "$(_RG_MAX_FILESIZE="6G" _rg 'java.lang.StackOverflowError:.+' -m1 -B1 -g "${_LOG_GLOB}" -g '*.log.gz' | rg -vw '(jvm.log|audit*log*)' | sort | uniq)" "ERROR" "StackOverflowError detected from ${_LOG_GLOB}"
 }
 function t_psqlexception() {
-    _test_template "$(_RG_MAX_FILESIZE="6G" _rg '^Caused by: org\.postgresql\.util\.PSQLException.+' -o -g "${_LOG_GLOB}" -g '*.log.gz' -g '\!jvm.log' -g '\!audit*log*'| sort | uniq -c | sort -nr | rg '^\s*\d\d+')" "WARN" "Many 'PSQLException' detected from ${_LOG_GLOB}"
+    _test_template "$(_RG_MAX_FILESIZE="6G" _rg '^Caused by: org\.postgresql\.util\.PSQLException.+' -o -g "${_LOG_GLOB}" -g '*.log.gz' | rg -vw '(jvm.log|audit*log*)' | sort | uniq -c | sort -nr | rg '^\s*\d\d+')" "WARN" "Many 'PSQLException' detected from ${_LOG_GLOB}"
 }
 function t_fips() {
     # TODO: fips (if Windows HKEY_LOCAL_MACHINE\\SYSTEM\\CurrentControlSet\\Control\\Lsa\\FIPSAlgorithmPolicy)
