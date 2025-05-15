@@ -636,9 +636,18 @@ function f_setup_docker() {
     fi
     if type helm &>/dev/null; then
         if [ -s "${_TMP%/}/helm-oci-demo-0.1.0.tgz" ] || curl -sf -o ${_TMP%/}/helm-oci-demo-0.1.0.tgz -L "https://github.com/hajimeo/samples/raw/refs/heads/master/misc/helm-oci-demo-0.1.0.tgz"; then
-            _log "INFO" "Populating ${_prefix}-hosted repository with demo helm chart (OCI) ..."
-            helm registry login ${_NEXUS_DOCKER_HOSTNAME}:18182 -u "${_ADMIN_USER}" -p "${_ADMIN_PWD}" && \
-            helm push ${_TMP%/}/helm-oci-demo-0.1.0.tgz oci://${_NEXUS_DOCKER_HOSTNAME}:18182/oci-demo #--debug
+            #_log "INFO" "Populating ${_prefix}-hosted repository with demo helm chart (OCI) ..."
+            if ! helm registry login ${_NEXUS_DOCKER_HOSTNAME}:18182 -u "${_ADMIN_USER}" -p "${_ADMIN_PWD}"; then
+                _log "WARN" "helm registry login ${_NEXUS_DOCKER_HOSTNAME}:18182 failed."
+            else
+                if ! helm push ${_TMP%/}/helm-oci-demo-0.1.0.tgz oci://${_NEXUS_DOCKER_HOSTNAME}:18182/oci-demo; then #--debug
+                    _log "WARN" "Populating ${_prefix}-hosted repository with demo helm chart (OCI) failed."
+                else
+                    # The 'title' or 'name' is 'demo' in Chart.yaml, not "helm-oci-demo"
+                    _log "TODO" "helm show all oci://${_NEXUS_DOCKER_HOSTNAME}:18182/oci-demo/demo --version 0.1.0"
+                    _log "TODO" "helm pull oci://${_NEXUS_DOCKER_HOSTNAME}:18182/oci-demo/demo --version 0.1.0"
+                fi
+            fi
         fi
     fi
 
@@ -2837,6 +2846,8 @@ function f_upload_dummies_raw() {
                 done
             fi
             _final_prefix="${_final_prefix}test_"
+        else
+            _final_prefix="${_file_prefix}"
         fi
         echo "${_final_prefix}${i}${_file_suffix}"
     done | xargs -I{} -P${_parallel} curl -sf -u "${_usr}:${_pwd}" -w '%{http_code} '${_path%/}/'{} (%{time_total}s)\n' -T ${_TMP%/}/${FUNCNAME[0]}_$$.txt -L -k "${_repo_path%/}/{}"
@@ -3306,6 +3317,49 @@ function f_upload_dummies_helm() {
         curl -sSf -w "Upload  : %{http_code} ${_name} (%{time_total}s)\n" -T ${_tmpdir%/}/helm-cart_tmp.tgz -u "${_usr}:${_pwd}" "${_repo_url%/}/${_name}" || return $?
         #curl -sSf -w "Download: %{http_code} index.yaml (%{time_total}s | %{size_download}b)\n" -o/dev/null "${_repo_url%/}/index.yaml"
     done
+}
+
+function f_upload_dummies_helm_push() {
+    local __doc__="To test OCI with docker repository"
+    local _host_port="${1:-"${_NEXUS_DOCKER_HOSTNAME}:18182"}"
+    local _how_many="${2:-"10"}"
+    local _pkg_name="${3:-"demo"}"
+    local _usr="${4:-"${_ADMIN_USER}"}"
+    local _pwd="${5:-"${_ADMIN_PWD}"}"
+
+    local _seq_start="${_SEQ_START:-1}"
+    local _seq_end="$((${_seq_start} + ${_how_many} - 1))"
+    local _seq="seq ${_seq_start} ${_seq_end}"
+    local _tmpdir="$(mktemp -d)"
+
+    if [ ! -s "${_TMP%/}/demo-0.1.0.tgz" ]; then
+        curl -sf -o ${_TMP%/}/demo-0.1.0.tgz -L "https://github.com/hajimeo/samples/raw/refs/heads/master/misc/helm-oci-demo-0.1.0.tgz" || return $?
+    fi
+
+    if ! helm registry login ${_host_port} -u "${_usr}" -p "${_pwd}"; then
+        _log "WARN" "helm registry login ${_host_port} failed."
+        return 1
+    fi
+    cd ${_tmpdir%/} || return $?
+    # Due to 'Cannot append to compressed archive.', can't extract only Chart.yaml
+    tar -xf ${_TMP%/}/demo-0.1.0.tgz || return $?
+    if [ "${_pkg_name}" != "demo" ]; then
+        mv -v "demo" "${_pkg_name}" || return $?
+    fi
+    sed -i '' -E 's/^name: .+/name: '${_pkg_name}'/' ${_pkg_name}/Chart.yaml || return $?
+
+    for i in $(eval "${_seq}"); do
+        if [ -f "${_TMP%/}/${_pkg_name}-0.0.0.tgz" ]; then
+            rm -f ${_TMP%/}/${_pkg_name}-0.0.0.tgz || return $?
+        fi
+        # Due to some bug in helm, need to change the version in Chart.yaml
+        sed -i '' -E 's/^version: .+/version: 0.'${i}'.0/' ${_pkg_name}/Chart.yaml || return $?
+        # File name is not important
+        tar -czf ${_TMP%/}/${_pkg_name}-0.0.0.tgz ${_pkg_name} || return $?
+        helm push "${_TMP%/}/${_pkg_name}-0.0.0.tgz" "oci://${_host_port}/${_pkg_name}" || return $?    # --debug
+        _log "INFO" "Pushed ${_pkg_name}-0.${i}.0.tgz into ${_host_port}"
+    done
+    cd - >/dev/null
 }
 
 # This can be used for populating yum-proxy with 'vault' and _YUM_REMOTE_URL
