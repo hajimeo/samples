@@ -399,8 +399,8 @@ def load_jsons(src="./", conn=None, include_ptn='*.json', exclude_ptn='', chunks
 
 
 def json2df(filename, tablename=None, conn=None, chunksize=1000, if_exists='replace', jq_query="",
-            max_file_size=(1024 * 1024 * 100),
-            flatten=None, json_cols=[], line_by_line=False, line_from=0, line_until=0):
+            flatten=None, json_cols=[], is_ndjson=False, max_file_size=(1024 * 1024 * 100),
+            line_by_line=False, line_from=0, line_until=0):
     """
     Convert a json file, which contains list into a DataFrame
     If conn is given, import into a DB table
@@ -412,6 +412,8 @@ def json2df(filename, tablename=None, conn=None, chunksize=1000, if_exists='repl
     :param jq_query: String used with ju.jq(), to filter json record
     :param flatten: If true, use json_normalize()
     :param json_cols: to_sql() fails if column is json, so forcing those columns to string
+    :param is_ndjson: If True, lines=True is used in pd.read_json()
+    :param max_file_size: max file size in bytes
     :param line_by_line: Another way to workaround 'Error binding parameter'
     :param line_from: To exclude unnecessary lines. line_by_line = true requreid
     :param line_until: To exclude unnecessary lines. line_by_line = true requreid
@@ -423,7 +425,7 @@ def json2df(filename, tablename=None, conn=None, chunksize=1000, if_exists='repl
     >>> pass    # TODO: implement test
     """
     # If flatten is not specified but going to import into Sqlite, changing flatten to true so that less error in DB
-    if flatten is None and (tablename is not None or conn is not None):
+    if is_ndjson is False and flatten is None and (tablename is not None or conn is not None):
         flatten = True
     # If table name is specified but no conn object, create it
     if bool(tablename) and conn is None:
@@ -490,9 +492,12 @@ def json2df(filename, tablename=None, conn=None, chunksize=1000, if_exists='repl
                     continue
             else:
                 try:
-                    # Not directly using read_json to do some workarounds
-                    j_obj = json2dict(file_path=file_path, rtn_list_if_1=True)
-                    _df = pd.read_json(j_obj)
+                    if is_ndjson:
+                        _df = pd.read_json(file_path, lines=True)
+                    else:
+                        # Not directly using read_json to do some workarounds
+                        j_obj = json2dict(file_path=file_path, rtn_list_if_1=True)
+                        _df = pd.read_json(j_obj)
                 except UnicodeDecodeError:
                     _err("%s caused %s" % (file_path, str(e)))
                     _df = pd.read_json(file_path, encoding="iso-8859-1")
