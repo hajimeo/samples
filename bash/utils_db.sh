@@ -334,7 +334,7 @@ function _update_pg_hba_conf() {
     # NOTE: Use 'hostssl all all 0.0.0.0/0 cert clientcert=1' for 2-way | client certificate authentication
     #       To do that, also need to utilise database.parameters.some_key:value in config.yml
     if ! _as_dbadmin grep -E "host\s+(${_dbname:-"all"}|all)\s+${_dbusr}\s+" "${_pg_hba_conf}"; then
-        _as_dbadmin bash -c "echo \"host ${_dbname:-"all"} ${_dbusr} 0.0.0.0/0 md5\" >> \"${_pg_hba_conf}\"" || return $?
+        _as_dbadmin bash -c "echo \"host ${_dbname:-"all"} ${_dbusr} 0.0.0.0/0 scram-sha-256\" >> \"${_pg_hba_conf}\"" || return $?
         _psql_adm "SELECT pg_reload_conf()" || return $?
         #_as_dbadmin "psql -tAc \"SELECT pg_read_file('pg_hba.conf');\""
         _psql_adm "select * from pg_hba_file_rules where database = '{${_dbname:-"all"}}' and user_name = '{${_dbusr}}'" "-tA"
