@@ -115,6 +115,7 @@ _RESP_FILE=""
 ### Nexus installation functions ##############################################################################
 # To re-install: _RECREATE_ALL=Y f_install_nexus3 "<version>" "<dbname>"
 # To install HA instances (port is automatic): _NEXUS_ENABLE_HA=Y f_install_nexus3 "" "nxrmlatestha"
+#     2nd node: _NEXUS_ENABLE_HA=Y _NXRM3_INSTALL_DIR="some_dir_path" f_install_nexus3 "" "nxrmlatestha"
 # To upgrade (from ${_dirpath}/): tar -xvf $HOME/.nexus_executable_cache/nexus-mac-aarch64-3.79.1-*.tar.gz
 function f_install_nexus3() {
     local __doc__="Install specific NXRM3 version (to recreate sonatype-work and DB, _RECREATE_ALL=Y)"
@@ -156,7 +157,7 @@ function f_install_nexus3() {
     if [ -z "${_dirpath}" ]; then
         _dirpath="./nxrm_${_ver}"
         [ -n "${_dbname}" ] && _dirpath="${_dirpath}_${_dbname}"
-        [ "${_port}" != "8081" ] && _dirpath="${_dirpath}_${_port}"
+        #[ "${_port}" != "8081" ] && _dirpath="${_dirpath}_${_port}"
     fi
 
     if [[ "${_RECREATE_ALL}" =~ [yY] ]] && ! _isYes "${_NEXUS_ENABLE_HA:-"${r_NEXUS_ENABLE_HA}"}"; then
@@ -217,6 +218,9 @@ function f_install_nexus3() {
         _log "INFO" "For HA, 'nexus.datastore.clustered.enabled=true' and 'nexus.zero.downtime.enabled=true'"
         _upsert "${_prop}" "nexus.datastore.clustered.enabled" "true" || return $?
         _upsert "${_prop}" "nexus.zero.downtime.enabled" "true" || return $?
+        #TODO: This property does not change the nexus node name
+        local _cluster_name="$(basename "${_dirpath%/}")"   # assuming the directory name is unique
+        _upsert "${_prop}" "nexus.clustered.nodeName" "${_cluster_name}" || return $?
     fi
     # optional
     _upsert "${_prop}" "nexus.security.randompassword" "false" || return $?
@@ -290,7 +294,7 @@ function f_uninstall_nexus3() {
             [[ "${jdbcUrl}" =~ jdbc:postgresql://([^:/]+):?([0-9]*)/([^\?]+) ]] && _DBHOST="${BASH_REMATCH[1]}" _DBPORT="${BASH_REMATCH[2]}" _DBNAME="${BASH_REMATCH[3]}" _DBUSER="${username}" _DBSCHEMA="${schema:-"public"}" PGPASSWORD="${password}"
             local _pcmd="psql -h ${_DBHOST} -p ${_DBPORT:-"5432"} -U ${_DBUSER} -d template1 -c \"DROP DATABASE ${_DBNAME}\""
             echo "${_pcmd}"; sleep 3
-            evan "PGPASSWORD="${password}" ${_pcmd}" || return $?
+            eval "PGPASSWORD="${password}" ${_pcmd}" || return $?
         fi
     fi
     rm -rf -v "${_dirpath%/}"
@@ -1189,9 +1193,6 @@ function f_setup_go() {
     fi
     # TODO: add hosted probably from 3.74
     #curl -X PUT -u 'admin:admin123' http://localhost:8081/repository/go-hosted/github.com/gorilla/mux/@v/mux-1.8.1.zip  -T mux-1.8.1.zip
-    #if [ -s "${_TMP%/}/hello-world_1.0.0.deb" ] || curl -sf -o ${_TMP%/}/hello-world_1.0.0.deb -L "https://github.com/hajimeo/samples/raw/master/misc/hello-world_1.0.0_unsigned.deb"; then
-    #    _ASYNC_CURL="Y" f_upload_asset "${_prefix}-hosted" -F apt.asset=@${_TMP%/}/hello-world_1.0.0.deb
-    #fi
 }
 
 function f_setup_apt() {
@@ -1231,6 +1232,46 @@ function f_setup_apt() {
     if [ -s "${_TMP%/}/hello-world_1.0.0.deb" ] || curl -sf -o ${_TMP%/}/hello-world_1.0.0.deb -L "https://github.com/hajimeo/samples/raw/master/misc/hello-world_1.0.0_unsigned.deb"; then
         _ASYNC_CURL="Y" f_upload_asset "${_prefix}-hosted" -F apt.asset=@${_TMP%/}/hello-world_1.0.0.deb
     fi
+}
+function _deb_build() {
+    # https://earthly.dev/blog/creating-and-hosting-your-own-deb-packages-and-apt-repo/
+    local __doc__="Create a simple deb (apt) package, and echo the deb file name (so no stdout from other)"
+    # Naming rule: <package-name>_<version>-<release-number>_<architecture>
+    local _name="${1:-"hello-world"}"
+    local _version="${2:-"1.0.0"}"
+    local _release="${3:-"1"}"
+    local _arch="${4:-"all"}"
+    local _work_dir="${5:-"."}"
+    _work_dir="$(readlink -f "${_work_dir}")"
+    if ! type dpkg-deb &>/dev/null; then
+        _log "ERROR" "dpkg-deb is not available. Please install rpm-build package (brew install dpkg)"
+        return 1
+    fi
+
+    local _tmpdir="$(mktemp -d)"
+    cd ${_tmpdir} || return $?
+    mkdir -p ${_name}/DEBIAN || return $?
+    mkdir -p ${_name}/usr/local/bin || return $?
+    # Currently always overwrite
+    cat << EOF > "${_name}/usr/local/bin/${_name}"
+#!/bin/sh
+echo "Hello world!"
+EOF
+    cat << EOF > "${_name}/DEBIAN/control"
+Package: ${_name}
+Version: ${_version}
+Section: misc
+Priority: optional
+Architecture: ${_arch}
+Maintainer: ${_ADMIN_USER:-"${_USER}"}
+Description: Hello world!
+EOF
+    chmod +x "${_name}/usr/local/bin/${_name}" || return $?
+    #_log "INFO" "Building ${_work_dir}/${_name}_${_version}-{_release}_${_arch}.deb ..."
+    dpkg-deb --root-owner-group --build -Znone -z0 "${_name}" "${_work_dir}/${_name}_${_version}-${_release}_${_arch}.deb" || return $?
+    _log "INFO" "Verifying ${_work_dir}/${_name}_${_version}-{_release}_${_arch}.deb ..."
+    dpkg -c ${_work_dir}/${_name}_${_version}-{_release}_${_arch}.deb || return $?
+    cd - &>/dev/null
 }
 function f_start_ubuntu_for_apt_test() {
     local __doc__="Start Ubuntu container"
@@ -1402,13 +1443,6 @@ function f_setup_raw() {
     #_ASYNC_CURL="Y" f_get_asset "${_prefix}-group" "test/test_1k.data"
 }
 
-function f_branding() {
-    local __doc__="NXRM3 branding|brand example"
-    local _msg="${1:-"HelloWorld!"}"
-    #<marquee direction="right" behavior="alternate"><span style="color:#f0f8ff;">some text</span></marquee>
-    _apiS '{"action":"capability_Capability","method":"create","data":[{"id":"NX.coreui.model.Capability-1","typeId":"rapture.branding","notes":"","enabled":true,"properties":{"headerEnabled":"true","headerHtml":"<div style=\"background-color:white;text-align:right\">'${_msg}'</a>&nbsp;</div>","footerEnabled":null,"footerHtml":""}}],"type":"rpc"}'
-}
-
 ### Nexus related Misc. functions #################################################################
 function _get_inst_dir() {
     local _install_dir="$(ps auxwww | sed -n -E '/org.sonatype.nexus.karaf.NexusMain/ s/.+-Dexe4j.moduleName=([\S]+)\/bin\/nexus .+/\1/p' | head -1)"
@@ -1485,6 +1519,43 @@ function _get_extra_sto_opt() {
     [ -z "${_ds_name}" ] && _ds_name="$(_get_datastore_name)"
     [ -n "${_ds_name}" ] && _EXTRA_STO_OPT=',"dataStoreName":"'${_ds_name}'"'
     echo "${_EXTRA_STO_OPT}"
+}
+
+function f_reencrypt() {
+    local __doc__="Re-encrypt the secrets. https://help.sonatype.com/en/re-encryption-in-nexus-repository.html"
+    local _id="${1:-"my-key"}"
+    local _key="${2:-"my-secret-passphrase"}"
+    local _key_path="${3}"
+    local _work_dir="$(_get_work_dir)"  # this returns absolute path
+    if [ -z "${_key_path}" ]; then
+        _key_path="${_work_dir}/etc/nexus-secrets.json"
+    fi
+    if [ -s "${_key_path}" ]; then
+        _log "WARN" "Secrets file ${_key_path} exists."
+    else
+        cat << EOF > ${_key_path}
+    {
+      "active": null,
+      "keys": [
+        {
+          "id": "${_id}", "key": "${_key}"
+        }
+      ]
+    }
+EOF
+    fi
+    _upsert ${_work_dir%/}/etc/nexus.properties "nexus.secrets.file" "${_key_path}" || return $?
+    _log "INFO" "Restart required to apply the new secrets."
+cat << EOF
+curl -u "${_ADMIN_USER}" "${_NEXUS_URL%/}/service/rest/v1/secrets/encryption/re-encrypt" -X PUT -H 'accept:application/json' -H 'Content-Type: application/json' -d '{"secretKeyId":"${_id:-"__KEY_ID__"}"}'
+EOF
+}
+
+function f_branding() {
+    local __doc__="NXRM3 branding|brand example"
+    local _msg="${1:-"HelloWorld!"}"
+    #<marquee direction="right" behavior="alternate"><span style="color:#f0f8ff;">some text</span></marquee>
+    _apiS '{"action":"capability_Capability","method":"create","data":[{"id":"NX.coreui.model.Capability-1","typeId":"rapture.branding","notes":"","enabled":true,"properties":{"headerEnabled":"true","headerHtml":"<div style=\"background-color:white;text-align:right\">'${_msg}'</a>&nbsp;</div>","footerEnabled":null,"footerHtml":""}}],"type":"rpc"}'
 }
 
 function f_create_file_blobstore() {
@@ -1567,9 +1638,9 @@ function f_create_azure_blobstore() {
 }
 
 function f_create_google_blobstore() {
-    local __doc__="Create an Google blobstore. GOOGLE_ACCOUNT_KEY_FILE is required (3.74+)"
+    local __doc__="Create an Google blobstore. GOOGLE_APPLICATION_CREDENTIALS is required (3.74+)"
     local _bs_name="${1:-"gc-test"}"
-    local _accountKeyFle="${2:-"${GOOGLE_ACCOUNT_KEY_FILE}"}"
+    local _accountKeyFle="${2:-"${GOOGLE_APPLICATION_CREDENTIALS}"}"
     local _bucket="${3:-"${GOOGLE_BUCKET}"}"
     local _prefix="${4:-"$(hostname -s)_${_bs_name}"}"
     local _region="${5:-"${GOOGLE_REGION:-"australia-southeast1"}"}"
@@ -2473,6 +2544,44 @@ Also update _NEXUS_URL. For example: export _NEXUS_URL=\"https://local.standalon
 
 
 
+function f_setup_reverse_proxy() {
+    local __doc__="TODO: Setup reverse proxy server with caddy"
+    local _install_dir="${1:-"${_SHARE_DIR%/}/caddy"}"
+    local _ver="${2:-"2.10.0"}"
+    # https://github.com/caddyserver/caddy/releases/download/v2.10.0/caddy_2.10.0_linux_amd64.tar.gz
+    local _file_prefix="caddy_${_ver}_linux"
+    if [ "$(uname)" == "Darwin" ]; then
+        # https://github.com/caddyserver/caddy/releases/download/v2.10.0/caddy_2.10.0_mac_arm64.tar.gz
+        _file_prefix="caddy_${_ver}_mac"
+    fi
+    local _file_name="${_file_prefix}_$(uname -m).tar.gz"
+    if [ -d "${_install_dir%/}" ]; then
+        mkdir -v -p "${_install_dir%/}" || return $?
+    fi
+    cd "${_install_dir%/}" || return $?
+    if [ ! -s "${_file_name}" ]; then
+        curl -O -L "https://github.com/caddyserver/caddy/releases/download/v${_ver}/${_file_name}" || return $?
+    fi
+    if [ ! -s "${_file_name}" ]; then
+        _log "ERROR" "Downloading ${_install_dir%/}/${_file_name} failed. Please check the URL."
+        return 1
+    fi
+    tar -xf ${_file_name} caddy || return $?
+    chmod u+x caddy || return $?
+}
+function f_start_reverse_proxy() {
+    local __doc__="Install and start a reverse proxy server with caddy"
+    local _port="${1:-"8080"}"
+    local _install_dir="${2:-"${_SHARE_DIR%/}/caddy"}"
+    local _ver="${3:-"2.10.0"}"
+    if type caddy &>/dev/null; then
+        _log "INFO" "Caddy is already installed in the PATH. Using it ..."
+    else
+        f_setup_reverse_proxy "${_install_dir}" "${_ver}" || return $?
+    fi
+    # TODO: not completed
+}
+
 # friendly attributes {uid=[samluser], eduPersonAffiliation=[users], givenName=[saml], eduPersonPrincipalName=[samluser@standalone.localdomain], cn=[Saml User], sn=[user]}
 # NXRM3 meta: curl -o ${_sp_meta_file} -u "admin:admin123" "http://localhost:8081/service/rest/v1/security/saml/metadata"
 function f_start_saml_server() {
@@ -3045,7 +3154,7 @@ function f_upload_dummies_with_mvn {
 }
 
 function f_download_dummies_npm() {
-    local __doc__="Download random tgz via npm proxy repository"
+    local __doc__="Download *random* tgz via npm proxy repository"
     local _repo_name="${1:-"npm-proxy"}"
     local _how_many="${2:-"10"}"
     local _parallel="${3:-"3"}"
@@ -3076,6 +3185,7 @@ function f_download_dummies_npm() {
     done | xargs -I{} -P${_parallel} curl -sf -u "${_usr}:${_pwd}" -w '%{http_code} {} (%{time_total}s)\n' -L -k "{}" -o/dev/null
 }
 
+#f_upload_dummies_npm "" 100 "@somescope/dummy-policy-demo"
 function f_upload_dummies_npm() {
     local __doc__="Upload dummy tgz into npm hosted repository"
     local _repo_name="${1:-"npm-hosted"}"
@@ -3093,6 +3203,8 @@ function f_upload_dummies_npm() {
         f_upload_dummy_npm "${_repo_name}" "${_dummy_pkg_name}" "9.${i}.0" || return $?
     done
 }
+#for i in {1..100}; do f_upload_dummy_npm "" "@test/dummy-policy-demo-$i" "0.0.0"; done
+#npm search -ddd --registry ${_NEXUS_URL%/}/repository/npm-hosted/ @test --searchlimit 100
 function f_upload_dummy_npm() {
     local __doc__="Upload one file into a npm hosted repository to upload with the specific version string"
     local _repo_name="${1:-"npm-hosted"}"
@@ -3362,15 +3474,25 @@ function f_upload_dummies_helm_push() {
     cd - >/dev/null
 }
 
-# This can be used for populating yum-proxy with 'vault' and _YUM_REMOTE_URL
+function f_upload_dummy_yum_build() {
+    local __doc__="Upload one rpm after building"
+    local _repo_name="${1:-"yum-hosted"}"
+    local _pkg_name="${2:-"test-rpm"}"
+    local _ver="${3:-"0.0.0"}"
+    local _release="${4:-"1"}"
+    local _yum_upload_path="${_YUM_UPLOAD_PATH:-"Packages"}"
+    local _upload_file="$(_rpm_build "${_pkg_name}" "${_ver}" "${_release}" 2>/dev/null)"
+    [ -s "${_upload_file}" ] || return 102
+    f_upload_asset "${_repo_name}" -F yum.asset=@${_upload_file} -F yum.asset.filename=${_pkg_name}-${_ver}-${_release}.noarch.rpm -F yum.directory=${_yum_upload_path%/}/Packages
+}
+
+# This can be used for populating not only local hosted and a yum-proxy with 'vault' and _YUM_REMOTE_URL
 function f_upload_dummies_yum() {
     local __doc__="Upload rpms from vault.centos.org or 'rpmbuild' command or using same rpm but different path"
     local _repo_name="${1:-"yum-hosted"}"
     local _how_many="${2:-"10"}"
     local _pkg_name="${3}"      # used with grep -E "\b${_pkg_name}\b"
-    local _usr="${4:-"${_ADMIN_USER}"}"
-    local _pwd="${5:-"${_ADMIN_PWD}"}"
-    local _upload_method="${6-"${_YUM_DUMMY_UPLOAD_METHOD:-"path"}"}"  # "vault" or "build" or "path"
+    local _upload_method="${4-"${_YUM_DUMMY_UPLOAD_METHOD:-"path"}"}"  # "vault" or "build" or "path"
 
     local _seq_start="${_SEQ_START:-1}"
     local _seq_end="$((${_seq_start} + ${_how_many} - 1))"
@@ -3401,19 +3523,17 @@ function f_upload_dummies_yum() {
                 continue
             fi
             curl -sSf -w "Download: %{http_code} ${_name} (%{time_total} secs, %{size_download} bytes)\n" "${_url}" -o ${_tmpdir%/}/${_name} || continue
-            curl -sSf -w "Upload  : %{http_code} ${_name} (%{time_total} secs, %{size_download} bytes)\n" -T ${_tmpdir%/}/${_name} -u "${_usr}:${_pwd}" "${_repo_url%/}/${_yum_upload_path%/}/Packages/${_name}" || return $?
+            curl -sSf -w "Upload  : %{http_code} ${_name} (%{time_total} secs, %{size_download} bytes)\n" -T ${_tmpdir%/}/${_name} -u "${_ADMIN_USER}:${_ADMIN_PWD}" "${_repo_url%/}/${_yum_upload_path%/}/Packages/${_name}" || return $?
             rm -f ${_tmpdir%/}/${_name}
             #sleep 60
             #curl -sSf -w "Download: %{http_code} ${_YUM_GROUP_REPO} repomd.xml (%{time_total} secs, %{size_download} bytes)\n" -o/dev/null "${_NEXUS_URL%/}/repository/${_YUM_GROUP_REPO}/${_yum_upload_path%/}/repodata/repomd.xml"
         done
     elif [[ "${_upload_method}" =~ ^[bB] ]]; then
         for i in $(eval "${_seq}"); do
-            local _upload_file="$(_rpm_build "test-rpm" "0.0.0" "${i}" 2>/dev/null)"
-            [ -s "${_upload_file}" ] || return 102
-            f_upload_asset "${_repo_name}" -F yum.asset=@${_upload_file} -F yum.asset.filename=test-rpm-0.0.0-${i}.noarch.rpm -F yum.directory=${_yum_upload_path%/}/Packages || return $?
+            f_upload_dummy_yum_build "${_repo_name}" "${_pkg_name:-"test-rpm"}" "0.0.0" "${i}" || return $?
         done
     elif [[ "${_upload_method}" =~ ^[pP] ]]; then
-        # Fastest but using a bug in Nexus3
+        # Fastest but using a bug in Nexus3. Also can't change the name or version.
         local _upload_file=${_TMP%/}/test-rpm-9.9.9-1.noarch.rpm
         if [ ! -s "${_upload_file}" ] && ! curl -sSf -L -o ${_upload_file}"https://github.com/hajimeo/samples/raw/master/misc/test-rpm-9.9.9-1.noarch.rpm"; then
             return 103
