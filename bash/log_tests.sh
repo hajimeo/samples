@@ -70,18 +70,32 @@ _APP_VER="${_APP_VER_OVERWRITE:-"<null>"}"          # 3.36.0-01
 # Aliases (can't use alias in shell script, so functions)
 _rg() {
     local _max_filesize="${_RG_MAX_FILESIZE-"8G"}"
+    local _rg_cmd="rg -z"
     if [ -n "${_max_filesize}" ]; then
-        rg --max-filesize "${_max_filesize}" -z "$@"
-    else
-        rg -z "$@"
-    fi 2>/tmp/._rg_last.err
-    local _rc="$?"
-    # To avoid too many lines in the log file, if stderr is not empty, then log it.
-    if [ ${_rc:-0} -ne 0 ] && [ -s /tmp/._rg_last.err ]; then
-        echo "[$(date +'%Y-%m-%d %H:%M:%S')] rg \"$*\" (${_max_filesize}|${_rc})" >> /tmp/_rg.log
-        cat /tmp/._rg_last.err >> /tmp/_rg.log
+        _rg_cmd="${_rg_cmd} --max-filesize ${_max_filesize}"
     fi
-    #echo "[$(date +'%Y-%m-%d %H:%M:%S')] DEBUG: Executed rg with \"$*\"" >&2
+    # $@ does not handle nicely with single quotes (can't know if single quote is used), so need to handle it manually
+    for _arg in "$@"; do
+        # TODO: this is not perfect way to check if the single quote (or double quote) is needed
+        if [[ "${_arg}" =~ ([\"\$\*]|[[:space:]]) ]]; then
+            _rg_cmd="${_rg_cmd} '${_arg}'"
+        elif [[ "${_arg}" =~ \( ]]; then
+            _rg_cmd="${_rg_cmd} \"${_arg}\""
+        else
+            _rg_cmd="${_rg_cmd} ${_arg}"
+        fi
+    done
+    eval "${_rg_cmd}" 2>/tmp/._rg_last.err
+    local _rc="$?"
+    if [ ${_rc:-0} -gt 1 ]; then
+        echo "[$(date +'%Y-%m-%d %H:%M:%S')] ${_rg_cmd} (${_rc})" >> /tmp/_rg.log
+        if [ -s /tmp/._rg_last.err ]; then
+            if rg -q 'No files were searched' /tmp/._rg_last.err; then
+                _LOG "DEBUG" "'No files were searched' with ${_rg_cmd} (${_rc})" >&2
+            fi
+            cat /tmp/._rg_last.err >> /tmp/_rg.log
+        fi
+    fi
     return ${_rc}
 }
 _bar() {
@@ -108,7 +122,7 @@ _log_duration() {
 
 _runner() {
     local _pfx="$1"
-    local _n="${2:-"${_BG_JOB_NUM:-"3"}"}"
+    local _n="${2:-"${_BG_JOB_NUM:-"4"}"}"  # export _DEBUG=true _BG_JOB_NUM=1 for debugging
     local _sec="${3:-"3"}"
     local _tmp="$(mktemp -d)"
     _LOG "INFO" "Executing ${FUNCNAME[1]}->${FUNCNAME[0]} $(typeset -F | grep "^declare -f ${_pfx}" | wc -l  | tr -d "[:space:]") functions."
@@ -226,7 +240,8 @@ function _is_mount() {
     local _type_rx="${3:-"(nfs|cifs)"}"
     local _crt="${_path%/}"
     [ -z "${_path}" ] && return 2
-    [ "${_path}" == "<null>" ] && return 3
+    [ ! -s "${_filestores}" ] && return 3
+    [ "${_path}" == "<null>" ] && return 4
     for i in {1..7}; do # checking 7 depth would be enough
         # should be more strict regex?
         if rg -m1 -A5 "\"description\"\s*:\s*\"${_crt%/}[ \"]" ${_filestores} | rg -q '"type"\s*:\s*"'${_type_rx}; then
@@ -487,52 +502,72 @@ function t_basic() {
     fi
 }
 function t_system() {
-    _basic_check "" "${_FILTERED_DATA_DIR%/}/extracted_configs.md" || return
-    _test_template "$(_rg 'AvailableProcessors.?: *[1-3]\b' ${_FILTERED_DATA_DIR%/}/extracted_configs.md)" "WARN" "AvailableProcessors (CPU) might be too low (-XX:ActiveProcessorCount=N ?)" "https://bugs.java.com/bugdatabase/view_bug?bug_id=8140793"
-    _test_template "$(_rg 'TotalPhysicalMemorySize.?: *(.+ MB|[1-7]\.\d+ GB)' ${_FILTERED_DATA_DIR%/}/extracted_configs.md)" "WARN" "TotalPhysicalMemorySize (RAM) might be too low"
-    # TODO: compare TotalPhysicalMemorySize and CommittedVirtualMemorySize
-    _test_template "$(rg 'MaxFileDescriptorCount.?: *\d{4}\b' ${_FILTERED_DATA_DIR%/}/extracted_configs.md)" "WARN" "MaxFileDescriptorCount might be too low"
-    _test_template "$(rg 'SystemLoadAverage.?: *([4-9]\.|\d\d+)' ${_FILTERED_DATA_DIR%/}/extracted_configs.md)" "WARN" "SystemLoadAverage might be too high (check number of CPUs)"
-    local _xms="$(rg -i '\-Xms([a-zA-Z0-9]+)' -o -r '$1' -g jmx.json --no-filename | tail -n1)"
-    local _xmx="$(rg -i '\-Xmx([a-zA-Z0-9]+)' -o -r '$1' -g jmx.json --no-filename | tail -n1)"
-    if [ -z "${_xmx}" ]; then
-        _head "WARN" "Xmx might not be set in jmx.json SystemProperties"
+    if [ -s "${_FILTERED_DATA_DIR%/}/extracted_configs.md" ]; then
+        _test_template "$(rg 'AvailableProcessors.?: *[1-3]\b' ${_FILTERED_DATA_DIR%/}/extracted_configs.md)" "WARN" "AvailableProcessors (CPU) might be too low (-XX:ActiveProcessorCount=N ?)" "https://bugs.java.com/bugdatabase/view_bug?bug_id=8140793"
+        _test_template "$(rg 'TotalPhysicalMemorySize.?: *(.+ MB|[1-7]\.\d+ GB)' ${_FILTERED_DATA_DIR%/}/extracted_configs.md)" "WARN" "TotalPhysicalMemorySize (RAM) might be too low"
+        # TODO: compare TotalPhysicalMemorySize and CommittedVirtualMemorySize
+        _test_template "$(rg 'MaxFileDescriptorCount.?: *\d{4}\b' ${_FILTERED_DATA_DIR%/}/extracted_configs.md)" "WARN" "MaxFileDescriptorCount might be too low"
+        _test_template "$(rg 'SystemLoadAverage.?: *([4-9]\.|\d\d+)' ${_FILTERED_DATA_DIR%/}/extracted_configs.md)" "WARN" "SystemLoadAverage might be too high (check number of CPUs)"
     fi
-    if [ "${_xms}" != "${_xmx}" ]; then
-        _test_template "$(rg -i '\-Xm[sx]' -g jmx.json)" "WARN" "Xms (${_xms}) value might not be same as Xmx (${_xmx})"
-    fi
-    local _maxMemory="$(rg '"maxMemory"\s*:\s*(\d+)' -g sysinfo.json --no-filename -o -r '$1' | sort | tail -n1)"
-    if [ ${_maxMemory:-0} -lt 3221225472 ]; then
-        _head "WARN" "maxMemory (heap|Xmx) might be too low (if docker/pod: NEXUS-35218)"
-    elif [ ${_maxMemory:-0} -gt 34359738368 ]; then
-        _head "WARN" "maxMemory (heap|Xmx) might be too large https://confluence.atlassian.com/jirakb/do-not-use-heap-sizes-between-32-gb-and-47-gb-in-jira-compressed-oops-1167745277.html"
-    fi
-    _test_template "$(rg -g jmx.json -q -- '-XX:\+UseG1GC' || rg -g jmx.json -- '-Xmx')" "WARN" "No '-XX:+UseG1GC' for below Xmx (only for Java 8)" "Also consider using -XX:+ExplicitGCInvokesConcurrent"
-    _test_template "$(rg -g jmx.json -q -- '-XX:MaxDirectMemorySize' || rg -g jmx.json -- '-Xmx')" "WARN" "No '-XX:MaxDirectMemorySize' (better set '-Djdk.nio.maxCachedBufferSize=262144' as well)"
-    _test_template "$(rg -g jmx.json 'UseCGroupMemoryLimitForHeap')" "WARN" "UseCGroupMemoryLimitForHeap is specified (not required from 8v191)"
-    _test_template "$(rg -g jmx.json 'MaxMetaspaceSize')" "WARN" "MaxMetaspaceSize is specified"
-    _test_template "$(rg -g jmx.json -- '-Djavax\.net\.ssl..+=')" "WARN" "javax.net.ssl.* (eg. trustStore) is used in jmx.json"
-    _test_template "$(rg -g jmx.json 'add-exports=' | rg -v 'java.base/sun.security.\S+=ALL-UNNAMED')" "WARN" "add-exports=java.base/sun.security.\S+=ALL-UNNAMED might be missing in jmx.json (eg: NEXUS-44004)"   # TODO: this is wrong
-    _test_template "$(rg -g jmx.json -m1 '1\.8\.0.(29[2-9]|30[01])\b')" "WARN" "Java version might be 1.8.0_292, which has SAML bug: https://bugs.java.com/bugdatabase/view_bug?bug_id=JDK-8266929 (JDK-8266261)" "java.security.NoSuchAlgorithmException: unrecognized algorithm name: PBEWithSHA1AndDESede"
 
-    if ! _rg -g jmx.json -q -w 'x86_64'; then
-        if ! _rg -g jmx.json -q -w 'amd64'; then
-            _head "WARN" "No 'x86_64' or 'amd64' found in jmx.json. Might be 32 bit Java or Windows, check jvm.log or Arch in jmx.json"
+    local _jmx_json="$(_find "jmx.json")"
+    if [ -s "${_jmx_json}" ]; then
+        local _xms="$(rg -i '\-Xms([a-zA-Z0-9]+)' -o -r '$1' "${_jmx_json}" --no-filename | tail -n1)"
+        local _xmx="$(rg -i '\-Xmx([a-zA-Z0-9]+)' -o -r '$1' "${_jmx_json}" --no-filename | tail -n1)"
+        if [ -z "${_xmx}" ]; then
+            _head "WARN" "Xmx might not be set in jmx.json SystemProperties"
         fi
+        if [ "${_xms}" != "${_xmx}" ]; then
+            _test_template "$(rg -i '\-Xm[sx]' "${_jmx_json}")" "WARN" "Xms (${_xms}) value might not be same as Xmx (${_xmx})"
+        fi
+
+        #_test_template "$(rg -q -- '-XX:\+UseG1GC' "${_jmx_json}" || rg -- '-Xmx' "${_jmx_json}")" "WARN" "No '-XX:+UseG1GC' for below Xmx (only for Java 8)" "Also consider using -XX:+ExplicitGCInvokesConcurrent"
+        _test_template "$(rg -q -- '-XX:MaxDirectMemorySize' "${_jmx_json}" || rg -- '-Xmx' "${_jmx_json}")" "WARN" "No '-XX:MaxDirectMemorySize' (better set '-Djdk.nio.maxCachedBufferSize=262144' as well)"
+        #_test_template "$(rg 'UseCGroupMemoryLimitForHeap' "${_jmx_json}")" "WARN" "UseCGroupMemoryLimitForHeap is specified (not required from 8v191)"
+        _test_template "$(rg 'MaxMetaspaceSize' "${_jmx_json}")" "WARN" "MaxMetaspaceSize is specified"
+        _test_template "$(rg -- '-Djavax\.net\.ssl..+=' "${_jmx_json}")" "WARN" "javax.net.ssl.* (eg. trustStore) is used in jmx.json"
+        _test_template "$(rg 'add-exports=' "${_jmx_json}" | rg -v 'java.base/sun.security.\S+=ALL-UNNAMED')" "WARN" "add-exports=java.base/sun.security.\S+=ALL-UNNAMED might be missing in jmx.json (eg: NEXUS-44004)"   # TODO: this is wrong
+        _test_template "$(rg -m1 '1\.8\.0.(29[2-9]|30[01])\b' "${_jmx_json}")" "WARN" "Java version might be 1.8.0_292, which has SAML bug: https://bugs.java.com/bugdatabase/view_bug?bug_id=JDK-8266929 (JDK-8266261)" "java.security.NoSuchAlgorithmException: unrecognized algorithm name: PBEWithSHA1AndDESede"
+
+        if ! _rg -q -w 'x86_64' "${_jmx_json}"; then
+            if ! _rg -q -w 'amd64' "${_jmx_json}"; then
+                _head "WARN" "No 'x86_64' or 'amd64' found in jmx.json. Might be 32 bit Java or Windows, check jvm.log or Arch in jmx.json"
+            fi
+        fi
+    else
+        _head "WARN" "No jmx.json found"
     fi
-    if _rg -g sysinfo.json -q '(DOCKER_TYPE|"SONATYPE_INTERNAL_HOST_SYSTEM"\s*:\s*"Docker"|"container"\s*:\s*"oci")'; then
-        _head "WARN" "Might be installed on DOCKER"
-    fi
-    if _rg -g sysinfo.json -q 'KUBERNETES_'; then
-        _head "WARN" "Might be installed on KUBERNETES (shouldn't use H2/OrientDB)"
+
+    local _sysinfo_json="$(_find "sysinfo.json")"
+    if [ -s "${_sysinfo_json}" ]; then
+        local _maxMemory="$(rg '"maxMemory"\s*:\s*(\d+)' "${_sysinfo_json}" --no-filename -o -r '$1' | sort | tail -n1)"
+        if [ ${_maxMemory:-0} -lt 3221225472 ]; then
+            _head "WARN" "maxMemory (heap|Xmx) might be too low (if docker/pod: NEXUS-35218, if Windows, NEXUS-47278)"
+        elif [ ${_maxMemory:-0} -gt 34359738368 ]; then
+            _head "WARN" "maxMemory (heap|Xmx) might be too large https://confluence.atlassian.com/jirakb/do-not-use-heap-sizes-between-32-gb-and-47-gb-in-jira-compressed-oops-1167745277.html"
+        fi
+        if _rg -q '(DOCKER_TYPE|"SONATYPE_INTERNAL_HOST_SYSTEM"\s*:\s*"Docker"|"container"\s*:\s*"oci")' "${_sysinfo_json}"; then
+            _head "WARN" "Might be installed on DOCKER"
+        fi
+        if _rg -q 'KUBERNETES_' "${_sysinfo_json}"; then
+            _head "WARN" "Might be installed on KUBERNETES (shouldn't use H2/OrientDB)"
+        fi
+    else
+        _head "WARN" "No sysinfo.json found"
     fi
 }
 function t_pg_config() {
     local _pg_cfg_glob="${1:-"dbFileInfo.txt"}"
     local _excl_regex="${2-"\\\s*[:=]\\\s*"}"   #\",\"[^\"]+\",
-    [ ! -s "${_pg_cfg_glob}" ] && _pg_cfg_glob="-g ${_pg_cfg_glob}"
+    if [ ! -s "${_pg_cfg_glob}" ]; then
+        _pg_cfg_glob="$(_find "${_pg_cfg_glob}")"
+    fi
+    if [ ! -s "${_pg_cfg_glob}" ]; then
+        _head "WARN" "No db Info file: ${_pg_cfg_glob} found"
+        return 1
+    fi
     local _level="INFO"
-    local _max_connections="$(rg --no-filename -i '^["]?max_connections\b[^0-9]*([0-9]+)' -o -r '$1' ${_pg_cfg_glob})"
+    local _max_connections="$(rg --no-filename -i '^["]?max_connections\b[^0-9]*([0-9]+)' -o -r '$1' "${_pg_cfg_glob}")"
     if [ -n "${_max_connections}" ]; then
         if [ ${_max_connections:-0} -lt 105 ]; then
             _head "ERROR" "max_connections (${_max_connections}) in \"${_pg_cfg_glob}\" is too small"
@@ -624,13 +659,13 @@ for key in fsDicts['system-filestores']:
 # TODO: For this one, checking without size limit (not _rg)?
 function t_oome() {
     # audit.log can contains `attribute.changes` which contains large test and some Nuget package mentions OutOfMemoryError
-    _test_template "$(_RG_MAX_FILESIZE="6G" _rg 'java.lang.OutOfMemoryError:.+' -m1 -B1 -g "${_LOG_GLOB}" -g '*.log.gz' | rg -vw '(jvm.log|audit*log*)' | sort | uniq)" "ERROR" "OutOfMemoryError detected from ${_LOG_GLOB} (Xms is too small?)"
+    _test_template "$(_RG_MAX_FILESIZE="6G" _rg 'java.lang.OutOfMemoryError:.+' -m1 -B1 -g "${_LOG_GLOB}" | rg -vw '(jvm.log|audit*log*)' | sort | uniq)" "ERROR" "OutOfMemoryError detected from ${_LOG_GLOB} (Xms is too small?)"
 }
 function t_sofe() {
-    _test_template "$(_RG_MAX_FILESIZE="6G" _rg 'java.lang.StackOverflowError:.+' -m1 -B1 -g "${_LOG_GLOB}" -g '*.log.gz' | rg -vw '(jvm.log|audit*log*)' | sort | uniq)" "ERROR" "StackOverflowError detected from ${_LOG_GLOB}"
+    _test_template "$(_RG_MAX_FILESIZE="6G" _rg 'java.lang.StackOverflowError:.+' -m1 -B1 -g "${_LOG_GLOB}" | rg -vw '(jvm.log|audit*log*)' | sort | uniq)" "ERROR" "StackOverflowError detected from ${_LOG_GLOB}"
 }
 function t_psqlexception() {
-    _test_template "$(_RG_MAX_FILESIZE="6G" _rg '^Caused by: org\.postgresql\.util\.PSQLException.+' -o -g "${_LOG_GLOB}" -g '*.log.gz' | rg -vw '(jvm.log|audit*log*)' | sort | uniq -c | sort -nr | rg '^\s*\d\d+')" "WARN" "Many 'PSQLException' detected from ${_LOG_GLOB}"
+    _test_template "$(_RG_MAX_FILESIZE="6G" _rg '^Caused by: org\.postgresql\.util\.PSQLException.+' -o -g "${_LOG_GLOB}" | rg -vw '(jvm.log|audit*log*)' | sort | uniq -c | sort -nr | rg '^\s*\d\d+')" "WARN" "Many 'PSQLException' detected from ${_LOG_GLOB}"
 }
 function t_fips() {
     # TODO: fips (if Windows HKEY_LOCAL_MACHINE\\SYSTEM\\CurrentControlSet\\Control\\Lsa\\FIPSAlgorithmPolicy)
@@ -654,10 +689,15 @@ function t_errors() {
     fi
 }
 function t_threads() {
-    _test_template "$(rg -g threads.txt -i -w "deadlock" | rg -v 'New Relic Deadlock Detector')" "ERROR" "deadlock found in threads.txt"
+    local _threads_txt="$(_find "threads.txt")"
+    if [ ! -s "${_threads_txt}" ]; then
+        _head "WARN" "No threads.txt found"
+        return
+    fi
+    _test_template "$(rg -i -w "deadlock" "${_threads_txt}" | rg -v 'New Relic Deadlock Detector')" "ERROR" "deadlock found in ${_threads_txt}"
     local _dir="$(find . -maxdepth 3 -type d -name "_threads" -print -quit)"
     if [ -z "${_dir}" ]; then
-        _head "INFO" "Can not run ${FUNCNAME[0]} as no _threads directory."
+        _head "WARN" "Can not run ${FUNCNAME[0]} as no _threads directory."
         return
     fi
     if type _threads_extra_check &>/dev/null; then
