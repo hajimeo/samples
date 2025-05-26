@@ -12,7 +12,7 @@
 #   -Dhttps.proxyHost=<proxy_hostname> -Dhttps.proxyPort=
 #   -Djava.net.useSystemProxies=true
 #
-# To DEBUG:
+# To DEBUG (with export JAVA_TOOL_OPTIONS= and does with with keytool):
 #   -Djavax.net.debug=ssl,keymanager
 #   -Djavax.net.debug=ssl:handshake:verbose
 #
@@ -20,6 +20,7 @@
 #   keytool -list -keystore $JAVA_HOME/lib/security/cacerts -storepass changeit > cacerts_sha256.out
 #   keytool -printcert -rfc -sslserver ${_host}:${_port} > server.pem
 #   keytool -printcert -file server.pem | grep -o -E 'SHA256:.+'
+#   keytool -printcert -file rootCA.pem | grep -o -E 'SHA256:.+' # to compare with server.pem
 
 
 # port number used by a test web server
