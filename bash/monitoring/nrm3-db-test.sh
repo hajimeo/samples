@@ -184,7 +184,7 @@ function runDbQuery() {
 }
 
 #setGlobals; JAVA_HOME=$JAVA_HOME_17 startDbWebUi
-#_INSTALL_DIR=nexus-3.* JAVA_HOME=$JAVA_HOME_17 startDbWebUi "8282" "./sonatype-work/nexus3/db"
+#_INSTALL_DIR="nexus-3.76.1-01" JAVA_HOME=$JAVA_HOME_17 startDbWebUi "8282" "./sonatype-work/nexus3/db"
 function startDbWebUi() {
     local __doc__="Run a query against DB connection specified in the _storeProp"
     local _webPort="${1:-"8282"}"
