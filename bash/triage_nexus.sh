@@ -418,22 +418,28 @@ print(Counter(result).items())"
 }
 
 function f_regenerate_properties() {
-cat <<'EOF' >/dev/null
-    sha1sum ./blobs/default/content/vol-38/chap-32/6c79d484-63d7-49f5-b985-7cae7a1c70ef.bytes
-    # last modified time (not creation time)
-    stat --format=%Y ./blobs/default/content/vol-38/chap-32/6c79d484-63d7-49f5-b985-7cae7a1c70ef.bytes
-    # size in bytes
-    stat -c "%s" ./blobs/default/content/vol-38/chap-32/6c79d484-63d7-49f5-b985-7cae7a1c70ef.bytes
-    file --mime-type ./blobs/default/content/vol-38/chap-32/6c79d484-63d7-49f5-b985-7cae7a1c70ef.bytes
-
-    @BlobStore.created-by=system
-    size=<size>
-    @Bucket.repo-name=<repo>
-    creationTime=<time>
-    @BlobStore.created-by-ip=127.0.0.1
-    @BlobStore.content-type=<mime>
-    @BlobStore.blob-name=<name>
-    sha1=<checksum>
+    # TODO more improvements required (too much args)
+    local _repo="$1"
+    local _name="$2"
+    local _bytes_path="$3"
+    local _properties_path="${4:-"${_bytes_path%.*}.properties"}"
+    local _stat="stat"
+    if type gstat &>/dev/null; then
+        _stat="gstat"
+    fi
+    local _sha1="$(sha1sum "${_bytes_path}" | awk '{print $1}')"
+    local _size="$($_stat -c "%s" "${_bytes_path}")"
+    local _last_modified="$($_stat --format=%Y "${_bytes_path}")"
+    local _mime="$(file --mime-type "${_bytes_path}" | awk '{print $2}')"
+cat <<EOF> "${_properties_path}"
+@BlobStore.created-by=system
+size=${_size}
+@Bucket.repo-name=${_repo}
+creationTime=${_last_modified}000
+@BlobStore.created-by-ip=127.0.0.1
+@BlobStore.content-type=${_mime}
+@BlobStore.blob-name=${_name}
+sha1=${_sha1}
 EOF
 }
 
