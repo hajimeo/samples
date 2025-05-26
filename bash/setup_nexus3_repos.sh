@@ -1235,7 +1235,7 @@ function f_setup_apt() {
 }
 function _deb_build() {
     # https://earthly.dev/blog/creating-and-hosting-your-own-deb-packages-and-apt-repo/
-    local __doc__="Create a simple deb (apt) package, and echo the deb file name (so no stdout from other)"
+    local __doc__="Create a simple deb (apt) package, and echo the deb file name (so no stdout from other lines)"
     # Naming rule: <package-name>_<version>-<release-number>_<architecture>
     local _name="${1:-"hello-world"}"
     local _version="${2:-"1.0.0"}"
@@ -1268,10 +1268,11 @@ Description: Hello world!
 EOF
     chmod +x "${_name}/usr/local/bin/${_name}" || return $?
     #_log "INFO" "Building ${_work_dir}/${_name}_${_version}-{_release}_${_arch}.deb ..."
-    dpkg-deb --root-owner-group --build -Znone -z0 "${_name}" "${_work_dir}/${_name}_${_version}-${_release}_${_arch}.deb" || return $?
-    _log "INFO" "Verifying ${_work_dir}/${_name}_${_version}-{_release}_${_arch}.deb ..."
-    dpkg -c ${_work_dir}/${_name}_${_version}-{_release}_${_arch}.deb || return $?
+    dpkg-deb --root-owner-group --build -Znone -z0 "${_name}" "${_work_dir}/${_name}_${_version}-${_release}_${_arch}.deb" >&2 || return $?
+    #_log "INFO" "Verifying with dpkg -c ${_work_dir}/${_name}_${_version}-${_release}_${_arch}.deb"
+    #dpkg -c ${_work_dir}/${_name}_${_version}-{_release}_${_arch}.deb || return $?
     cd - &>/dev/null
+    echo "${_work_dir}/${_name}_${_version}-${_release}_${_arch}.deb"
 }
 function f_start_ubuntu_for_apt_test() {
     local __doc__="Start Ubuntu container"
