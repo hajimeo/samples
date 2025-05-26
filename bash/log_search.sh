@@ -1355,7 +1355,7 @@ function f_threads() {
     f_threads_cpu_elapsed "${_save_dir%/}" | rg 'RUNNABLE' | sort -t',' -k2nr | head -n5
     echo " "
 
-    echo "### _threads_extra_check (product specific issues)"
+    echo "### _threads_extra_check against ${_file} (product specific issues)"
     _threads_extra_check "${_file}"
 }
 function f_threads_cpu_elapsed() {  # Java 17 only
@@ -1459,8 +1459,13 @@ function _many_wait() {
 }
 function _threads_extra_check() {
     local _file="${1:-"threads.txt"}"
-    if [ ! -f "${_file}" ]; then
-        _file="--no-filename -g \"${_file}\""
+    if [ -n "${_file}" ] && [ ! -f "${_file}" ]; then
+        #_file="--no-filename -g \"${_file}\""
+        _file="$(_find "${_file}")"
+    fi
+    if [ -z "${_file}" ]; then
+        echo "## No file provided for _threads_extra_check" >&2
+        return 1
     fi
     rg '(DefaultTimelineIndexer|content_digest|findAssetByContentDigest|touchItemLastRequested|preClose0|sun\.security\.util\.MemoryCache|java\.lang\.Class\.forName|CachingDateFormatter|metrics\.health\.HealthCheck\.execute|WeakHashMap|userId\.toLowerCase|MessageDigest|UploadManagerImpl\.startUpload|UploadManagerImpl\.blobsByName|maybeTrimRepositories|getQuarantinedVersions|nonCatalogedVersions|getProxyDownloadNumbers|RepositoryManagerImpl.retrieveConfigurationByName|\.StorageFacetManagerImpl\.|OTransactionRealAbstract\.isIndexKeyMayDependOnRid|AptFacetImpl.put|componentMetadata|ensureGetUpload|OrientCommonQueryDataService|getWaivedFixed|AbstractOperationalSqlDAO\.getAll|NewestRiskService|acquireLock|com\.sonatype\.insight\.brain\.dataaccess\.policy\.PolicyViolationDAO\.getUnfixed|SearchTableStore\.searchComponents)' ${_file} | sort | uniq -c > /tmp/$FUNCNAME_$$.out || return $?
     if [ -s /tmp/$FUNCNAME_$$.out ]; then
@@ -1645,7 +1650,7 @@ function f_reqsFromCSV() {
     local _where="${2}"
     local _elapsedTime_gt="${3:-"7000"}"
     if [ -n "${_file}" ] && [ ! -f "${_file}" ]; then
-        _file="$(find . -maxdepth 3 -type f -print | grep "/${_file}$" | sort -r | head -n1)"
+        _file="$(_find "${_file}")"
     fi
     [ -z "${_file}" ] && return 1
     local _extra_cols=""
@@ -2052,8 +2057,12 @@ function _find_and_cat() {
     local _find_all="$2"
     local _max_depth="${3:-"5"}"
     local _result=1
+    if [ -z "${_find_all}" ] && [ -s "${_name}" ]; then
+        cat "${_name}"
+        return 0
+    fi
     # Accept not only file name but also /<dir>/<filename> so that using grep
-    for _f in `find . -maxdepth ${_max_depth} -type f -print | grep -w "${_name}$"`; do
+    for _f in $(find . -maxdepth ${_max_depth} -type f -print | grep -w "${_name}$"); do
         cat "${_f}" && _result=0
         [[ "${_find_all}" =~ ^(y|Y) ]] || break
         echo ''
