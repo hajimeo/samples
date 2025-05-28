@@ -3186,7 +3186,8 @@ function f_download_dummies_npm() {
     done | xargs -I{} -P${_parallel} curl -sf -u "${_usr}:${_pwd}" -w '%{http_code} {} (%{time_total}s)\n' -L -k "{}" -o/dev/null
 }
 
-#f_upload_dummies_npm "" 100 "@somescope/dummy-policy-demo"
+# 100 packages with 100 versions each with 5 concurrency (please check the Deployment policy)
+# for p in {1..5}; do sleep 1; for i in {1..20}; do f_upload_dummies_npm "npm-hosted" 100 "@test/dummy-pkg-${p}-${i}" || break; done & done; wait
 function f_upload_dummies_npm() {
     local __doc__="Upload dummy tgz into npm hosted repository"
     local _repo_name="${1:-"npm-hosted"}"
@@ -3213,7 +3214,12 @@ function f_upload_dummy_npm() {
     local _ver="${3:-"9.9.9"}"
     # Using policy-demo-2.0.0.tgz as a dummy (template)
     if [ ! -s "${_TMP%/}/policy-demo-2.0.0.tgz" ]; then
-        curl -sSf -o "${_TMP%/}/policy-demo-2.0.0.tgz" -L "https://registry.npmjs.org/@sonatype/policy-demo/-/policy-demo-2.0.0.tgz" || return $?
+        if [ ! -s "${_TMP%/}/policy-demo-2.0.0.tgz_$$" ]; then
+            curl -sSf -o "${_TMP%/}/policy-demo-2.0.0.tgz_$$" -L "https://registry.npmjs.org/@sonatype/policy-demo/-/policy-demo-2.0.0.tgz" || return $?
+        fi
+        if [ -s "${_TMP%/}/policy-demo-2.0.0.tgz_$$" ] && [ ! -s "${_TMP%/}/policy-demo-2.0.0.tgz" ]; then
+            mv -v "${_TMP%/}/policy-demo-2.0.0.tgz_$$" "${_TMP%/}/policy-demo-2.0.0.tgz" || return $?
+        fi
     fi
     local _uploading_file="$(_update_npm_tgz "${_TMP%/}/policy-demo-2.0.0.tgz" "${_dummy_pkg_name}" "${_ver}")" || return $?
     if [ -z "${_uploading_file}" ]; then
@@ -3231,7 +3237,6 @@ function _update_npm_tgz() {
     local _new_ver="$3"
     local _no_tgz="$4"
     local _tmpbase="${5:-"${_TMP%/}"}"
-    [ -z "${_tmpbase}" ] && _tmpbase="$(mktemp -d)"
 
     if [[ "${_tgz}" =~ ([^/]+)-([0-9.]+).tgz ]]; then
         local _tzg_name="${BASH_REMATCH[1]}"
@@ -3240,32 +3245,41 @@ function _update_npm_tgz() {
         _log "ERROR" "Invalid tgz file name: ${_tgz}"
         return 1
     fi
-
-    local _tmpdir="${_tmpbase%/}/${_tzg_name}-${_tzg_ver}"
+    local _tmpdir="${_tmpbase%/}/$(mktemp -d)"
     if [ -s "${_tmpdir%/}/package/package.json" ]; then
-        _log "DEBUG" "${_tmpdir%/}/package/package.json already exists"
+        _log "INFO" "${_tmpdir%/}/package/package.json already exists"
     else
         mkdir -p ${_tmpdir%/} || return $?
         tar -xf ${_tgz} -C ${_tmpdir%/} || return $?
     fi
     if [ -n "${_new_name}" ]; then
-        sed -i.tmp -E 's;"name": ".+";"name": "'${_new_name}'";' ${_tmpdir%/}/package/package.json || return $?
+        if ! sed -i.tmp -E 's;"name": ".+";"name": "'${_new_name}'";' ${_tmpdir%/}/package/package.json; then
+            _log "ERROR" "Failed to update name in ${_tmpdir%/}/package/package.json"
+            return 1
+        fi
         _tzg_name="${_new_name}"
         if [[ "${_new_name}" =~ ([^/]+)/([^/]+) ]]; then
             _tzg_name="${BASH_REMATCH[2]}"
         fi
     fi
     if [ -n "${_new_ver}" ]; then
-        sed -i.tmp -E 's/"version": ".+"/"version": "'${_new_ver}'"/' ${_tmpdir%/}/package/package.json || return $?
+        if ! sed -i.tmp -E 's/"version": ".+"/"version": "'${_new_ver}'"/' ${_tmpdir%/}/package/package.json; then
+            _log "ERROR" "Failed to update version in ${_tmpdir%/}/package/package.json"
+            return 1
+        fi
         _tzg_ver="${_new_ver}"
     fi
     rm -f ${_tmpdir%/}/package/package.json.tmp
     if [[ "${_no_tgz}" =~ [yY] ]]; then
         _log "INFO" "Updated ${_tmpdir%/}/package/package.json only"
     else
-        tar -czf ${_tmpbase}/${_tzg_name}-${_tzg_ver}.tgz -C ${_tmpdir%/} package || return $?
+        if ! tar -czf ${_tmpbase}/${_tzg_name}-${_tzg_ver}.tgz -C ${_tmpdir%/} package; then
+            _log "ERROR" "Failed to create ${_tmpbase}/${_tzg_name}-${_tzg_ver}.tgz"
+            return 1
+        fi
         echo "${_tmpbase}/${_tzg_name}-${_tzg_ver}.tgz"
     fi
+    rm -rf ${_tmpdir%/}
 }
 
 # Example command to create with 4 concurrency and 500 each (=2000)
