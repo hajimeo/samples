@@ -116,7 +116,7 @@ _RESP_FILE=""
 # To re-install: _RECREATE_ALL=Y f_install_nexus3 "<version>" "<dbname>"
 # To install HA instances (port is automatic): _NEXUS_ENABLE_HA=Y f_install_nexus3 "" "nxrmlatestha"
 #     2nd node: _NEXUS_ENABLE_HA=Y _NXRM3_INSTALL_DIR="some_dir_path" f_install_nexus3 "" "nxrmlatestha"
-# To upgrade (from ${_dirpath}/): tar -xvf $HOME/.nexus_executable_cache/nexus-mac-aarch64-3.79.1-*.tar.gz
+# To upgrade (from ${_dirpath}/): tar -xvf $HOME/.nexus_executable_cache/nexus-3.79.1-04-mac-aarch_64.tar.gz
 function f_install_nexus3() {
     local __doc__="Install specific NXRM3 version (to recreate sonatype-work and DB, _RECREATE_ALL=Y)"
     local _ver="${1:-"${r_NEXUS_VERSION}"}"     # 'latest' or '3.71.0-03-java17'
@@ -245,7 +245,7 @@ function f_install_nexus3() {
                 _dbhost="$(hostname -f):5432"
             fi
             cat << EOF > "${_dirpath%/}/sonatype-work/nexus3/etc/fabric/nexus-store.properties"
-jdbcUrl=jdbc\:postgresql\://${_dbhost//:/\\:}/${_dbname}
+jdbcUrl=jdbc\:postgresql\://${_dbhost//:/\\:}/${_dbname}?targetServerType=primary
 username=${_dbusr}
 password=${_dbpwd}
 schema=${_schema:-"public"}
@@ -1835,7 +1835,6 @@ function _get_asset_NXRM2() {
 # If NXRM2, below curl also works:
 #   curl -D- -u admin:admin123 -T <(echo "test upload") "http://localhost:8081/nexus/content/repositories/raw-hosted/test/test.txt"
 #f_upload_asset "maven-releases" -F "maven2.groupId=keystores" -F "maven2.artifactId=my-test-jks" -F "maven2.version=20241024" -F "maven2.asset1.extension=jks" -F "maven2.asset1=@$HOME/IdeaProjects/samples/misc/standalone.localdomain.jks"
-#f_api "/service/rest/v1/staging/move/maven-hosted?repository=maven-releases&maven.groupId=keystores&maven.artifactId=my-test-jks&maven.baseVersion=20241024" "" "POST"
 function f_upload_asset() {
     local __doc__="Upload one asset with Upload API"
     local _repo_or_fmt="$1"    # format if NXRM2
@@ -3223,7 +3222,7 @@ function f_upload_dummy_npm() {
     fi
     local _uploading_file="$(_update_npm_tgz "${_TMP%/}/policy-demo-2.0.0.tgz" "${_dummy_pkg_name}" "${_ver}")" || return $?
     if [ -z "${_uploading_file}" ]; then
-        _log "ERROR" "Failed to generate a new upload tgz file with ${_TMP%/}/policy-demo-2.0.0.tgz, ${_dummy_pkg_name}, 9.${i}.0"
+        _log "ERROR" "Failed to generate a new upload tgz file with ${_TMP%/}/policy-demo-2.0.0.tgz, ${_dummy_pkg_name}, ${_ver}"
         return 1
     fi
     f_upload_asset "${_repo_name}" -F "npm.asset=@${_uploading_file}" || return $?
@@ -3245,7 +3244,7 @@ function _update_npm_tgz() {
         _log "ERROR" "Invalid tgz file name: ${_tgz}"
         return 1
     fi
-    local _tmpdir="${_tmpbase%/}/$(mktemp -d)"
+    local _tmpdir="${_tmpbase%/}/${FUNCNAME[0]}_$$"
     if [ -s "${_tmpdir%/}/package/package.json" ]; then
         _log "INFO" "${_tmpdir%/}/package/package.json already exists"
     else
@@ -3280,6 +3279,73 @@ function _update_npm_tgz() {
         echo "${_tmpbase}/${_tzg_name}-${_tzg_ver}.tgz"
     fi
     rm -rf ${_tmpdir%/}
+}
+
+function f_upload_dummy_pypi() {
+    local __doc__="Upload dummy .whl into PyPI hosted repository"
+    local _repo_name="${1:-"pypi-hosted"}"
+    local _new_name="${2:-"mydummyproject"}"  # Default project name if not specified
+    local _new_ver="${3:-"0.0.1"}"  # Default version if not specified
+    local _tmpbase="${4:-"${_TMP%/}"}"
+
+    if [ ! -s "${_TMP%/}/pypi-sampleproject.tgz" ]; then
+        if [ ! -s "${_TMP%/}/pypi-sampleproject.tgz_$$" ]; then
+            curl -sSf -o "${_TMP%/}/pypi-sampleproject.tgz_$$" -L "https://github.com/hajimeo/samples/raw/refs/heads/master/misc/pypi-sampleproject.tgz" || return $?
+        fi
+        if [ -s "${_TMP%/}/pypi-sampleproject.tgz_$$" ] && [ ! -s "${_TMP%/}/pypi-sampleproject.tgz" ]; then
+            mv -v "${_TMP%/}/pypi-sampleproject.tgz_$$" "${_TMP%/}/pypi-sampleproject.tgz" || return $?
+        fi
+    fi
+    if [ ! -s "${_TMP%/}/pypi-sampleproject.tgz" ]; then
+        _log "ERROR" "pypi-sampleproject.tgz not found in ${_TMP%/}"
+        return 1
+    fi
+    local _tmpdir="${_tmpbase%/}/${FUNCNAME[0]}_$$"
+    mkdir -p ${_tmpdir%/} || return $?
+    tar -xf "${_TMP%/}/pypi-sampleproject.tgz" -C "${_tmpdir%/}" || return $?
+    local _uploading_file="$(_build_pypi_project "${_tmpdir%/}/sampleproject" "${_new_name}" "${_new_ver}")" || return $?
+    if [ -z "${_uploading_file}" ]; then
+        _log "ERROR" "Failed to update the pypi project with ${_tmpdir}, ${_new_name}, ${_new_ver}"
+        return 1
+    fi
+    f_upload_asset "${_repo_name}" -F "pypi.asset=@${_uploading_file}" || return $?
+    rm -rf ${_tmpdir%/}
+}
+
+function _build_pypi_project() {
+    local __doc__="Update and build PyPI project with a new name and version. Requires setuptools, wheel, and build"
+    local _project_dir="${1:-"."}"  # Directory where the project is extracted
+    local _new_name="${2:-"mydummyproject"}"  # Default project name if not specified
+    local _new_ver="${3:-"0.0.1"}"  # Default version if not specified
+    local _build_home="${4:-"${_project_dir}"}"
+    if [ -z "${_new_name}" ] || [ -z "${_new_ver}" ]; then
+        _log "ERROR" "Please specify project name and new version"
+        return 1
+    fi
+    cd "${_project_dir}" || return $?
+    if [ ! -s "./pyproject.toml" ]; then
+        _log "ERROR" "pyproject.toml not found in ${_project_dir}"
+        return 1
+    fi
+    sed -i '' -E 's/^name = ".+$/name = "'${_new_name}'"/' ./pyproject.toml
+    sed -i '' -E 's/^version = ".+$/version = "'${_new_ver}'"/' ./pyproject.toml
+    if ! grep -q "name = \"${_new_name}\"" ./pyproject.toml || ! grep -q "version = \"${_new_ver}\"" ./pyproject.toml; then
+        _log "ERROR" "Failed to update pyproject.toml"
+        return 1
+    fi
+    #HOME="." python -m pip install --upgrade setuptools wheel build
+    if ! HOME="${_build_home:-"${HOME}"}" python -m build &> ${_TMP%/}/pybuild_last.out; then
+        _log "ERROR" "Building ${_project_dir} failed. Check ${_TMP%/}/pybuild_last.out for details."
+        return 1
+    fi
+    local _whl_file="$(find ./dist -type f -name "${_new_name}-${_new_ver}-*.whl" -mmin -1 | head -n 1)"
+    if [ -z "${_whl_file}" ]; then
+        _log "ERROR" "No wheel file found in ./dist after build"
+        return 1
+    fi
+    _whl_file="$(readlink -f "${_whl_file}")"
+    echo "${_whl_file}"
+    cd - >/dev/null || return $?
 }
 
 # Example command to create with 4 concurrency and 500 each (=2000)
