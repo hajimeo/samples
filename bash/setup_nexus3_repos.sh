@@ -1580,14 +1580,15 @@ function f_create_s3_blobstore() {
     local _region="${4:-"${AWS_REGION:-"ap-southeast-2"}"}"
     local _ak="${5:-"${AWS_ACCESS_KEY_ID}"}"
     local _sk="${6:-"${AWS_SECRET_ACCESS_KEY}"}"
-    if [ -n "${_prefix}" ]; then    # AWS S3 prefix shoudln't start with / (and may need to end with /)
+    local _exp="${7:-"3"}"  # Not used since 3.80 (46435)
+    if [ -n "${_prefix}" ]; then    # AWS S3 prefix shouldn't start with / (and may need to end with /)
         _prefix="${_prefix#/}"
         _prefix="${_prefix%/}/"
     fi
     # NOTE: 3.27 has ',"state":""'
-    #       From 3.80 'coreui_Blobstore' may not work
-    if ! f_api "/service/rest/v1/blobstores/s3" '{"name":"'${_bs_name}'","bucketConfiguration":{"bucket":{"region":"'${_region}'","prefix":"Hajimes-MacBook-Pro-2_s3-test","name":"'${_bucket}'"},"bucketSecurity":{"secretAccessKey":"'${_sk}'","accessKeyId":"'${_ak}'"},"encryption":null,"advancedBucketConnection":{"endpoint":"","forcePathStyle":false},"failoverBuckets":[],"activeRegion":null}}' > ${_TMP%/}/f_api_last.out; then
-        if ! _apiS '{"action":"coreui_Blobstore","method":"create","data":[{"type":"S3","name":"'${_bs_name}'","isQuotaEnabled":false,"property_region":"'${_region}'","property_bucket":"'${_bucket}'","property_prefix":"'${_prefix%/}'","property_expiration":1,"authEnabled":true,"property_accessKeyId":"'${_ak}'","property_secretAccessKey":"'${_sk}'","property_assumeRole":"","property_sessionToken":"","encryptionSettingsEnabled":false,"advancedConnectionSettingsEnabled":false,"attributes":{"s3":{"region":"'${_region}'","bucket":"'${_bucket}'","prefix":"'${_prefix%/}'","expiration":"2","accessKeyId":"'${_ak}'","secretAccessKey":"'${_sk}'","assumeRole":"","sessionToken":""}}}],"type":"rpc"}' > ${_TMP%/}/f_apiS_last.out; then
+    #       From 3.78 'coreui_Blobstore' may not work, so trying the API first
+    if ! f_api "/service/rest/v1/blobstores/s3" '{"name":"'${_bs_name}'","bucketConfiguration":{"bucket":{"region":"'${_region}'","prefix":"'${_prefix}'","name":"'${_bucket}'","expiration":'${_exp}'},"bucketSecurity":{"secretAccessKey":"'${_sk}'","accessKeyId":"'${_ak}'"},"encryption":null,"advancedBucketConnection":{"endpoint":"","forcePathStyle":false},"failoverBuckets":[],"activeRegion":null}}' > ${_TMP%/}/f_api_last.out; then
+        if ! _apiS '{"action":"coreui_Blobstore","method":"create","data":[{"type":"S3","name":"'${_bs_name}'","isQuotaEnabled":false,"property_region":"'${_region}'","property_bucket":"'${_bucket}'","property_prefix":"'${_prefix%/}'","property_expiration":1,"authEnabled":true,"property_accessKeyId":"'${_ak}'","property_secretAccessKey":"'${_sk}'","property_assumeRole":"","property_sessionToken":"","encryptionSettingsEnabled":false,"advancedConnectionSettingsEnabled":false,"attributes":{"s3":{"region":"'${_region}'","bucket":"'${_bucket}'","prefix":"'${_prefix%/}'","expiration":"'${_exp}'","accessKeyId":"'${_ak}'","secretAccessKey":"'${_sk}'","assumeRole":"","sessionToken":""}}}],"type":"rpc"}' > ${_TMP%/}/f_apiS_last.out; then
             _log "ERROR" "Failed to create blobstore: ${_bs_name} ."
             _log "ERROR" "$(cat ${_TMP%/}/f_api_last.out)"
             _log "ERROR" "$(cat ${_TMP%/}/f_apiS_last.out)"
@@ -3616,7 +3617,7 @@ function f_upload_dummies_yum() {
     elif [[ "${_upload_method}" =~ ^[pP] ]]; then
         # Fastest but using a bug in Nexus3. Also can't change the name or version.
         local _upload_file=${_TMP%/}/test-rpm-9.9.9-1.noarch.rpm
-        if [ ! -s "${_upload_file}" ] && ! curl -sSf -L -o ${_upload_file}"https://github.com/hajimeo/samples/raw/master/misc/test-rpm-9.9.9-1.noarch.rpm"; then
+        if [ ! -s "${_upload_file}" ] && ! curl -sSf -L -o ${_upload_file} "https://github.com/hajimeo/samples/raw/master/misc/test-rpm-9.9.9-1.noarch.rpm"; then
             return 103
         fi
         for i in $(eval "${_seq}"); do
@@ -3868,8 +3869,8 @@ function f_register_script() {
     local _script_name="$2"
     [ -s "${_script_file%/}" ] || return 1
     [ -z "${_script_name}" ] && _script_name="$(basename ${_script_file} .groovy)"
-    local _script_text="$(cat ${_script_file} | JSON_ESCAPE=Y _sortjson)"
-    #python -c "import sys,json;print(json.dumps(open('${_script_file}').read()))" > ${_TMP%/}/${_script_name}_$$.out || return $?
+    #TODO: remove 'python' local _script_text="$(cat ${_script_file} | JSON_ESCAPE=Y _sortjson)"
+    local _script_text="$(python -c "import sys,json;print(json.dumps(open('${_script_file}').read())))")"
     echo "{\"name\":\"${_script_name}\",\"content\":${_script_text},\"type\":\"groovy\"}" > ${_TMP%/}/${_script_name}_$$.json
     _log "INFO" "Delete ${_script_name} if exists (may return error if not exist)"
     f_api "/service/rest/v1/script/${_script_name}" "" "DELETE"
