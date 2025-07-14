@@ -8,6 +8,7 @@ import (
 	"log"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strconv"
 	"strings"
 	"sync"
@@ -15,6 +16,7 @@ import (
 )
 
 var DEBUG bool
+var DEBUG_FNAME_SKIP_LEVEL int = 1 // skip the first level of the caller's function name, which is this function
 
 func CaptureStderr(f func()) string {
 	/* output := CaptureStderr(func() { PrintErr(err) }) */
@@ -43,6 +45,17 @@ func CaptureStdout(f func()) string {
 }
 
 func Log(level string, message interface{}) {
+	// only if DEBUG, get the caller's method name and line number and append to the message
+	if DEBUG {
+		pc, _, line, ok := runtime.Caller(DEBUG_FNAME_SKIP_LEVEL)
+		if ok {
+			fn := runtime.FuncForPC(pc)
+			if fn != nil {
+				message = fmt.Sprintf("[%s:%d] %v", fn.Name(), line, message)
+			}
+		}
+	}
+
 	if level != "DEBUG" || DEBUG {
 		log.Printf("[%s] %v\n", level, message)
 	}
