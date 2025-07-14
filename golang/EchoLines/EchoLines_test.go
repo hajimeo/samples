@@ -55,12 +55,12 @@ func TestechoDurations(t *testing.T) {
 	return
 }
 func TestEchoEndLine(t *testing.T) {
-	echoEndLine("end line", NO_KEY)
+	echoEndLine("end line", _NO_KEY)
 	t.Log("TODO: not implemented")
 	return
 }
 func TestEchoStartLine(t *testing.T) {
-	echoStartLine("start line", NO_KEY)
+	echoStartLine("start line", _NO_KEY)
 	t.Log("TODO: not implemented")
 	return
 }
@@ -73,8 +73,8 @@ func TestEchoLine(t *testing.T) {
 }
 func TestGetKey(t *testing.T) {
 	shouldBeNoKey := getKey("end line")
-	if shouldBeNoKey != NO_KEY {
-		t.Errorf("NO_KEY should be returned")
+	if shouldBeNoKey != _NO_KEY {
+		t.Errorf("_NO_KEY should be returned")
 		return
 	}
 }
