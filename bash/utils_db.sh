@@ -93,7 +93,7 @@ function _postgresql_configure() {
     _psql_adm "ALTER SYSTEM SET maintenance_work_mem TO '1GB'" # RAM * 5%. Default 64MB. Used for VACUUM, CREATE INDEX etc.
     #_psql_adm "ALTER SYSTEM SET autovacuum_work_mem TO '-1'"  # Default -1 means uses the above for AUTO vacuum.
     #_psql_adm "ALTER SYSTEM SET max_parallel_maintenance_workers TO '4'" # Default 2. Used for (manual) VACUUM, CREATE INDEX etc.
-    _psql_adm "ALTER SYSTEM SET effective_cache_size TO '3072MB'" # Default 4GB. RAM * 50% ~ 75%. Used by planner.
+    _psql_adm "ALTER SYSTEM SET effective_cache_size TO '3072MB'" # Default 4GB. RAM * 50% ~ 75%. Used by planner. Does NOT allocate any memory, just hint.
     #_upsert ${_postgresql_conf} "wal_buffers" "16MB" "#wal_buffers" # Default -1 (1/32 of shared_buffers) Usually higher provides better write performance
     #_upsert ${_postgresql_conf} "random_page_cost" "1.1" "#random_page_cost"   # Default 4.0. If very fast disk is used, recommended to use same as seq_page_cost (1.0)
     #_upsert ${_postgresql_conf} "effective_io_concurrency" "200" "#effective_io_concurrency"   # Default 1. Was for RAID so number of disks. If SSD, somehow 200 is recommended
