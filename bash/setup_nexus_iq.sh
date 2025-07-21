@@ -242,10 +242,12 @@ function f_api_orgId() {
 function f_api_appIntId() {
     local __doc__="Get application Internal ID from /api/v2/applications?publicId=\${_app_pub_id}"
     local _app_pub_id="${1}"
+    local _iq_url="${2}"
+    [ -z "${_iq_url}" ] && _iq_url="$(_get_iq_url "${_IQ_URL%/}")"
     if [ -n "${_app_pub_id}" ]; then
-        _curl "${_IQ_URL%/}/api/v2/applications" --get --data-urlencode "publicId=${_app_pub_id}" | JSON_SEARCH_KEY="applications.id" _sortjson
+        _curl "${_iq_url%/}/api/v2/applications" --get --data-urlencode "publicId=${_app_pub_id}" | JSON_SEARCH_KEY="applications.id" _sortjson
     else
-        _curl "${_IQ_URL%/}/api/v2/applications" | JSON_SEARCH_KEY="applications" _sortjson | JSON_SEARCH_KEY="id,publicId" _sortjson
+        _curl "${_iq_url%/}/api/v2/applications" | JSON_SEARCH_KEY="applications" _sortjson | JSON_SEARCH_KEY="id,publicId" _sortjson
     fi
 }
 
@@ -253,6 +255,8 @@ function f_api_create_app() {
     local __doc__="Create an application with /api/v2/applications"
     local _app_pub_id="${1}"
     local _create_under_org="${2:-"Sandbox Organization"}"
+    local _iq_url="${3}"
+    [ -z "${_iq_url}" ] && _iq_url="$(_get_iq_url "${_IQ_URL%/}")"
     if [ -z "${_app_pub_id}" ]; then
         _log "ERROR" "Application public ID is required."
         return 1
@@ -264,7 +268,7 @@ function f_api_create_app() {
         _log "INFO" "Not creating ${_app_pub_id} as it already exists."
         return 0
     fi
-    _curl "${_IQ_URL%/}/api/v2/applications" -H "Content-Type: application/json" -d '{"publicId":"'${_app_pub_id}'","name": "'${_app_pub_id}'","organizationId": "'${_org_int_id}'"}'
+    _curl "${_iq_url%/}/api/v2/applications" -H "Content-Type: application/json" -d '{"publicId":"'${_app_pub_id}'","name": "'${_app_pub_id}'","organizationId": "'${_org_int_id}'"}'
 }
 
 function f_api_role_mapping() {
@@ -274,27 +278,29 @@ function f_api_role_mapping() {
     local _apporg_name="${3:-"Root Organization"}"
     local _user_or_group="${4:-"group"}"
     local _app_or_org="${5:-"organization"}"    # or 'application'
-    local _role_int_id="$(_curl "${_IQ_URL%/}/api/v2/roles" | python -c "import sys,json
+    local _iq_url="${6}"
+    [ -z "${_iq_url}" ] && _iq_url="$(_get_iq_url "${_IQ_URL%/}")"
+    local _role_int_id="$(_curl "${_iq_url%/}/api/v2/roles" | python -c "import sys,json
 a=json.loads(sys.stdin.read())
 for r in a['roles']:
     if '${_role_name}'.lower() == r['name'].lower():
         print(r['id'])
         break")"
     if [ -z "${_role_int_id}" ] || [ -z "${_external_id}" ]; then
-        _curl "${_IQ_URL%/}/api/v2/roles" | python -m json.tool | grep '"name"'
+        _curl "${_iq_url%/}/api/v2/roles" | python -m json.tool | grep '"name"'
         return $?
     fi
     _log "INFO" "Using Role Internal Id = ${_role_int_id} ..."
-    local _int_id="$(_curl "${_IQ_URL%/}/api/v2/${_app_or_org}s" --get --data-urlencode "${_app_or_org}Name=${_apporg_name}" | python -c "import sys,json
+    local _int_id="$(_curl "${_iq_url%/}/api/v2/${_app_or_org}s" --get --data-urlencode "${_app_or_org}Name=${_apporg_name}" | python -c "import sys,json
 a=json.loads(sys.stdin.read())
 print(a['${_app_or_org}s'][0]['id'])")" || return $?
     if [ -z "${_int_id}" ]; then
-        _curl "${_IQ_URL%/}/api/v2/${_app_or_org}s" | python -m json.tool | grep '"name"'
+        _curl "${_iq_url%/}/api/v2/${_app_or_org}s" | python -m json.tool | grep '"name"'
         return $?
     fi
     _log "INFO" "Using ${_app_or_org} Internal Id = ${_int_id} ..."
-    _curl "${_IQ_URL%/}/api/v2/roleMemberships/${_app_or_org}/${_int_id}/role/${_role_int_id}/${_user_or_group}/${_external_id}" -X PUT
-    _curl "${_IQ_URL%/}/api/v2/roleMemberships/${_app_or_org}/${_int_id}" | python -c "import sys,json
+    _curl "${_iq_url%/}/api/v2/roleMemberships/${_app_or_org}/${_int_id}/role/${_role_int_id}/${_user_or_group}/${_external_id}" -X PUT
+    _curl "${_iq_url%/}/api/v2/roleMemberships/${_app_or_org}/${_int_id}" | python -c "import sys,json
 a=json.loads(sys.stdin.read())
 for r in a['memberMappings']:
     if '${_role_int_id}' == r['roleId']:
@@ -302,26 +308,63 @@ for r in a['memberMappings']:
         break"
 }
 
-function f_api_eval_gav() {
-    local __doc__="/api/v2/evaluation/applications/\${_app_int_id} with Maven GAV"
-    local _app_pub_id="${1:-"sandbox-application"}"
-    local _gav="${2}"
-    [[ "${_gav}" =~ ^" "*([^: ]+)" "*:" "*([^: ]+)" "*:" "*([^: ]+)" "*$ ]] || return 11
-    local _g="${BASH_REMATCH[1]}"
-    local _a="${BASH_REMATCH[2]}"
-    local _v="${BASH_REMATCH[3]}"
-    local _app_int_id="$(f_api_appIntId "${_app_pub_id}")" || return $?
+# purl/componentIdentifier examples:
+# pkg:maven/tomcat/tomcat-util@5.5.23?type=jar | pkg:pypi/apache-beam@2.8.0?extension=zip | pkg:pypi/tensorflow@2.0.0?extension=whl&qualifier=cp37-cp37m-manylinux2010_x86_64
+#{"componentIdentifier":{"format":"maven","coordinates":{"groupId":"tomcat","artifactId":"tomcat-util","version":"5.5.23","extension":"jar"}}}
+function _gen_comp_id() {
+    local __doc__="https://help.sonatype.com/iqserver/automating/rest-apis/using-other-supported-formats-with-the-rest-api"
+    local _component_identifier="$1"
+    local _comp_id=""
+    local _purl=""
+    if [[ "${_component_identifier}" =~ ^pkg ]]; then
+        _comp_id="{\"packageUrl\":\"${_component_identifier}\"}"
+        _purl="${_component_identifier}"
+    elif [[ "${_component_identifier}" =~ ^[0-9a-f]+$ ]]; then
+        _comp_id="{\"hash\":\"${_component_identifier}\"}"
+    elif [[ "${_component_identifier}" =~ packageUrl ]]; then
+        _comp_id="$(echo "${_component_identifier}" | tr -d ' ')"
+    elif [[ "${_component_identifier}" =~ ^" "*([^: ]+)" "*:" "*([^: ]+)" "*:" "*([^: ]+)" "*$ ]]; then
+        # NOTE: Assuming 'maven'. Do not need to do ${BASH_REMATCH[1]//.//}
+        _purl="pkg:maven/${BASH_REMATCH[1]}/${BASH_REMATCH[2]}@${BASH_REMATCH[3]}?type=jar"
+        _comp_id="{\"packageUrl\":\"${_purl}\"}"
+        #_comp_id="{\"componentIdentifier\":{\"format\":\"maven\",\"coordinates\":{\"groupId\":\"${BASH_REMATCH[1]}\",\"artifactId\":\"${BASH_REMATCH[2]}\",\"version\":\"${BASH_REMATCH[3]}\",\"extension\":\"jar\"}}}"
+    elif [[ "${_component_identifier}" =~ ^" "*([^: ]+)" "*:" "*([^: ]+)" "*$ ]]; then
+        # NOTE: Assuming 'npm'
+        _purl="pkg:npm/${BASH_REMATCH[1]}@${BASH_REMATCH[2]}"
+        _comp_id="{\"packageUrl\":\"${_purl}\"}"
+    elif [[ "${_component_identifier}" =~ coordinates ]]; then
+        _comp_id="{\"componentIdentifier\":${_component_identifier}}"   # NOTE: don't need "hash":null, ?
+    else
+        _log "WARN" "Unsupported Component Identifier: ${_component_identifier}"
+        return 1
+    fi
+    echo "${_comp_id}"
+}
 
-    _curl "${_IQ_URL%/}/api/v2/evaluation/applications/${_app_int_id}" -H "Content-Type: application/json" -d '{"components": [{"hash": null,"componentIdentifier": {"format": "maven","coordinates": {"artifactId": "'${_a}'","groupId": "'${_g}'","version": "'${_v}'","extension":"jar"}}}]}'
+function f_api_eval() {
+    local __doc__="/api/v2/evaluation/applications/\${_app_int_id}"
+    local _app_pub_id="${1:-"sandbox-application"}"
+    local _comp_id_like_string="${2}"
+    local _app_int_id="$(f_api_appIntId "${_app_pub_id}")" || return $?
+    local _comp_id="$(_gen_comp_id "${_comp_id_like_string}")" || return $?
+    local _iq_url="$(_get_iq_url "${_IQ_URL%/}")" || return $?
+    local _results="$(_curl "${_iq_url%/}/api/v2/evaluation/applications/${_app_int_id}" -H "Content-Type: application/json" -d '{"components":['${_comp_id}']}')" || return $?
+    if [ -n "${_results}" ]; then
+        _resultsUrl="$(echo "[${_results}]" | JSON_SEARCH_KEY="resultsUrl" _sortjson)"
+        if [ -n "${_resultsUrl}" ]; then
+            echo "Results URL: ${_iq_url%/}/${_resultsUrl}"
+        fi
+    fi
 }
 
 function f_api_eval_scm() {
-    local __doc__="/api/v2/evaluation/applications/\${_app_int_id} with Maven GAV"
+    local __doc__="/api/v2/evaluation/applications/\${_app_int_id}"
     local _app_pub_id="${1}"
     local _branch="${2}"
     local _stage="${3:-"source"}"
     local _app_int_id="$(f_api_appIntId "${_app_pub_id}")" || return $?
-    _curl "${_IQ_URL%/}/api/v2/evaluation/applications/${_app_int_id}/sourceControlEvaluation" -H "Content-Type: application/json" -d '{"stageId":"'${_stage}'","branchName":"'${_branch}'"}' | _sortjson
+    local _iq_url="$(_get_iq_url "${_IQ_URL%/}")" || return $?
+    _curl "${_iq_url%/}/api/v2/evaluation/applications/${_app_int_id}/sourceControlEvaluation" -H "Content-Type: application/json" -d '{"stageId":"'${_stage}'","branchName":"'${_branch}'"}' | _sortjson
 }
 
 function f_api_audit() {
@@ -332,7 +375,8 @@ function f_api_audit() {
     [ -z "${_startUtcDate}" ] && _startUtcDate="$(date -u "+%Y-%m-%d")"
     [ -z "${_endUtcDate}" ] && _endUtcDate="$(date -u "+%Y-%m-%d")"
     [ -z "${_saveTo}" ] && _saveTo="./audit-${_startUtcDate}.log"
-    _curl "${_IQ_URL%/}/api/v2/auditLogs?startUtcDate=${_startUtcDate}&endUtcDate=${_endUtcDate}" -o "${_saveTo}"
+    local _iq_url="$(_get_iq_url "${_IQ_URL%/}")" || return $?
+    _curl "${_iq_url%/}/api/v2/auditLogs?startUtcDate=${_startUtcDate}&endUtcDate=${_endUtcDate}" -o "${_saveTo}"
 }
 
 function f_api_report_success() {
@@ -347,7 +391,8 @@ function f_api_report_success() {
     local _firstTimePeriod="$(eval "${_date} -d \"${_first_date_str}\" \"+%G-W%V\"")"
     local _lastTimePeriod="$(eval "${_date} -d \"${_last_date_str}\" \"+%G-W%V\"")"
     # -H "Accept: text/csv" for generating the report in CSV format
-    _curl "${_IQ_URL%/}/api/v2/reports/metrics" -d "{\"timePeriod\":\"WEEK\",\"firstTimePeriod\":\"${_firstTimePeriod}\",\"lastTimePeriod\":\"${_lastTimePeriod}\",\"applicationIds\":[],\"organizationIds\":[]}"
+    local _iq_url="$(_get_iq_url "${_IQ_URL%/}")" || return $?
+    _curl "${_iq_url%/}/api/v2/reports/metrics" -d "{\"timePeriod\":\"WEEK\",\"firstTimePeriod\":\"${_firstTimePeriod}\",\"lastTimePeriod\":\"${_lastTimePeriod}\",\"applicationIds\":[],\"organizationIds\":[]}"
 }
 
 ### Misc. setup functions
@@ -937,7 +982,8 @@ function f_import_sbom() {
         local _filename=$(basename -- "${_sbom_file}")
         _app_ver="${_filename%.*}_$(date +'%Y%m%d%H%M%S')"
     fi
-    _curl "${_IQ_URL%/}/api/v2/sbom/import?ignoreValidationError=true" -F file="@${_sbom_file}" -F applicationId="${_app_int_id}" -F applicationVersion="${_app_ver}" -X POST
+    local _iq_url="$(_get_iq_url "${_IQ_URL%/}")" || return $?
+    _curl "${_iq_url%/}/api/v2/sbom/import?ignoreValidationError=true" -F file="@${_sbom_file}" -F applicationId="${_app_int_id}" -F applicationVersion="${_app_ver}" -X POST
 }
 
 function f_dummy_scans() {
