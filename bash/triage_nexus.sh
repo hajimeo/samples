@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 function usage() {
-    cat << EOS
+    cat <<EOS
 $(basename "$BASH_SOURCE") contains functions which are:
  - copy & paste-able, means no dependency to other functions (may still download external file with curl)
  - should work on the Nexus server (Linux)
@@ -12,11 +12,9 @@ DOWNLOAD LATEST and SOURCE:
 EOS
 }
 
-
 # Overridable global variables
 : ${_WORK_DIR:="/var/tmp/share"}
 : ${_JAVA_DIR:="${_WORK_DIR%/}/java"}
-
 
 #curl -X PUT -T<(echo "test") localhost:2424
 function f_start_web() {
@@ -24,7 +22,7 @@ function f_start_web() {
     local _port="${1:-"2424"}"
     if type php &>/dev/null; then
         curl -O "https://raw.githubusercontent.com/hajimeo/samples/master/php/index.php" && php -S 0.0.0.0:${_port} ./index.php
-    #elif type python; then
+        #elif type python; then
         # Expecting python3
         #python -m http.server ${_port} &>/dev/null &
         # if python2.x: python -m SimpleHTTPServer ${_port} &>/dev/null &
@@ -39,10 +37,10 @@ function f_start_web() {
 
 alias curld='curl -sf -w "time_namelookup:\t%{time_namelookup}\ntime_connect:\t%{time_connect}\ntime_appconnect:\t%{time_appconnect}\ntime_pretransfer:\t%{time_pretransfer}\ntime_redirect:\t%{time_redirect}\ntime_starttransfer:\t%{time_starttransfer}\n----\nhttp_code:\t%{http_code}\ntime_total:\t%{time_total}\nspeed_download:\t%{speed_download}\nspeed_upload:\t%{speed_upload}\n"'
 function f_upload_download_tests() {
-    local workingDirectory="${1:-"/tmp"}"   #/opt/sonatype/sonatype-work/nexus3
-    local installDirectory="${2}";          #/opt/sonatype/nexus
-    local user_pwd="${3:-"admin:admin123"}";
-    local repo_url="${4:-"http://localhost:8081/repository/raw-hosted/test/"}";
+    local workingDirectory="${1:-"/tmp"}" #/opt/sonatype/sonatype-work/nexus3
+    local installDirectory="${2}"         #/opt/sonatype/nexus
+    local user_pwd="${3:-"admin:admin123"}"
+    local repo_url="${4:-"http://localhost:8081/repository/raw-hosted/test/"}"
     local _repeat="${5:-"1"}"
     local _img="test.img"
     # Repeat below a few times
@@ -69,11 +67,11 @@ function f_upload_download_tests() {
 #   tar --diff -f /tmp/nexus-3.62.0-01-unix.tar.gz nexus-3.62.0-01/system -C ./nexus-3.62.0-01/system | grep -vE '(Uid|Gid) differs'
 function f_verify_install() {
     local __doc__="Compare files with the original tar installer file"
-    local _ver="$1"         # "3.74.0-05"
-    local _installDir="$2"  # Directory which contains "nexus-${_ver}". Does not work with Symlink
+    local _ver="$1"        # "3.74.0-05"
+    local _installDir="$2" # Directory which contains "nexus-${_ver}". Does not work with Symlink
     local _downloadDir="${3:-"/tmp"}"
     if [ ! -d "${_installDir%/}" ]; then
-        echo "${_installDir%/} does not exist.";
+        echo "${_installDir%/} does not exist."
         return 1
     fi
     if [ ! -s "${_downloadDir%/}/nexus-${_ver}-unix.tar.gz" ]; then
@@ -81,7 +79,7 @@ function f_verify_install() {
     fi
     cd "${_installDir%/}" || return $?
     # `gtar` if Mac. Also `-C "${_installDir%/}"` didn't realiabllly work.
-    tar --diff -f "${_downloadDir%/}/nexus-${_ver}-unix.tar.gz" nexus-${_ver} | grep -vE '(Uid|Gid) differs' | grep -vE '/(\.install4j|etc/karaf|replicator/bin)/'  #|Mod time
+    tar --diff -f "${_downloadDir%/}/nexus-${_ver}-unix.tar.gz" nexus-${_ver} | grep -vE '(Uid|Gid) differs' | grep -vE '/(\.install4j|etc/karaf|replicator/bin)/' #|Mod time
     cd - >/dev/null
 }
 
@@ -108,10 +106,10 @@ function f_size_count() {
 #comm -12 suspicious_blob_refs.list deadblobs_blob_refs.list > more_suspicious_blob_refs.list
 function f_blobs_csv() {
     local __doc__="Generate CSV for Key,LastModified,Size + properties"
-    local _dir="$1"         # "blobs/default/content/vol-*"
-    local _with_props="$2"  # Y to check properties file, but extremely slow
-    local _filter="${3}"    # "*.properties"
-    local _P="${4}"         #
+    local _dir="$1"        # "blobs/default/content/vol-*"
+    local _with_props="$2" # Y to check properties file, but extremely slow
+    local _filter="${3}"   # "*.properties"
+    local _P="${4}"        #
     printf "Key,LastModified,Size"
     local _find="find ${_dir%/} -type f"
     [ -n "${_filter}" ] && _find="${_find} -name '${_filter}'"
@@ -164,11 +162,11 @@ function f_mvn_copy_local() {
 #rg -m10 -z "2021:\d\d:\d.+ \"GET /repository/maven-central/.+HTTP/[0-9.]+" 2\d\d" request-2021-01-08.log.gz | sort | uniq | f_replay_gets "http://dh1:8081/repository/maven-central/"
 function f_replay_gets() {
     local __doc__="Replay GET requests in the request.log"
-    local _url_path="$1"    # http://localhost:8081/repository/maven-central
-    local _c="${2:-"1"}"    # concurrency. Use 1 if order is important
-    local _curl_opt="${3}"  # -u admin:admin123 --head
-    local _path_match="${4:-".*/repository/[^/]+/([^ ]+)"}"   # or NXRM2: "/nexus/content/(repositories|groups)/[^/]+/([^ ]+)"
-    local _rg_opt="${5}"    # "-g 'request.log'"
+    local _url_path="$1"                                    # http://localhost:8081/repository/maven-central
+    local _c="${2:-"1"}"                                    # concurrency. Use 1 if order is important
+    local _curl_opt="${3}"                                  # -u admin:admin123 --head
+    local _path_match="${4:-".*/repository/[^/]+/([^ ]+)"}" # or NXRM2: "/nexus/content/(repositories|groups)/[^/]+/([^ ]+)"
+    local _rg_opt="${5}"                                    # "-g 'request.log'"
     [[ "${_url_path}" =~ ^http ]] || return 1
     [[ "${_path_match}" =~ .*\(.+\).* ]] || return 2
     local _n="$(echo "${_path_match}" | tr -cd ')' | wc -c | tr -d "[:space:]")"
@@ -211,8 +209,8 @@ function f_blob_search() {
 # Not perfect
 function f_blob_list_from_pom() {
     local __doc__="NOTE: using f_blob_search"
-    local _content_dir="${1:-"."}"    # /var/tmp/share/sonatype/blobs/default/content/vol-*
-    local _artifactId="${2}"  # eg "log4j-core"
+    local _content_dir="${1:-"."}" # /var/tmp/share/sonatype/blobs/default/content/vol-*
+    local _artifactId="${2}"       # eg "log4j-core"
     local _is_dependency="${3}"
     f_blob_search "${_content_dir}" -l '^@BlobStore.blob-name=.+pom$' | while read -r _f; do
         local _tmp_lines="$(grep -B3 -A2 "<artifactId>${_artifactId}</artifactId>" "${_f%.*}.bytes")"
@@ -280,7 +278,7 @@ function f_missing_check_orientdb() {
             local _name="${BASH_REMATCH[2]}"
             local _blobId="${BASH_REMATCH[3]}"
             local _path="${_path2content%/}/$(blobpath "${_blobId}")"
-            if [ ! -f "${_path}" ]; then    # Change this with aws cli if S3
+            if [ ! -f "${_path}" ]; then # Change this with aws cli if S3
                 echo "${_name} ${_path} does not exist."
                 #echo curl -u admin:admin123 "${_NXRM3_BASEURL%/}/repository/${_repo_name}/${_name#/}"
             fi
@@ -290,11 +288,11 @@ function f_missing_check_orientdb() {
 
 function f_orientdb_checks() {
     local __doc__="Check index number/size and pcl file size"
-    local _db="$1"  # Directory or ls -l output
+    local _db="$1" # Directory or ls -l output
     local _size_col="${2:-5}"
     local _file_col="${2:-9}"
     if [ -d "${_db%/}" ]; then
-        ls -l "${_db%/}" > /tmp/f_orientdb_checks_ls.out
+        ls -l "${_db%/}" >/tmp/f_orientdb_checks_ls.out
         _db=/tmp/f_orientdb_checks_ls.out
     fi
     echo "# Finding wal files (should be small) ..."
@@ -302,16 +300,16 @@ function f_orientdb_checks() {
     echo ""
     echo "# Checking size (Bytes) of index files (alphabetical order) ..."
     grep '_idx.sbt' "${_db}" | awk '{print $'${_size_col:-5}'" "$'${_file_col:-9}'}' | while read -r _line; do
-        IFS=' ' read -r _size _table <<< "${_line}"
+        IFS=' ' read -r _size _table <<<"${_line}"
         printf "%14s %s\n" $(_size_to_bytes "${_size}") ${_table}
     done | sort -k2 | tee /tmp/f_orientdb_checks.out
     echo "Total: $(awk '{print $1}' /tmp/f_orientdb_checks.out | paste -sd+ - | bc) bytes / $(cat /tmp/f_orientdb_checks.out | wc -l) indexes (expecting 21 since 3.61.0 and up to 3.70.3)"
     echo ""
     echo "# Estimating table sizes (Bytes) from pcl files ..." # `sed` to get the class/table name
     grep '.pcl$' "${_db}" | awk '{print $'${_size_col:-5}'" "$'${_file_col:-9}'}' | while read -r _line; do
-        IFS=' ' read -r _size _table <<< "${_line}"
+        IFS=' ' read -r _size _table <<<"${_line}"
         echo "$(_size_to_bytes "${_size}") ${_table}"
-    done | sort -k2 | sed -E 's/_?[0-9]*\.pcl//' > /tmp/f_orientdb_checks.out
+    done | sort -k2 | sed -E 's/_?[0-9]*\.pcl//' >/tmp/f_orientdb_checks.out
     # uniq -f1 to get the Unique Lines by the table name
     cat /tmp/f_orientdb_checks.out | uniq -f1 | cut -d' ' -f2 | while read -r _table; do
         local _total="$(grep -E "\s+${_table}$" /tmp/f_orientdb_checks.out | cut -d' ' -f1 | paste -sd+ - | bc)"
@@ -347,8 +345,8 @@ function _size_to_bytes() {
 # DRAFT: trying to find which blob_ref.bytes files are open.
 function f_find_open_bytes_files() {
     local __doc__="Not perfect but there is no way to link Java TID / HEX nid with FD or iNode"
-    local _blobs="$1"   # /opt/sonatype/sonatype-work/nexus3/blobs/default
-    netstat -topen | grep 8081  # pick inode or port and pid
+    local _blobs="$1"          # /opt/sonatype/sonatype-work/nexus3/blobs/default
+    netstat -topen | grep 8081 # pick inode or port and pid
     # Usually +1 or a few of above fd and the FD ends with 'w'
     lsof -nPp $PID | grep -w $INODE -A 100 | grep -m1 "$(realpath "${_blobs}")/content/tmp/tmp"
     #lsof -nP +D /opt/sonatype/sonatype-work/nexus3/blobs/default/content   # To check specific directory only
@@ -359,7 +357,7 @@ function f_check_filesystems() {
     # NOTE: above would not work if the mount point path contains space (not using "df" or "mount" as those execute stat
     cat /etc/mtab | grep -E ' /[^ ]+' -o | while read -r _m; do
         echo "# Checking ${_m} ..."
-        timeout 3 stat "${_m}" >/dev/null || echo "ERROR: 'stat ${_m}' failed" >&2;
+        timeout 3 stat "${_m}" >/dev/null || echo "ERROR: 'stat ${_m}' failed" >&2
     done
 }
 
@@ -431,7 +429,7 @@ function f_regenerate_properties() {
     local _size="$($_stat -c "%s" "${_bytes_path}")"
     local _last_modified="$($_stat --format=%Y "${_bytes_path}")"
     local _mime="$(file --mime-type "${_bytes_path}" | awk '{print $2}')"
-cat <<EOF> "${_properties_path}"
+    cat <<EOF >"${_properties_path}"
 @BlobStore.created-by=system
 size=${_size}
 @Bucket.repo-name=${_repo}
@@ -443,6 +441,21 @@ sha1=${_sha1}
 EOF
 }
 
+function f_count_assets_from_cleanup_task_log() {
+    local __doc__="Count assets from cleanup task log"
+    local _log="$1" # repository.cleanup-{YYYYMMDDhhmmsssss}.log
+    if [ ! -s "${_log}" ]; then
+        echo "${_log} does not exist or empty." >&2
+        return 1
+    fi
+    # for the bar_chart.py, replacing the space between date and time with a dot
+    rg "^([0-9][0-9][0-9][0-9].[0-9][0-9].[0-9][0-9]).([0-9][0-9]:[0-9][0-9]:[0-9][0-9]).+Deleted component with ID .+ Assets '(\[.+\])" -o -r '$1.$2 $3' "${_log}" | while read -r _l; do
+        # BASH regex does not support \d, so using [0-9]
+        [[ "${_l}" =~ ^[0-9][0-9][0-9][0-9].[0-9][0-9].[0-9][0-9].[0-9][0-9]:[0-9][0-9]:[0-9][0-9] ]] && _dt="${BASH_REMATCH[0]}"
+        _ac="$(echo "${_l}" | rg --count-matches '[,\]]')"
+        echo "${_dt:-"(error)"} ${_ac:-"(error)"}"
+    done
+}   # | rg '^(\d\d\d\d.\d\d.\d\d.\d\d)[^ ]+ (\d+)' -o -r '$1 $2' | bar_chart.py -A
 
 if [ "$0" = "$BASH_SOURCE" ]; then
     usage
