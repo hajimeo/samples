@@ -1115,7 +1115,7 @@ function f_wrapper2threads() {
 # f_splitScriptLog ./script-20231030142554000.log "Y"
 function f_splitScriptLog() {
     local _script_log="$1"
-    local _full_split="$2"
+    local _full_split="$2"  # "Y" for analysing as well. "y" for full split.
     rg -o '^(top - \d\d:\d\d:\d\d|Active Internet |20\d\d-\d\d-\d\d.\d\d:\d\d:\d\d$)' "${_script_log}" | tee /tmp/${FUNCNAME[0]}_$$.tmp
     if head -n2 "/tmp/${FUNCNAME[0]}_$$.tmp" | paste - -  | rg -q 'top - \d\d:\d\d:\d\d\s+Active Internet'; then
         # Assuming top, netstat, thread, repeat
@@ -1140,13 +1140,19 @@ function f_splitScriptLog() {
             cat ./threads.raw | python3 -c "import sys,html,re;rx=re.compile(r\"<[^>]+>\");print(html.unescape(rx.sub(\"\",sys.stdin.read())))" > threads.txt && rm -f ./threads.raw
         fi
     fi
-    if [[ "${_full_split}" =~ [yY] ]]; then
-        [ -s ./threads.txt ] && f_threads ./threads.txt
+    if [[ "${_full_split}" =~ [y] ]] && [ -s ./tops_netstats.txt ]; then
+        f_splitTopNetstat ./tops_netstats.txt >/dev/null
+    fi
+    if [[ "${_full_split}" =~ [Y] ]]; then
         if [ -s ./tops_netstats.txt ]; then
-            f_splitTopNetstat ./tops_netstats.txt >/dev/null
             f_check_topH ./tops_netstats.txt
-            f_check_netstat ./tops_netstats.txt
+            if [ -d "./top_netstat" ]; then
+                find ./top_netstat -name "netstat_*.out" | while read _f; do f_check_netstat "${_f}"; done
+            else
+                f_check_netstat ./tops_netstats.txt
+            fi
         fi
+        #[ -s ./threads.txt ] && f_threads ./threads.txt
     fi
 }
 
