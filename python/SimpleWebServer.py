@@ -1,11 +1,15 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 #
-# Based on https://pymotw.com/2/BaseHTTPServer/
-#   python ./SimpleWebServer.py 0.0.0.0 38080 verbose
+# Simple web server for various API calls.
+# The main purpose is to use it from Chrome browser search shortcuts.
 #
-# Then from browser, http://localhost:38080/slack/search?query=test
-#                    http://localhost:38080/kapi/search?query=test
+# USAGE:
+#   python ./SimpleWebServer.py [0.0.0.0] [38080]
+#
+#   Then from browser, crete search shortcuts for:
+#       http://localhost:38080/slack/search?query=%s
+#       http://localhost:38080/kapi/search?query=%s
 #
 # TODO: add chats
 #       add tests
@@ -168,7 +172,7 @@ class SimpleWebServer(BaseHTTPRequestHandler):
             html += u"Source names:<br/>\n"
             for source_name in default_sources:
                 html += u"&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<input type='checkbox' name='include_source_names' value='" + source_name + "'"
-                if 'include_source_names' in query_args and source_name in query_args['include_source_names']:
+                if 'include_source_names' in data and source_name in data['include_source_names']:
                     html += u" checked"
                 html += u">" + source_name + "<br/>\n"
         html += u"</form>\n"
