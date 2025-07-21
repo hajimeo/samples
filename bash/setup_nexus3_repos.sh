@@ -303,7 +303,7 @@ function f_uninstall_nexus3() {
 
 ### Repository setup functions ################################################################################
 # Eg: r_NEXUS_URL="http://dh1.standalone.localdomain:8081/" f_setup_xxxxx
-# TODO: ,"replication":{"preemptivePullEnabled":false}
+# With "replication" _SOURCE_NEXUS_URL="${_NEXUS_URL%/}" f_setup_maven
 function f_setup_maven() {
     local __doc__="Create Maven2 proxy/hosted/group repositories with dummy data"
     local _prefix="${1:-"maven"}"
@@ -326,11 +326,14 @@ function f_setup_maven() {
     fi
     # add some data for xxxx-proxy
     # If NXRM2: _get_asset_NXRM2 "${_prefix}-proxy" "junit/junit/4.12/junit-4.12.jar"
+    _ASYNC_CURL="Y" f_get_asset "${_prefix}-proxy" "org/sonatype/maven-policy-demo/1.0.0/maven-policy-demo-1.0.0.jar"
+    _ASYNC_CURL="Y" f_get_asset "${_prefix}-proxy" "org/sonatype/maven-policy-demo/maven-metadata.xml"
     _ASYNC_CURL="Y" f_get_asset "${_prefix}-proxy" "junit/junit/4.12/junit-4.12.pom"
+    # To use this jar later, not asynchronous
     f_get_asset "${_prefix}-proxy" "junit/junit/4.12/junit-4.12.jar" "${_TMP%/}/junit-4.12.jar"
     # TODO: https://repo1.maven.org/maven2/org/sonatype/maven-policy-demo/
 
-    if [ -n "${_source_nexus_url}" ] && [ -n "${_extra_sto_opt}" ] && ! _is_repo_available "${_prefix}-repl-proxy"; then
+    if [ -n "${_source_nexus_url}" ] && ! _is_repo_available "${_prefix}-repl-proxy"; then
         _apiS '{"action":"coreui_Repository","method":"create","data":[{"attributes":{"maven":{"versionPolicy":"MIXED","layoutPolicy":"PERMISSIVE"},"proxy":{"remoteUrl":"'${_source_nexus_url%/}'/repository/'${_prefix}'-hosted/","contentMaxAge":60,"metadataMaxAge":60},"replication":{"preemptivePullEnabled":true,"assetPathRegex":""},"httpclient":{"blocked":false,"autoBlock":true,"connection":{"useTrustStore":true}},"storage":{"blobStoreName":"'${_bs_name}'","strictContentTypeValidation":true'${_extra_sto_opt}'},"negativeCache":{"enabled":true,"timeToLive":1440},"cleanup":{"policyName":[]}},"name":"'${_prefix}'-repl-proxy","format":"","type":"","url":"","online":true,"routingRuleId":"","authEnabled":false,"httpRequestSettings":false,"recipe":"maven2-proxy"}],"type":"rpc"}' || return $?
     fi
 
@@ -2545,8 +2548,35 @@ Also update _NEXUS_URL. For example: export _NEXUS_URL=\"https://local.standalon
 
 
 
-function f_setup_reverse_proxy() {
-    local __doc__="TODO: Setup reverse proxy server with caddy"
+function f_setup_http_proxy() {
+    local __doc__="Setup dummy/simple HTTP proxy server"
+    local _port="${1:-"8888"}"
+    local _install_dir="${2:-"${_SHARE_DIR%/}/httpproxy"}"
+
+    if [ ! -d "${_install_dir%/}" ]; then
+        mkdir -v -p "${_install_dir%/}" || return $?
+    fi
+
+    # Installing httpproxy
+    local _cmd="httpproxy"  # If not in the PATH, download it
+    if ! type ${_cmd} &>/dev/null; then
+        if [ ! -s "${_install_dir%/}/${_cmd}" ]; then
+            curl -o "${_install_dir%/}/${_cmd}" -L "https://github.com/hajimeo/samples/raw/master/misc/${_cmd}_$(uname)_$(uname -m)" --compressed || return $?
+            chmod u+x "${_install_dir%/}/${_cmd}" || return $?
+        fi
+        _cmd="${_install_dir%/}/${_cmd}"
+    fi
+
+    eval "${_cmd} -port ${_port}" &> ${_TMP%/}/${_cmd}_$$.log &
+    local _pid="$!"
+    sleep 2
+    echo "[INFO] Running '${_cmd} -port ${_port}' in background"
+    echo "       PID: ${_pid}  Log: ${_TMP%/}/${_cmd}_$$.log"
+}
+# TODO: Setup HTTP proxy on Nexus
+
+function _setup_reverse_proxy() {
+    local __doc__="TODO: Setup reverse proxy server with caddy (Not setting up Nexus)"
     local _install_dir="${1:-"${_SHARE_DIR%/}/caddy"}"
     local _ver="${2:-"2.10.0"}"
     # https://github.com/caddyserver/caddy/releases/download/v2.10.0/caddy_2.10.0_linux_amd64.tar.gz
@@ -2578,7 +2608,7 @@ function f_start_reverse_proxy() {
     if type caddy &>/dev/null; then
         _log "INFO" "Caddy is already installed in the PATH. Using it ..."
     else
-        f_setup_reverse_proxy "${_install_dir}" "${_ver}" || return $?
+        _setup_reverse_proxy "${_install_dir}" "${_ver}" || return $?
     fi
     # TODO: not completed
 }
@@ -2697,8 +2727,8 @@ function f_setup_saml_simplesaml() {
 function f_start_dummy_smtp() {
     local __doc__="Install and start a dummy SMTP server with MailHog https://github.com/mailhog/MailHog/blob/master/docs/CONFIG.md"
     local _smtp_port="${1:-"1025"}"
-    local _ui_api_port="${1:-"8025"}"
-    local _install_dir="${2:-"${_SHARE_DIR%/}/mailhog"}"
+    local _ui_api_port="${2:-"8025"}"
+    local _install_dir="${3:-"${_SHARE_DIR%/}/mailhog"}"
 
     if [ ! -d "${_install_dir%/}" ]; then
         mkdir -v -p "${_install_dir%/}" || return $?
@@ -2707,25 +2737,25 @@ function f_start_dummy_smtp() {
     # Installing mailhog
     local _cmd="mailhog"  # If not in the PATH, download it
     if ! type ${_cmd} &>/dev/null; then
-        if [ ! -s "${_install_dir%/}/mailhog" ]; then
-            curl -o "${_install_dir%/}/mailhog" -L "https://github.com/hajimeo/samples/raw/master/misc/mailhog_$(uname)_$(uname -m)" --compressed || return $?
-            chmod u+x "${_install_dir%/}/mailhog" || return $?
+        if [ ! -s "${_install_dir%/}/${_cmd}" ]; then
+            curl -o "${_install_dir%/}/${_cmd}" -L "https://github.com/hajimeo/samples/raw/master/misc/${_cmd}$(uname)_$(uname -m)" --compressed || return $?
+            chmod u+x "${_install_dir%/}/${_cmd}" || return $?
         fi
-        _cmd="${_install_dir%/}/mailhog"
+        _cmd="${_install_dir%/}/${_cmd}"
     fi
 
-    eval "${_cmd} -smtp-bind-addr 0.0.0.0:${_smtp_port} -api-bind-addr 0.0.0.0:${_ui_api_port} -ui-bind-addr 0.0.0.0:${_ui_api_port}" &> ${_TMP%/}/mailhog_$$.log &
+    eval "${_cmd} -smtp-bind-addr 0.0.0.0:${_smtp_port} -api-bind-addr 0.0.0.0:${_ui_api_port} -ui-bind-addr 0.0.0.0:${_ui_api_port}" &> ${_TMP%/}/${_cmd}_$$.log &
     local _pid="$!"
     sleep 2
-    echo "[INFO] Running mailhog in background http://127.0.0.1:${_ui_api_port}/"
-    echo "       PID: ${_pid}  Log: ${_TMP%/}/mailhog_$$.log"
+    echo "[INFO] Running ${_cmd} in background http://127.0.0.1:${_ui_api_port}/"
+    echo "       PID: ${_pid}  Log: ${_TMP%/}/${_cmd}_$$.log"
 }
 function f_setup_smtp_mailhog() {
     local _smtp_port="${1:-"1025"}"
     local _smtp_host="${2:-"localhost"}"
     local _from_addr="${3:-"smtptest@example.com"}"
     # TODO: should use create? or update?
-    _apiS '{"action":"coreui_Email","method":"update","data":[{"enabled":true,"host":"'${_smtp_host}'","port":'${_smtp_port}',"username":"","password":"","fromAddress":"'${_from_addr}'","subjectPrefix":"To mailhog - ","startTlsEnabled":false,"startTlsRequired":false,"sslOnConnectEnabled":false,"sslCheckServerIdentityEnabled":false,"nexusTrustStoreEnabled":false}],"type":"rpc"}'
+    _apiS '{"action":"coreui_Email","method":"update","data":[{"enabled":true,"host":"'${_smtp_host}'","port":'${_smtp_port}',"username":"","password":"","fromAddress":"'${_from_addr}'","subjectPrefix":"To ${_cmd} - ","startTlsEnabled":false,"startTlsRequired":false,"sslOnConnectEnabled":false,"sslCheckServerIdentityEnabled":false,"nexusTrustStoreEnabled":false}],"type":"rpc"}'
 }
 
 function f_start_ldap_server() {
