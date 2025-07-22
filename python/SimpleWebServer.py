@@ -10,9 +10,9 @@
 #   Then from browser, crete search shortcuts for:
 #       http://localhost:38080/slack/search?query=%s
 #       http://localhost:38080/kapi/search?query=%s
+#       http://localhost:38080/gemini/chat?query=%s
 #
-# TODO: add chats
-#       add tests
+# TODO: add tests
 
 from http.server import BaseHTTPRequestHandler
 from http.server import HTTPServer
@@ -137,7 +137,7 @@ class SimpleWebServer(BaseHTTPRequestHandler):
             'X-API-KEY': SimpleWebServer._creds.kapi_search_token
         }
         # SimpleWebServer.log('    headers = ' + str(headers))
-        url = str(SimpleWebServer._creds.kapi_search_baseurl) + "/search/"
+        url = str(SimpleWebServer._creds.kapi_search_baseurl) + "/"+str(SimpleWebServer._creds.kapi_search_projid) + "/search/"
         SimpleWebServer.log('    url = ' + str(url))
         # query_args['highlight'] = "true"
         # Note: similar to PHP, query argument can be a list
@@ -187,16 +187,55 @@ class SimpleWebServer(BaseHTTPRequestHandler):
         # html = json.dumps(json_obj, indent=4)
         return html
 
+    @staticmethod
+    def handle_gemini_chat(query_args):
+        headers = {
+            'Content-Type': 'application/json',
+            'x-goog-api-key': SimpleWebServer._creds.gemini_chat_token
+        }
+        # SimpleWebServer.log('    headers = ' + str(headers))
+        url = str(SimpleWebServer._creds.gemini_chat_baseurl) + "/gemini-2.5-flash:generateContent"
+        SimpleWebServer.log('    url = ' + str(url))
+        # query_args['highlight'] = "true"
+        # Note: similar to PHP, query argument can be a list
+        data = {}
+        if 'query' in query_args:
+            data['contents'] = []
+            data['contents'].append({'parts': []})
+            data['contents'][0]['parts'].append({'text': get1stValue(query_args['query'])})
+        SimpleWebServer.log('    data = ' + str(data))
+        response = requests.post(url=url, json=data, headers=headers)
+        json_obj = response.json()
+        SimpleWebServer.log('    response = ' + str(json_obj))
+        # Decorate the output with HTML
+        # Add input field for query, so that user can change it
+        html = u"<form method='get' action='/gemini/chat'>\n"
+        html += u"Query:<input type='text' name='query' value='" + get1stValue(query_args['query']) + u"' size='60'>\n"
+        html += u"<input type='submit' value='Search'><br/>\n"
+        html += u"</form>\n"
+        if 'candidates' in json_obj and len(json_obj['candidates']) > 0:
+            html += u"<hr/>"
+            for o in json_obj['candidates']:
+                if o['content'] is None or len(o['content']) == 0 or 'parts' not in o['content'] or len(o['content']['parts']) == 0:
+                    continue  # skip empty content
+                for part in o['content']['parts']:
+                    if part['text'] is None or len(part['text']) == 0:
+                        continue
+                    html += u"<blockquote style='white-space:pre-wrap'><tt>" + addLinksToText(
+                        part['text']) + u"</tt></blockquote>\n"
+        # html = json.dumps(json_obj, indent=4)
+        return html
+
     def _process(self):
         (category, method, args) = self._get_category_method_and_args_from_path()
         self._log("args = " + str(args))
         output = u"<html><head><meta charset='utf-8'><title>" + category.upper() + ":" + method.upper() + "</title></head><body>"
-        if category.lower() == 'slack':
-            if method.lower() == 'search':
-                output += SimpleWebServer.handle_slack_search(args)
-        if category.lower() == 'kapi':
-            if method.lower() == 'search':
-                output += SimpleWebServer.handle_kapi_search(args)
+        if category.lower() == 'slack' and method.lower() == 'search':
+            output += SimpleWebServer.handle_slack_search(args)
+        elif category.lower() == 'kapi' and method.lower() == 'search':
+            output += SimpleWebServer.handle_kapi_search(args)
+        elif category.lower() == 'gemini' and method.lower() == 'chat':
+            output += SimpleWebServer.handle_gemini_chat(args)
         output += "</body></html>"
         self.send_response(200)
         self.end_headers()
