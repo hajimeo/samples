@@ -6,7 +6,7 @@ alias cdl='cd "`ls -dtr ./*/ | tail -n 1`"'
 alias fd='find . -name'
 alias sha1R='find . -type f -exec sha1sum "{}" \;'
 alias fcv='fc -e vim'
-alias vim0='vim -u NONE -N -c "syn off" -c "set nowrap"'   # handy when you process large text
+alias vim0='vim -u NONE -N -c "syn off" -c "set nowrap"' # handy when you process large text
 if ! type mvim &>/dev/null && [ -x "/Applications/MacVim.app/Contents/bin/mvim" ]; then
     alias mvim='/Applications/MacVim.app/Contents/bin/mvim'
     #alias mvim='open -na "MacVim"'
@@ -31,7 +31,7 @@ alias curld='curl -w "\ntime_namelookup:\t%{time_namelookup}\ntime_connect:\t%{t
 alias longest_line="awk 'length > max_length { max_length = length; longest_line_num = NR } END { print longest_line_num }'"
 # count a specific character from each line with the line number. eg. gunzip -c large.sql.gz |
 function count_char() {
-    awk '/'$1'/ {print NR, gsub(/'$1'/, "", $0)}' $2  # if '/' needs to be '\/'
+    awk '/'$1'/ {print NR, gsub(/'$1'/, "", $0)}' $2 # if '/' needs to be '\/'
     # then `sed -n '<line_num>p' ./file.txt
 }
 # Sum integer in a column by using paste (which concatenates files or characters(+))
@@ -148,7 +148,7 @@ alias xml_path='python -c "import sys,pprint;from lxml import etree;t=etree.pars
 # Strip XML / HTML to get text. NOTE: using sys.stdin.read. (TODO: maybe </br> without new line should add new line)
 alias strip_tags='python3 -c "import sys,html,re;rx=re.compile(r\"<[^>]+>\");print(html.unescape(rx.sub(\"\",sys.stdin.read())))"'
 alias escape4json='python3 -c "import sys,json;print(json.dumps(sys.stdin.read()))"'
-alias jp='pyvN && jupyter-lab --AiExtension.allowed_providers=ollama &> /tmp/jupyter-lab.out'   # not using & as I tend to forget to stop
+alias jp='pyvN && jupyter-lab --AiExtension.allowed_providers=ollama &> /tmp/jupyter-lab.out' # not using & as I tend to forget to stop
 alias jn='pyvN && jupyter-notebook &> /tmp/jupyter-notebook.out'
 # php -S 0.0.0.0:7999
 alias startWeb='python3 -m http.server' # specify port (default:8000) if python2: python -m SimpleHTTPServer 8000
@@ -159,6 +159,7 @@ type zsh &>/dev/null && alias pbrew="ALL_PROXY=http://proxyuser:proxypwd@dh1:280
 
 ## Common software/command but need to install #######################################################################
 alias qcsv='q -O -d"," -T --disable-double-double-quoting'
+alias qtsv="q -O -T -d$'\t'"
 alias pgbg='pgbadger --timezone 0'
 export TABBY_DISABLE_USAGE_COLLECTION=1 # just in case
 alias tabby_start='TABBY_DISABLE_USAGE_COLLECTION=1 tabby serve --device metal --model TabbyML/StarCoder-1B &>/tmp/tabby.out &'
@@ -181,7 +182,7 @@ function dhTags() { # docker list tags
     curl -L -sSf "https://registry.hub.docker.com/v2/${_image%/}/tags?page_size=${_size}" | pjt
 }
 alias podmand="podman --log-level debug" && alias podman_login="podman --log-level debug login --tls-verify=false" && alias podman_pull="podman --log-level debug pull --tls-verify=false" && alias podman_push="podman --log-level debug push --tls-verify=false"
-alias podman_delete_all='podman system prune --all'    # --force && podman rmi --all
+alias podman_delete_all='podman system prune --all' # --force && podman rmi --all
 #type microk8s &>/dev/null && alias kubectl="microk8s kubectl"
 alias kPods='kubectl get pods --show-labels -A'
 function kBash() {
@@ -206,7 +207,7 @@ function kConfMerge() {
     local _orig="${2:-"$HOME/.kube/config"}"
     local _merged="${3:-"./merged_kube_config"}"
     [ -s "${_append}" ] || return 1
-    KUBECONFIG=${_orig}:${_append} kubectl config view --flatten > ${_merged} || return $?
+    KUBECONFIG=${_orig}:${_append} kubectl config view --flatten >${_merged} || return $?
     echo "Created ${_merged}"
 }
 if [ -s "$HOME/.kube/support_test_config" ]; then
@@ -240,18 +241,18 @@ fi
 alias kvm='virt-manager -c "qemu+ssh://virtuser@dh1/system?socket=/var/run/libvirt/libvirt-sock" &>/tmp/virt-manager.out &'
 
 ## Java / jar related
-alias mb='${JAVA_HOME_11%/}/bin/java -jar $HOME/Apps/metabase.jar'    # port is 3000
+alias mb='${JAVA_HOME_11%/}/bin/java -jar $HOME/Apps/metabase.jar' # port is 3000
 alias vnc='java -Xmx2g -jar $HOME/Apps/tightvnc-jviewer.jar &>/tmp/vnc-java-viewer.out &'
 #alias vnc='java -jar $HOME/Applications/VncViewer-1.9.0.jar &>/tmp/vnc-java-viewer.out &'
 alias samurai='java -Xmx4g -jar $HOME/Apps/samurali/samurai.jar &>/tmp/samurai.out &'
-alias tda='java -Xmx4g -jar $HOME/Apps/tda-bin-2.4/tda.jar &>/tmp/tda.out &'    #https://github.com/irockel/tda/releases/latest
-alias gcviewer='java -Xmx4g -jar $HOME/Apps/gcviewer-1.37-SNAPSHOT.jar' # &>/tmp/gcviewer.out & # Mac can't stop this so not put in background
-alias gitbucket='java -jar gitbucket.war &> /tmp/gitbucket.out &'   #https://github.com/gitbucket/gitbucket/releases/download/4.34.0/gitbucket.war
+alias tda='java -Xmx4g -jar $HOME/Apps/tda-bin-2.4/tda.jar &>/tmp/tda.out &' #https://github.com/irockel/tda/releases/latest
+alias gcviewer='java -Xmx4g -jar $HOME/Apps/gcviewer-1.37-SNAPSHOT.jar'      # &>/tmp/gcviewer.out & # Mac can't stop this so not put in background
+alias gitbucket='java -jar gitbucket.war &> /tmp/gitbucket.out &'            #https://github.com/gitbucket/gitbucket/releases/download/4.34.0/gitbucket.war
 alias groovyi='groovysh -e ":set interpreterMode true"'
 # JAVA_HOME_11 is set in bash_profile.sh
-alias jenkins='${JAVA_HOME_11%/}/bin/java -Djava.util.logging.config.file=$HOME/Apps/jenkins-logging.properties -jar $HOME/Apps/jenkins.war'  #curl -o $HOME/Apps/jenkins.war -L https://get.jenkins.io/war-stable/2.426.3/jenkins.war
+alias jenkins='${JAVA_HOME_11%/}/bin/java -Djava.util.logging.config.file=$HOME/Apps/jenkins-logging.properties -jar $HOME/Apps/jenkins.war' #curl -o $HOME/Apps/jenkins.war -L https://get.jenkins.io/war-stable/2.426.3/jenkins.war
 # http (but https fails) + reverse proxy server https://www.mock-server.com/mock_server/getting_started.html
-alias mockserver='java -jar $HOME/Apps/mockserver-netty.jar'  #curl -o $HOME/Apps/mockserver-netty.jar -L https://search.maven.org/remotecontent?filepath=org/mock-server/mockserver-netty/5.11.1/mockserver-netty-5.11.1-jar-with-dependencies.jar
+alias mockserver='java -jar $HOME/Apps/mockserver-netty.jar'                                      #curl -o $HOME/Apps/mockserver-netty.jar -L https://search.maven.org/remotecontent?filepath=org/mock-server/mockserver-netty/5.11.1/mockserver-netty-5.11.1-jar-with-dependencies.jar
 alias jkCli='java -jar $HOME/Apps/jenkins-cli.jar -s http://localhost:8080/ -auth admin:admin123' #curl -o $HOME/Apps/jenkins-cli.jar -L http://localhost:8080/jnlpJars/jenkins-cli.jar
 [ -f $HOME/IdeaProjects/samples/misc/orient-console.jar ] && alias orient-console="java -jar $HOME/IdeaProjects/samples/misc/orient-console.jar"
 [ -f $HOME/IdeaProjects/samples/misc/h2-console.jar ] && alias h2-console="java -jar $HOME/IdeaProjects/samples/misc/h2-console.jar"
@@ -274,7 +275,8 @@ alias chrome-work='open -na "Google Chrome" --args --user-data-dir=$HOME/.chrome
 alias chrome-dh1='open -na "Google Chrome" --args --user-data-dir=$HOME/.chromep/dh1 --proxy-server=http://dh1:28080'
 alias k8s-dh1='open -na "Google Chrome" --args --user-data-dir=$HOME/.chromep/k8s-dh1 --proxy-server=socks5://dh1:38081'
 alias hblog='open -na "Google Chrome" --args --user-data-dir=$HOME/.chromep/hajigle https://www.blogger.com/blogger.g?blogID=9018688091574554712&pli=1#allposts'
-alias gemini='open -na "Google Chrome" --args --app="https://gemini.google.com/u/1/app"'   # --user-data-dir=$HOME/.chromep/hosako
+alias gemini='open -na "Google Chrome" --args --app="https://gemini.google.com/u/1/app"' # --user-data-dir=$HOME/.chromep/hosako
+alias kapa='open -na "Google Chrome" --args --app="https://chat.kapa.ai/dadecd3d-2984-46d3-9c6b-09df9a67668c"'
 # pretending windows chrome on Linux
 alias winchrome='/opt/google/chrome/chrome --user-data-dir=$HOME/.chromep --proxy-server=socks5://localhost:38080  --user-agent="Mozilla/5.0 (Windows NT 10.0; WOW64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/88.0.4324.96 Safari/537.36"'
 
@@ -287,10 +289,11 @@ alias smtpdemo='python -m smtpd -n -c DebuggingServer localhost:2500'
 
 ### Functions (some command syntax does not work with alias eg: sudo) ##################################################
 # mac doesn't have namei (util-linux)
+#_d="$(readlink -f "${_path}")"
+#while true; do ls -ld ${_d}; _d="$(dirname "${_d}")" || break ; [ "${_d}" = "/" ] && break; done
 function namei_l() {
     local _path="$1"
     local _full_path="$(readlink -f "${_path}")"
-    #while true; do ls -ld $1; _p="$(dirname "$1")" || break ; [ "$1" = "/" ] && break; done
     while true; do
         if [ -f "${_full_path}" ]; then
             echo "$(ls -l ${_full_path})"
@@ -309,7 +312,7 @@ function iconv_utf8() {
     local _in_encoding="${2:-"ISO-8859-1"}"
     [ ! -s "${_file}" ] && return 1
     local _result="$(iconv -f ${_in_encoding} -t UTF-8 ${_file})" || return $?
-    echo "${_result}" > "${_file}"
+    echo "${_result}" >"${_file}"
 }
 function fcat() {
     local _name="$1"
@@ -317,7 +320,7 @@ function fcat() {
     local _max_depth="${3:-"7"}"
     local _result=1
     # Accept not only file name but also /<dir>/<filename> so that using grep
-    for _f in `find . -maxdepth ${_max_depth} -type f -print | grep -w "${_name}$"`; do
+    for _f in $(find . -maxdepth ${_max_depth} -type f -print | grep -w "${_name}$"); do
         echo "# ${_f}" >&2
         cat "${_f}" && _result=0
         [[ "${_find_all}" =~ ^(y|Y) ]] || break
@@ -332,7 +335,7 @@ function fvim() {
     local _max_depth="${3:-"7"}"
     local _result=1
     # Accept not only file name but also /<dir>/<filename> so that using grep
-    for _f in `find . -maxdepth ${_max_depth} -type f -print | grep "/${_name}$"`; do
+    for _f in $(find . -maxdepth ${_max_depth} -type f -print | grep "/${_name}$"); do
         echo "# ${_f}" >&2
         vim "${_f}" && _result=$?
         [[ "${_find_all}" =~ ^(y|Y) ]] || break
@@ -360,7 +363,7 @@ function unzips() {
 
 function random_list() {
     eval "IFS=\" \" read -a _list <<< \"${1}\""
-    local _rand=$[$RANDOM % ${#_list[@]}]
+    local _rand=$(($RANDOM % ${#_list[@]}))
     echo "${_list[${_rand}]}"
 }
 
@@ -434,7 +437,7 @@ function _head_tail() {
 }
 # Handy to check f_threads analysed / separated files
 function tail_head() {
-    local _glob="$1"    # NOTE: need double quotes
+    local _glob="$1" # NOTE: need double quotes
     local _tn="${2:-"1"}"
     local _hn="${3:-"${_tn}"}"
     ls -1 ${_glob} | while read -r _f; do
@@ -452,8 +455,8 @@ function every_Nth() {
 # Run specific command X times parallely with Y concurrency
 function multiexec() {
     local _cmd="$1"
-    local _ttl="${2:-"1"}"    # How many times
-    local _con="${3:-"1"}"    # Concurrency
+    local _ttl="${2:-"1"}" # How many times
+    local _con="${3:-"1"}" # Concurrency
     echo "$(seq 1 ${_ttl})" | xargs -I{} -P${_con} -t bash -c "${_cmd}"
 }
 # monitorexec ./db-migrator-2025-02-17T14-23.log "low heap memory" "jmap -dump:format=b,file=./db-mig_$(date +"%Y%m%d%H%M%S").hprof $PID" 5
@@ -498,7 +501,11 @@ function jsondiff() {
 function xmldiff() {
     python3 -c "import sys,xmltodict,json;print(json.dumps(xmltodict.parse(open(sys.argv[1]).read()), indent=4, sort_keys=True))" $1 >/tmp/xmldiff1_$$.json || return $?
     python3 -c "import sys,xmltodict,json;print(json.dumps(xmltodict.parse(open(sys.argv[1]).read()), indent=4, sort_keys=True))" $2 >/tmp/xmldiff2_$$.json || return $?
-    bash -c "vimdiff /tmp/xmldiff1_$$.json /tmp/xmldiff2_$$.json" 2>/tmp/vimdiff.err
+    if type mvimdiff; then
+        mvimdiff /tmp/xmldiff1_$$.json /tmp/xmldiff2_$$.json
+    else
+        bash -c "vimdiff /tmp/xmldiff1_$$.json /tmp/xmldiff2_$$.json"
+    fi 2>/tmp/vimdiff.err
 }
 # Convert yml|yaml file to a sorted json. Can be used to validate yaml file
 function yaml2json() {
@@ -594,11 +601,12 @@ function avg_time() {
     #
     # usage: avg_time n command ...
     #
-    n=$1; shift
-    (($# > 0)) || return                   # bail if no command given
+    n=$1
+    shift
+    (($# > 0)) || return # bail if no command given
     for ((i = 0; i < n; i++)); do
         { time -p "$@" &>/dev/null; } 2>&1 # ignore the output of the command
-                                           # but collect time's output in stdout
+        # but collect time's output in stdout
     done | awk '
         /real/ { real = real + $2; nr++ }
         /user/ { user = user + $2; nu++ }
@@ -609,7 +617,7 @@ function avg_time() {
                  if (ns>0) printf("sys %f\n",  sys/ns)
                }'
 }
-# convert .mov file to .gif
+# convert .mov file to .gif. Require: brew install ffmpeg
 function mov2gif() {
     local _in="$1"
     local _out="$2"
@@ -674,7 +682,7 @@ function chromep() {
 }
 # Add route to dockerhost to access containers directly
 function r2dh() {
-    local _dh="${1}" # docker host IP or L2TP 10.0.1.1
+    local _dh="${1}"                                                                         # docker host IP or L2TP 10.0.1.1
     local _network_addrs="${2:-"172.17.0.0 172.18.0.0 172.17.100.0 10.1.25.0 10.152.183.0"}" # last one is for K8s pods
     [ -z "${_dh}" ] && _dh="$(ifconfig ppp0 | grep -oE 'inet .+' | awk '{print $4}')" 2>/dev/null
     [ -z "${_dh}" ] && _dh="dh1.standalone.localdomain"
@@ -717,7 +725,7 @@ function sshs() {
 # sshfs -o uid=$UID,gid=$UID,umask=000,reconnect,follow_symlinks $USER@$(echo ${SSH_CONNECTION} | cut -d" " -f1):/Users/$USER/IdeaProjects $HOME/IdeaProjects
 function ssh_remote_mount() {
     local _user="${1:-"$USER"}"
-    local _src="${2:-"/Users/${_user}"}"    # expecting Mac...
+    local _src="${2:-"/Users/${_user}"}" # expecting Mac...
     local _tgt="${3}"
     [ -z "${SSH_CONNECTION}" ] && return 1
     local _remote_host="$(echo ${SSH_CONNECTION} | cut -d" " -f1)"
@@ -734,16 +742,16 @@ alias _ssh='ssh $(basename "$PWD" | cut -d"_" -f1)'
 # NOTE: if 'brew upgraded postgresql', may need to run 'brew postgresql-upgrade-database'
 function pgStatus() {
     local _cmd="${1:-"status"}"
-    local _pg_data="${2:-"/opt/homebrew/var/postgresql@14"}"    #/usr/local/var/postgresql@14
-    local _log_path="${3-"${HOME%/}/postgresql.log"}"   # may not have permission on /var/log and /tmp might be small
+    local _pg_data="${2:-"/opt/homebrew/var/postgresql@14"}" #/usr/local/var/postgresql@14
+    local _log_path="${3-"${HOME%/}/postgresql.log"}"        # may not have permission on /var/log and /tmp might be small
     local _wal_backup_path="${4:-"$HOME/share/$USER/backups/$(hostname -s)_wal"}"
     #ln -s /Volumes/Samsung_T5/hajime/backups $HOME/share/$USER/backups
     if [[ "${_cmd}" =~ start$ ]]; then
         if [ -n "${_log_path}" ] && [ -s "${_log_path}" ]; then
-            echo -n > ${_log_path}
+            echo -n >${_log_path}
         fi
         if [ -d "${_wal_backup_path%/}" ]; then
-            find ${_wal_backup_path%/} -type f -mtime +2 -delete 2>/dev/null &  # -print
+            find ${_wal_backup_path%/} -type f -mtime +2 -delete 2>/dev/null & # -print
         fi
     fi
     if [ -n "${_log_path}" ]; then
@@ -764,7 +772,7 @@ function ncWeb() {
     local _http_status="${2:-"200 OK"}" # 400 Bad Request
     local _last_mod="$(type gdate &>/dev/null && gdate --rfc-2822 || date --rfc-2822)" || return $?
     while true; do
-        echo -e "HTTP/1.1 ${_http_status}\nDate: $(type gdate &>/dev/null && gdate --rfc-2822 || date --rfc-2822)\nServer: ncWeb\nLast-Modified: ${_last_mod}\nContent-Length: 0\n\n" | nc -v -v -n -l ${_port} || break    # can't remember why -p was used
+        echo -e "HTTP/1.1 ${_http_status}\nDate: $(type gdate &>/dev/null && gdate --rfc-2822 || date --rfc-2822)\nServer: ncWeb\nLast-Modified: ${_last_mod}\nContent-Length: 0\n\n" | nc -v -v -n -l ${_port} || break # can't remember why -p was used
         echo -e "\n"
     done
 }
@@ -776,7 +784,7 @@ function goBuild() {
     local _goFile="$1"
     local _name="$2"
     local _destDir="${3:-"$HOME/IdeaProjects/samples/misc"}"
-    local _opts="${4-"${GO_BUILD_OPTS}"}"   # -mod=readonly
+    local _opts="${4-"${GO_BUILD_OPTS}"}" # -mod=readonly
     if [ -z "${_name}" ]; then
         if [ -z "${_goFile}" ]; then
             _name="$(basename "${PWD}" | tr '[:upper:]' '[:lower:]')"
@@ -787,7 +795,7 @@ function goBuild() {
     if [ -d /opt/homebrew/opt/go/libexec ]; then
         export GOROOT=/opt/homebrew/opt/go/libexec
     fi
-    go mod tidy || return $?    # go get -v -t -u all && go mod tidy
+    go mod tidy || return $? # go get -v -t -u all && go mod tidy
     if [[ "${GO_SKIP_TESTS}" =~ ^[yY] ]]; then
         echo "# Skipping tests ..." >&2
     else
@@ -799,10 +807,10 @@ function goBuild() {
     fi
     echo "# Compiling at $(date)" >&2
     env GOOS=darwin GOARCH=arm64 go build -o "${_destDir%/}/${_name}_Darwin_arm64" ${_opts} ${_goFile} || return $?
-    env GOOS=linux GOARCH=amd64 go build -o "${_destDir%/}/${_name}_Linux_x86_64" ${_opts} ${_goFile} && \
-    env GOOS=linux GOARCH=arm64 go build -o "${_destDir%/}/${_name}_Linux_aarch64" ${_opts} ${_goFile} && \
-    env GOOS=darwin GOARCH=amd64 go build -o "${_destDir%/}/${_name}_Darwin_x86_64" ${_opts} ${_goFile} && \
-    env GOOS=windows GOARCH=amd64 go build -o "${_destDir%/}/${_name}_Windows_x86_64" ${_opts} ${_goFile}
+    env GOOS=linux GOARCH=amd64 go build -o "${_destDir%/}/${_name}_Linux_x86_64" ${_opts} ${_goFile} &&
+        env GOOS=linux GOARCH=arm64 go build -o "${_destDir%/}/${_name}_Linux_aarch64" ${_opts} ${_goFile} &&
+        env GOOS=darwin GOARCH=amd64 go build -o "${_destDir%/}/${_name}_Darwin_x86_64" ${_opts} ${_goFile} &&
+        env GOOS=windows GOARCH=amd64 go build -o "${_destDir%/}/${_name}_Windows_x86_64" ${_opts} ${_goFile}
     echo "" >&2
     find "${_destDir%/}" -type f -name "${_name}_*" -mmin -1 >&2
     echo "# curl -o /usr/local/bin/${_name} -L \"https://github.com/hajimeo/samples/raw/master/misc/${_name}_\$(uname)_\$(uname -m)\"" >&2
@@ -821,7 +829,7 @@ function cleanOldDirs() {
         if [ -d "${_d%/}/sonatype-work/nexus3/log" ]; then
             local _log_file="$(${_find} "${_d%/}/sonatype-work/nexus3/log" -maxdepth 1 -type f -name '*.log' -mtime -${_days} 2>/dev/null | head -n1)"
             if [ -z "${_log_file}" ]; then
-                mv -v ${_d%/} ${_test_dir%/}/to_be_deleted_${_dir_name%/} || return $?    # this may fail if to_be_deleted_${_d%/} exists
+                mv -v ${_d%/} ${_test_dir%/}/to_be_deleted_${_dir_name%/} || return $? # this may fail if to_be_deleted_${_d%/} exists
             fi
         fi
     done
@@ -831,7 +839,7 @@ function cleanOldDirs() {
         if [ -d "${_log_dir}" ]; then
             local _log_file="$(${_find} "${_log_dir%/}" -maxdepth 1 -type f -name '*.log' -mtime -${_days} 2>/dev/null | head -n1)"
             if [ -z "${_log_file}" ]; then
-                mv -v ${_d%/} ${_test_dir%/}/to_be_deleted_${_dir_name%/} || return $?    # this may fail if to_be_deleted_${_d%/} exists
+                mv -v ${_d%/} ${_test_dir%/}/to_be_deleted_${_dir_name%/} || return $? # this may fail if to_be_deleted_${_d%/} exists
             fi
         fi
     done
@@ -846,13 +854,13 @@ function cleanOldDBs() {
     # Currently assuming the DB name starts with 'nxrm|nxiq|rm|iq' and the directory name starts with 'nxrm_[0-9]' or 'nxiq_[0-9]'
     local _test_dir="${1:-"$HOME/Documents/tests"}"
     local _check_db_pfx="${2:-"nx(rm|iq)"}"
-    psql --csv -t -l | rg "^${_check_db_pfx}[^,]+" -o > /tmp/${FUNCNAME[0]}_in_db_$$.out || return $?
-    rg '^jdbcUrl=.+/(rm|nxrm)([^/\?]+)' -o -r '$1$2' --no-filename ${_test_dir%/}/nxrm_[0-9]*/sonatype-work/nexus3/etc/fabric/nexus-store.properties > /tmp/${FUNCNAME[0]}_nxrm_$$.out || return $?
+    psql --csv -t -l | rg "^${_check_db_pfx}[^,]+" -o >/tmp/${FUNCNAME[0]}_in_db_$$.out || return $?
+    rg '^jdbcUrl=.+/(rm|nxrm)([^/\?]+)' -o -r '$1$2' --no-filename ${_test_dir%/}/nxrm_[0-9]*/sonatype-work/nexus3/etc/fabric/nexus-store.properties >/tmp/${FUNCNAME[0]}_nxrm_$$.out || return $?
     if [ ! -s "/tmp/${FUNCNAME[0]}_nxrm_$$.out" ]; then
         echo "ERROR /tmp/${FUNCNAME[0]}_nxrm_$$.out can't be empty" >&2
         return 1
     fi
-    rg '^database:' -A6 --no-filename ${_test_dir%/}/nxiq_[0-9]*/config.yml | rg '^\s+name:\s*(iq|nxiq)([^/\?]+)' -o -r '$1$2' >> /tmp/${FUNCNAME[0]}_nxiq_$$.out || return $?
+    rg '^database:' -A6 --no-filename ${_test_dir%/}/nxiq_[0-9]*/config.yml | rg '^\s+name:\s*(iq|nxiq)([^/\?]+)' -o -r '$1$2' >>/tmp/${FUNCNAME[0]}_nxiq_$$.out || return $?
     if [ ! -s "/tmp/${FUNCNAME[0]}_nxiq_$$.out" ]; then
         echo "ERROR /tmp/${FUNCNAME[0]}_nxiq_$$.out can't be empty" >&2
         return 1
@@ -923,7 +931,7 @@ function syncGitReposWithRemotePC() {
     echo "" >&2
     echo "# Finding any '-mmin -${_diff_mins}' files in the remote and copy (just in case, excluding large files)" >&2
     # Need relative path, so using cd. If dry run, shouldn't touch the previous list file.
-    ssh ${_remote_user_host} "cd ${_remote_repo_path} && find . -type f -mmin -${_diff_mins} -size -10M -not -path \"*/.idea/*\" -not -path \"*/.git/*\" -print" > "${_check_file}${_dry_run}" || return $?
+    ssh ${_remote_user_host} "cd ${_remote_repo_path} && find . -type f -mmin -${_diff_mins} -size -10M -not -path \"*/.idea/*\" -not -path \"*/.git/*\" -print" >"${_check_file}${_dry_run}" || return $?
     if [ -s "${_check_file}${_dry_run}" ]; then
         for _f in $(cat "${_check_file}${_dry_run}"); do
             if [ ! -s "${_local_repo_path%/}/${_f}" ]; then
@@ -991,7 +999,7 @@ function backupC() {
     echo "#### Synchronising a few Github repositories into 'oldmac' ####" >&2
     echo ""
     syncGitReposWithRemotePC "oldmac" "$USER" "IdeaProjects/samples" "$HOME" #|| return $?
-    syncGitReposWithRemotePC "oldmac" "$USER" "IdeaProjects/work" "$HOME" #|| return $?
+    syncGitReposWithRemotePC "oldmac" "$USER" "IdeaProjects/work" "$HOME"    #|| return $?
 
     echo ""
     echo "#### Cleaning up old temp/test data (120 days) ####" >&2
@@ -999,7 +1007,7 @@ function backupC() {
     if [ -d "$HOME/Documents/tests" ]; then
         cleanOldDirs "$HOME/Documents/tests" 60
         cleanOldDBs "$HOME/Documents/tests"
-     fi
+    fi
 
     if [ -d "${_ext_backup}" ]; then
         echo ""
@@ -1019,7 +1027,7 @@ function backupC() {
     echo ""
     ## Special: support_tmp directory or .tmp or .out file wouldn't need to backup (not using atime as directory doesn't work)
     # NOTE: xargs may not work with very long file name 'mv: rename {} to /Users/hosako/.Trash/{}: No such file or directory', so not using.
-    _src="$(realpath "${_src}")"    # because find -L ... -delete does not work
+    _src="$(realpath "${_src}")" # because find -L ... -delete does not work
     [ -z "${_src%/}" ] && return 12
     # Find directories from the src and if no files newer than 120 days, then move to trash (no background)
     find ${_src%/} -mindepth 1 -maxdepth 1 -type d -print | xargs -I{} -t -P4 bash -c "find {} -type f -mtime -90 ! -name '.*' | head -n1 | grep -q -E '.+' || mv {} $HOME/.Trash/"
@@ -1050,8 +1058,8 @@ function backupC() {
             #gdu -Shx ${_src} | sort -h | tail -n40
             listLargeDirs "${_src}" 20
         else
-            echo "# mdfind 'kMDItemFSSize > 209715200 && kMDItemContentModificationDate < \$time.now(-2419200)' | LC_ALL=C sort" >&2   # -onlyin "${_src}"
-            mdfind 'kMDItemFSSize > 209715200 && kMDItemContentModificationDate < $time.now(-2419200)' | LC_ALL=C sort | rg -v -w 'cases_local' | while read -r _l;do ls -lh "${_l}"; done | sort -k5 -h | tail -n40
+            echo "# mdfind 'kMDItemFSSize > 209715200 && kMDItemContentModificationDate < \$time.now(-2419200)' | LC_ALL=C sort" >&2 # -onlyin "${_src}"
+            mdfind 'kMDItemFSSize > 209715200 && kMDItemContentModificationDate < $time.now(-2419200)' | LC_ALL=C sort | rg -v -w 'cases_local' | while read -r _l; do ls -lh "${_l}"; done | sort -k5 -h | tail -n40
         fi
     else
         listLargeDirs "${_src}" 20
@@ -1120,7 +1128,7 @@ if [ -s $HOME/IdeaProjects/work/bash/nexus_aliases.sh ]; then
 fi
 function pubS() {
     local _backup_server="${1:-"dh1"}"
-    if ! ping -c1 -t1 ${_backup_server}>/dev/null; then
+    if ! ping -c1 -t1 ${_backup_server} >/dev/null; then
         echo "Can't reach ${_backup_server}" >&2
     else
         [ $HOME/IdeaProjects/work/bash/install_nexus.sh -nt /tmp/pubS.last ] && scp -C $HOME/IdeaProjects/work/bash/install_nexus.sh ${_backup_server}:/var/tmp/share/sonatype/ && cp -v -f $HOME/IdeaProjects/work/bash/install_nexus.sh $HOME/share/sonatype/
@@ -1165,9 +1173,9 @@ function sync_nexus_binaries() {
 function set_classpath() {
     local _port_or_dir="${1}"
     if [[ "${_port_or_dir}" =~ ^[0-9]+$ ]]; then
-        local _p=`lsof -ti:${_port} -s TCP:LISTEN` || return $?
+        local _p=$(lsof -ti:${_port} -s TCP:LISTEN) || return $?
         # requires jcmd in the path
-        export CLASSPATH=".:`jcmd ${_p} VM.system_properties | sed -E -n 's/^java.class.path=(.+$)/\1/p' | sed 's/[\]:/:/g'`"
+        export CLASSPATH=".:$(jcmd ${_p} VM.system_properties | sed -E -n 's/^java.class.path=(.+$)/\1/p' | sed 's/[\]:/:/g')"
     elif [ -d "${_port_or_dir}" ]; then
         local _tmp_cp="$(find ${_port_or_dir%/} -type f -name '*.jar' | tr '\n' ':')"
         export CLASSPATH=".:${_tmp_cp%:}"
@@ -1178,23 +1186,52 @@ function update_cacerts() {
     local _pem="$1"
     local _alias="$2"
     local _truststore="${3}"
+    [ ! -f "${_pem}" ] && return 11
+    [ -z "${JAVA_HOME}" ] && return 12
     if [ -z "${_truststore}" ]; then
         if [ -f "${JAVA_HOME%/}/jre/lib/security/cacerts" ]; then
             _truststore="${JAVA_HOME%/}/jre/lib/security/cacerts"
         elif [ -f "${JAVA_HOME%/}/lib/security/cacerts" ]; then
             _truststore="${JAVA_HOME%/}/lib/security/cacerts"
         else
-            return 2
+            _truststore="$(find ${JAVA_HOME%/} -maxdepth 4 -name cacerts | head -n1)"
+            [ -z "${_truststore}" ] && return 13
         fi
     fi
-    [ -z "${JAVA_HOME}" ] && return 1
-    [ ! -f "${_pem}" ] && return 3
     [ -z "${_alias}" ] && _alias="$(basename "${_pem%%.*}")"
     echo 'keytool -import -alias "'${_alias}'" -keystore "'${_truststore}'" -file "'${_pem}'" -noprompt -storepass changeit' >&2
     keytool -import -alias "${_alias}" -keystore "${_truststore}" -file "${_pem}" -noprompt -storepass changeit
 }
 
-
+function oApi() {
+    # https://ollama.readthedocs.io/en/api/
+    local _query="${1}"
+    local _model="${2:-"mistral"}"
+    local _keep_alive="${3:-"5m"}"
+    if [ -z "${_query}" ]; then
+        echo "Usage: ${FUNCNAME[0]} <query> [model]" >&2
+        return 1
+    fi
+    # '//\"/\\\"' is a doggy way to escape double quotes in the query,
+    # and ... seems it's necessary to store it in a variable, somehow.
+    local _q="${_query//\"/\\\"}"
+    cat << EOF > /tmp/${FUNCNAME[0]}_query_$$.json
+{
+  "model": "${_model}",
+  "prompt": "${_q}",
+  "keep_alive": "${_keep_alive}",
+  "stream": false
+}
+EOF
+    curl -sSf -o "/tmp/${FUNCNAME[0]}_result_$$.json" -L "http://localhost:11434/api/generate" -H "Content-Type: application/json" -d@"/tmp/${FUNCNAME[0]}_query_$$.json" || return $?
+    if [ -s /tmp/${FUNCNAME[0]}_result_$$.json ]; then
+        cat /tmp/${FUNCNAME[0]}_result_$$.json | JSON_SEARCH_KEY="response" sortjson
+        echo "# Result: /tmp/${FUNCNAME[0]}_result_$$.json" >&2
+    else
+        echo "# No results found" >&2
+        return 1
+    fi
+}
 
 function startCommonUtils() {
     pgStatus start
@@ -1203,6 +1240,7 @@ function startCommonUtils() {
     #chrome-work
     #open -na "Google Chrome"
 
+    return $?
     if type ollama &>/dev/null; then
         ollama serve &>/tmp/ollama.log &
         sleep 3
