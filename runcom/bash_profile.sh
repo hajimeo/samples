@@ -81,11 +81,16 @@ if [ "$(uname)" = "Darwin" ]; then
     fi
 
     # Java related (for java11 and java17)
+    # If homebrew was used to install Java, check /opt/homebrew/bin/java
     # Truststore location: $(/usr/libexec/java_home)/lib/security/cacerts or $(/usr/libexec/java_home)/jre/lib/security/cacerts
     # To verify: -Djavax.net.debug=ssl,keymanager
     if [ -f /usr/libexec/java_home ]; then
         #[ -z "${JAVA_HOME_11}" ] && export JAVA_HOME_11=`/usr/libexec/java_home -v 11 2>/dev/null`
         [ -z "${JAVA_HOME}" ] && export JAVA_HOME=`/usr/libexec/java_home -v 1.8 2>/dev/null`
+    fi
+    if [ -d "/Library/Java/JavaVirtualMachines/zulu-8.jdk/Contents/Home" ]; then
+        [ -z "${JAVA_HOME_8}" ] && export JAVA_HOME_8="/Library/Java/JavaVirtualMachines/zulu-8.jdk/Contents/Home"
+        [ -z "${JAVA_HOME}" ] && export JAVA_HOME="/Library/Java/JavaVirtualMachines/zulu-8.jdk/Contents/Home"
     fi
     if [ -d "/opt/homebrew/opt/openjdk@17/libexec/openjdk.jdk/Contents/Home" ]; then
         [ -z "${JAVA_HOME_17}" ] && export JAVA_HOME_17="/opt/homebrew/opt/openjdk@17/libexec/openjdk.jdk/Contents/Home"
