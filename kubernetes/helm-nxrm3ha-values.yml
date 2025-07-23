@@ -106,7 +106,7 @@ statefulset:
       nexusDBName: nxrm3helmha
       nexusDBPort: 5432
       install4jAddVmParams: '-Xms2g -Xmx2g -Dcom.redhat.fips=false -Dnexus.scripts.allowCreation=true -Dnexus.datastore.nexus.maximumPoolSize=10 -Dnexus.datastore.nexus.advanced=maxLifetime=30000'
-      jdbcUrlParams: null # Must start with a '?' e.g. '?foo=bar&baz=foo'
+      jdbcUrlParams: ?targetServerType=primary # Must start with a '?' e.g. '?foo=bar&baz=foo'
       zeroDowntimeEnabled: true
     additionalEnv:
       # TODO: utilise NEXUS_SECURITY_INITIAL_PASSWORD
