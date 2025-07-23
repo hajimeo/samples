@@ -1140,17 +1140,14 @@ function f_splitScriptLog() {
             cat ./threads.raw | python3 -c "import sys,html,re;rx=re.compile(r\"<[^>]+>\");print(html.unescape(rx.sub(\"\",sys.stdin.read())))" > threads.txt && rm -f ./threads.raw
         fi
     fi
-    if [[ "${_full_split}" =~ [y] ]] && [ -s ./tops_netstats.txt ]; then
+    if [[ "${_full_split}" =~ [yY] ]] && [ -s ./tops_netstats.txt ]; then
         f_splitTopNetstat ./tops_netstats.txt >/dev/null
     fi
     if [[ "${_full_split}" =~ [Y] ]]; then
-        if [ -s ./tops_netstats.txt ]; then
-            f_check_topH ./tops_netstats.txt
-            if [ -d "./top_netstat" ]; then
-                find ./top_netstat -name "netstat_*.out" | while read _f; do f_check_netstat "${_f}"; done
-            else
-                f_check_netstat ./tops_netstats.txt
-            fi
+        if [ -d "./top_netstat" ]; then
+            f_check_topH "top_netstat/top_0*"
+            f_check_netstat "top_netstat/netstat_0*"
+            #find ./top_netstat -name "netstat_*.out" | while read _f; do f_check_netstat "${_f}"; done
         fi
         #[ -s ./threads.txt ] && f_threads ./threads.txt
     fi
@@ -1207,7 +1204,7 @@ function f_threads() {
             rg '^Heap' -A8 ${_file} | rg '(total|\d\d+% used)'    # % didn't work with G1GC
             echo " "
             echo "## Check if any 'deadlock' information exists"
-            rg -i 'deadlock' ${_file}
+            rg -i '\bdeadlock\b' ${_file}
             echo " "
 
             f_splitByRegex "${_file}" "^20\d\d-\d\d-\d\d \d\d:\d\d:\d\d" "${_tmp_dir%/}" "" || return $?
