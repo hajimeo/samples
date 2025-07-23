@@ -87,6 +87,7 @@ from dateutil import parser
 # At this moment, many pandas functions do not work with modin.
 # import modin.pandas as pd
 import pandas as pd
+from pandas.io.formats.style import Styler
 from sqlalchemy import create_engine
 import matplotlib.pyplot as plt
 from sqlite3.dbapi2 import InterfaceError
@@ -1396,7 +1397,7 @@ def display(df, name="", desc="", tail=100):
                 dict(selector='td', props=[('white-space', 'pre-wrap'), ('vertical-align', 'top')])
             ])
             # pd.options.display.html.use_mathjax = False    # Now this is set in global
-            _display(name_html + '\n' + df_styler.render())
+            _display(name_html + '\n' + df_styler.to_html())
         except AttributeError:
             _display(name_html + '\n' + df.to_html())
         except Exception as e:
