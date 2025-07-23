@@ -106,19 +106,9 @@ function _get_iq_url() {
 # export JAVA_HOME=$JAVA_HOME_17
 #
 # To start local (on Mac) NXRM2 or NXRM3 server for OrientDB
-# TODO: May need to reset 'admin' user, and also use below query (after modifying for H2/PostgreSQL/OrientDB)
-#  UPDATE repository_blobstore SET attributes = {} where type = 'S3';
-#  UPDATE repository_blobstore SET attributes.file = {} where type = 'S3';
-#  UPDATE repository_blobstore SET type = 'File', attributes.file.path = 's3/test' where type = 'S3';
-#
-#  Orient: UPDATE capability SET enabled = false WHERE type like 'firewall%';update capability set enabled = false where type like 'clm';
-#  H2: UPDATE capability_storage_item SET enabled = false WHERE type IN ('firewall.audit', 'clm', 'webhook.repository', 'healthcheck', 'crowd');
-#      TODO: UPDATE realm_configuration SET realm_names = '["NexusAuthenticatingRealm", "NexusAuthorizingRealm"]' FORMAT JSON where id = 1;
-#
-#  DELETE FROM nuget_asset WHERE path = '/index.json';
-#
-#  TRUNCATE TABLE http_client_configuration;
-#  INSERT INTO http_client_configuration (id, proxy) VALUES (1, '{"http": {"host": "localhost", "port": 28080, "enabled": true, "authentication": null}, "https": null, "nonProxyHosts": null}' FORMAT JSON);
+#   _CUSTOM_DNS="$(hostname -f)" nxrmStart
+#   TODO: If the blob store uses absolute path, need to change the path
+#   TODO: Update the notification emai in the tasks (and something else?)
 alias rmStart="nxrmStart"
 function nxrmStart() {
     local _base_dir="${1:-"."}"
@@ -126,7 +116,7 @@ function nxrmStart() {
     # -Xrunhprof:cpu=samples,interval=30,thread=y,cutoff=0.005,file=/tmp/cpu_samples_$$.hprof
     # -Xrunhprof:cpu=times,interval=30,thread=y,monitor=y,cutoff=0.001,doe=n,file=/tmp/cpu_samples_$$.hprof
     # -Xrunhprof:heap=sites,format=b,file=${_base_dir%/}/heap_sites_$$.hprof
-    # only 'root.level' is changeable with _LOG_LEVEL
+    # only 'root.level' is changeable with _ROOT_LEVEL
     # Debugger port for NXRM2 is 5004
     local _java_opts="${2}"
     local _port="${3-"${_NXRM3_INSTALL_PORT}"}"
@@ -147,9 +137,9 @@ function nxrmStart() {
     if [ -n "${_CUSTOM_DNS}" ]; then
         _java_opts="${_java_opts} -Dsun.net.spi.nameservice.nameservers=${_CUSTOM_DNS} -Dsun.net.spi.nameservice.provider.1=dns,sun"
     fi
-    if [ -n "${_LOG_LEVEL}" ]; then
+    if [ -n "${_ROOT_LEVEL}" ]; then
         # Another way if PostgresSQL is 'INSERT INTO logging_overrides values (1, 'ROOT', 'DEBUG');'
-        _java_opts="${_java_opts} -Droot.level=${_LOG_LEVEL} "
+        _java_opts="${_java_opts} -Droot.level=${_ROOT_LEVEL} "
     fi
 
     local _nexus_file="${_base_dir%/}/nexus/bin/nexus"
@@ -208,22 +198,24 @@ function nxrmStart() {
         _java_opts="${_java_opts} -Dhttp.proxyHost=non-existing-hostname -Dhttp.proxyPort=8800 -Dhttp.nonProxyHosts=\"*.sonatype.com\""
 
         local _console=""
-        # TODO: may need to ick h2-console_v200 for older versions
+        # TODO: may need to use h2-console_v200 for older versions?
         # TODO: no support for OrientDB
         if [ -s "${_sonatype_work:-"."}/db/nexus.mv.db" ]; then
-            if type h2-console_v232 &>/dev/null; then   # TODO: should switch h2-console by nexus version?
-                # To avoid this backup, touch ./sonatype-work/nexus3/db/nexus.mv.db.gz
-                if [ -s "${_sonatype_work:-"."}/db/nexus.mv.db" ] && [ ! -f "${_sonatype_work:-"."}/db/nexus.mv.db.gz" ]; then
-                    echo "No ${_sonatype_work:-"."}/db/nexus.mv.db.gz. Gzip-ing nexus.mv.db file ..."; sleep 3
-                    gzip -k "$(readlink -f "${_sonatype_work:-"."}/db/nexus.mv.db")" || return $?
-                else
-                    echo "WARN Not making a backup of database ${_sonatype_work:-"."}/db/nexus.mv.db"; sleep 5;
-                fi
-
-                _console="h2-console_v224 ${_sonatype_work:-"."}/db/nexus.mv.db"
-                echo "*** Updating DB with '${_console}' ***"; sleep 3;
-                _rm3StartSQLs_h2 | eval "${_console}" || return $?
+            if ! type h2-console_v232 &>/dev/null; then   # TODO: should switch h2-console by nexus version?
+                echo "ERROR: h2-console_v232 not found. Please create a symlink to h2-console"
+                return 1
             fi
+            # To avoid this backup, touch ./sonatype-work/nexus3/db/nexus.mv.db.gz
+            if [ -s "${_sonatype_work:-"."}/db/nexus.mv.db" ] && [ ! -f "${_sonatype_work:-"."}/db/nexus.mv.db.gz" ]; then
+                echo "No ${_sonatype_work:-"."}/db/nexus.mv.db.gz. Gzip-ing nexus.mv.db file ..."; sleep 3
+                gzip -k "$(readlink -f "${_sonatype_work:-"."}/db/nexus.mv.db")" || return $?
+            else
+                echo "WARN Not making a backup of database ${_sonatype_work:-"."}/db/nexus.mv.db"; sleep 5;
+            fi
+
+            _console="h2-console_v232 ${_sonatype_work:-"."}/db/nexus.mv.db"
+            echo "*** Updating DB with '${_console}' ***"; sleep 3;
+            _rm3StartSQLs_h2 | eval "${_console}" || return $?
         elif [ -s "${_sonatype_work:-"."}/etc/fabric/nexus-store.properties" ]; then
             if type psql &>/dev/null; then
                 source "${_sonatype_work:-"."}/etc/fabric/nexus-store.properties"
@@ -255,29 +247,29 @@ function _rm3StartSQLs_h2() {
     cat << 'EOF'
 UPDATE BLOB_STORE_CONFIGURATION SET TYPE = 'File', ATTRIBUTES = (JSON'{"file":{"path":"s3/'||NAME||'"}}') where TYPE = 'S3';
 UPDATE CAPABILITY_STORAGE_ITEM SET ENABLED = false WHERE TYPE IN ('firewall.audit', 'clm', 'webhook.repository', 'healthcheck', 'crowd');
-#UPDATE REALM_CONFIGURATION SET REALM_NAMES = '["NexusAuthenticatingRealm", "NexusAuthorizingRealm"]'  FORMAT JSON where ID = 1;
 UPDATE SECURITY_USER SET PASSWORD='$shiro1$SHA-512$1024$NE+wqQq/TmjZMvfI7ENh/g==$V4yPw8T64UQ6GfJfxYq2hLsVrBY8D1v+bktfOxGdt4b/9BthpWPNUy/CBk6V9iA0nHpzYzJFWO8v/tZFtES8CA==' WHERE ID='admin';
 DELETE FROM USER_ROLE_MAPPING WHERE USER_ID = 'admin';
 INSERT INTO USER_ROLE_MAPPING (USER_ID, SOURCE, ROLES) VALUES ('admin', 'default', JSON'["nx-admin"]');
-#DELETE FROM nuget_asset WHERE path = '/index.json';  # NEXUS-36090
+DELETE FROM nuget_asset WHERE path = '/index.json';  -- NEXUS-36090
 TRUNCATE TABLE HTTP_CLIENT_CONFIGURATION;
-# TODO: this is broken and causing `Error attempting to get column 'PROXY' from result set`
-INSERT INTO HTTP_CLIENT_CONFIGURATION (ID, PROXY) VALUES (1, JSON'{"http": {"host": "localhost", "port": 28080, "enabled": true, "authentication": null}, "https": null, "nonProxyHosts": "*.sonatype.com"}');
+INSERT INTO HTTP_CLIENT_CONFIGURATION (ID, PROXY) VALUES (1, JSON'{"http":{"enabled":true,"host":"localhost","port":28080,"authentication":null},"https":{"enabled":true,"host":"localhost","port":28080,"authentication":null},"nonProxyHosts":[]}');
 EOF
+# TODO: The last INSERT might be broken and causing `Error attempting to get column 'PROXY' from result set`
+#UPDATE REALM_CONFIGURATION SET REALM_NAMES = '["NexusAuthenticatingRealm", "NexusAuthorizingRealm"]' FORMAT JSON where ID = 1;
 }
 function _rm3StartSQLs_psql() {
     # TODO: May need to reset 'admin' user, and also use below query (after modifying for H2/PostgreSQL/OrientDB)
     cat << 'EOF'
 UPDATE blob_store_configuration SET type = 'File', attributes = ('{"file":{"path":"s3/'||name||'"}}')::jsonb where type = 'S3';
 UPDATE capability_storage_item SET enabled = false WHERE type IN ('firewall.audit', 'clm', 'webhook.repository', 'healthcheck', 'crowd');
-#UPDATE realm_configuration SET realm_names = '["NexusAuthenticatingRealm", "NexusAuthorizingRealm"]'::jsonb where id = 1;
 UPDATE security_user SET password='$shiro1$SHA-512$1024$NE+wqQq/TmjZMvfI7ENh/g==$V4yPw8T64UQ6GfJfxYq2hLsVrBY8D1v+bktfOxGdt4b/9BthpWPNUy/CBk6V9iA0nHpzYzJFWO8v/tZFtES8CA==' WHERE id='admin';
 DELETE FROM user_role_mapping WHERE user_id = 'admin';
 INSERT INTO user_role_mapping (user_id, source, roles) VALUES ('admin', 'default', '["nx-admin"]'::jsonb);
-#DELETE FROM nuget_asset WHERE path = '/index.json'; # NEXUS-36090
+DELETE FROM nuget_asset WHERE path = '/index.json'; -- NEXUS-36090
 TRUNCATE TABLE http_client_configuration;
 INSERT INTO http_client_configuration (id, proxy) VALUES (1, '{"http": {"host": "localhost", "port": 28080, "enabled": true, "authentication": null}, "https": null, "nonProxyHosts": "*.sonatype.com"}'::jsonb);
 EOF
+#UPDATE realm_configuration SET realm_names = '["NexusAuthenticatingRealm", "NexusAuthorizingRealm"]'::jsonb where id = 1;
 }
 
 function _updateNexusProps() {
@@ -421,7 +413,7 @@ function setDbConn() {
     if [[ ! "${_isIQ}" =~ ^[yY] ]] && [ -d "${_work_dir%/}" ]; then
         mkdir -v -p "${_work_dir%/}/etc/fabric"
         cat << EOF > "${_work_dir%/}/etc/fabric/nexus-store.properties"
-jdbcUrl=jdbc\:postgresql\://$(hostname -f)\:5432/${_dbname}
+jdbcUrl=jdbc\:postgresql\://$(hostname -f)\:5432/${_dbname}?targetServerType=primary
 username=${_dbusr}
 password=${_dbpwd}
 schema=${_dbschema:-"public"}
@@ -543,7 +535,7 @@ function nxrmDocker() {
         done
     fi
 
-    local _my_params="-XX:ActiveProcessorCount=2 -Xms2703m -Xmx2703m -Djava.util.prefs.userRoot=/tmp/javaprefs" # no need to be /nexus-data
+    local _my_params="-XX:ActiveProcessorCount=2 -Xms2g -Xmx2g -Djava.util.prefs.userRoot=/tmp/javaprefs" # no need to be /nexus-data
     _my_params="${_my_params} -Dnexus.security.randompassword=false -Dnexus.onboarding.enabled=false -Dnexus.script.allowCreation=true -Dnexus.assetBlobCleanupTask.blobCreatedDelayMinute=0"
     local _license="$(ls -1t ${_work_dir%/}/sonatype/*.lic 2>/dev/null | head -n1)"
     if [ -s "${_license}" ]; then
