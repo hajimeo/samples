@@ -725,7 +725,7 @@ function t_requests() {
     # NOTE: can't use headerContentLength as some request.log doesn't have it
     local _excludes="GET %/maven-metadata.xml %"
     f_reqsFromCSV "request.csv" "7000" "" "20" "AND requestURL NOT LIKE '${_excludes}'" 2>/dev/null >${_FILTERED_DATA_DIR%/}/agg_requests_top20_slow_GET.out
-    _test_template "$(_rg -q '\s+GET\s+' -m1 ${_FILTERED_DATA_DIR%/}/agg_requests_top20_slow_GET.out && cat ${_FILTERED_DATA_DIR%/}/agg_requests_top20_slow_GET.out)" "WARN" "Top 20 slow downloads excluding '${_excludes}' from ${_FILTERED_DATA_DIR}/request.csv"
+    _test_template "$(_rg -q '\s+GET\s+' -m1 ${_FILTERED_DATA_DIR%/}/agg_requests_top20_slow_GET.out && cat ${_FILTERED_DATA_DIR%/}/agg_requests_top20_slow_GET.out)" "WARN" "Top 20 slow downloads excluding '${_excludes}' from ${_FILTERED_DATA_DIR}/request.csv (Check 'POST /service/extdirect')"
 }
 
 
