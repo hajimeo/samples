@@ -72,18 +72,21 @@ func getLines(path string) []string {
 
 func hexToDec(h string) int64 {
 	// convert hexadecimal to decimal (int64).
-	d, err := strconv.ParseInt(h, 16, 32)
-	helpers.PanicIfErr(err)
+	d, err := strconv.ParseInt(h, 16, 64)
+	if err != nil {
+		d = -1
+		helpers.Log("WARN", "Can't cast Hex: "+h+" to int64: "+err.Error())
+	}
 	return d
 }
 
 func padStrToDec(s string) int64 {
-	// convert 00000001 to decimal (int64).
+	// convert decimal like string to decimal (int64).
 	d, err := strconv.ParseInt(s, 10, 64)
 	//helpers.PanicIfErr(err)
 	if err != nil {
 		d = -1
-		helpers.Log("DEBUG", "Can't cast "+s)
+		helpers.Log("WARN", "Can't cast decimal like string: "+s+" to int64: "+err.Error())
 	}
 	return d
 }
@@ -196,8 +199,8 @@ func processNetstatLine(line string, fileDescriptors *[]FdLink) Socket {
 	name := getProcessName(exe)
 
 	sendRecvQ := strings.Split(l[4], ":")
-	sendQ := padStrToDec(sendRecvQ[0])
-	recvQ := padStrToDec(sendRecvQ[1])
+	sendQ := hexToDec(sendRecvQ[0])
+	recvQ := hexToDec(sendRecvQ[1])
 	return Socket{uid, name, pid, exe, state, ip, port, fIp, fPort, l[9], recvQ, sendQ, l[8], strings.Join(l[10:], " ")}
 }
 

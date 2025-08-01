@@ -51,6 +51,13 @@ func TestPrintSocket(t *testing.T) {
 	}
 }
 
+func TestHexToDec(t *testing.T) {
+	i := hexToDec("0000002F") // 47
+	if i != 47 {
+		t.Errorf("0000002F should be 47 but got %v", i)
+	}
+}
+
 func TestGetLines(t *testing.T) {
 	lines := getLines("./net_tcp.out")
 	if !strings.Contains(lines[0], "   0: 00000000:1388 00000000:0000 0A 00000000:00000000 00:00000000 00000000     0        0 53447 1 ffff9fcb36e608c0 100 0 1 10 0") {
