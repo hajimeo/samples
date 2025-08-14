@@ -68,7 +68,7 @@ Read one file and output only necessary lines.
     HTML_REMOVE=Y echolines "./jvm.log" "^\d\d\d\d-\d\d-\d\d \d\d:\d\d:\d\d$" "(^\s+class space.+|^\s+Metaspace\s+.+)" "threads"
     _THREAD_FILE_GLOB="0*.out" f_threads ./threads/
     # If would like to split the thread dumps per datetime. Considering in case the datetime includes the timezone (eg. +09:00)
-    echolines ./threads.txt '^20\d\d-\d\d-\d\d.\d\d:\d\d:\d\d\S{0,6}$$' '' "threads_per_datetime"
+    echolines ./threads.txt '^20\d\d-\d\d-\d\d.\d\d:\d\d:\d\d\S{0,6}$' '' "threads_per_datetime"
     #echolines "threads.txt" "^\".+" "" "./threads_per_thread"
     find ./threads_per_dump -type f -name '[0-9]*_*.out' | xargs -P3 -t -I{} bash -c '_d="$(basename "{}" ".out")";echolines "{}" "^\".+" "" "./threads_per_thread/${_d}"'
 
@@ -203,7 +203,7 @@ func processFile(inFile *os.File) {
 		key := getKey(line)
 		if len(key) == 0 {
 			// This means ELAPSED_KEY_REGEXP is given but this line doesn't match so OK to skip
-			helpers.Log("DEBUG", "Skipping because no key from getKey")
+			//helpers.Log("DEBUG", "Skipping because no key from getKey")
 			continue
 		}
 		if key != _NO_KEY {
@@ -265,6 +265,7 @@ func echoStartLine(line string, key string) bool {
 
 	_FILE_NAME_PFXS[key] = ""
 	if key != _NO_KEY {
+		helpers.Log("DEBUG", "As not 'no key' cleaning up the "+_FILE_NAME_PFXS[key])
 		_FILE_NAME_PFXS[key] = REM_CHAR_REGEXP.ReplaceAllString(key, "") + "_"
 	}
 	// echo "${_prev_str}" | sed "s/[ =]/_/g" | tr -cd '[:alnum:]._-\n' | cut -c1-192
@@ -286,11 +287,12 @@ func echoStartLine(line string, key string) bool {
 		if _, err = os.Stat(outFilePath); err == nil {
 			log.Fatal(outFilePath + " already exists.")
 		}
-		// If previous file is still open, close it
+		// If previous file *exists*, close it
 		_, ok := _OUT_FILES[key]
 		if ok && _OUT_FILES[key] != nil {
 			_ = _OUT_FILES[key].Close()
 		}
+		// Open the file for writing
 		_OUT_FILES[key], err = os.OpenFile(outFilePath, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
 		helpers.PanicIfErr(err)
 		f = _OUT_FILES[key]
@@ -306,14 +308,14 @@ func echoEndLine(line string, key string) bool {
 		return false
 	}
 
-	// Can't remember why checking _FILE_NAME_PFXS is needed, but removing it stops working.
+	// Can't remember why checking _FILE_NAME_PFXS is needed, but commenting as it returns in here.
 	//_, ok := _FILE_NAME_PFXS[key]
 	//if !ok || len(_FILE_NAME_PFXS[key]) == 0 {
 	//	helpers.Log("DEBUG", "No _FILE_NAME_PFXS[key] for "+key+" (no calcDuration)")
 	//	return false
 	//}
 	if len(_START_DATETIMES) == 0 {
-		helpers.Log("DEBUG", "_START_DATETIMES is empty so skipping")
+		//helpers.Log("DEBUG", "_START_DATETIMES is empty so skipping")
 		return false
 	}
 
@@ -326,7 +328,7 @@ func echoEndLine(line string, key string) bool {
 	_FILE_NAME_PFXS[key] = ""
 	isEchoed := false
 	f, ok := _OUT_FILES[key]
-	if len(matches) > 1 {
+	if ok && len(matches) > 1 {
 		// If regex catcher group is used, including that matching characters into current output.
 		isEchoed = echoLine(strings.Join(matches[1:], ""), f)
 	}
@@ -352,7 +354,7 @@ func getKey(line string) string {
 		return elapsedKeyMatches[len(elapsedKeyMatches)-1]
 	}
 	// if the line doesn't have key, just empty string
-	helpers.Log("DEBUG", "No elapsedKeyMatches in "+line)
+	//helpers.Log("DEBUG", "No elapsedKeyMatches in "+line)
 	return ""
 }
 
@@ -603,6 +605,7 @@ func main() {
 	if len(os.Args) > 4 && len(os.Args[4]) > 0 {
 		_OUT_DIR = os.Args[4]
 		SPLIT_FILE = true
+		helpers.Log("DEBUG", "4th arg (_OUT_DIR) is provided, so that setting SPLIT_FILE to true")
 		_ = os.MkdirAll(_OUT_DIR, os.ModePerm)
 	}
 
