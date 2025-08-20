@@ -1,9 +1,9 @@
 /*
 Doing same as org.sonatype.nexus.blobstore.VolumeChapterLocationStrategy#location and java.lang.String.hashCode
 
-env GOOS=linux GOARCH=amd64 go build -o ../misc/blobpath_Linux_x86_64 blobpath.go && \
-env GOOS=darwin GOARCH=amd64 go build -o ../misc/blobpath_Darwin_x86_64 blobpath.go && \
-env GOOS=darwin GOARCH=arm64 go build -o ../misc/blobpath_Darwin_arm64 blobpath.go && date
+To build:
+
+	GO_SKIP_TESTS=Y goBuild blobpath.go
 */
 package main
 
@@ -13,7 +13,6 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
-	"strings"
 )
 
 func usage() {
@@ -26,6 +25,9 @@ DOWNLOAD and INSTALL:
     sudo chmod a+x /usr/local/bin/blobpath
     
 USAGE EXAMPLE:
+    $ blobpath "6c1d3423-ecbc-4c52-a0fe-01a45a12883a@2025-08-14T02:44"
+    2025/08/14/02/44/6c1d3423-ecbc-4c52-a0fe-01a45a12883a.properties
+
     $ blobpath "83e59741-f05d-4915-a1ba-7fc789be34b1"
     vol-31/chap-32/83e59741-f05d-4915-a1ba-7fc789be34b1.properties
 
@@ -59,6 +61,30 @@ func myHashCode(s string) int32 {
 	return h
 }
 
+func genPath(blobIdLikeString string, pathPfx string, ext string) string {
+	NewBlobIdPattern := regexp.MustCompile(`.*([a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12})@(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2}).*`)
+	matches := NewBlobIdPattern.FindStringSubmatch(blobIdLikeString)
+	if matches == nil {
+		BlobIdPattern := regexp.MustCompile(`.*([a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}).*`)
+		matches = BlobIdPattern.FindStringSubmatch(blobIdLikeString)
+		if matches == nil || len(matches) < 2 {
+			return ""
+		}
+	}
+
+	if len(matches) > 6 {
+		// 6c1d3423-ecbc-4c52-a0fe-01a45a12883a@2025-08-14T02:44
+		// 2025/08/14/02/44/6c1d3423-ecbc-4c52-a0fe-01a45a12883a.properties
+		return filepath.Join(pathPfx, matches[2], matches[3], matches[4], matches[5], matches[6], matches[1]+ext)
+	}
+
+	hashInt := myHashCode(matches[1])
+	// org.sonatype.nexus.blobstore.VolumeChapterLocationStrategy#location
+	vol := math.Abs(math.Mod(float64(hashInt), 43)) + 1
+	chap := math.Abs(math.Mod(float64(hashInt), 47)) + 1
+	return filepath.Join(pathPfx, fmt.Sprintf("vol-%02d", int(vol)), fmt.Sprintf("chap-%02d", int(chap)), matches[1]+ext)
+}
+
 func main() {
 	if len(os.Args) == 1 || os.Args[1] == "-h" || os.Args[1] == "--help" {
 		usage()
@@ -66,10 +92,9 @@ func main() {
 	}
 
 	blobId := os.Args[1]
-	if len(blobId) > 36 {
-		BLOB_ID_PATTERN := regexp.MustCompile(`.*([a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}).*`)
-		matches := BLOB_ID_PATTERN.FindStringSubmatch(blobId)
-		blobId = matches[1]
+	if len(blobId) < 36 {
+		fmt.Fprintf(os.Stderr, "Invalid blobId: %s\n", blobId)
+		os.Exit(1)
 	}
 	ext := ""
 	if len(os.Args) > 2 {
@@ -79,24 +104,35 @@ func main() {
 	if len(os.Args) > 3 {
 		pathPfx = os.Args[3]
 	}
+	isMissingPropertiesOnly := false
 	isMissingOnly := false
-	if len(os.Args) > 4 && strings.ToLower(os.Args[4]) == "y" {
-		isMissingOnly = true
+	if len(os.Args) > 4 {
+		if os.Args[4] == "y" {
+			isMissingOnly = true
+			isMissingPropertiesOnly = true
+			fmt.Fprintf(os.Stderr, "Missing Properties (no Bytes) check is enabled\n")
+		} else if os.Args[4] == "Y" {
+			isMissingOnly = true
+			fmt.Fprintf(os.Stderr, "Missing Properties & Bytes check is enabled\n")
+		}
 	}
 
-	hashInt := myHashCode(blobId)
-	// org.sonatype.nexus.blobstore.VolumeChapterLocationStrategy#location
-	vol := math.Abs(math.Mod(float64(hashInt), 43)) + 1
-	chap := math.Abs(math.Mod(float64(hashInt), 47)) + 1
-	path := filepath.Join(pathPfx, fmt.Sprintf("vol-%02d", int(vol)), fmt.Sprintf("chap-%02d", int(chap)), blobId+ext)
+	path := genPath(blobId, pathPfx, ext)
+	if path == "" {
+		fmt.Fprintf(os.Stderr, "Invalid blobId format: %s\n", blobId)
+		os.Exit(1)
+	}
 
 	if isMissingOnly {
 		if len(ext) == 0 {
 			// If no extension specified, check ".properties" and ".bytes" both
-			// TODO: But doing os.Stat(path + ".bytes") makes this code twice slower, so not doing
 			if _, err := os.Stat(path + ".properties"); err != nil {
 				fmt.Println(path + ".properties")
-				fmt.Println(path + ".bytes")
+				if isMissingPropertiesOnly == false {
+					if _, err := os.Stat(path + ".bytes"); err != nil {
+						fmt.Println(path + ".bytes")
+					}
+				}
 			}
 		} else if _, err := os.Stat(path); err != nil {
 			fmt.Println(path)
