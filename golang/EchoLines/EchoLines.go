@@ -59,7 +59,7 @@ Read one file and output only necessary lines.
 
 # USAGE EXAMPLES:
 ## Read the result with 'q' (after "rg '^# (.+)' -o -r '$1' > ./durations.out"):
-    q -O -d"|" -T "SELECT c1 as start_time, c2 as end_time, CAST(c3 as INT) as ms, c4 as key FROM ./durations.out WHERE ms > 10000"
+    q -O -d"|" -T "SELECT c1 as start_time, c2 as end_time, CAST(c3 as INT) as ms, c4 as key FROM ./durations.out WHERE ms > 10000 ORDER BY ms DESC"
 
 ## Thread dumps
 ### NXRM2 thread dumps (not perfect. still contains some junk lines):
@@ -123,10 +123,11 @@ NOTE: "rg" is used in the example because it is faster than this tool to filter.
 ### Get duration of Eclipse Memory Analyzer Tool (MAT) threads (<file-name>.threads)
     echolines ./java_pid1404494.threads "^Thread 0x\S+" "" "./threads_per_thread"
 
-### Get duration of mvn download (need org.slf4j.simpleLogger.showDateTime=true org.slf4j.simpleLogger.dateTimeFormat=yyyy-MM-dd HH:mm:ss.SSS)
-    export ELAPSED_REGEX="^\d\d\d\d-\d\d-\d\d.(\d\d:\d\d:\d\d.\d\d\d)"
-    export ELAPSED_KEY_REGEX="https?://\S+"
-    ASCII_DISABLED=Y echolines ./mvn.log "Downloading from nexus: \S+" "(^.+Downloaded from nexus: \S+)"
+### Get duration of mvn/maven download (need org.slf4j.simpleLogger.showDateTime=true org.slf4j.simpleLogger.dateTimeFormat=yyyy-MM-dd HH:mm:ss.SSS)
+    export ELAPSED_REGEX="^\[?\d\d\d\d-\d\d-\d\d.(\d\d:\d\d:\d\d.\d\d\d)" ELAPSED_KEY_REGEX="https?://\S+" EXTRA_FROM_ENDLINE_REGEX="\([0-9.]+ \S+ at [0-9.]+ \S+/s\)$"
+    ASCII_DISABLED=Y echolines ./mvn.log "Downloading from \S+: \S+" "(^.+Downloaded from \S+: \S+)" | rg '^# ' > durations.out
+    # After adding headers
+    q -O -d"|" -H -T "SELECT * FROM ./durations.out WHERE MISC NOT LIKE '% MB/s)' ORDER BY MS DESC LIMIT 10"
 END`)
 }
 
@@ -140,8 +141,10 @@ var EXCL_REGEX = os.Getenv("EXCL_REGEX")
 var EXCL_REGEXP *regexp.Regexp
 var ELAPSED_REGEX = os.Getenv("ELAPSED_REGEX") // Usually datetime regex
 var ELAPSED_REGEXP *regexp.Regexp
-var ELAPSED_KEY_REGEX = os.Getenv("ELAPSED_KEY_REGEX") // Used to capture the key (label) from the *end line*
+var ELAPSED_KEY_REGEX = os.Getenv("ELAPSED_KEY_REGEX") // Used to capture the key from the *end line*
 var ELAPSED_KEY_REGEXP *regexp.Regexp
+var EXTRA_FROM_ENDLINE_REGEX = os.Getenv("EXTRA_FROM_ENDLINE_REGEX") // Used to capture the key from the *end line*
+var EXTRA_FROM_ENDLINE_REGEXP *regexp.Regexp
 var ELAPSED_FORMAT = os.Getenv("ELAPSED_FORMAT") // If datetime format is different from the default
 var ASCII_WIDTH = helpers.GetEnvInt64("ASCII_WIDTH", 100)
 var ASCII_ROTATE_NUM = helpers.GetEnvInt("ASCII_ROTATE_NUM", -1)
@@ -418,12 +421,22 @@ func calcDuration(endLine string) {
 	}
 	helpers.Log("DEBUG", "startTimeStr = "+startTimeStr+" for "+endkey)
 	duration := calcDurationFromStrings(startTimeStr, endTimeStr)
+
+	label := _LAST_KEY
+	if EXTRA_FROM_ENDLINE_REGEXP != nil {
+		labelMatches := EXTRA_FROM_ENDLINE_REGEXP.FindStringSubmatch(endLine)
+		if len(labelMatches) > 0 {
+			// If regex catcher group is used, including that matching characters into current output.
+			helpers.Log("DEBUG", "labelMatches = "+labelMatches[0])
+			label = labelMatches[len(labelMatches)-1]
+		}
+	}
 	dura := Duration{
 		startTimeStr: startTimeStr,
 		endTimeStr:   endTimeStr,
 		durationMs:   duration.Milliseconds(),
 		key:          _key,
-		label:        _LAST_KEY,
+		label:        label,
 	}
 	_DURATIONS = append(_DURATIONS, dura)
 	helpers.Log("DEBUG", dura)
@@ -494,10 +507,12 @@ func echoDurationInner(dura Duration, maxKeyLen int, divideMs int64) {
 		ascii = asciiChart(dura.startTimeStr, dura.durationMs, divideMs)
 		ascii = "|" + ascii
 	}
-	if SINGLE_THREAD && dura.label != "" {
+	if SINGLE_THREAD && len(dura.label) > 0 {
 		fmt.Printf("# %s|%s|%8d|%*s%s\n", dura.startTimeStr, dura.endTimeStr, dura.durationMs, _KEY_PADDING, dura.label, ascii)
 	} else if dura.key == _NO_KEY {
 		fmt.Printf("# %s|%s|%8d%s\n", dura.startTimeStr, dura.endTimeStr, dura.durationMs, ascii)
+	} else if len(dura.label) > 0 {
+		fmt.Printf("# %s|%s|%8d|%*s%s\n", dura.startTimeStr, dura.endTimeStr, dura.durationMs, _KEY_PADDING, dura.key+" "+dura.label, ascii)
 	} else {
 		fmt.Printf("# %s|%s|%8d|%*s%s\n", dura.startTimeStr, dura.endTimeStr, dura.durationMs, _KEY_PADDING, dura.key, ascii)
 	}
@@ -620,6 +635,9 @@ func main() {
 	}
 	if len(ELAPSED_KEY_REGEX) > 0 {
 		ELAPSED_KEY_REGEXP = regexp.MustCompile(ELAPSED_KEY_REGEX)
+	}
+	if len(EXTRA_FROM_ENDLINE_REGEX) > 0 {
+		EXTRA_FROM_ENDLINE_REGEXP = regexp.MustCompile(EXTRA_FROM_ENDLINE_REGEX)
 	}
 
 	defer closeAllFiles()
