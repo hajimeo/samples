@@ -9,7 +9,7 @@ Originally based on https://medium.com/@mlowicki/http-s-proxy-in-golang-in-less-
 	curl -v --proxy localhost:8888 -k -L http://search.osakos.com/index.php
 
     openssl req -x509 -newkey rsa:2048 -keyout server.key -out server.pem -days 365 -nodes -subj "/CN=$(hostname -f)"
-    httpproxy --proto https
+    httpproxy --proto https --debug
 	curl -v --proxy https://localhost:8888/ --proxy-insecure -k -L https://search.osakos.com/index.php
 */
 
@@ -210,6 +210,10 @@ func main() {
 	flag.BoolVar(&Debug, "debug", false, "Debug / verbose output")
 	flag.BoolVar(&Debug2, "debug2", false, "More verbose output")
 	flag.Parse()
+
+	if Debug2 {
+		Debug = true
+	}
 	if Proto != "http" && Proto != "https" {
 		log.Fatal("Currently Protocol must be either http or https")
 	}
