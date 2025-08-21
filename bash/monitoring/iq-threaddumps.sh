@@ -44,7 +44,7 @@ function detectDirs() {    # Best effort. may not return accurate dir path
     local __doc__="Populate PID and directory path global variables"
     local _pid="${1:-"${_PID}"}"
     if [ -z "${_pid}" ]; then
-        _pid="$(ps auxwww | grep -E 'nexus-iq-server.*\.jar server' | grep -vw grep | awk '{print $2}' | tail -n1)"
+        _pid="$(ps auxwww | grep -E '(nexus-iq-server.*\.jar|com.sonatype.insight.brain.service.InsightBrainService) server' | grep -vw grep | awk '{print $2}' | tail -n1)"
         _PID="${_pid}"
         [ -z "${_pid}" ] && return 11
     fi
@@ -55,6 +55,9 @@ function detectDirs() {    # Best effort. may not return accurate dir path
                 _INSTALL_DIR="$(lsof -a -d cwd -p ${_pid} | grep -w "${_pid}" | awk '{print $9}')"
             else
                 local _jarpath="$(ps wwwp ${_pid} 2>/dev/null | grep -m1 -E -o 'nexus-iq-server.*\.jar')"
+                if [ -z "${_jarpath}" ]; then
+                    _jarpath="$(dirname "$(ps wwwp ${_pid} 2>/dev/null | grep -m1 -E -o '\S+/jars/\*')")"
+                fi
                 _INSTALL_DIR="$(dirname "${_jarpath}")"
             fi
         fi
