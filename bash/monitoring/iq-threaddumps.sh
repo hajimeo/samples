@@ -38,7 +38,7 @@ _LOG_FILE=""
 _REGEX=""
 _PID=""
 _OUT_DIR=""
-
+_NO_JSTACK=false
 
 function detectDirs() {    # Best effort. may not return accurate dir path
     local __doc__="Populate PID and directory path global variables"
@@ -170,7 +170,10 @@ function takeDumps() {
             #echo "[$(date +'%Y-%m-%d %H:%M:%S')] DEBUG ${_jstack} -l ${_pid} >> \"${_outPfx}000.log\"" >&2
             ${_jstack} -l ${_pid} >> "${_outPfx}000.log"
         elif [ -n "${_admin_url}" ]; then
-            echo "[$(date +'%Y-%m-%d %H:%M:%S')] WARN  No 'jstack' and no stdout file. Using ${_admin_url%/}/threads" >&2
+            if ! ${_NO_JSTACK}; then
+                echo "[$(date +'%Y-%m-%d %H:%M:%S')] WARN  No 'jstack' and no stdout file. Using ${_admin_url%/}/threads" >&2
+                _NO_JSTACK=true
+            fi
             local _curl_m="$((${_interval} + 3))"   # for IQ admin port, wait a bit longer
             date --rfc-3339=seconds >> "${_outPfx}000.log"
             if ! curl -m${_curl_m:-"5"} -sSf -k "${_admin_url%/}/threads" >> "${_outPfx}000.log"; then
