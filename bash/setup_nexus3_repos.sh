@@ -114,9 +114,9 @@ _RESP_FILE=""
 
 ### Nexus installation functions ##############################################################################
 # To re-install: _RECREATE_ALL=Y f_install_nexus3 "<version>" "<dbname>"
-# To install HA instances (port is automatic): _NEXUS_ENABLE_HA=Y f_install_nexus3 "" "nxrmlatestha"
-#     2nd node: _NEXUS_ENABLE_HA=Y _NXRM3_INSTALL_DIR="some_dir_path" f_install_nexus3 "" "nxrmlatestha"
-# To upgrade (from ${_dirpath}/): tar -xvf $HOME/.nexus_executable_cache/nexus-3.79.1-04-mac-aarch_64.tar.gz
+# To install HA instances (port is automatic): _NEXUS_ENABLE_HA=Y _NXRM3_INSTALL_DIR="./nxrm3hatest1st"  f_install_nexus3 "" "nxrmlatestha"
+#     2nd node: _NEXUS_ENABLE_HA=Y _NXRM3_INSTALL_DIR="./nxrm3hatest2nd" f_install_nexus3 "" "nxrmlatestha"
+# To upgrade (from ${_dirpath}/): tar -xvf $HOME/.nexus_executable_cache/nexus-3.83.0-08-mac-aarch_64.tar.gz
 function f_install_nexus3() {
     local __doc__="Install specific NXRM3 version (to recreate sonatype-work and DB, _RECREATE_ALL=Y)"
     local _ver="${1:-"${r_NEXUS_VERSION}"}"     # 'latest' or '3.71.0-03-java17'
@@ -599,6 +599,7 @@ function f_setup_docker() {
     # NOTE: How to test Docker subdomain connector https://help.sonatype.com/en/docker-subdomain-connector.html
     #curl -I -H 'Host: docker-proxy.${_DOMAIN#.}:8443' "${_NEXUS_URL%/}/repository/docker-proxy/v2/"
 
+    # TODO: use _get_version and if 3.83+, make sure configToValidate.pathEnabled is set (or Other Connectors)
     # If no xxxx-proxy, create it
     if ! _is_repo_available "${_prefix}-proxy"; then
         # "httpPort":18178 - 18179
@@ -1299,10 +1300,14 @@ function f_start_ubuntu_for_apt_test() {
             docker exec -it ${_name} bash -c "sed -i.bak2 -E \"s@http://security.ubuntu.com/ubuntu@[trusted=yes] ${_repo_url%/}@g\" /etc/apt/sources.list" || return $?
         fi
     fi
-    echo "Command examples (Verify-Peer=false is for https):
+    echo "# Command examples (Verify-Peer=false is for https):
     apt -o Acquire::https::Verify-Peer=false -o Debug::pkgProblemResolver=true -o Debug::pkgAcquire::Worker=true update
     apt -o Acquire::https::Verify-Peer=false -o Debug::pkgProblemResolver=true -o Debug::pkgAcquire::Worker=true install strace
     "
+    # PGP/GPG: apt install gpg
+    # gpg --gen-key && gpg --list-keys
+    # gpg --armor --output private.gpg.key --export-secret-key {id}
+    # cat private.gpg.key | sed -z 's/\n/\\n/g'
     docker exec -it ${_name} bash
 }
 
@@ -1707,7 +1712,7 @@ function f_iq_quarantine() {
     # To create IQ: Audit and Quarantine for this repository:
     if [ -n "${_repo_name}" ]; then
         _apiS '{"action":"capability_Capability","method":"create","data":[{"id":"NX.coreui.model.Capability-1","typeId":"firewall.audit","notes":"","enabled":true,"properties":{"repository":"'${_repo_name}'","quarantine":"true"}}],"type":"rpc"}' || return $?
-        _log "INFO" "IQ: Audit and Quarantine for ${_repo_name} completed."
+        _log "INFO" "IQ: Audit and Quarantine for ${_repo_name} completed (change \"proxy\" action to \"Fail\" and enable PCCS)"
     fi
 }
 
@@ -2413,6 +2418,7 @@ function f_enable_quarantines() {
 }
 
 #f_create_cleanup_policy "1dayold" "" "" "1"
+#f_create_cleanup_policy "maven2-del-all" ".+" "maven2"
 function f_create_cleanup_policy() {
     local __doc__="Create a cleanup policy. NOTE: a backslash needs to be escaped with 3 more backslashes"
     local _policy_name="${1}"
@@ -2548,10 +2554,14 @@ Also update _NEXUS_URL. For example: export _NEXUS_URL=\"https://local.standalon
 
 
 
-function f_setup_http_proxy() {
-    local __doc__="Setup dummy/simple HTTP proxy server"
+function f_start_http_proxy() {
+    local __doc__="Setup and start simple HTTP/HTTPS proxy server"
     local _port="${1:-"8888"}"
     local _install_dir="${2:-"${_SHARE_DIR%/}/httpproxy"}"
+    local _debug="${3}"
+    local _is_https="${4}"
+    local _key="${5}"
+    local _cert="${6}"
 
     if [ ! -d "${_install_dir%/}" ]; then
         mkdir -v -p "${_install_dir%/}" || return $?
@@ -2567,13 +2577,34 @@ function f_setup_http_proxy() {
         _cmd="${_install_dir%/}/${_cmd}"
     fi
 
-    eval "${_cmd} -port ${_port}" &> ${_TMP%/}/${_cmd}_$$.log &
+    _cmd="${_cmd} -port ${_port}"
+
+    if [[ "${_is_https}" =~ ^(y|Y) ]]; then
+        if [ -z "${_key}" ] || [ -z "${_cert}" ]; then
+            _log "INFO" "Generating self-signed certificate for HTTPS proxy in ${_install_dir%/}/ ..."
+            openssl req -x509 -newkey rsa:2048 -keyout ${_install_dir%/}/server.key -out ${_install_dir%/}/server.pem -days 365 -nodes -subj "/CN=$(hostname -f)" || return $?
+        fi
+        _cmd="${_cmd} --proto https --key ${_key} --pem ${_cert}"
+    fi
+
+    if [[ "${_debug}" =~ ^(y|Y) ]]; then
+        # Not exposing --debug2 at this moment
+        _cmd="${_cmd} --debug"
+    fi
+
+    eval "${_cmd}" &> ${_TMP%/}/${_cmd}_$$.log &
     local _pid="$!"
     sleep 2
-    echo "[INFO] Running '${_cmd} -port ${_port}' in background"
+    echo "[INFO] Running '${_cmd}' in background"
     echo "       PID: ${_pid}  Log: ${_TMP%/}/${_cmd}_$$.log"
 }
 # TODO: Setup HTTP proxy on Nexus
+function f_setup_http_proxy() {
+    local _host="${1:-"localhost"}"
+    local _port="${2:-"8888"}"
+    local _nonProxyHosts_json="${3:-"[]"}"  # JSON array of non-proxy hosts, e.g. ["localhost"]
+    _apiS '{"action":"coreui_HttpSettings","method":"update","data":[{"httpEnabled":true,"httpHost":"'${_host}'","httpPort":"'${_port}'","httpAuthEnabled":false,"httpsEnabled":true,"httpsHost":"'${_host}'","httpsPort":"'${_port}'","httpsAuthEnabled":false,"nonProxyHosts":'${_nonProxyHosts_json}',"timeout":null,"retries":null}],"type":"rpc"}'
+}
 
 function _setup_reverse_proxy() {
     local __doc__="TODO: Setup reverse proxy server with caddy (Not setting up Nexus)"
@@ -3473,7 +3504,7 @@ function f_upload_dummies_rubygem() {
 
 function f_upload_dummies_docker() {
     local __doc__="Upload dummy docker images into docker hosted repository (requires 'docker' command)"
-    local _host_port="${1}"
+    local _host_port="${1}"         # "local.standalone.localdomain:18182"
     local _how_many="${2:-"10"}"    # this number * _parallel is the actual number of images
     local _parallel="${3:-"1"}"
     local _base_img="${4:-"${_BASE_IMG:-"alpine:latest"}"}"    # "redhat/ubi9:9.4-1181"
@@ -3492,10 +3523,10 @@ function f_upload_dummies_docker() {
         done
         wait
     done 2>/tmp/f_upload_dummies_docker_$$.err
-    _log "INFO" "Completed. May want to run 'f_delete_dummy_docker_images \"${_host_port}\"' to remove dummy images."
+    _log "INFO" "Completed. May want to run 'f_delete_dummy_docker_images_from_local \"${_host_port}\"' to remove dummy images."
 }
 
-function f_delete_dummy_docker_images() {
+function f_delete_dummy_docker_images_from_local() {
     local _host_port="${1}"
     local _cmd="$(_docker_cmd)"
     ${_cmd} images --format "{{.Repository}}:{{.Tag}}" | grep -E "^${_host_port%/}/dummy[0-9]+" | while read -r _img; do
@@ -3988,6 +4019,7 @@ function _export_postgres_config() {
 # NOTE: currently this function is tested against support.zip boot-ed then migrated database
 # Example export command (Using --no-owner and --clean, but not using --data-only as needs CREATE statements. -t with * requires PostgreSQL v12 or higher):
 # Other interesting tables: -t "*_browse_node" -t "*deleted_blob*" -t "change_blobstore"
+#pg_dump -d ${_DBNAME} -c -O -Z 6 -f ./${_DBNAME}.sql.gz
 function f_export_postgresql_component() {
     local __doc__="Export specific tables from PostgreSQL, like OrientDB's component database"
     local _exportTo="${1:-"./component_db_$(date +"%Y%m%d%H%M%S").sql.gz"}"
@@ -4015,7 +4047,13 @@ function f_restore_postgresql_component() {
     fi
     if [ -z "${_sql_file}" ]; then
         _sql_file="$(ls -1 ./component_db_*.sql.gz | tail -n1)"
-        [ -z "${_sql_file}" ] && _log "ERROR" "No sql file to restore/import" && return 1
+        if [ -z "${_sql_file}" ]; then
+            _sql_file="$(ls -1 ../component_db_*.sql.gz | tail -n1)"
+            if [ -z "${_sql_file}" ]; then
+                _log "ERROR" "No sql file to restore/import" && return 1
+            fi
+        fi
+        _log "INFO" "Found ${_sql_file} ."; sleep 3
     fi
 
     _export_postgres_config "${_workingDirectory%/}/etc/fabric/nexus-store.properties" || return $?
@@ -4027,6 +4065,8 @@ function f_restore_postgresql_component() {
     fi | sed -E 's/^DROP TABLE ([^;]+);$/DROP TABLE \1 cascade;/' | PGGSSENCMODE=disable ${_cmd} -L ./psql_restore.log 2>./psql_restore.log
     _log "INFO" "Executed '... ${_sql_file} | ${_cmd} ... ./psql_restore.log"
     grep -w ERROR ./psql_restore.log | grep -v "cannot drop constraint"
+    _log "INFO" "To avoid 'Unable find secret for the specified token error'"
+    echo "psql -d ${_DBNAME} -c \"UPDATE repository SET attributes = jsonb_set(attributes, '{httpclient,authentication,password}','\\\"\\\"'::jsonb) WHERE attributes->'httpclient'->'authentication'->>'password' is not null;\""
 }
 
 #f_psql "SELECT blob_ref FROM %FMT%_asset_blob"
@@ -4094,6 +4134,13 @@ function f_set_log_level() {
         return $?
     fi
     f_api "/service/rest/internal/ui/loggingConfiguration/${_log_class}" "{\"name\":\"${_log_class}\",\"level\":\"${_log_level}\"}" "PUT"
+}
+
+function f_support_zip() {
+    local _usr="${1:-${r_ADMIN_USER:-"${_ADMIN_USER}"}}"
+    local _pwd="${2-${r_ADMIN_PWD:-"${_ADMIN_PWD}"}}"   # If explicitly empty string, curl command will ask password (= may hang)
+    curl -f -m 600 -u "${_usr}:${_pwd}" -O -J -k "${_NEXUS_URL%/}/service/rest/v1/support/supportzip" -H "Content-Type: application/json" -d'{"systemInformation": true, "threadDump": true, "metrics": true, "configuration": true, "security": true, "log": true, "taskLog": true, "jmx": true, "limitFileSizes": false, "limitZipSize": false}' || return $?
+    ls -lh support*.zip
 }
 
 function f_setup_service() {
