@@ -2552,8 +2552,6 @@ Also update _NEXUS_URL. For example: export _NEXUS_URL=\"https://local.standalon
     _log "INFO" "To trust this certificate, _trust_ca \"\${_ca_pem}\""
 }
 
-
-
 function f_start_http_proxy() {
     local __doc__="Setup and start simple HTTP/HTTPS proxy server"
     local _port="${1:-"8888"}"
@@ -2581,8 +2579,10 @@ function f_start_http_proxy() {
 
     if [[ "${_is_https}" =~ ^(y|Y) ]]; then
         if [ -z "${_key}" ] || [ -z "${_cert}" ]; then
-            _log "INFO" "Generating self-signed certificate for HTTPS proxy in ${_install_dir%/}/ ..."
-            openssl req -x509 -newkey rsa:2048 -keyout ${_install_dir%/}/server.key -out ${_install_dir%/}/server.pem -days 365 -nodes -subj "/CN=$(hostname -f)" || return $?
+            if [ ! -s "${_install_dir%/}/server.key" ] || [ ! -s "${_install_dir%/}/server.pem" ]; then
+                _log "INFO" "Generating self-signed certificate for HTTPS proxy in ${_install_dir%/}/ ..."
+                openssl req -x509 -newkey rsa:2048 -keyout "${_install_dir%/}/server.key" -out "${_install_dir%/}/server.pem" -days 999 -nodes -subj "/CN=$(hostname -f)" || return $?
+            fi
         fi
         _cmd="${_cmd} --proto https --key ${_key} --pem ${_cert}"
     fi
