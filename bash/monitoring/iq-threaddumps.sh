@@ -64,7 +64,7 @@ function detectDirs() {    # Best effort. may not return accurate dir path
         [ -d "${_INSTALL_DIR}" ] || return 12
     fi
     if [ -z "${_STORE_FILE}" ]; then
-        _STORE_FILE="$(ps wwwp ${_pid} | sed -n -E '/nexus-iq-server/ s/.+\.jar server ([^ ]+).*/\1/p' | head -n1)"
+        _STORE_FILE="$(ps wwwp ${_pid} | sed -n -E 's/.+(nexus-iq-server.*\.jar|com.sonatype.insight.brain.service.InsightBrainService) server ([^ ]+).*/\2/p' | tail -n1)"
         [[ ! "${_STORE_FILE}" =~ ^/ ]] && _STORE_FILE="${_INSTALL_DIR%/}/${_STORE_FILE}"
         [ -e "${_STORE_FILE}" ] && _STORE_FILE="$(readlink -f "${_STORE_FILE}")"
     fi
