@@ -53,7 +53,8 @@ function detectDirs() {    # Best effort. may not return accurate dir path
         if [ -z "${_INSTALL_DIR}" ]; then
             if type lsof &>/dev/null; then  # eg. Mac (Darwin)
                 _INSTALL_DIR="$(lsof -a -d cwd -p ${_pid} | grep -w "${_pid}" | awk '{print $9}')"
-            else
+            fi
+            if [ -z "${_INSTALL_DIR}" ]; then
                 local _jarpath="$(ps wwwp ${_pid} 2>/dev/null | grep -m1 -E -o 'nexus-iq-server.*\.jar')"
                 if [ -z "${_jarpath}" ]; then
                     _jarpath="$(dirname "$(ps wwwp ${_pid} 2>/dev/null | grep -m1 -E -o '\S+/jars/\*')")"
@@ -106,7 +107,7 @@ function tailStdout() {
     local _pid="$1"
     local _timeout="${2:-"30"}"
     local _outputFile="${3}"
-    local _installDir="${4-"${_INSTALL_DIR%/}"}"
+    local _installDir="${4-"${_INSTALL_DIR%/}"}"    # Optional. No need for IQ
     local _cmd=""
     local _sleep="0.5"
     rm -f /tmp/.tailStdout.run || return $?
@@ -138,7 +139,7 @@ function takeDumps() {
     local _count=${2:-${_COUNT:-5}}
     local _interval=${3:-${_INTERVAL:-2}}
     local _storeProp="${4:-"${_STORE_FILE}"}"
-    local _installDir="${5-"${_INSTALL_DIR%/}"}"
+    local _installDir="${5-"${_INSTALL_DIR%/}"}"    # Optional: No need for IQ
     local _outDir="${6:-"/tmp"}"
     local _pfx="${7:-"script-$(date +"%Y%m%d%H%M%S")"}"
     local _outPfx="${_outDir%/}/${_pfx}"
@@ -267,11 +268,9 @@ main() {
     _OUT_DIR="${_outDir}"
     if [ -z "${_INSTALL_DIR}" ]; then
         echo "Could not find install directory (_INSTALL_DIR)." >&2
-        return 1
     fi
     if [ -z "${_WORK_DIR}" ]; then
         echo "Could not find work directory (_WORK_DIR)." >&2
-        return 1
     fi
     if [ -z "${_STORE_FILE}" ] && [ -d "${_WORK_DIR%/}" ]; then
         _STORE_FILE="${_INSTALL_DIR%/}/config.yml"  # TODO: for k8s, no DB connection in this file
@@ -292,7 +291,7 @@ main() {
     while true; do
         if tail -n -1 -F "${_LOG_FILE}" | grep --line-buffered -m1 -E "${_REGEX}"; then
             trap "_stopping" SIGINT
-            takeDumps "${_PID}" "${_COUNT}" "${_INTERVAL}" "${_PROP_FILE}" "${_INSTALL_DIR%/}" "${_outDir%/}"
+            takeDumps "${_PID}" "${_COUNT}" "${_INTERVAL}" "${_STORE_FILE}" "${_INSTALL_DIR%/}" "${_outDir%/}"
             sleep 1
         fi
     done
