@@ -206,6 +206,13 @@ function f_blob_search() {
 # | tee result.out; sed 's/properties/bytes/g' result.out > result.bytes.out; tar -czvf test.tgz -T <(cat result.out result.bytes.out)
 # TODO: utilise 'blobpath' command
 
+function f_find_blob_by_path_and_repo() {
+    local _content_dir="${1:-"."}"          # /var/tmp/share/sonatype/blobs/default/content
+    local _path="${2}"
+    local _repo="${3}"
+    rg -g '*.properties' "^@BlobStore.blob-name=${_path}$" ${_content_dir%/}/vol-* -l | xargs -I{} rg -l --files-without-match 'deleted=true' {} | xargs -I{} rg "^@Bucket.repo-name=${_repo}$" {} -l
+}
+
 # Not perfect
 function f_blob_list_from_pom() {
     local __doc__="NOTE: using f_blob_search"

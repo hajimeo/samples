@@ -173,6 +173,20 @@ function f_install_iq() {
         fi
     fi
 }
+
+### Database related
+function _export_postgres_config() {
+    local _db_props_file="${1}"
+    eval "$(grep "^database:" -A10 "${_cfg_file}" | sed -n -E 's/^ +([^:]+): *(.+)$/\1=\2/p')" || return $?
+    export _DBHOST="${hostname}"
+    export _DBPORT="${port}"
+    export _DBNAME="${name}"
+    export _DBUSER="${username}"
+    if [[ "${password}" =~ [a-zA-Z0-9] ]]; then # to exclude '********'
+        export PGPASSWORD="${password}"
+    fi
+}
+
 function _update_db_config() {
     local _cfg_file="${1}"
     local _dbname="${2}"
@@ -424,6 +438,7 @@ function f_create_testuser() {
     if _apiS "/rest/user" '{"firstName":"'${_username}'","lastName":"test","email":"'${_username}'@example.com","username":"'${_username}'","password":"'${_password}'"}'; then
         _log "INFO" "Created user '${_username}'"
     fi
+    # IQ does not have role create/delete API
     _apiS "/rest/security/roles" '{"name":"test-role","description":"test_role_desc","builtIn":false,"permissionCategories":[{"displayName":"Administrator","permissions":[{"id":"VIEW_ROLES","displayName":"View","description":"All Roles","allowed":false}]},{"displayName":"IQ","permissions":[{"id":"MANAGE_PROPRIETARY","displayName":"Edit","description":"Proprietary Components","allowed":false},{"id":"CLAIM_COMPONENT","displayName":"Claim","description":"Components","allowed":false},{"id":"WRITE","displayName":"Edit","description":"IQ Elements","allowed":false},{"id":"READ","displayName":"View","description":"IQ Elements","allowed":true},{"id":"EDIT_ACCESS_CONTROL","displayName":"Edit","description":"Access Control","allowed":false},{"id":"EVALUATE_APPLICATION","displayName":"Evaluate","description":"Applications","allowed":true},{"id":"EVALUATE_COMPONENT","displayName":"Evaluate","description":"Individual Components","allowed":true},{"id":"ADD_APPLICATION","displayName":"Add","description":"Applications","allowed":false},{"id":"MANAGE_AUTOMATIC_APPLICATION_CREATION","displayName":"Manage","description":"Automatic Application Creation","allowed":false},{"id":"MANAGE_AUTOMATIC_SCM_CONFIGURATION","displayName":"Manage","description":"Automatic Source Control Configuration","allowed":false}]},{"displayName":"Remediation","permissions":[{"id":"WAIVE_POLICY_VIOLATIONS","displayName":"Waive","description":"Policy Violations","allowed":true},{"id":"CHANGE_LICENSES","displayName":"Change","description":"Licenses","allowed":false},{"id":"CHANGE_SECURITY_VULNERABILITIES","displayName":"Change","description":"Security Vulnerabilities","allowed":false},{"id":"LEGAL_REVIEWER","displayName":"Review","description":"Legal obligations for components licenses","allowed":false}]}]}' || return $?
     _log "INFO" "Created role 'test-role'"
     if [ -n "${_apporg_name}" ]; then
@@ -1081,6 +1096,28 @@ function f_dummy_scans_random() {
         fi
     done
 }
+
+
+
+### Misc.
+function f_psql() {
+    local __doc__="Query against all assets or components by using nexus-store.properties"
+    local _query="${1}" # Use '%FMT%'
+    local _workingDirectory="${2:-"."}"
+    local _psql_opts="${3-"${_PSQL_OPTS}"}" # -tAF,
+    local _cfg_file="$(find ${_workingDirectory%/} -maxdepth 2 -type f -name 'config.yml' 2>/dev/null | sort | tail -n1)"
+    _export_postgres_config "${_cfg_file}" || return $?
+    local _cmd="psql -h ${_DBHOST} -p ${_DBPORT:-"5432"} -U ${_DBUSER} -d ${_DBNAME}"
+    if [ -z "${_query}" ]; then
+        # If no query, start the psql console
+        ${_cmd}
+        return $?
+    fi
+
+    ${_cmd} ${_psql_opts} -c "${_query}"
+    return $?
+}
+
 
 #f_set_log_level "org.apache.http.headers"
 function f_set_log_level() {

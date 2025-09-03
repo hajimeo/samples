@@ -715,27 +715,8 @@ function _populate_docker_hosted() {
     if ${_cmd} images --format "{{.Repository}}:{{.Tag}}" | grep -qE "^${_host_port%/}/${_tag_to}$"; then
         _log "INFO" "'${_host_port%/}/${_tag_to}' already exists. Skipping the build ..."
     else
-        # NOTE: docker build -f does not work (bug?)
         local _build_dir="${HOME%/}/${FUNCNAME[0]}_build_tmp_dir_$(date +'%Y%m%d%H%M%S')"  # /tmp or /var/tmp fails on Ubuntu
-        if [ ! -d "${_build_dir%/}" ]; then
-            mkdir -v -p ${_build_dir} || return $?
-        fi
-        cd ${_build_dir} || return $?
-        local _build_str="FROM ${_base_img}"
-        # Crating random (multiple) layer. NOTE: 'CMD' doesn't create new layers.
-        #echo -e "FROM alpine:3.7\nRUN apk add --no-cache mysql-client\nCMD echo 'Built ${_tag_to} from image:${_base_img}' > Dockerfile
-        for i in $(seq 1 ${_num_layers}); do
-            #\nRUN apk add --no-cache mysql-client
-            _build_str="${_build_str}\nRUN echo 'Adding layer ${i} for ${_tag_to} at $(date +'%Y%m%d%H%M%S') (R${RANDOM})' > /var/tmp/layer_${i}"
-        done
-        echo -e "${_build_str}" > Dockerfile
-        ${_cmd} build --rm -t ${_tag_to} .
-        local _rc=$?
-        cd -  && mv -v ${_build_dir} ${_TMP%/}/
-        if [ ${_rc} -ne 0 ]; then
-            _log "ERROR" "'${_cmd} build --rm -t ${_tag_to} .' failed (${_rc}, ${_TMP%/}/$(basename "${_build_dir}"))"
-            return ${_rc}
-        fi
+        _docker_build "${_base_img}" "${_tag_to}" "${_num_layers}" "" "${_build_dir}" "${_cmd}" || return $?
     fi
 
     # It seems newer docker appends "localhost/" so trying this one first.
@@ -746,6 +727,54 @@ function _populate_docker_hosted() {
     _log "INFO" "${_cmd} push ${_host_port}/${_tag_to}"
     ${_cmd} push ${_host_port}/${_tag_to} || return $?
     #${_cmd} rmi ${_host_port}/${_tag_to} || return $?  # this leaves <none> images
+}
+
+#_docker_build "" "" "" "jars/spring-security-*-5.7.14.jar"
+function _docker_build() {
+    # NOTE: docker build -f does not work (bug?)
+    local _base_img="${1:-"alpine:latest"}"    # dh1.standalone.localdomain:15000/alpine:3.7
+    local _tag_to="$2"
+    local _num_layers="${3}" # Can be used to test overwriting image
+    local _file_to_copy="${4}"
+    local _build_dir="$5"
+    local _cmd="${6-"${r_DOCKER_CMD}"}"
+    [ -z "${_cmd}" ] && _cmd="$(_docker_cmd)"
+    [ -z "${_cmd}" ] && return 0    # If no docker command, just exist
+    if [ -z "${_tag_to}" ]; then
+        _tag_to="dummy-img-l${_num_layers:-0}:latest"
+    fi
+    if [ -z "${_build_dir}" ]; then
+        _build_dir="${HOME%/}/${FUNCNAME[0]}_build_tmp_dir_$(date +'%Y%m%d%H%M%S')"  # /tmp or /var/tmp fails on Ubuntu
+    fi
+    if [ ! -d "${_build_dir%/}" ]; then
+        mkdir -v -p ${_build_dir} || return $?
+    fi
+    if [ -n "${_file_to_copy}" ]; then
+        eval "cp -v -f ${_file_to_copy} ${_build_dir%/}/" || return $?
+    fi
+    cd ${_build_dir} || return $?
+    local _build_str="FROM ${_base_img}"
+    # Crating random (multiple) layer. NOTE: 'CMD' doesn't create new layers.
+    #echo -e "FROM alpine:3.7\nRUN apk add --no-cache mysql-client\nCMD echo 'Built ${_tag_to} from image:${_base_img}' > Dockerfile
+    if [ -n "${_num_layers}" ]; then
+        for i in $(seq 1 ${_num_layers}); do
+            #\nRUN apk add --no-cache mysql-client
+            _build_str="${_build_str}\nRUN echo 'Adding layer ${i} for ${_tag_to} at $(date +'%Y%m%d%H%M%S') (R${RANDOM})' > /var/tmp/layer_${i}"
+        done
+    fi
+    if [ -n "${_file_to_copy}" ]; then
+        _build_str="${_build_str}\nCOPY $(basename "${_file_to_copy}") /var/tmp/"
+    fi
+    echo -e "${_build_str}" > Dockerfile
+
+    _log "INFO" "Building image '${_tag_to}' from ${_build_dir} (${_TMP%/}/) ..."
+    ${_cmd} build --rm -t ${_tag_to} .
+    local _rc=$?
+    cd -  && mv -v ${_build_dir} ${_TMP%/}/
+    if [ ${_rc} -ne 0 ]; then
+        _log "ERROR" "'${_cmd} build --rm -t ${_tag_to} .' failed (${_rc}, ${_TMP%/}/$(basename "${_build_dir}"))"
+        return ${_rc}
+    fi
 }
 
 function f_setup_yum() {
@@ -1844,6 +1873,7 @@ function _get_asset_NXRM2() {
 # If NXRM2, below curl also works:
 #   curl -D- -u admin:admin123 -T <(echo "test upload") "http://localhost:8081/nexus/content/repositories/raw-hosted/test/test.txt"
 #f_upload_asset "maven-releases" -F "maven2.groupId=keystores" -F "maven2.artifactId=my-test-jks" -F "maven2.version=20241024" -F "maven2.asset1.extension=jks" -F "maven2.asset1=@$HOME/IdeaProjects/samples/misc/standalone.localdomain.jks"
+#time f_upload_asset "maven-hosted-s3" -F "maven2.groupId=testg" -F "maven2.artifactId=testa" -F "maven2.version=testv" -F "maven2.asset1.extension=zip" -F "maven2.asset1=@./test_20MB.zip"
 function f_upload_asset() {
     local __doc__="Upload one asset with Upload API"
     local _repo_or_fmt="$1"    # format if NXRM2
@@ -1862,7 +1892,7 @@ function f_upload_asset() {
         _url="${_base_url%/}/nexus/service/local/artifact/${_repo_or_fmt}/content"
     fi
 
-    local _curl="curl -sf"
+    local _curl="curl -sf"  # --limit-rate 1000K
     ${_DEBUG} && _curl="curl -fv"
     # TODO: not sure if -H \"accept: application/json\" is required
     _curl="${_curl} -D ${_TMP%/}/_upload_test_header_$$.out -w \"%{http_code} ${_forms} (%{time_total}s)\n\" -u ${_usr}:${_pwd} -H \"accept: application/json\" -H \"Content-Type: multipart/form-data\" -X POST -k \"${_url}\" ${_forms}"
@@ -3086,6 +3116,7 @@ EOF
 }
 
 #f_deploy_maven "maven-hosted" "/tmp/dummy.jar" "my.deploy.test:dummy:1.0" "-Dpackaging=jar -DcreateChecksum=true"
+# If Nexus 2, use `export _REPO_PATH_OVERRIDE="content/repositories"`
 function f_deploy_maven() {
     local _repo_name="${1}"
     local _file="${2}"
@@ -3100,6 +3131,9 @@ function f_deploy_maven() {
     local _a="${BASH_REMATCH[2]}"
     local _v="${BASH_REMATCH[3]}"
     local _repo_url="${_NEXUS_URL%/}/repository/${_repo_name%/}/"
+    if [ -n "${_REPO_PATH_OVERRIDE}" ]; then
+        _repo_url="${_NEXUS_URL%/}/${_REPO_PATH_OVERRIDE}/${_repo_name%/}/"
+    fi
     # https://issues.apache.org/jira/browse/MRESOLVER-56     -Daether.checksums.algorithms="SHA256,SHA512"
     if [ ! -s "${_TMP%/}/m2_settings.xml" ]; then
         _gen_mvn_settings "${_TMP%/}/m2_settings.xml" || return $?
@@ -3502,14 +3536,17 @@ function f_upload_dummies_rubygem() {
     done
 }
 
+#_IMAGE_NAME="retaintest" f_upload_dummies_docker
 function f_upload_dummies_docker() {
     local __doc__="Upload dummy docker images into docker hosted repository (requires 'docker' command)"
-    local _host_port="${1}"         # "local.standalone.localdomain:18182"
+    local _host_port="${1:-"${_NEXUS_DOCKER_HOSTNAME}:18182"}"
     local _how_many="${2:-"10"}"    # this number * _parallel is the actual number of images
     local _parallel="${3:-"1"}"
-    local _base_img="${4:-"${_BASE_IMG:-"alpine:latest"}"}"    # "redhat/ubi9:9.4-1181"
-    local _usr="${5:-"${_ADMIN_USER}"}"
-    local _pwd="${6:-"${_ADMIN_PWD}"}"
+    local _image_name="${4:-"${_IMAGE_NAME}"}"  # To create multiple tags in one image. If empty, dummy${i}-${j}
+    local _base_img="${5:-"${_BASE_IMG:-"alpine:latest"}"}"    # "redhat/ubi9:9.4-1181"
+    local _usr="${6:-"${_ADMIN_USER}"}"
+    local _pwd="${7:-"${_ADMIN_PWD}"}"
+
     local _cmd="$(_docker_cmd)"
     local _seq_start="${_SEQ_START:-1}"
     local _seq_end="$((${_seq_start} + ${_how_many} - 1))"
@@ -3519,6 +3556,9 @@ function f_upload_dummies_docker() {
     for i in $(eval "${_seq}"); do
         for j in $(eval "seq 1 ${_parallel}"); do
             local _img="dummy${i}-${j}:tag$(date +'%H%M%S')"
+            if [ -n "${_image_name}" ]; then
+                _img="${_image_name}:tag-${i}-${j}-$(date +'%H%M%S')"
+            fi
             (_DOCKER_NO_LOGIN="Y" _populate_docker_hosted "${_base_img}" "${_host_port}" "${_img}" &>/dev/null &&  echo "[$(date +'%H:%M:%S')] Pushed dummy image '${_img}' to ${_host_port}") &
         done
         wait
@@ -4069,6 +4109,9 @@ function f_restore_postgresql_component() {
     echo "psql -d ${_DBNAME} -c \"UPDATE repository SET attributes = jsonb_set(attributes, '{httpclient,authentication,password}','\\\"\\\"'::jsonb) WHERE attributes->'httpclient'->'authentication'->>'password' is not null;\""
 }
 
+
+
+### Misc.
 #f_psql "SELECT blob_ref FROM %FMT%_asset_blob"
 #f_psql "SELECT attributes FROM %FMT%_content_repository WHERE attributes is not null and attributes <> '{}'"
 #f_psql "UPDATE %FMT%_content_repository SET attributes = '{}'::jsonb WHERE attributes is not null and attributes <> '{}'"
@@ -4077,7 +4120,7 @@ function f_psql() {
     local __doc__="Query against all assets or components by using nexus-store.properties"
     local _query="${1}" # Use '%FMT%'
     local _workingDirectory="${2:-"."}"
-    local _dry_run="${3:-"${_DRY_RUN}"}"
+    local _dry_run="${3:-"${_DRY_RUN}"}"    # Just output the query only
     local _psql_opts="${4-"${_PSQL_OPTS}"}" # -tAF,
     local _prop="$(find "${_workingDirectory%/}" -maxdepth 5 -name nexus-store.properties -path '*/etc/fabric/*' | head -n1)"
     _export_postgres_config "${_prop}" || return $?
@@ -4091,9 +4134,11 @@ function f_psql() {
     if [[ "${_query}" =~ %FMT% ]]; then
         ${_cmd} -tA -c "SELECT distinct REGEXP_REPLACE(recipe_name, '-.+', '') AS fmt FROM repository ORDER BY fmt" | while read -r _fmt; do
             local _q="$(echo "${_query}" | sed "s/%FMT%/${_fmt}/g")"
-            echo "# ${_q}" >&2
             if [[ "${_dry_run}" =~ ^[yY] ]]; then
+                echo "${_q}"
                 continue
+            else
+                echo "# ${_q}" >&2
             fi
             ${_cmd} ${_psql_opts} -c "${_q}" || return $?
         done
@@ -4101,19 +4146,20 @@ function f_psql() {
     fi
 
     local _q_cte=""
-    for _fmt in $(psql -d nxrm3772ha -tA -c "SELECT distinct REGEXP_REPLACE(recipe_name, '-.+', '') AS fmt FROM repository ORDER BY fmt"); do
+    for _fmt in $(psql -d ${_DBHOST} -tA -c "SELECT distinct REGEXP_REPLACE(recipe_name, '-.+', '') AS fmt FROM repository ORDER BY fmt"); do
         if [ -n "${_q_cte}" ]; then
             _q_cte="${_q_cte} UNION ALL "
         fi
         _q_cte="${_q_cte}SELECT r.name as repo_name, cr.repository_id FROM ${_fmt}_content_repository cr join repository r on r.id = cr.config_repository_id"
     done
+    if [[ "${_dry_run}" =~ ^[yY] ]]; then
+        echo "WITH r AS (${_q_cte}) ${_query}"
+        return $?
+    fi
     ${_cmd} ${_psql_opts} -c "WITH r AS (${_q_cte}) ${_query}"
     return $?
 }
 
-
-
-### Misc.
 # f_set_log_level "root"
 # f_set_log_level "org.eclipse.jetty.server.HttpChannel" (outbound pool)
 # f_set_log_level "org.eclipse.jetty.util.thread" (thread pool)
@@ -4133,7 +4179,8 @@ function f_set_log_level() {
         f_api "/service/rest/internal/ui/loggingConfiguration/reset" "" "POST"
         return $?
     fi
-    f_api "/service/rest/internal/ui/loggingConfiguration/${_log_class}" "{\"name\":\"${_log_class}\",\"level\":\"${_log_level}\"}" "PUT"
+    f_api "/service/rest/internal/ui/loggingConfiguration/${_log_class}" "{\"name\":\"${_log_class}\",\"level\":\"${_log_level}\"}" "PUT" || return $?
+    echo "Configured logging level for ${_log_class} to ${_log_level}"
 }
 
 function f_support_zip() {

@@ -382,7 +382,7 @@ function _test_tmpl_auto() {
 
 
 ### Extracts ###################################################################
-function _split_log() {
+function _split_by_start() {
     local _log_path="$1"
     local _start_log_line=""
     [ -z "${_log_path}" ] && return 1
@@ -407,7 +407,7 @@ function e_app_log() {
     fi
     [ ! -s "${_log_path}" ] && return 1
 
-    _split_log "${_log_path}"
+    _split_by_start "${_log_path}"
     local _since_last_restart="$(ls -1r _split_logs/* 2>/dev/null | head -n1)"
     local _excludes="(WARN .+ high disk watermark|This is NOT an error|Attempt to access soft-deleted blob .+nexus-repository-docker|CacheInfo missing for)"
     if [ -n "${_since_last_restart}" ]; then
@@ -659,7 +659,7 @@ for key in fsDicts['system-filestores']:
 # TODO: For this one, checking without size limit (not _rg)?
 function t_oome() {
     # audit.log can contains `attribute.changes` which contains large test and some Nuget package mentions OutOfMemoryError
-    _test_template "$(_RG_MAX_FILESIZE="6G" _rg 'java.lang.OutOfMemoryError:.+' -m1 -B1 -g "${_LOG_GLOB}" | rg -vw '(jvm.log|audit*log*)' | sort | uniq)" "ERROR" "OutOfMemoryError detected from ${_LOG_GLOB} (Xms is too small?)"
+    _test_template "$(_RG_MAX_FILESIZE="6G" _rg 'java.lang.OutOfMemoryError:.+' -m1 -B1 -g "${_NXRM_LOG}" -g "${_NXIQ_LOG}" | sort | uniq)" "ERROR" "OutOfMemoryError detected from '${_NXRM_LOG}' or '${_NXIQ_LOG}' (Xms is too small?)"
 }
 function t_sofe() {
     _test_template "$(_RG_MAX_FILESIZE="6G" _rg 'java.lang.StackOverflowError:.+' -m1 -B1 -g "${_LOG_GLOB}" | rg -vw '(jvm.log|audit*log*)' | sort | uniq)" "ERROR" "StackOverflowError detected from ${_LOG_GLOB}"
@@ -723,9 +723,8 @@ function t_requests() {
     fi
 
     # NOTE: can't use headerContentLength as some request.log doesn't have it
-    local _excludes="GET %/maven-metadata.xml %"
-    f_reqsFromCSV "request.csv" "7000" "" "20" "AND requestURL NOT LIKE '${_excludes}'" 2>/dev/null >${_FILTERED_DATA_DIR%/}/agg_requests_top20_slow_GET.out
-    _test_template "$(_rg -q '\s+GET\s+' -m1 ${_FILTERED_DATA_DIR%/}/agg_requests_top20_slow_GET.out && cat ${_FILTERED_DATA_DIR%/}/agg_requests_top20_slow_GET.out)" "WARN" "Top 20 slow downloads excluding '${_excludes}' from ${_FILTERED_DATA_DIR}/request.csv (Check 'POST /service/extdirect')"
+    f_reqsFromCSV "request.csv" 2>/dev/null >${_FILTERED_DATA_DIR%/}/agg_requests_top20_slow_GET.out
+    _test_template "$(_rg -q '\s+GET\s+' -m1 ${_FILTERED_DATA_DIR%/}/agg_requests_top20_slow_GET.out && cat ${_FILTERED_DATA_DIR%/}/agg_requests_top20_slow_GET.out)" "WARN" "Top 20 slow downloads (GET) from ${_FILTERED_DATA_DIR}/request.csv (Check 'POST /service/extdirect')"
 }
 
 

@@ -11,11 +11,14 @@ __TMP=${__TMP:-"/tmp"}
 
 function _docker_cmd() {
     # Checking in my preferred order
-    #TODO: if which skopeo &>/dev/null; then
+    #TODO: if type skopeo &>/dev/null; then
     #    echo "skopeo"
-    if which docker &>/dev/null; then
+    # Mac Native first
+    #TODO: if type container &>/dev/null; then
+    #    echo "container"
+    if type docker &>/dev/null; then
         echo "docker"
-    elif which podman &>/dev/null; then
+    elif type podman &>/dev/null; then
         echo "podman"
     fi
 }
