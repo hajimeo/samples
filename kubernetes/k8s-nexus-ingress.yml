@@ -63,6 +63,7 @@ spec:
                   #number: 8081
             pathType: Prefix
    # For subdomain test for docker repositories
+    # TODO: test https://stackoverflow.com/questions/52328483/kubernetes-ingress-rules-how-to-use-wildcard-and-specific-subdomain-together
     - host: docker-proxy.standalone.localdomain
       http:
         paths:

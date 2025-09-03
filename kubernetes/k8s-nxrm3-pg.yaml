@@ -18,6 +18,7 @@
 #  - Create a namespace:
 #     kubectl create namespace ${_NAMESPACE}
 #  - Create a secret for the license file:
+#     #kubectl -n ${_NAMESPACE} delete secret sonatype-license
 #     kubectl -n ${_NAMESPACE} create secret generic sonatype-license --from-file sonatype-license.lic=$HOME/share/sonatype/sonatype-license.lic
 #  - Configure tls secret for Ingress
 #     kubectl -n ${_NAMESPACE} create secret tls nexus-tls --key ~/IdeaProjects/samples/misc/standalone.localdomain.key --cert ~/IdeaProjects/samples/misc/standalone.localdomain.crt
@@ -185,8 +186,8 @@ spec:
                 -Dnexus.datastore.nexus.password=\${DB_PWD} \
                 -Dnexus.datastore.nexus.schema=${_DB_SCHEMA:-"public"} \
                 -Dnexus.datastore.nexus.maximumPoolSize=10 \
-                -Dnexus.datastore.nexus.advanced=maxLifetime=30000 \
-                -Dnexus.datastore.nexus.advanced=leakDetectionThreshold=20000'
+                -Dnexus.datastore.nexus.advanced=maxLifetime=30000\nleakDetectionThreshold=20000'
+                # TODO: probably '\n' won't work
             # TODO: utilise NEXUS_SECURITY_INITIAL_PASSWORD
           volumeMounts:
             - name: sonatype-license-volume

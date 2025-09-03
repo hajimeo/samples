@@ -32,7 +32,7 @@
 #$ helm upgrade -i ${RELEASE_NAME} ~/IdeaProjects/nxrm3-ha-repository/nxrm-ha -f ./${RELEASE_NAME}_values.yaml -n ${NAME_SPACE} --set-file secret.nexusSecret.secretKeyfile=./nexus-secrets.json  # --debug --dry-run
 #$ helm template nxrm3ha sonatype-helm/nxrm-ha -f ./helm-nxrm3ha-values.yml -n sonatype-helm >./helm-nxrm3ha-deploying.yaml
 #$ kubectl -n sonatype-helm apply -f ./helm-nxrm3ha-deploying.yaml
-
+# TODO: https://support.sonatype.com/hc/en-us/articles/43534222205075-How-to-re-encrypt-credentials-with-custom-key-in-kubernetes-deployed-nexus-HA
 
 # Seems namespaces broken?
 namespaces:
