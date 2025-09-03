@@ -97,7 +97,7 @@ function f_check_system() {
     mount &> ${_work_dir%/}/mount_df.out    # findmnt -T /path for specific location's mount options (util-linux)
     df -Th &> ${_work_dir%/}/mount_df.out
     grep -wE "(nfs|nfs4)" /proc/mounts > ${_work_dir%/}/mounts_nfs.out # to check NFS version (eg. nconnect for concurrency)
-    mountstats &> ${_work_dir%/}/mountstats.out
+    mountstats &> ${_work_dir%/}/mountstats.out # output all good information (https://www.linuxfromscratch.org/blfs/view/svn/basicnet/nfs-utils.html )
     #echo sunrpc > /etc/modules-load.d/sunrpc.conf   But this should be dynamically adjusted, so only for old kernels
     sysctl sunrpc.tcp_max_slot_table_entries sunrpc.tcp_slot_table_entries >> ${_work_dir%/}/mounts_nfs.out
     vmstat 1 3 &> ${_work_dir%/}/vmstat.out &
@@ -160,6 +160,7 @@ function f_check_process() {
     fi
     cat /proc/${_p}/status &> ${_work_dir%/}/proc_status_${_p}.out  # including memory usage
     date > ${_work_dir%/}/proc_io_${_p}.out; cat /proc/${_p}/io >> ${_work_dir%/}/proc_io_${_p}.out
+    # If Mac: ps -Ewww ${PID}
     cat /proc/${_p}/environ | tr '\0' '\n' > ${_work_dir%/}/proc_environ_${_p}.out
     # https://gist.github.com/jkstill/5095725
     cat /proc/${_p}/net/tcp > ${_work_dir%/}/net_tcp_${_p}.out  # if no netstat

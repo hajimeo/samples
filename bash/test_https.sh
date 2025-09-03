@@ -12,7 +12,7 @@
 #   -Dhttps.proxyHost=<proxy_hostname> -Dhttps.proxyPort=
 #   -Djava.net.useSystemProxies=true
 #
-# To DEBUG (with export JAVA_TOOL_OPTIONS= and does with with keytool):
+# To DEBUG (with export JAVA_TOOL_OPTIONS= and does work with keytool):
 #   -Djavax.net.debug=ssl,keymanager
 #   -Djavax.net.debug=ssl:handshake:verbose
 #
@@ -166,6 +166,7 @@ function export_cert() {
 }
 
 # generate .p12 (pkcs12|pfx) and .jks files from server cert/key (and CA cert)
+# For empty one: keytool -genkeypair -alias dummykey -storepass changeit -keypass changeit -keystore testTrustStore.p12 -keyalg RSA -dname "CN=TestName, OU=TestOrgUnit, O=TestOrg, L=City, ST=State, C=AU"
 function gen_p12_jks() {
     local _srv_key="$1"
     local _srv_crt="$2"
