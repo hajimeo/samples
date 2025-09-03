@@ -145,7 +145,7 @@ class SimpleWebServer(BaseHTTPRequestHandler):
         if 'query' in query_args:
             data['query'] = get1stValue(query_args['query'])
         if 'num_results' not in query_args:
-            data['num_results'] = 40  # Default 10 might be too small
+            data['num_results'] = 60  # Default 10 might be too small
         else:
             data['num_results'] = int(get1stValue(query_args['num_results']))
         if 'include_source_names' in query_args:
@@ -171,10 +171,10 @@ class SimpleWebServer(BaseHTTPRequestHandler):
             default_sources = SimpleWebServer._creds.kapi_search_default_sources.split(',')
             html += u"Source names:<br/>\n"
             for source_name in default_sources:
-                html += u"&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<input type='checkbox' name='include_source_names' value='" + source_name + "'"
+                html += u"&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<label><input type='checkbox' name='include_source_names' value='" + source_name + "'"
                 if 'include_source_names' in data and source_name in data['include_source_names']:
                     html += u" checked"
-                html += u">" + source_name + "<br/>\n"
+                html += u">" + source_name + "</label><br/>\n"
         html += u"</form>\n"
         if len(json_obj['search_results']) > 0:
             for o in json_obj['search_results']:
@@ -340,7 +340,7 @@ class SimpleWebServer(BaseHTTPRequestHandler):
             import py_compile
             py_compile.compile(credpath + ".tmp", credpath + "c")
             os.remove(credpath + ".tmp")
-            SimpleWebServer.log(credpath + " should be deleted")
+            SimpleWebServer.log(credpath + " should be deleted", "warn")
 
 
 if __name__ == '__main__':
