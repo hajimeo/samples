@@ -163,6 +163,9 @@ alias qtsv="q -O -T -d$'\t'"
 alias pgbg='pgbadger --timezone 0'
 export TABBY_DISABLE_USAGE_COLLECTION=1 # just in case
 alias tabby_start='TABBY_DISABLE_USAGE_COLLECTION=1 tabby serve --device metal --model TabbyML/StarCoder-1B &>/tmp/tabby.out &'
+if type echolines &>/dev/null; then
+    alias line_duration='ELAPSED_REGEX="^\d\d\d\d-\d\d-\d\d.(\d\d:\d\d:\d\d.\d\d\d)" ASCII_DISABLED=Y echolines "" "^\d\d\d\d-\d\d-\d\d.\d\d:\d\d:\d\d.\d\d\d" "^\d\d\d\d-\d\d-\d\d.\d\d:\d\d:\d\d.\d\d\d" | rg "^#\s*([^\|]+)\|\s*([^\|]+)\|\s*([^\|]+)" -o -r "\"\$1\",\"\$2\",\$3"'
+fi
 
 ### Docker/K8s/VM related
 #alias rdocker="DOCKER_HOST='tcp://dh1:2375' docker"
@@ -241,7 +244,8 @@ fi
 alias kvm='virt-manager -c "qemu+ssh://virtuser@dh1/system?socket=/var/run/libvirt/libvirt-sock" &>/tmp/virt-manager.out &'
 
 ## Java / jar related
-alias mb='${JAVA_HOME_11%/}/bin/java -jar $HOME/Apps/metabase.jar' # port is 3000
+# https://www.metabase.com/start/oss/jar
+alias mb='${JAVA_HOME_21%/}/bin/java --add-opens java.base/java.nio=ALL-UNNAMED -jar $HOME/Apps/metabase.jar' # port is 3000
 alias vnc='java -Xmx2g -jar $HOME/Apps/tightvnc-jviewer.jar &>/tmp/vnc-java-viewer.out &'
 #alias vnc='java -jar $HOME/Applications/VncViewer-1.9.0.jar &>/tmp/vnc-java-viewer.out &'
 alias samurai='java -Xmx4g -jar $HOME/Apps/samurali/samurai.jar &>/tmp/samurai.out &'
@@ -250,7 +254,7 @@ alias gcviewer='java -Xmx4g -jar $HOME/Apps/gcviewer-1.37-SNAPSHOT.jar'      # &
 alias gitbucket='java -jar gitbucket.war &> /tmp/gitbucket.out &'            #https://github.com/gitbucket/gitbucket/releases/download/4.34.0/gitbucket.war
 alias groovyi='groovysh -e ":set interpreterMode true"'
 # JAVA_HOME_11 is set in bash_profile.sh
-alias jenkins='${JAVA_HOME_11%/}/bin/java -Djava.util.logging.config.file=$HOME/Apps/jenkins-logging.properties -jar $HOME/Apps/jenkins.war' #curl -o $HOME/Apps/jenkins.war -L https://get.jenkins.io/war-stable/2.426.3/jenkins.war
+alias jenkins='${JAVA_HOME_17%/}/bin/java -Djava.util.logging.config.file=$HOME/Apps/jenkins-logging.properties -jar $HOME/Apps/jenkins.war' #curl -o $HOME/Apps/jenkins.war -L https://get.jenkins.io/war-stable/2.426.3/jenkins.war
 # http (but https fails) + reverse proxy server https://www.mock-server.com/mock_server/getting_started.html
 alias mockserver='java -jar $HOME/Apps/mockserver-netty.jar'                                      #curl -o $HOME/Apps/mockserver-netty.jar -L https://search.maven.org/remotecontent?filepath=org/mock-server/mockserver-netty/5.11.1/mockserver-netty-5.11.1-jar-with-dependencies.jar
 alias jkCli='java -jar $HOME/Apps/jenkins-cli.jar -s http://localhost:8080/ -auth admin:admin123' #curl -o $HOME/Apps/jenkins-cli.jar -L http://localhost:8080/jnlpJars/jenkins-cli.jar
@@ -275,7 +279,7 @@ alias chrome-work='open -na "Google Chrome" --args --user-data-dir=$HOME/.chrome
 alias chrome-dh1='open -na "Google Chrome" --args --user-data-dir=$HOME/.chromep/dh1 --proxy-server=http://dh1:28080'
 alias k8s-dh1='open -na "Google Chrome" --args --user-data-dir=$HOME/.chromep/k8s-dh1 --proxy-server=socks5://dh1:38081'
 alias hblog='open -na "Google Chrome" --args --user-data-dir=$HOME/.chromep/hajigle https://www.blogger.com/blogger.g?blogID=9018688091574554712&pli=1#allposts'
-alias gemini='open -na "Google Chrome" --args --app="https://gemini.google.com/u/1/app"' # --user-data-dir=$HOME/.chromep/hosako
+alias geminiWeb='open -na "Google Chrome" --args --app="https://gemini.google.com/u/1/app"' # --user-data-dir=$HOME/.chromep/hosako
 alias kapa='open -na "Google Chrome" --args --app="https://chat.kapa.ai/dadecd3d-2984-46d3-9c6b-09df9a67668c"'
 # pretending windows chrome on Linux
 alias winchrome='/opt/google/chrome/chrome --user-data-dir=$HOME/.chromep --proxy-server=socks5://localhost:38080  --user-agent="Mozilla/5.0 (Windows NT 10.0; WOW64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/88.0.4324.96 Safari/537.36"'
@@ -795,7 +799,12 @@ function goBuild() {
     if [ -d /opt/homebrew/opt/go/libexec ]; then
         export GOROOT=/opt/homebrew/opt/go/libexec
     fi
-    go mod tidy || return $? # go get -v -t -u all && go mod tidy
+    if [ -f ./go.mod ]; then
+        go mod tidy || return $? # go get -v -t -u all && go mod tidy
+    else
+        echo "# No ./go.mod file found, so no 'go mod tidy'" >&2
+    fi
+
     if [[ "${GO_SKIP_TESTS}" =~ ^[yY] ]]; then
         echo "# Skipping tests ..." >&2
     else
@@ -884,6 +893,10 @@ function cleanOldDBs() {
     #psql -d template1 -tAc "SELECT 'DROP DATABASE '||datname||';    -- '||pg_database_size(datname)||' bytes' FROM pg_stat_database WHERE datname NOT IN ('', 'template0', 'template1', 'postgres', CURRENT_USER) AND stats_reset < (now() - interval '60 days') ORDER BY stats_reset"
     psql -d template1 -tAc "SELECT 'DROP DATABASE '||datname||';    -- '||pg_database_size(datname)||' bytes' FROM pg_stat_database WHERE datname ilike 'to_be_deleted_%' ORDER BY datname"
     #psql -tAc "SELECT datname FROM pg_database WHERE datname LIKE 'to_be_deleted_%'" | while read -r _db; do psql -d template1 -c "DROP DATABASE ${_db}" || break; done
+    echo "" >&2
+    echo "# Top 10 large databases" >&2
+    # not using pg_size_pretty() for now
+    psql -d template1 -c "SELECT datname AS database_name, pg_database_size(datname) AS bytes FROM pg_database ORDER BY 2 DESC LIMIT 10;"
 }
 
 function listLargeDirs() {
@@ -1182,6 +1195,21 @@ function set_classpath() {
     fi
 }
 
+function update_cacerts_from_host() {
+    local _host_port="$1" # local.standalone.localdomain:8479
+    local _alias="$2"
+    local _truststore="${3}"
+    # -J-Dhttps.proxyHost={PROXY_HOSTNAME} -J-Dhttps.proxyPort={PROXY_PORT}
+    keytool -printcert -rfc -sslserver ${_host_port} > /tmp/server.pem || return $?
+    tac /tmp/server.pem | sed '/-----BEGIN CERTIFICATE-----/q' | tac > /tmp/server_last.pem || return $?
+    if [ -s /tmp/server_last.pem ]; then
+        echo "# Retrieved certificate from ${_host_port}" >&2
+    else
+        echo "# Failed to retrieve certificate from ${_host_port}" >&2
+        return 1
+    fi
+    update_cacerts "/tmp/server_last.pem" "${_alias}" "${_truststore}"
+}
 function update_cacerts() {
     local _pem="$1"
     local _alias="$2"

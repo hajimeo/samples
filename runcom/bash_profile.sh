@@ -92,12 +92,15 @@ if [ "$(uname)" = "Darwin" ]; then
         [ -z "${JAVA_HOME_8}" ] && export JAVA_HOME_8="/Library/Java/JavaVirtualMachines/zulu-8.jdk/Contents/Home"
         [ -z "${JAVA_HOME}" ] && export JAVA_HOME="/Library/Java/JavaVirtualMachines/zulu-8.jdk/Contents/Home"
     fi
+    if [ -d "$HOME/Apps/jdk11" ]; then
+        [ -z "${JAVA_HOME_11}" ] && export JAVA_HOME_11="$HOME/Apps/jdk11"
+    fi
     if [ -d "/opt/homebrew/opt/openjdk@17/libexec/openjdk.jdk/Contents/Home" ]; then
         [ -z "${JAVA_HOME_17}" ] && export JAVA_HOME_17="/opt/homebrew/opt/openjdk@17/libexec/openjdk.jdk/Contents/Home"
         [ -z "${JAVA_HOME}" ] && export JAVA_HOME="/opt/homebrew/opt/openjdk@17/libexec/openjdk.jdk/Contents/Home"
     fi
-    if [ -d "$HOME/Apps/jdk11" ]; then
-        [ -z "${JAVA_HOME_11}" ] && export JAVA_HOME_11="$HOME/Apps/jdk11"
+    if [ -e "/Users/hosako/.sdkman/candidates/java/21.0.8-zulu" ]; then
+        [ -z "${JAVA_HOME_21}" ] && export JAVA_HOME_21="/Users/hosako/.sdkman/candidates/java/21.0.8-zulu"
     fi
     # For now, using java11's jshell
     if [ -n "${JAVA_HOME_11%/}" ]; then
@@ -134,7 +137,7 @@ if [ -f '/Users/hosako/Apps/google-cloud-sdk/path.bash.inc' ]; then . '/Users/ho
 if [ -f '/Users/hosako/Apps/google-cloud-sdk/completion.bash.inc' ]; then . '/Users/hosako/Apps/google-cloud-sdk/completion.bash.inc'; fi
 
 # Github Copilot CLI
-eval "$(gh copilot alias -- bash)"
+#eval "$(gh copilot alias -- bash)"
 
 # rust / cargo installation added the below
 . "$HOME/.cargo/env"

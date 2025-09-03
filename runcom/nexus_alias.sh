@@ -48,13 +48,21 @@ function _java_home() {
         if [ -d "${JAVA_HOME_17}" ]; then
             _ORIG_JAVA_HOME="${JAVA_HOME}"
             export JAVA_HOME="${JAVA_HOME_17}" #NEXUSTOOLS_JAVA_HOME="${JAVA_HOME_17}"
+            export INSTALL4J_JAVA_HOME="${JAVA_HOME_17}" #NEXUSTOOLS_JAVA_HOME="${JAVA_HOME_17}"
+            export app_java_home="${JAVA_HOME_17}" #NEXUSTOOLS_JAVA_HOME="${JAVA_HOME_17}"
             echo "# export JAVA_HOME=\"${JAVA_HOME_17}\""
         else
             echo "# Make sure JAVA_HOME is set to Java 17"; sleep 3
         fi
     elif [ -n "${_ORIG_JAVA_HOME}" ]; then
         export JAVA_HOME="${_ORIG_JAVA_HOME}"
+        #export INSTALL4J_JAVA_HOME="${_ORIG_JAVA_HOME}"
         echo "# export JAVA_HOME=\"${_ORIG_JAVA_HOME}\""
+    elif [ -n "${JAVA_HOME_8}" ]; then
+        export JAVA_HOME="${JAVA_HOME_8}"
+        export INSTALL4J_JAVA_HOME="${JAVA_HOME_8}"
+        export app_java_home="${JAVA_HOME_8}"
+        echo "# export JAVA_HOME=\"${JAVA_HOME_8}\""
     fi
 }
 function _get_rm_url() {
@@ -105,7 +113,7 @@ function _get_iq_url() {
 
 # export JAVA_HOME=$JAVA_HOME_17
 #
-# To start local (on Mac) NXRM2 or NXRM3 server for OrientDB
+# To start Nexus with customer's database, _CUSTOM_DNS will use the dummy DNS server and also update the DB.
 #   _CUSTOM_DNS="$(hostname -f)" nxrmStart
 #   TODO: If the blob store uses absolute path, need to change the path
 #   TODO: Update the notification emai in the tasks (and something else?)
@@ -200,9 +208,20 @@ function nxrmStart() {
         local _console=""
         # TODO: may need to use h2-console_v200 for older versions?
         # TODO: no support for OrientDB
-        if [ -s "${_sonatype_work:-"."}/db/nexus.mv.db" ]; then
+        if grep -q -w 'postgresql' "${_sonatype_work:-"."}/etc/fabric/nexus-store.properties" 2>/dev/null; then
+            if ! type psql &>/dev/null; then
+                echo "ERROR: psql not found in the path. Please create a symlink to h2-console"
+                return 1
+            fi
+            source "${_sonatype_work:-"."}/etc/fabric/nexus-store.properties"
+            if [[ "${jdbcUrl}" =~ jdbc:postgresql://([^:/]+):?([0-9]*)/([^\?]+) ]]; then
+                _console="PGPASSWORD=${password} psql -h ${BASH_REMATCH[1]} -p ${BASH_REMATCH[2]} -U ${username} -d ${BASH_REMATCH[3]}"
+                echo "*** Updating DB with '${_console}' ***"; sleep 3;
+                _rm3StartSQLs_psql | eval "${_console}" || return $?
+            fi
+        elif grep -q -w 'h2' "${_sonatype_work:-"."}/etc/fabric/nexus-store.properties" 2>/dev/null || [ -s "${_sonatype_work:-"."}/db/nexus.mv.db" ]; then
             if ! type h2-console_v232 &>/dev/null; then   # TODO: should switch h2-console by nexus version?
-                echo "ERROR: h2-console_v232 not found. Please create a symlink to h2-console"
+                echo "ERROR: h2-console_v232 not found in the path. Please create a symlink to h2-console"
                 return 1
             fi
             # To avoid this backup, touch ./sonatype-work/nexus3/db/nexus.mv.db.gz
@@ -210,21 +229,12 @@ function nxrmStart() {
                 echo "No ${_sonatype_work:-"."}/db/nexus.mv.db.gz. Gzip-ing nexus.mv.db file ..."; sleep 3
                 gzip -k "$(readlink -f "${_sonatype_work:-"."}/db/nexus.mv.db")" || return $?
             else
-                echo "WARN Not making a backup of database ${_sonatype_work:-"."}/db/nexus.mv.db"; sleep 5;
+                echo "WARN: Will update ${_sonatype_work:-"."}/db/nexus.mv.db without a new backup ....."; sleep 5;
             fi
 
             _console="h2-console_v232 ${_sonatype_work:-"."}/db/nexus.mv.db"
             echo "*** Updating DB with '${_console}' ***"; sleep 3;
             _rm3StartSQLs_h2 | eval "${_console}" || return $?
-        elif [ -s "${_sonatype_work:-"."}/etc/fabric/nexus-store.properties" ]; then
-            if type psql &>/dev/null; then
-                source "${_sonatype_work:-"."}/etc/fabric/nexus-store.properties"
-                if [[ "${jdbcUrl}" =~ jdbc:postgresql://([^:/]+):?([0-9]*)/([^\?]+) ]]; then
-                    _console="PGPASSWORD=${password} psql -h ${BASH_REMATCH[1]} -p ${BASH_REMATCH[2]} -U ${username} -d ${BASH_REMATCH[3]}"
-                    echo "*** Updating DB with '${_console}' ***"; sleep 3;
-                    _rm3StartSQLs_psql | eval "${_console}" || return $?
-                fi
-            fi
         fi
 
         if [ -z "${_console}" ]; then
@@ -243,7 +253,9 @@ function nxrmStart() {
     # ulimit / Too many open files: https://help.sonatype.com/repomanager3/installation/system-requirements#SystemRequirements-MacOSX
 }
 function _rm3StartSQLs_h2() {
+    # NOTE: Not fixing 'org.sonatype.nexus.crypto.internal.error.CipherException: Unable find secret for the specified token'
     # TODO: May need to reset 'admin' user, and also use below query (after modifying for H2/PostgreSQL/OrientDB)
+    # TODO: org.h2.jdbc.JdbcSQLDataException: Data conversion error converting "{""file"":{""path"":""s3/"; SQL statement:
     cat << 'EOF'
 UPDATE BLOB_STORE_CONFIGURATION SET TYPE = 'File', ATTRIBUTES = (JSON'{"file":{"path":"s3/'||NAME||'"}}') where TYPE = 'S3';
 UPDATE CAPABILITY_STORAGE_ITEM SET ENABLED = false WHERE TYPE IN ('firewall.audit', 'clm', 'webhook.repository', 'healthcheck', 'crowd');
@@ -252,12 +264,14 @@ DELETE FROM USER_ROLE_MAPPING WHERE USER_ID = 'admin';
 INSERT INTO USER_ROLE_MAPPING (USER_ID, SOURCE, ROLES) VALUES ('admin', 'default', JSON'["nx-admin"]');
 DELETE FROM nuget_asset WHERE path = '/index.json';  -- NEXUS-36090
 TRUNCATE TABLE HTTP_CLIENT_CONFIGURATION;
-INSERT INTO HTTP_CLIENT_CONFIGURATION (ID, PROXY) VALUES (1, JSON'{"http":{"enabled":true,"host":"localhost","port":28080,"authentication":null},"https":{"enabled":true,"host":"localhost","port":28080,"authentication":null},"nonProxyHosts":[]}');
+INSERT INTO HTTP_CLIENT_CONFIGURATION (ID, PROXY) VALUES (1, JSON'{"http":{"enabled":true,"host":"localhost","port":28080,"authentication":null},"https":{"enabled":true,"host":"localhost","port":28080,"authentication":null},"nonProxyHosts":["*.sonatype.com"]}');
 EOF
 # TODO: The last INSERT might be broken and causing `Error attempting to get column 'PROXY' from result set`
 #UPDATE REALM_CONFIGURATION SET REALM_NAMES = '["NexusAuthenticatingRealm", "NexusAuthorizingRealm"]' FORMAT JSON where ID = 1;
 }
 function _rm3StartSQLs_psql() {
+    #local _schema="${1:-"public"}" TODO: use schema
+    # NOTE: Not fixing 'org.sonatype.nexus.crypto.internal.error.CipherException: Unable find secret for the specified token'
     # TODO: May need to reset 'admin' user, and also use below query (after modifying for H2/PostgreSQL/OrientDB)
     cat << 'EOF'
 UPDATE blob_store_configuration SET type = 'File', attributes = ('{"file":{"path":"s3/'||name||'"}}')::jsonb where type = 'S3';
@@ -267,7 +281,7 @@ DELETE FROM user_role_mapping WHERE user_id = 'admin';
 INSERT INTO user_role_mapping (user_id, source, roles) VALUES ('admin', 'default', '["nx-admin"]'::jsonb);
 DELETE FROM nuget_asset WHERE path = '/index.json'; -- NEXUS-36090
 TRUNCATE TABLE http_client_configuration;
-INSERT INTO http_client_configuration (id, proxy) VALUES (1, '{"http": {"host": "localhost", "port": 28080, "enabled": true, "authentication": null}, "https": null, "nonProxyHosts": "*.sonatype.com"}'::jsonb);
+INSERT INTO http_client_configuration (id, proxy) VALUES (1, '{"http": {"host": "localhost", "port": 28080, "enabled": true, "authentication": null}, "https": {"host": "localhost", "port": 28080, "enabled": true, "authentication": null}, "nonProxyHosts": ["*.sonatype.com"]}', NULL);
 EOF
 #UPDATE realm_configuration SET realm_names = '["NexusAuthenticatingRealm", "NexusAuthorizingRealm"]'::jsonb where id = 1;
 }
@@ -292,8 +306,9 @@ function _updateNexusProps() {
     grep -qE '^#?nexus.elasticsearch.autoRebuild' "${_cfg_file}" || echo "nexus.elasticsearch.autoRebuild=false" >> "${_cfg_file}"
     grep -qE '^#?nexus.search.updateIndexesOnStartup.enabled' "${_cfg_file}" || echo "nexus.search.updateIndexesOnStartup.enabled=false" >> "${_cfg_file}"
     grep -qE '^#?nexus.assetBlobCleanupTask.blobCreatedDelayMinute' "${_cfg_file}" || echo "nexus.assetBlobCleanupTask.blobCreatedDelayMinute=0" >> "${_cfg_file}"
-    grep -qE '^#?nexus.malware.risk.enabled' "${_cfg_file}" || echo "nexus.malware.risk.enabled=false" >> "${_cfg_file}"
-    grep -qE '^#?nexus.malware.risk.on.disk.enabled' "${_cfg_file}" || echo "nexus.malware.risk.on.disk.enabled=false" >> "${_cfg_file}"
+    # No longer works from 3.83
+    #grep -qE '^#?nexus.malware.risk.enabled' "${_cfg_file}" || echo "nexus.malware.risk.enabled=false" >> "${_cfg_file}"
+    #grep -qE '^#?nexus.malware.risk.on.disk.enabled' "${_cfg_file}" || echo "nexus.malware.risk.on.disk.enabled=false" >> "${_cfg_file}"
 
     # ${nexus.h2.httpListenerPort:-8082} jdbc:h2:file:./nexus (no username)
     grep -qE '^#?nexus.h2.httpListenerEnabled' "${_cfg_file}" || echo "nexus.h2.httpListenerEnabled=true" >> "${_cfg_file}"
@@ -324,7 +339,7 @@ function _updateNexusProps() {
         sed -i'' -E "s/^application-port=.*/application-port=${_port}/" "${_cfg_file}"
         if ! grep -qE "^application-port=${_port}" "${_cfg_file}"; then
             echo "ERROR: Failed to confirm port: '${_port}' in ${_cfg_file}" >&2; sleep 5;
-            return 1
+            #return 1
         fi
     fi
 
@@ -482,12 +497,14 @@ function nxrm3Install() {
     fi
 }
 
-#nxrmDocker "nxrm3-test" "" "8181:8081 8543:8443 15000:5000" #"--read-only -v /tmp/nxrm3-test:/tmp" or --tmpfs /tmp:noexec
-#mkdir -v -p -m777 /var/tmp/share/sonatype/nxrm3docker
-#docker run --init -d -p 18081:8081 --name=nxrm3docker -e INSTALL4J_ADD_VM_PARAMS="-Dnexus-context-path=/nexus -Djava.util.prefs.userRoot=/nexus-data" -v /var/tmp/share:/var/tmp/share -v /var/tmp/share/sonatype/nxrm3docker:/nexus-data sonatype/nexus3:latest
+# Without this functipn:
+#   mkdir -v -p -m777 /var/tmp/share/sonatype/nxrm3docker
+#   docker run --init -d -p 18881:8081 --name=nxrm3docker -e INSTALL4J_ADD_VM_PARAMS="-Dnexus-context-path=/nexus -Djava.util.prefs.userRoot=/nexus-data" -v /var/tmp/share:/var/tmp/share -v /var/tmp/share/sonatype/nxrm3docker:/nexus-data sonatype/nexus3:latest
 
+#nxrmDocker "" "nxrm3-test" "8181:8081 8543:8443 15000:5000" #"--read-only -v /tmp/nxrm3-test:/tmp" or --tmpfs /tmp:noexec
 # For new installation, creating local dir for /nexus-data
 #_NEXUS_DATA_LOCAL="/var/tmp/share/sonatype/nxrm3-data-test";
+#mkdir -v -p -m777 ${_NEXUS_DATA_LOCAL}
 
 # HTTPS/SSL
 #mkdir -v -p "${_NEXUS_DATA_LOCAL}/etc/ssl";
@@ -496,16 +513,16 @@ function nxrm3Install() {
 #chown -R 200:200 "${_NEXUS_DATA_LOCAL}";
 #docker run --init -d -p 18081:8081 -p 18443:8443 --name=nxrm3dockerWithHTTPS --tmpfs /tmp:noexec -e INSTALL4J_ADD_VM_PARAMS="-Djava.util.prefs.userRoot=/nexus-data -Dssl.etc=\${karaf.data}/etc/ssl -Dnexus-args=\${jetty.etc}/jetty.xml,\${jetty.etc}/jetty-https.xml,\${jetty.etc}/jetty-requestlog.xml" -v /var/tmp/share:/var/tmp/share -v ${_NEXUS_DATA_LOCAL}:/nexus-data dh1.standalone.localdomain:5000/sonatype/nexus3:latest
 
-# Sample JVM options 1
-#export INSTALL4J_ADD_VM_PARAMS="-Djava.util.prefs.userRoot=/nexus-data -XX:ActiveProcessorCount=2 -Xms2g -Xmx2g -XX:MaxDirectMemorySize=2g -XX:+PrintGC -XX:+PrintGCDateStamps -Dnexus.licenseFile=/var/tmp/share/sonatype/sonatype-license.lic -Dnexus.security.randompassword=false"
-# Sample JVM options 2: PostgreSQL with root.logger
-#export INSTALL4J_ADD_VM_PARAMS="${INSTALL4J_ADD_VM_PARAMS} -Droot.level=DEBUG -Dnexus.datastore.enabled=true -Dnexus.datastore.nexus.jdbcUrl=jdbc:postgresql://$(ipconfig getifaddr $(route -n get default | awk '$1=="interface:" { print $2 }') | head -n1):5432/nxrm -Dnexus.datastore.nexus.username=nexus -Dnexus.datastore.nexus.password=nexus123 -Dnexus.datastore.nexus.maximumPoolSize=10 -Dnexus.datastore.nexus.advanced=maxLifetime=600000"
+# Sample JVM options 1 (default)
+#export INSTALL4J_ADD_VM_PARAMS="-Djava.util.prefs.userRoot=/nexus-data -XX:ActiveProcessorCount=2 -Xms2g -Xmx2g -XX:MaxDirectMemorySize=2g -Dnexus.licenseFile=/var/tmp/share/sonatype/sonatype-license.lic -Dnexus.security.randompassword=false"
+# Sample JVM options 2: PostgreSQL (create database 'nxrmdocker' first)
+#export INSTALL4J_ADD_VM_PARAMS="${INSTALL4J_ADD_VM_PARAMS} -Dnexus.datastore.enabled=true -Dnexus.datastore.nexus.jdbcUrl=jdbc:postgresql://$(ipconfig getifaddr $(route -n get default | awk '$1=="interface:" { print $2 }') | head -n1):5432/nxrmdocker?ssl=true\&sslmode=prefer -Dnexus.datastore.nexus.username=nexus -Dnexus.datastore.nexus.password=nexus123 -Dnexus.datastore.nexus.maximumPoolSize=10 -Dnexus.datastore.nexus.advanced=maxLifetime=600000"
 # Sample JVM options 3: H2
 #export INSTALL4J_ADD_VM_PARAMS="${INSTALL4J_ADD_VM_PARAMS} -Dnexus.datastore.enabled=true -Dnexus.h2.httpListenerEnabled=true"
 alias rmDocker='nxrmDocker'
 function nxrmDocker() {
     local _tag="${1:-"latest"}" # 3.45.1 (no minor version), 3.70.1-java17-ubi
-    local _name="${2-"${_tag}"}"
+    local _name="${2-"nxrm-${_tag}"}"
     local _ports="${3:-"8081:8081 8443:8443 8082:8082 15000:15000"}"
     local _extra_opts="${4}"    # this is docker options not INSTALL4J_ADD_VM_PARAMS. eg --platform=linux/amd64
 
@@ -698,7 +715,7 @@ function iqInstall() {
     fi
 }
 
-#iqDocker "nxiq-test" "" "8170" "8171" "8544" #"--read-only -v /tmp/nxiq-test:/tmp"
+#iqDocker "1.191.0" "" "8170:8070 8171:8071" #"--read-only -v /tmp/nxiq-test:/tmp"
 function iqDocker() {
     local _tag="${1:-"latest"}"
     local _name="${2-"${_tag}"}"
@@ -713,19 +730,24 @@ function iqDocker() {
     [ ! -d "${_nexus_data%/}/etc" ] && mkdir -p -m 777 "${_nexus_data%/}/etc"
     [ ! -d "${_nexus_data%/}/log" ] && mkdir -p -m 777 "${_nexus_data%/}/log"
     local _p=""
+    local _p8070="8070"
     if [ -n "${_ports}" ]; then
         local _first_one_checked=false
         for _p_p in ${_ports}; do
             if [[ "${_p_p}" =~ ^([0-9]+):([0-9]+)$ ]]; then
+                local _host_port="${BASH_REMATCH[1]}"
+                local _container_port="${BASH_REMATCH[2]}"
                 #_wait_url "http://127.0.0.1:${BASH_REMATCH[1]}" "1" "0"
-                if ! ${_first_one_checked} && curl -m1 -sIf -k "http://127.0.0.1:${BASH_REMATCH[1]}" &>/dev/null; then
-                    local _new_port=$(( ${BASH_REMATCH[1]} + 10000 ))
-                    echo "WARN: Port ${BASH_REMATCH[1]} is already in use. Using ${_new_port}:${BASH_REMATCH[2]}"; sleep 2
-                    _p="-p ${_new_port}:${BASH_REMATCH[2]} ${_p% }"
+                if ! ${_first_one_checked} && curl -m1 -sIf -k "http://127.0.0.1:${_host_port}" &>/dev/null; then
+                    echo "WARN: Port ${_host_port} is already in use. Using ${_new_port}:${_container_port}"; sleep 2
+                    _p="-p ${_new_port}:${_container_port} ${_p% }"
                 else
                     _p="-p ${_p_p} ${_p% }"
                 fi
                 _first_one_checked=true
+                if [ "${_container_port}" == "8070" ]; then
+                    _p8070="${_host_port}"
+                fi
             fi
         done
     fi
@@ -748,12 +770,13 @@ function iqDocker() {
     [ -d "${_nexus_data%/}/log" ] && _opts="${_opts} -v ${_nexus_data%/}/log:/opt/sonatype/nexus-iq-server/log" # due to audit.log => fixed from v104
     [ -n "${_extra_opts}" ] && _opts="${_opts} ${_extra_opts}"  # Should be last to overwrite
     [ -n "${_docker_host}" ] && _docker_host="${_docker_host%/}/"
-    local _cmd="docker run --init -d ${_p} ${_opts} ${_docker_host%/}sonatype/nexus-iq-server:${_tag}"
+    local _cmd="docker run -d ${_p} ${_opts} ${_docker_host%/}sonatype/nexus-iq-server:${_tag}" # is it better using '--init'?
     echo "${_cmd}"
     eval "${_cmd}"
     if [ -s "$HOME/IdeaProjects/samples/bash/setup_nexus_iq.sh" ]; then
         echo "Waiting for IQ port to update configs ..."
         source "$HOME/IdeaProjects/samples/bash/setup_nexus_iq.sh" || return $?
+        export _IQ_URL="http://localhost:${_p8070}/"
         f_config_update
     fi
 }
@@ -1028,7 +1051,6 @@ function npmDeploy() {
     local _repo_url="${1:-"$(_get_rm_url)repository/npm-hosted/"}"
     local _name="${2:-"lodash-vulnerable"}"
     local _ver="${3:-"1.0.0"}"
-    #npm login --registry=$(_get_rm_url)repository/npm-hosted/
     if [ -s ./package.json ] && [ ! -s ./package.json.orig ]; then
         cp -v -p ./package.json ./package.json.orig
     elif [ ! -s ./package.json ]; then
@@ -1039,7 +1061,11 @@ a=json.loads(sys.stdin.read())
 d={\"name\":\"${_name}\",\"version\":\"${_ver}\",\"publishConfig\":{\"registry\":\"${_repo_url}\"}}
 a.update(d);f=open(\"./package.json\",\"w\")
 f.write(json.dumps(a,indent=4,sort_keys=True));" || return $?
-    npm publish --registry "${_repo_url}" -ddd || return $?
+    if ! npm publish --registry "${_repo_url}" -ddd; then
+        echo "npm publish failed. Trying npm login (NPM Bearer token required) ..."; sleep 2
+        npm login --registry "${_repo_url}" || return $?
+        npm publish --registry "${_repo_url}" -ddd || return $?
+    fi
 }
 
 # Create a dummy npm tgz from the original tgz and publish if repo URL is given
