@@ -786,7 +786,9 @@ FLUSH PRIVILEGES;"
 }
 
 # Simple way
-#rg -i 'real=[^0]\d\S+' gc.2025-03-28_21-48-30.log
+#rg -i 'Real=[^0]\d\S+' gc.2025-03-28_21-48-30.log
+#Occurences: rg '^\[(20\d\d-\d\d-\d\d.\d\d:\d).+ Real=([^s\.]+)' -o -r '$1' gc.2025-08-26_05-41-49.log.0 | bar_chart.py
+#Slow GCs:   rg '^\[(20\d\d-\d\d-\d\d.\d\d:\d\d).+ Real=([^0]+)\.' -o -r '$1 $2' gc.2025-08-26_05-41-49.log.0 | bar_chart.py -A
 # Generate chart for one specific class size (should check count?)
 #rg '(^20\d\d.\d\d.\d\d.+Class Histogram \(before full gc\)|org.sonatype.nexus.repository.content.store.AssetBlobData)' gc.2023-01-13_09-12-22.log.0 | paste - - | rg '^(\d\d\d\d.\d\d.\d\d.\d\d:\d\d:\d\d\.\d\d\d).+ (\d+)\s+org.sonatype.nexus.repository.content.store.AssetBlobData' -o -r '$1 $2' | bar_chart.py -A
 #f_gc_overview gc.2021-10-30_15-03-15.log.0.current.gz "" "M" "2021-12-28.0[5678]:\d\d:\d\d.\d+"
@@ -836,8 +838,9 @@ function f_gc_before_after_check() {
     # NOTE: expecting filenames works with --sort=path
     rg -z -N --sort=path --no-filename '\b(Full GC|Class Histogram)\b' -A ${_A_max} ${_log_dir}  > /tmp/${FUNCNAME[0]}_$$.tmp || return $?
     cat /tmp/${FUNCNAME[0]}_$$.tmp | rg "\S*${_keyword:-"\S+"}\S*" -o | sort | uniq | while read -r _cls; do
-        echo "# 'date_time' '#instances' '#bytes' for ${_cls}"
-        rg "(${_DT_FMT}|\s+\d+\s+\d+\s+${_cls//$/\\$}$)" -o /tmp/${FUNCNAME[0]}_$$.tmp | rg "${_cls//$/\\$}" -B1 | rg -v -- '--' | paste - -
+        local _cls_escaped=$(echo "${_cls}" | tr -d '[' | sed 's/[$]/\\$/g')
+        echo "# 'date_time' '#instances' '#bytes' for ${_cls_escaped}"
+        rg "(${_DT_FMT}|\s+\d+\s+\d+\s+${_cls_escaped}$)" -o /tmp/${FUNCNAME[0]}_$$.tmp | rg "${_cls_escaped}" -B1 | rg -v -- '--' | paste - -
         echo ""
     done
     echo "# diff between first and last for class includes '${_keyword}':"
@@ -1069,27 +1072,20 @@ function f_splitNetstats() {
 #HTML_REMOVE=Y EXCL_REGEX="^\d\d\d\d-\d\d-\d\dT\d\d:\d\d:\d\d\.\d+" echolines "./sonatype-work/nexus3/log/jvm.log" "^\d\d\d\d-\d\d-\d\d \d\d:\d\d:\d\d$" "(^\s+(class space|Metaspace).+)" > "./threads.txt"
 function f_jvmlog2threads() {
     local _files="${1:-"./jvm.log"}"
-    local _save_to="${2-"./thread_dumps"}"
+    local _save_to="${2-"./threads.txt"}"
     local _end_regex="$3"
     local _from_regex="$4"
     [ -z "${_from_regex}" ] && _from_regex="^\d\d\d\d-\d\d-\d\d \d\d:\d\d:\d\d$"
     [ -z "${_end_regex}" ] && _end_regex="(^\s+class space.+|^\s+Metaspace\s+.+)"
+
     if [ -n "${_save_to}" ] && [ "$(ls -A "${_save_to}" 2>/dev/null)" ]; then
         echo "${_save_to} is not empty"
         return 1
     fi
-    if [ -z "${_save_to}" ] && [ -s "./threads.txt" ]; then
-        echo "./threads.txt is not empty"
-        return 1
-    fi
 
     local _cmd="HTML_REMOVE=Y EXCL_REGEX=\"^\d\d\d\d-\d\d-\d\dT\d\d:\d\d:\d\d\.\d+\" echolines \"${_files}\" \"${_from_regex}\" \"${_end_regex}\""
-    if [ -z "${_save_to}" ]; then
-        eval "${_cmd} > ./threads.txt" || return $?
-    else
-        eval "${_cmd} \"${_save_to}\"" || return $?
-        echo "_THREAD_FILE_GLOB=\"0*.out\" f_threads \"${_save_to}\""
-    fi
+    eval "${_cmd} > ${_save_to}" || return $?
+    echo "# f_threads \"${_save_to}\"" >&2
 }
 
 function f_wrapper2threads() {
@@ -1199,6 +1195,7 @@ function f_threads() {
     if [ -f "${_file}" ] && [[ ! "${_not_split_by_date}" =~ ^(y|Y) ]]; then
         local _how_many_threads=$(rg '^20\d\d-\d\d-\d\d \d\d:\d\d:\d\d' -c ${_file})
         echo "## Found ${_how_many_threads} threads from ${_file}"
+        rg '^20\d\d-\d\d-\d\d \d\d:\d\d:\d\d' ${_file}
         if [ 1 -lt ${_how_many_threads:-0} ]; then
             echo "## Check if any 'Heap' information exists"
             rg '^Heap' -A8 ${_file} | rg '(total|\d\d+% used)'    # % didn't work with G1GC
@@ -1401,10 +1398,14 @@ function f_analyse_multiple_dumps() {
     #| rg -v "(ParallelGC|G1 Concurrent Refinement|Parallel Marking Threads|GC Thread|VM Thread)"
     echo " "
 
-    echo "## Counting methods per the Running thread, which thread contains '${_running_thread_search_re}'"
+    echo "## Counting the first method per the Running thread, which thread contains '${_running_thread_search_re}'"
     rg "${_running_thread_search_re}" -l -g '*runnable*' ${_individual_thread_dir%/} | while read -r _f; do
         echo "$(basename "${_f}") $(rg '^\sat\s' -m1 "${_f}")"
     done | sort | uniq -c | sort -nr | rg -v '^\s*1\s' | head -n40
+    echo " "
+
+    echo "## Counting the first '${_running_thread_search_re}' method for the _runnable_ thread and the size is more than 5k"
+    find ${_individual_thread_dir%/} -name '*runnable*' -size +5k | xargs rg -m1 "${_running_thread_search_re}" --no-filename | sort | uniq -c | sort -nr | head -n20
     echo " "
 
     echo "## Counting locked thread from 'Locked ownable synchronizers:' and runnable and more than 3"
@@ -1482,7 +1483,7 @@ function _threads_extra_check() {
         echo "##    'MemoryCache' https://bugs.openjdk.java.net/browse/JDK-8259886 < 8u301"
         echo "##    'java.lang.Class.forName' NEXUS-28608 up to NXRM 2.14.20"
         echo "##    'CachingDateFormatter' NEXUS-31564 (logback)"
-        echo "##    'com.codahale.metrics.health.HealthCheck.execute' (nexus.healthcheck.refreshInterval)"
+        echo "##    'com.codahale.metrics.health.HealthCheck.execute' (nexus.healthcheck.refreshInterval=15 or 3.81+)"
         echo "##    'WeakHashMap' NEXUS-10991"
         echo "##    'userId\.toLowerCase' NEXUS-31776"
         echo "##    'UploadManagerImpl.startUpload|.blobsByName' NEXUS-31395"
@@ -1570,7 +1571,8 @@ function f_request2csv() {
         # Or IQ uses: "%clientHost %l %user [%date] \"%requestURL\" %statusCode %bytesSent %elapsedTime \"%header{User-Agent}\""
         # If _patter_str is still empty, doing best guess.
         if [ -z "${_pattern_str}" ]; then
-            local _tmp_first_line="$(rg --no-filename -m1 -z '\b20\d\d.\d\d.\d\d' ${_g_opt} "${_glob}")"
+            local _tmp_tmp_first_line="$(rg --no-filename -m1 -z '\b20\d\d.\d\d.\d\d' ${_g_opt} "${_glob}")"
+            local _tmp_first_line="$(echo "${_tmp_tmp_first_line}" | tr -d "'()\$")" # if the line contains single quote, the rg may not work
             #echo "# first line: ${_tmp_first_line}" >&2
             if echo "${_tmp_first_line}"   | rg -q '^([^ ]+) ([^ ]+) ([^ ]+) \[([^\]]+)\] "([^"]+)" ([^ ]+) ([^ ]+) ([^ ]+) ([^ ]+) "([^"]*)" \[([^\]]+)\]$'; then
                 _pattern_str='%clientHost %l %user [%date] "%requestURL" %statusCode %header{Content-Length} %bytesSent %elapsedTime "%header{User-Agent}" [%thread]'
@@ -1652,6 +1654,8 @@ function f_reqsFromCSV() {
     local _file="${1:-"request.csv"}"
     local _where="${2}"
     local _elapsedTime_gt="${3:-"7000"}"
+    local _limit="${4:-"${_REQ_LIMIT:-"40"}"}"
+
     if [ -n "${_file}" ] && [ ! -f "${_file}" ]; then
         _file="$(_find "${_file}")"
     fi
@@ -1662,7 +1666,7 @@ function f_reqsFromCSV() {
     if [ -n "${_where}" ] && [[ ! "${_where}" =~ [[:space:]]*(AND|and)[[:space:]] ]]; then
         _where="AND ${_where}"
     fi
-    local _sql="SELECT clientHost, user, date, requestURL, statusCode, bytesSent ${_extra_cols}, elapsedTime, CAST((CAST(bytesSent as INT) / CAST(elapsedTime as INT)) as DECIMAL(10, 2)) as bytes_per_ms, TIME(CAST((julianday(DATE('now')||' '||substr(date,13,8))  - 2440587.5) * 86400.0 - elapsedTime/1000 AS INT), 'unixepoch') as started_time FROM ${_file} WHERE elapsedTime >= ${_elapsedTime_gt} ${_where} order by ${_REQ_ORDER_BY:-"elapsedTime DESC"} limit ${_REQ_LIMIT:-"40"}"
+    local _sql="SELECT clientHost, user, date, requestURL, statusCode, bytesSent ${_extra_cols}, elapsedTime, CAST((CAST(bytesSent as INT) / CAST(elapsedTime as INT)) as DECIMAL(10, 2)) as bytes_per_ms, TIME(CAST((julianday(DATE('now')||' '||substr(date,13,8))  - 2440587.5) * 86400.0 - elapsedTime/1000 AS INT), 'unixepoch') as started_time FROM ${_file} WHERE elapsedTime >= ${_elapsedTime_gt} AND bytes_per_ms < 100 ${_where} order by ${_REQ_ORDER_BY:-"elapsedTime DESC"} limit ${_limit:-"40"}"
     echo "# SQL: ${_sql}" >&2
     q -O -d"," -T --disable-double-double-quoting -H "${_sql}"
 }
