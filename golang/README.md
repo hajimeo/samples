@@ -23,4 +23,4 @@ When a Golang module uses "helpers", may want to use *one* of the following comm
 go get -u -t -v github.com/hajimeo/samples/golang/helpers@latest
 go mod edit -replace github.com/hajimeo/samples/golang/helpers=$HOME/IdeaProjects/samples/golang/helpers
 ```
- and maybe `go mod tidy`, `go list -m -u all && go get -u all`.
+ and maybe `go list -m -u all && go get -u all` (`go get -u ./...`), and `go mod tidy`.
