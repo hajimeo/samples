@@ -278,7 +278,7 @@ def applog2table(filepath, tablename="t_applog", max_file_size=(1024 * 1024 * 10
 
 
 def etl_request(log_suffix=".log", max_file_size=(1024 * 1024 * 100), add_startTime=True, tablename="t_request"):
-    if ju.exists(tablename) is False:
+    if ju.exists(tablename) is False and os.path.exists("./_filtered/request.csv"):
         # If request.*csv* exists, use that. if not, logs2table, which is slower.
         _ = ju.load_csvs(src="./_filtered/", include_ptn="request.csv", max_file_size=(max_file_size * 5),
                          conn=ju.connect())
@@ -333,9 +333,9 @@ def etl(path="", log_suffix=".log", dist="./_filtered", max_file_size=(1024 * 10
         ju._system(
             ju._SH_EXECUTABLE + " -c '[ ! -s /tmp/log_search.sh ] && curl -s --compressed https://raw.githubusercontent.com/hajimeo/samples/master/bash/log_search.sh -o /tmp/log_search.sh; [ ! -d \"%s\" ] && mkdir \"%s\"'" % (
                 dist, dist))
-        ju._system(
-            ju._SH_EXECUTABLE + " -c '%s[ -d \"%s\" ] && . /tmp/log_search.sh && f_request2csv \"\" \"%s\" 2>/dev/null && f_audit2json \"\" \"%s\"'" % (
-                "cd %s;" % extracted_dir if extracted_dir else "", dist, dist, dist))
+        ju._system(# f_request2csv \"\" \"%s\" 2>/dev/null &&
+            ju._SH_EXECUTABLE + " -c '%s[ -d \"%s\" ] && . /tmp/log_search.sh && f_audit2json \"\" \"%s\"'" % (
+                "cd %s;" % extracted_dir if extracted_dir else "", dist, dist))
         # system-filestores from sysinfo.json
         _save_json("sysinfo\.json", "%s/system-filestores.json" % dist, "system-filestores")
         # extracting from DB export.json files
