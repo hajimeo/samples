@@ -73,7 +73,7 @@ Read one file and output only necessary lines.
     find ./threads_per_dump -type f -name '[0-9]*_*.out' | xargs -P3 -t -I{} bash -c '_d="$(basename "{}" ".out")";echolines "{}" "^\".+" "" "./threads_per_thread/${_d}"'
 
 ## Durations
-NOTE: "rg" is used in the example because it is faster than this tool to filter.
+NOTE: "rg" is used several times in the below examples because it is faster than this tool for filtering the results.
 
 ### For each line per thread #with thread+username+classnames:
     export ELAPSED_REGEX="^\d\d\d\d-\d\d-\d\d.(\d\d:\d\d:\d\d.\d\d\d)" ASCII_DISABLED=Y #ELAPSED_KEY_REGEX="(\[qtp\S+\s\S*\s\S+)"
@@ -89,6 +89,12 @@ NOTE: "rg" is used in the example because it is faster than this tool to filter.
     echolines "./log/nexus.log" " - ==>  Preparing:" "(^.+ - <== .+)" | rg '^# (.+)' -o -r '$1'    #| sort -t'|' -k3n
 ### NXRM3: Specific method, which stops if 0 update, and related log lines:
     echolines "./log/nexus.log" "trimBrowseNodes - ==>  Preparing:" "(^.+Updates: 0)" | tee trimBrowseNodes.log | rg '^# (.+)' -o -r '$1' > trimBrowseNodes_dur.out
+### NXRM3: (estimated) durations by checking org.apache.http = DEBUG, http-outgoing-\d+
+    export ELAPSED_REGEX="^\d\d\d\d-\d\d-\d\d.(\d\d:\d\d:\d\d.\d\d\d)" ASCII_DISABLED=Y
+    #rg '2025-08-27 16:.+qtp173256813-1890.+DefaultManagedHttpClientConnection - http-outgoing-\d+: (set socket timeout|Close connection)' ./log/nexus.log
+    rg '2025-08-27 16:.+qtp173256813-1890.+.(MainClientExec - Executing request|DefaultManagedHttpClientConnection - http-outgoing-\d+: Close connection)' ./log/nexus.log > qtp173256813-1890_executing_request.out
+	echolines ./qtp173256813-1890_executing_request.out "MainClientExec - Executing request (.+)" "^.+Close connection.*" | rg '^# ' | sort -t'|' -k3n
+
 ### NXRM3: the first 30 S3 pool requests (with org.apache.http = DEBUG. This example also checks 'Connection leased'):
     export ELAPSED_REGEX="^\d\d\d\d-\d\d-\d\d.(\d\d:\d\d:\d\d.\d\d\d)" ELAPSED_KEY_REGEX="\[(s3-parallel-[^\]]+)"
     rg -m30 '\[s3-parallel-.+ Connection (request|leased|released):' ./log/nexus.log > connections.out
