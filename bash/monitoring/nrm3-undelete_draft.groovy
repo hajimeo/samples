@@ -75,6 +75,7 @@ class RBSs {
 }
 
 def main(params) {
+    def blobIdPtnNew = '([a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12})@([0-9]]{4})-([0-9]{2})-([0-9]{2})T([0-9]{2}):([0-9]{2})'
     def blobIdPtn = '([a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12})'
     def lineCounter = 0
     def restoredNum = 0
@@ -97,14 +98,26 @@ def main(params) {
     for (line in blobIDs) {
         lineCounter++
         try {
-            def match = line =~ blobIdPtn
+            def match = line =~ blobIdPtnNew
             if (!match) {
-                log.warn("#${lineCounter}: '${line}' does not contain blobId")
-                continue
+                match = line =~ blobIdPtn
+                if (!match) {
+                    log.warn("#${lineCounter}: '${line}' does not contain blobId")
+                    continue
+                }
             }
             log.debug("match = ${match}")
             String blobId = match[0][1]
             BlobId blobIdObj = new BlobId(blobId)
+            if ((match[0]).size() > 2) {
+                def year = match[0][2] as Integer
+                def month = match[0][3] as Integer
+                def day = match[0][4] as Integer
+                def hour = match[0][5] as Integer
+                def minute = match[0][6] as Integer
+                def blobCreatedRef = java.time.OffsetDateTime.of(year, month, day, hour, minute, 0, 0, java.time.ZoneOffset.UTC)
+                blobIdObj = new BlobId(blobId, blobCreatedRef)
+            }
             Blob blob = store.get(blobIdObj, true)
             if (!blob) {
                 log.warn("No actual blob file for ${blobId}")
@@ -163,7 +176,7 @@ def main(params) {
             restoredNum++
         }
         catch (Exception e) {
-            log.warn("Exception while un-deleting from line:{}\n{}", line, e.getMessage())
+            log.warn("Exception while un-deleting from line:{} - {}", line, e.getMessage())
             if (params.dryRun) {    // If dryRun stops at the exception
                 throw e
             }
