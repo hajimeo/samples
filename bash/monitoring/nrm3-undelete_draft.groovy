@@ -75,8 +75,10 @@ class RBSs {
 }
 
 def main(params) {
-    def blobIdPtnNew = '([a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12})@([0-9]]{4})-([0-9]{2})-([0-9]{2})T([0-9]{2}):([0-9]{2})'
-    def blobIdPtn = '([a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12})'
+    def blobIdPtnNew = '([a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12})@([0-9]{4})-([0-9]{2})-([0-9]{2})T([0-9]{2}):([0-9]{2}).*'
+    // 2025/09/08/06/07/aac3683b-111f-4d3d-96da-811e8cf23a0f
+    def blobIdPtnNewPath = '/?([0-9]{4})/([0-9]{2})/([0-9]{2})/([0-9]{2})/([0-9]{2})/([a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}).*'
+    def blobIdPtn = '([a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}).*'
     def lineCounter = 0
     def restoredNum = 0
     // Blobs deleted after this time will be ignored
@@ -96,26 +98,44 @@ def main(params) {
     // 'params' should contain 'blobIDs', 'blobStore', 'isOrient', 'dryRun', and 'debug'
     log.info("Checking ${blobIDs.length} blobIds with blobStore: ${params.blobStore}, isOrient: ${params.isOrient}, dryRun: ${params.dryRun}, debug: ${params.debug}")
     for (line in blobIDs) {
+        log.debug("line = ${line}")
         lineCounter++
         try {
-            def match = line =~ blobIdPtnNew
-            if (!match) {
-                match = line =~ blobIdPtn
-                if (!match) {
-                    log.warn("#${lineCounter}: '${line}' does not contain blobId")
-                    continue
+            def blobCreatedRef = null
+            def blobId = ""
+            def match = line =~ blobIdPtnNewPath
+            if (match) {
+                blobId = match[0][6] as String
+                def year = match[0][1] as Integer
+                def month = match[0][2] as Integer
+                def day = match[0][3] as Integer
+                def hour = match[0][4] as Integer
+                def minute = match[0][5] as Integer
+                blobCreatedRef = java.time.OffsetDateTime.of(year, month, day, hour, minute, 0, 0, java.time.ZoneOffset.UTC)
+            } else {
+                match = line =~ blobIdPtnNew
+                if (match) {
+                    blobId = match[0][1] as String
+                    def year = match[0][2] as Integer
+                    def month = match[0][3] as Integer
+                    def day = match[0][4] as Integer
+                    def hour = match[0][5] as Integer
+                    def minute = match[0][6] as Integer
+                    blobCreatedRef = java.time.OffsetDateTime.of(year, month, day, hour, minute, 0, 0, java.time.ZoneOffset.UTC)
+                } else {
+                    match = line =~ blobIdPtn
+                    if (match) {
+                        blobId = match[0][1] as String
+                    } else {
+                        log.warn("#${lineCounter}: '${line}' does not contain blobId")
+                        continue
+                    }
                 }
             }
-            log.debug("match = ${match}")
-            String blobId = match[0][1]
+            log.debug("match[0] = ${match[0]}")
             BlobId blobIdObj = new BlobId(blobId)
-            if ((match[0]).size() > 2) {
-                def year = match[0][2] as Integer
-                def month = match[0][3] as Integer
-                def day = match[0][4] as Integer
-                def hour = match[0][5] as Integer
-                def minute = match[0][6] as Integer
-                def blobCreatedRef = java.time.OffsetDateTime.of(year, month, day, hour, minute, 0, 0, java.time.ZoneOffset.UTC)
+            if (blobCreatedRef) {
+                log.debug("blobCreatedRef = ${blobCreatedRef.toString()}")
                 blobIdObj = new BlobId(blobId, blobCreatedRef)
             }
             Blob blob = store.get(blobIdObj, true)
@@ -146,18 +166,26 @@ def main(params) {
                 continue
             }
             // Remove soft delete flag then restore blob
-            if (!params.dryRun) {
-                if (!blobAttributes.deleted) {
-                    log.debug("BlobId:{} is not deleted, so not un-deleting.", blobId)
-                } else {
-                    log.info("Un-deleting blobId:{}", blobId)
-                    // from org.sonatype.nexus.blobstore.BlobStoreSupport.undelete
+            if (!blobAttributes.deleted) {
+                log.debug("BlobId:{} is not deleted, so not un-deleting.", blobId)
+            } else {
+                log.info("Un-deleting blobId:{} (DryRun:{})", blobId, params.dryRun)
+                def softDeletedLocation = blobAttributes.getSoftDeletedLocation();
+                if (softDeletedLocation.isPresent()) {
+                    log.debug("Deleting softDeletedLocation:{} (DryRun:{})", softDeletedLocation.get(), params.dryRun)
+                    if (!params.dryRun) {
+                        store.deleteCopiedAttributes(blobIdObj, softDeletedLocation.get())
+                    }
+                }
+                if (!params.dryRun) {
+                    // From org.sonatype.nexus.blobstore.BlobStoreSupport.undelete
                     blobAttributes.setDeleted(false)
                     //blobAttributes.setDeletedReason(null);    // Keeping this one so that can find the props edited by this task
+                    blobAttributes.setSoftDeletedLocation(null);
                     store.doUndelete(blobIdObj, blobAttributes)
                     blobAttributes.store()
-                    log.debug("blobAttributes:{}", blobAttributes)
                 }
+                log.debug("Undeleted blobAttributes:{} (DryRun:{})", blobAttributes, params.dryRun)
             }
             log.info("Restoring blobId:{} (DryRun:{})", blobId, params.dryRun)
             def className = RBSs.lookupRestoreBlobStrategy(formatName, params.isOrient)
