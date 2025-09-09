@@ -3,6 +3,7 @@ usage() {
     cat << 'EOF'
 PURPOSE:
     Undelete one or multiple blob IDs (call this script concurrently for many blob IDs)
+    This script is for Nexus version 3.83 and higher.
 
 NOTE:
     As the name/path of RestoreBlobStrategy can be different by Nexus version, this script is not guaranteed to work for all Nexus versions. Please test it first.
@@ -13,7 +14,7 @@ REQUIREMENTS:
 
 EXAMPLES:
     cd /some/workDir
-    curl --compressed -O -L https://raw.githubusercontent.com/sonatype-nexus-community/nexus-monitoring/main/scripts/nrm3-undelete.sh
+    curl --compressed -o nrm3-undelete.sh -L https://raw.githubusercontent.com/sonatype-nexus-community/nexus-monitoring/main/scripts/nrm3-undelete-3.83.sh
     export _ADMIN_USER="admin" _ADMIN_PWD="******" _NEXUS_URL="http://localhost:8081/" #_DRY_RUN="true" _IS_ORIENT="true"
     bash ./nrm3-undelete.sh -I      # only once
     bash ./nrm3-undelete.sh -s default -b <blobIDs>
