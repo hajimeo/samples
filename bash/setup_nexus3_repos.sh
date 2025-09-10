@@ -116,7 +116,7 @@ _RESP_FILE=""
 # To re-install: _RECREATE_ALL=Y f_install_nexus3 "<version>" "<dbname>"
 # To install HA instances (port is automatic): _NEXUS_ENABLE_HA=Y _NXRM3_INSTALL_DIR="./nxrm3hatest1st"  f_install_nexus3 "" "nxrmlatestha"
 #     2nd node: _NEXUS_ENABLE_HA=Y _NXRM3_INSTALL_DIR="./nxrm3hatest2nd" f_install_nexus3 "" "nxrmlatestha"
-# To upgrade (from ${_dirpath}/): tar -xvf $HOME/.nexus_executable_cache/nexus-3.83.0-08-mac-aarch_64.tar.gz
+# To upgrade (from ${_dirpath}/): tar -xvf $HOME/.nexus_executable_cache/nexus-3.83.1-03-mac-aarch_64.tar.gz
 function f_install_nexus3() {
     local __doc__="Install specific NXRM3 version (to recreate sonatype-work and DB, _RECREATE_ALL=Y)"
     local _ver="${1:-"${r_NEXUS_VERSION}"}"     # 'latest' or '3.71.0-03-java17'
@@ -132,6 +132,13 @@ function f_install_nexus3() {
     if [ -z "${_dbname}" ] && _isYes "${_NEXUS_ENABLE_HA:-"${r_NEXUS_ENABLE_HA}"}"; then
         _log "ERROR" "HA is requested but no DB name"
         return 1
+    fi
+    if [ -n "${_dbname}" ]; then
+        local _dbname_mod="${_dbname//[^[:alnum:]]/}"
+        if [[ "${_dbname_mod}" != "${_dbname}" ]]; then
+            _log "INFO" "DB name was modified: ${_dbname} -> ${_dbname_mod} ..."; sleep 3
+            _dbname="${_dbname_mod}"
+        fi
     fi
 
     if [ -z "${_ver}" ] || [ "${_ver}" == "latest" ]; then
@@ -225,12 +232,6 @@ function f_install_nexus3() {
     # optional
     _upsert "${_prop}" "nexus.security.randompassword" "false" || return $?
     _upsert "${_prop}" "nexus.onboarding.enabled" "false" || return $?
-    _upsert "${_prop}" "nexus.scripts.allowCreation" "true" || return $?
-    if ! _isYes "${_NEXUS_NO_AUTO_TASKS:-"${r_NEXUS_NO_AUTO_TASKS}"}"; then
-        _upsert "${_prop}" "nexus.elasticsearch.autoRebuild" "false" || return $?
-        _upsert "${_prop}" "nexus.search.updateIndexesOnStartup.enabled" "false" || return $?
-        _upsert "${_prop}" "nexus.browse.component.tree.automaticRebuild" "false" || return $?
-    fi
 
     if [ -n "${_dbname}" ]; then
         _upsert "${_prop}" "nexus.datastore.enabled" "true" || return $?
@@ -339,7 +340,8 @@ function f_setup_maven() {
 
     # If no xxxx-hosted, create it
     if ! _is_repo_available "${_prefix}-hosted"; then
-        _apiS '{"action":"coreui_Repository","method":"create","data":[{"attributes":{"maven":{"versionPolicy":"MIXED","layoutPolicy":"PERMISSIVE"},"storage":{"blobStoreName":"'${_bs_name}'","writePolicy":"ALLOW_ONCE","strictContentTypeValidation":true'${_extra_sto_opt}'},"cleanup":{"policyName":[]}},"name":"'${_prefix}'-hosted","format":"","type":"","url":"","online":true,"recipe":"maven2-hosted"}],"type":"rpc"}' || return $?
+        # using versionPolicy = MIXED and layoutPolicy = PERMISSIVE for various tests
+        _apiS '{"action":"coreui_Repository","method":"create","data":[{"attributes":{"maven":{"versionPolicy":"MIXED","layoutPolicy":"PERMISSIVE"},"storage":{"blobStoreName":"'${_bs_name}'","writePolicy":"ALLOW","strictContentTypeValidation":true'${_extra_sto_opt}'},"cleanup":{"policyName":[]}},"name":"'${_prefix}'-hosted","format":"","type":"","url":"","online":true,"recipe":"maven2-hosted"}],"type":"rpc"}' || return $?
     fi
     # add some data for xxxx-hosted
     if [ -s "${_TMP%/}/junit-4.12.jar" ]; then
@@ -382,7 +384,7 @@ function f_setup_pypi() {
 
     # If no xxxx-hosted, create it
     if ! _is_repo_available "${_prefix}-hosted"; then
-        _apiS '{"action":"coreui_Repository","method":"create","data":[{"attributes":{"storage":{"blobStoreName":"'${_bs_name}'","writePolicy":"ALLOW_ONCE","strictContentTypeValidation":true'${_extra_sto_opt}'},"cleanup":{"policyName":[]}},"name":"'${_prefix}'-hosted","format":"","type":"","url":"","online":true,"recipe":"pypi-hosted"}],"type":"rpc"}' || return $?
+        _apiS '{"action":"coreui_Repository","method":"create","data":[{"attributes":{"storage":{"blobStoreName":"'${_bs_name}'","writePolicy":"ALLOW","strictContentTypeValidation":true'${_extra_sto_opt}'},"cleanup":{"policyName":[]}},"name":"'${_prefix}'-hosted","format":"","type":"","url":"","online":true,"recipe":"pypi-hosted"}],"type":"rpc"}' || return $?
     fi
     # add some data for xxxx-hosted
     if [ -s "${_TMP%/}/mydummyproject-3.0.0.tar.gz" ] || curl -sf -o ${_TMP%/}/mydummyproject-3.0.0.tar.gz -L "https://github.com/hajimeo/samples/raw/master/misc/mydummyproject-3.0.0.tar.gz"; then
@@ -450,7 +452,7 @@ function f_setup_npm() {
 
     # If no xxxx-hosted, create it
     if ! _is_repo_available "${_prefix}-hosted"; then
-        _apiS '{"action":"coreui_Repository","method":"create","data":[{"attributes":{"storage":{"blobStoreName":"'${_bs_name}'","writePolicy":"ALLOW_ONCE","strictContentTypeValidation":true'${_extra_sto_opt}'},"cleanup":{"policyName":[]}},"name":"'${_prefix}'-hosted","format":"","type":"","url":"","online":true,"recipe":"npm-hosted"}],"type":"rpc"}' || return $?
+        _apiS '{"action":"coreui_Repository","method":"create","data":[{"attributes":{"storage":{"blobStoreName":"'${_bs_name}'","writePolicy":"ALLOW","strictContentTypeValidation":true'${_extra_sto_opt}'},"cleanup":{"policyName":[]}},"name":"'${_prefix}'-hosted","format":"","type":"","url":"","online":true,"recipe":"npm-hosted"}],"type":"rpc"}' || return $?
     fi
     # add some data for xxxx-hosted
     for i in {1..3}; do # 2.0.0 is used in npm-proxy, 1.0.0 will be used in npm-prop-hosted
@@ -464,7 +466,7 @@ function f_setup_npm() {
     # https://help.sonatype.com/integrations/iq-server-and-repository-management/iq-server-and-nxrm-3.x/preventing-namespace-confusion
     # https://help.sonatype.com/iqserver/managing/policy-management/reference-policy-set-v6
     if ! _is_repo_available "${_prefix}-prop-hosted"; then
-        _apiS '{"action":"coreui_Repository","method":"create","data":[{"attributes":{"storage":{"blobStoreName":"'${_bs_name}'","writePolicy":"ALLOW_ONCE","strictContentTypeValidation":true'${_extra_sto_opt}'},"component":{"proprietaryComponents":true},"cleanup":{"policyName":[]}},"name":"'${_prefix}'-prop-hosted","format":"","type":"","url":"","online":true,"recipe":"npm-hosted"}],"type":"rpc"}' # || return $? # this would fail if version is not 3.30
+        _apiS '{"action":"coreui_Repository","method":"create","data":[{"attributes":{"storage":{"blobStoreName":"'${_bs_name}'","writePolicy":"ALLOW","strictContentTypeValidation":true'${_extra_sto_opt}'},"component":{"proprietaryComponents":true},"cleanup":{"policyName":[]}},"name":"'${_prefix}'-prop-hosted","format":"","type":"","url":"","online":true,"recipe":"npm-hosted"}],"type":"rpc"}' # || return $? # this would fail if version is not 3.30
     fi
     if [ ! -s "${_TMP%/}/sonatype-policy-demo-1.0.0.tgz" ]; then
         curl -sSf -o "${_TMP%/}/sonatype-policy-demo-1.0.0.tgz" -L "https://registry.npmjs.org/@sonatype/policy-demo/-/policy-demo-1.0.0.tgz"
@@ -933,7 +935,7 @@ function f_setup_rubygem() {
 
     # If no xxxx-hosted, create it
     if ! _is_repo_available "${_prefix}-hosted"; then
-        _apiS '{"action":"coreui_Repository","method":"create","data":[{"attributes":{"storage":{"blobStoreName":"'${_bs_name}'","writePolicy":"ALLOW_ONCE","strictContentTypeValidation":true'${_extra_sto_opt}'},"cleanup":{"policyName":[]}},"name":"'${_prefix}'-hosted","format":"","type":"","url":"","online":true,"recipe":"rubygems-hosted"}],"type":"rpc"}' || return $?
+        _apiS '{"action":"coreui_Repository","method":"create","data":[{"attributes":{"storage":{"blobStoreName":"'${_bs_name}'","writePolicy":"ALLOW","strictContentTypeValidation":true'${_extra_sto_opt}'},"cleanup":{"policyName":[]}},"name":"'${_prefix}'-hosted","format":"","type":"","url":"","online":true,"recipe":"rubygems-hosted"}],"type":"rpc"}' || return $?
     fi
     # add some data for xxxx-hosted
     if [ -s "${_TMP%/}/loudmouth-0.2.4.gem" ]; then
@@ -1406,7 +1408,7 @@ function f_setup_cargo() {
         _apiS '{"action":"coreui_Repository","method":"create","data":[{"attributes":{"proxy":{"remoteUrl":"https://index.crates.io/","contentMaxAge":1440,"metadataMaxAge":1440},"replication":{"preemptivePullEnabled":false},"httpclient":{"blocked":false,"autoBlock":true,"connection":{"useTrustStore":false}},"storage":{"blobStoreName":"'${_bs_name}'","strictContentTypeValidation":true'${_extra_sto_opt}'},"negativeCache":{"enabled":true,"timeToLive":1440},"cleanup":{"policyName":[]}},"name":"'${_prefix}'-proxy","format":"","type":"","url":"","online":true,"routingRuleId":"","authEnabled":false,"httpRequestSettings":false,"recipe":"cargo-proxy"}],"type":"rpc"}' || return $?
     fi
     if ! _is_repo_available "${_prefix}-hosted"; then
-        _apiS '{"action":"coreui_Repository","method":"create","data":[{"attributes":{"storage":{"blobStoreName":"'${_bs_name}'","strictContentTypeValidation":true'${_extra_sto_opt}',"writePolicy":"ALLOW_ONCE"},"component":{"proprietaryComponents":false},"cleanup":{"policyName":[]}},"name":"'${_prefix}'-hosted","format":"","type":"","url":"","online":true,"recipe":"cargo-hosted"}],"type":"rpc"}' || return $?
+        _apiS '{"action":"coreui_Repository","method":"create","data":[{"attributes":{"storage":{"blobStoreName":"'${_bs_name}'","strictContentTypeValidation":true'${_extra_sto_opt}',"writePolicy":"ALLOW"},"component":{"proprietaryComponents":false},"cleanup":{"policyName":[]}},"name":"'${_prefix}'-hosted","format":"","type":"","url":"","online":true,"recipe":"cargo-hosted"}],"type":"rpc"}' || return $?
     fi
     if ! _is_repo_available "${_prefix}-group"; then
         _apiS '{"action":"coreui_Repository","method":"create","data":[{"attributes":{"storage":{"blobStoreName":"'${_bs_name}'","strictContentTypeValidation":true'${_extra_sto_opt}'},"group":{"memberNames":["'${_prefix}'-hosted","'${_prefix}'-proxy"]}},"name":"'${_prefix}'-group","format":"","type":"","url":"","online":true,"recipe":"cargo-group"}],"type":"rpc"}' || return $?
@@ -1873,6 +1875,7 @@ function _get_asset_NXRM2() {
 # If NXRM2, below curl also works:
 #   curl -D- -u admin:admin123 -T <(echo "test upload") "http://localhost:8081/nexus/content/repositories/raw-hosted/test/test.txt"
 #f_upload_asset "maven-releases" -F "maven2.groupId=keystores" -F "maven2.artifactId=my-test-jks" -F "maven2.version=20241024" -F "maven2.asset1.extension=jks" -F "maven2.asset1=@$HOME/IdeaProjects/samples/misc/standalone.localdomain.jks"
+#f_upload_asset "maven-hosted" -F "maven2.groupId=com.example.pkg" -F "maven2.artifactId=my-app" -F "maven2.version=1.0.7-20250306.221622-53" -F "maven2.asset1.extension=pom" -F "maven2.asset1=@./snapshot.pom"
 #time f_upload_asset "maven-hosted-s3" -F "maven2.groupId=testg" -F "maven2.artifactId=testa" -F "maven2.version=testv" -F "maven2.asset1.extension=zip" -F "maven2.asset1=@./test_20MB.zip"
 function f_upload_asset() {
     local __doc__="Upload one asset with Upload API"
@@ -2472,11 +2475,17 @@ function f_create_cleanup_policy() {
 function f_create_csel() {
     local __doc__="Create/add a test content selector"
     local _csel_name="${1:-"csel-test"}"
-    local _expression="${2:-"format == 'raw' and path =^ '/test/'"}" # TODO: currently can't use double quotes
-    local _repos="${3:-"*"}"
-    local _actions="${4:-"*"}"
+    local _expression="${2:-"path =^ '/'"}" # TODO: currently can't use double quotes. Probably no need "format == 'raw'" in newer versions
+    local _repo="${3}"
+    local _format="${4}"
+    local _actions="${5:-'"browse","read","edit","add","delete"'}"
     f_api "/service/rest/v1/security/content-selectors" "{\"name\":\"${_csel_name}\",\"description\":\"\",\"expression\":\"${_expression}\"}" || return $?
-    _apiS '{"action":"coreui_Privilege","method":"create","data":[{"id":"NX.coreui.model.Privilege-99","name":"'${_csel_name}'-priv","description":"","version":"","type":"repository-content-selector","properties":{"contentSelector":"'${_csel_name}'","repository":"'${_repos}'","actions":"'${_actions}'"}}],"type":"rpc"}'
+    if [ -z "${_repos}" ]; then
+        return 0
+    fi
+    # Newer version has "format" field
+    #_apiS '{"action":"coreui_Privilege","method":"create","data":[{"id":"NX.coreui.model.Privilege-99","name":"'${_csel_name}'-priv","description":"","version":"","type":"repository-content-selector","properties":{"contentSelector":"'${_csel_name}'","repository":"'${_repos}'","actions":"'${_actions}'"}}],"type":"rpc"}'
+    f_api "/service/rest/v1/security/privileges/repository-content-selector" '{"type":"repository-content-selector","name":"'${_csel_name}'-priv","description":"","contentSelector":"'${_csel_name}'","format":"'${_format}'","repository":"'${_repo}'","actions":['${_actions}']}' || return $?
 }
 
 # Create a test user and test role
@@ -2799,17 +2808,17 @@ function f_start_dummy_smtp() {
     local _cmd="mailhog"  # If not in the PATH, download it
     if ! type ${_cmd} &>/dev/null; then
         if [ ! -s "${_install_dir%/}/${_cmd}" ]; then
-            curl -o "${_install_dir%/}/${_cmd}" -L "https://github.com/hajimeo/samples/raw/master/misc/${_cmd}$(uname)_$(uname -m)" --compressed || return $?
+            curl -o "${_install_dir%/}/${_cmd}" -L "https://github.com/hajimeo/samples/raw/master/misc/${_cmd}_$(uname)_$(uname -m)" --compressed || return $?
             chmod u+x "${_install_dir%/}/${_cmd}" || return $?
         fi
         _cmd="${_install_dir%/}/${_cmd}"
     fi
 
-    eval "${_cmd} -smtp-bind-addr 0.0.0.0:${_smtp_port} -api-bind-addr 0.0.0.0:${_ui_api_port} -ui-bind-addr 0.0.0.0:${_ui_api_port}" &> ${_TMP%/}/${_cmd}_$$.log &
+    eval "${_cmd} -smtp-bind-addr 0.0.0.0:${_smtp_port} -api-bind-addr 0.0.0.0:${_ui_api_port} -ui-bind-addr 0.0.0.0:${_ui_api_port}" &> ${_TMP%/}/${FUNCNAME[0]}_$$.log &
     local _pid="$!"
     sleep 2
     echo "[INFO] Running ${_cmd} in background http://127.0.0.1:${_ui_api_port}/"
-    echo "       PID: ${_pid}  Log: ${_TMP%/}/${_cmd}_$$.log"
+    echo "       PID: ${_pid}  Log: ${_TMP%/}/${FUNCNAME[0]}_$$.log"
 }
 function f_setup_smtp_mailhog() {
     local _smtp_port="${1:-"1025"}"
@@ -3177,7 +3186,7 @@ function f_upload_dummies_maven() {
         local _ds_name="$(_get_datastore_name)"
         local _bs_name="$(_get_blobstore_name)"
         local _extra_sto_opt="$(_get_extra_sto_opt "${_ds_name}")"
-        _apiS '{"action":"coreui_Repository","method":"create","data":[{"attributes":{"maven":{"versionPolicy":"RELEASE","layoutPolicy":"STRICT"},"storage":{"blobStoreName":"'${_bs_name}'","writePolicy":"ALLOW_ONCE","strictContentTypeValidation":true'${_extra_sto_opt}'},"cleanup":{"policyName":[]}},"name":"'${_repo_name}'","format":"","type":"","url":"","online":true,"recipe":"maven2-hosted"}],"type":"rpc"}' || return $?
+        _apiS '{"action":"coreui_Repository","method":"create","data":[{"attributes":{"maven":{"versionPolicy":"RELEASE","layoutPolicy":"STRICT"},"storage":{"blobStoreName":"'${_bs_name}'","writePolicy":"ALLOW","strictContentTypeValidation":true'${_extra_sto_opt}'},"cleanup":{"policyName":[]}},"name":"'${_repo_name}'","format":"","type":"","url":"","online":true,"recipe":"maven2-hosted"}],"type":"rpc"}' || return $?
     fi
 
     # _SEQ_START is for continuing
@@ -3377,6 +3386,7 @@ function _update_npm_tgz() {
     rm -rf ${_tmpdir%/}
 }
 
+# TODO: create f_upload_dummies_pypi
 function f_upload_dummy_pypi() {
     local __doc__="Upload dummy .whl into PyPI hosted repository"
     local _repo_name="${1:-"pypi-hosted"}"
@@ -3537,6 +3547,7 @@ function f_upload_dummies_rubygem() {
 }
 
 #_IMAGE_NAME="retaintest" f_upload_dummies_docker
+#_IMAGE_NAME="path-based-test" f_upload_dummies_docker "${_NEXUS_DOCKER_HOSTNAME}:8443/docker-hosted" "1"
 function f_upload_dummies_docker() {
     local __doc__="Upload dummy docker images into docker hosted repository (requires 'docker' command)"
     local _host_port="${1:-"${_NEXUS_DOCKER_HOSTNAME}:18182"}"
@@ -3552,17 +3563,19 @@ function f_upload_dummies_docker() {
     local _seq_end="$((${_seq_start} + ${_how_many} - 1))"
     local _seq="seq ${_seq_start} ${_seq_end}"
     # docker login first
-    _docker_login "${_host_port}" "" "${_usr}" "${_pwd}" "${_cmd}" || return $?
+    _host_port="$(_docker_login "${_host_port}" "" "${_usr}" "${_pwd}" "${_cmd}")" || return $?
+    _log "INFO" "docker login completed for ${_host_port}"
     for i in $(eval "${_seq}"); do
         for j in $(eval "seq 1 ${_parallel}"); do
             local _img="dummy${i}-${j}:tag$(date +'%H%M%S')"
             if [ -n "${_image_name}" ]; then
                 _img="${_image_name}:tag-${i}-${j}-$(date +'%H%M%S')"
             fi
-            (_DOCKER_NO_LOGIN="Y" _populate_docker_hosted "${_base_img}" "${_host_port}" "${_img}" &>/dev/null &&  echo "[$(date +'%H:%M:%S')] Pushed dummy image '${_img}' to ${_host_port}") &
+            _log "INFO" "Populating ${_host_port} with ${_img} / base image: ${_base_img} ..."
+            (_DOCKER_NO_LOGIN="Y" _populate_docker_hosted "${_base_img}" "${_host_port}" "${_img}" &> ${_TMP%/}/${FUNCNAME[0]}_$$_${i}_${j}.out && echo "[$(date +'%H:%M:%S')] INFO Pushed dummy image '${_img}' (${_base_img}) to ${_host_port} completed" || echo "[$(date +'%H:%M:%S')] WARN Pushed dummy image '${_img}' (${_base_img}) to ${_host_port} failed") &
         done
         wait
-    done 2>/tmp/f_upload_dummies_docker_$$.err
+    done 2>${_TMP%/}/${FUNCNAME[0]}_$$.err
     _log "INFO" "Completed. May want to run 'f_delete_dummy_docker_images_from_local \"${_host_port}\"' to remove dummy images."
 }
 
@@ -4060,8 +4073,8 @@ function _export_postgres_config() {
 # Example export command (Using --no-owner and --clean, but not using --data-only as needs CREATE statements. -t with * requires PostgreSQL v12 or higher):
 # Other interesting tables: -t "*_browse_node" -t "*deleted_blob*" -t "change_blobstore"
 #pg_dump -d ${_DBNAME} -c -O -Z 6 -f ./${_DBNAME}.sql.gz
-function f_export_postgresql_component() {
-    local __doc__="Export specific tables from PostgreSQL, like OrientDB's component database"
+function f_backup_postgresql_component() {
+    local __doc__="Export specific tables from PostgreSQL, like OrientDB's component database (no browse tables)"
     local _exportTo="${1:-"./component_db_$(date +"%Y%m%d%H%M%S").sql.gz"}"
     local _fmt="${2}"
     local _workingDirectory="${3}"
@@ -4071,14 +4084,15 @@ function f_export_postgresql_component() {
     fi
     [ -z "${_fmt}" ] && _fmt="*"
     _export_postgres_config "${_workingDirectory%/}/etc/fabric/nexus-store.properties" || return $?
-    PGGSSENCMODE=disable pg_dump -h ${_DBHOST} -p ${_DBPORT:-"5432"} -U ${_DBUSER} -d ${_DBNAME} -c -O -t "repository" -t "${_fmt}_content_repository" -t "${_fmt}_component" -t "${_fmt}_component_tag" -t "${_fmt}_asset" -t "${_fmt}_asset_blob" -t "tag" -Z 6 -f "${_exportTo}"
+    PGGSSENCMODE=disable pg_dump -h ${_DBHOST} -p ${_DBPORT:-"5432"} -U ${_DBUSER} -d ${_DBNAME} -c -O -t "repository" -t "${_fmt}_content_repository" -t "${_fmt}_component" -t "${_fmt}_component_tag" -t "${_fmt}_asset" -t "${_fmt}_asset_blob" -t "tag" -Z 6 -f "${_exportTo}" || return $?
+    ls -l "${_exportTo}"
 }
 
 # How to verify
 #VACUUM(FREEZE, ANALYZE, VERBOSE);  -- or FULL (FREEZE marks the table as vacuumed)
 #SELECT relname, reltuples as row_count_estimate FROM pg_class WHERE relnamespace ='public'::regnamespace::oid AND relkind = 'r' AND relname NOT LIKE '%_browse_%' AND (relname like '%repository%' OR relname like '%component%' OR relname like '%asset%') ORDER BY 2 DESC LIMIT 40;
 function f_restore_postgresql_component() {
-    local __doc__="Restore f_export_postgresql_component generated gzip file into the database"
+    local __doc__="Restore f_backup_postgresql_component generated gzip file into the database"
     local _sql_file="${1}"
     local _workingDirectory="${2}"
     if [ -z "${_workingDirectory}" ]; then
@@ -4108,6 +4122,10 @@ function f_restore_postgresql_component() {
     _log "INFO" "To avoid 'Unable find secret for the specified token error'"
     echo "psql -d ${_DBNAME} -c \"UPDATE repository SET attributes = jsonb_set(attributes, '{httpclient,authentication,password}','\\\"\\\"'::jsonb) WHERE attributes->'httpclient'->'authentication'->>'password' is not null;\""
 }
+# To test MissingBlobException:
+#   f_backup_postgresql_component "" "pypi"
+#   f_delete_all_assets "pypi-hosted" && f_run_tasks_by_type "assetBlob.cleanup"
+#   f_restore_postgresql_component
 
 
 
