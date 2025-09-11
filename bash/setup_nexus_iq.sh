@@ -1044,21 +1044,23 @@ function f_dummy_scans() {
 }
 
 #export _IQ_URL="https://nxiqha-k8s.standalone.localdomain/"
-#_CREATE_UNDER_ORG="test-org" f_dummy_scans_random
-function f_dummy_scans_random() {
-    local __doc__="Generate dummy reports by scanning same target but different application"
-    local _scan_target="${1}"
-    local _how_many="${2:-10}"
-    local _parallel="${3:-5}"
-    local _app_name_prefix="${4:-"dummy-app"}"
-    local _org_name_prefix="${5:-"dummy-org"}"
+#_CREATE_UNDER_ORG="test-org" f_dummy_orgs_apps_with_scans
+#_NO_SCAN="Y" f_dummy_orgs_apps_with_scans "1000"    # To just create 1000 applications
+function f_dummy_orgs_apps_with_scans() {
+    local __doc__="Generate dummy organisations, applications with dummy scan"
+    local _how_many="${1:-10}"  # how many applications to create
+    local _app_name_prefix="${2:-"dummy-app"}"
+    local _org_name_prefix="${3:-"dummy-org"}"
+    local _create_under_org="${4-"${_CREATE_UNDER_ORG:-"Sandbox Organization"}"}"
+    local _scan_target="${5-"${_SCAN_TARGET}"}"   # If not given, use maven-policy-demo-1.3.0.jar
     local _iq_stage="${6:-${_IQ_STAGE:-"develop"}}" #develop|build|stage-release|release|operate
-    local _create_under_org="${7-"${_CREATE_UNDER_ORG:-"Sandbox Organization"}"}"
+    local _no_scan="${7-"${_NO_SCAN}"}"
+    local _how_many_org="${8:-"${_HOW_MANY_ORG:-5}"}"   # Used for parallel *scan* and also for number of orgs
 
     local _seq_start="${_SEQ_START:-1}"
     local _seq_end="$((_seq_start + _how_many - 1))"
 
-    if [ -z "${_scan_target}" ]; then
+    if [[ ! "${_no_scan}" =~ [yY] ]] && [ -z "${_scan_target}" ]; then
         _log "INFO" "No scan target is given. Using ./maven-policy-demo-1.3.0.jar"
         if [ ! -s "${_TMP%/}/maven-policy-demo-1.3.0.jar" ]; then
             curl -o "${_TMP%/}/maven-policy-demo-1.3.0.jar" -L "https://repo1.maven.org/maven2/org/sonatype/maven-policy-demo/1.3.0/maven-policy-demo-1.3.0.jar" || return $?
@@ -1075,23 +1077,27 @@ function f_dummy_scans_random() {
     local _completed=false
     local _counter=0
     for i in $(eval "seq ${_seq_start} ${_seq_end}"); do
-        for j in $(eval "seq 1 ${_parallel}"); do
+        for j in $(eval "seq 1 ${_how_many_org}"); do
+            _counter=$((_counter + 1))
             local _this_org_id="$(f_api_orgId "${_org_name_prefix}${j}" "Y" "${_create_under_org}")"
             [ -z "${_this_org_id}" ] && return $((i * 10 + j))
-            f_api_create_app "${_app_name_prefix}${i}" "${_this_org_id}" || return $?
-            _counter=$((_counter + 1))
-            local _num=$((_counter + _seq_start - 1))
-            if [ ${_counter} -ge ${_how_many} ]; then
-                _log "INFO" "Scanning for ${_app_name_prefix}${_num} (last one) ..."
-                _SIMPLE_SCAN="Y" f_cli "${_scan_target}" "${_app_name_prefix}${_num}" "${_iq_stage}"
-                _completed=true
-                break
+            local _this_app_name="${_app_name_prefix}${_counter}"
+            f_api_create_app "${_this_app_name}" "${_this_org_id}" || return $?
+
+            if [[ ! "${_no_scan}" =~ [yY] ]]; then
+                _log "INFO" "Scanning for ${_this_app_name} (${_counter}/${_how_many})..."
+                _SIMPLE_SCAN="Y" f_cli "${_scan_target}" "${_this_app_name}" "${_iq_stage}" &>${_TMP%/}/${FUNCNAME[0]}_last.out &
             fi
-            _log "INFO" "Scanning for ${_app_name_prefix}${_num} ..."
-            _SIMPLE_SCAN="Y" f_cli "${_scan_target}" "${_app_name_prefix}${_num}" "${_iq_stage}" &>/dev/null &
+
+            if [ ${_counter} -ge ${_how_many} ]; then
+                _completed=true
+                break   # reached to _how_many, so break the inner loop
+            fi
         done
         wait
         if ${_completed}; then
+            _log "INFO" "Last Scan output:"
+            cat ${_TMP%/}/${FUNCNAME[0]}_last.out
             break
         fi
     done
@@ -1294,11 +1300,10 @@ function f_mvn() {
 
 ## Utility functions
 function _curl() {
-    local _sfx="$$_$RANDOM.out"
-    curl -sSf -u "${_IQ_CRED:-"${_ADMIN_USER}:${_ADMIN_PWD}"}" "$@" > "${_TMP%/}/${FUNCNAME[0]}_${_sfx}"
+    local _stdout="$(curl -sSf -u "${_IQ_CRED:-"${_ADMIN_USER}:${_ADMIN_PWD}"}" "$@")"
     local _rc=$?
-    # To make sure the stdout ends with a new line
-    printf "%s\n" "$(cat "${_TMP%/}/${FUNCNAME[0]}_${_sfx}")"
+    # To make sure the stdout ends with a new line, always adding a new line
+    printf "%s\n" "${_stdout}"
     return ${_rc}
 }
 
