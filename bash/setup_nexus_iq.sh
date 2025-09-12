@@ -1046,6 +1046,7 @@ function f_dummy_scans() {
 #export _IQ_URL="https://nxiqha-k8s.standalone.localdomain/"
 #_CREATE_UNDER_ORG="test-org" f_dummy_orgs_apps_with_scans
 #_NO_SCAN="Y" f_dummy_orgs_apps_with_scans "1000"    # To just create 1000 applications
+# TODO: this may not be working properly.
 function f_dummy_orgs_apps_with_scans() {
     local __doc__="Generate dummy organisations, applications with dummy scan"
     local _how_many="${1:-10}"  # how many applications to create
@@ -1300,10 +1301,10 @@ function f_mvn() {
 
 ## Utility functions
 function _curl() {
-    local _stdout="$(curl -sSf -u "${_IQ_CRED:-"${_ADMIN_USER}:${_ADMIN_PWD}"}" "$@")"
+    curl -sSf -u "${_IQ_CRED:-"${_ADMIN_USER}:${_ADMIN_PWD}"}" "$@"
     local _rc=$?
-    # To make sure the stdout ends with a new line, always adding a new line
-    printf "%s\n" "${_stdout}"
+    # Just to make sure the stdout ends with a new line
+    printf "\n"
     return ${_rc}
 }
 
