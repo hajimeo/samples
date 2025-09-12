@@ -1080,10 +1080,9 @@ function f_dummy_orgs_apps_with_scans() {
     for i in $(eval "seq ${_seq_start} ${_seq_end}"); do
         for j in $(eval "seq 1 ${_how_many_org}"); do
             _counter=$((_counter + 1))
-            local _this_org_id="$(f_api_orgId "${_org_name_prefix}${j}" "Y" "${_create_under_org}")"
-            [ -z "${_this_org_id}" ] && return $((i * 10 + j))
+            f_api_orgId "${_org_name_prefix}${j}" "Y" "${_create_under_org}" >/dev/null || return $?
             local _this_app_name="${_app_name_prefix}${_counter}"
-            f_api_create_app "${_this_app_name}" "${_this_org_id}" || return $?
+            f_api_create_app "${_this_app_name}" "${_org_name_prefix}${j}" || return $?
 
             if [[ ! "${_no_scan}" =~ [yY] ]]; then
                 _log "INFO" "Scanning for ${_this_app_name} (${_counter}/${_how_many})..."
@@ -1097,8 +1096,7 @@ function f_dummy_orgs_apps_with_scans() {
         done
         wait
         if ${_completed}; then
-            _log "INFO" "Last Scan output:"
-            cat ${_TMP%/}/${FUNCNAME[0]}_last.out
+            _log "INFO" "Last Scan output: ${_TMP%/}/${FUNCNAME[0]}_last.out"
             break
         fi
     done
