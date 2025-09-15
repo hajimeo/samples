@@ -133,31 +133,28 @@ def main(params) {
                 }
             }
             log.debug("match[0] = ${match[0]}")
-            BlobId blobIdObj = new BlobId(blobId)
-            if (blobCreatedRef) {
-                log.debug("blobCreatedRef = ${blobCreatedRef.toString()}")
-                blobIdObj = new BlobId(blobId, blobCreatedRef)
-            }
+            def blobIdStr = blobId + "@" + blobCreatedRef.toString()
+            def blobIdObj = new BlobId(blobId, blobCreatedRef)
             Blob blob = store.get(blobIdObj, true)
             if (!blob) {
-                log.warn("No actual blob file for ${blobId}")
+                log.warn("No actual blob file for ${blobIdStr}")
                 continue
             }
-            log.debug("Checking blobId:{}, headers:{}", blobId, blob.getHeaders())
+            log.debug("Processing blobId:{}, headers:{}", blobIdStr, blob.getHeaders())
             def blobAttributes = store.getBlobAttributes(blobIdObj) as BlobAttributes
-            if (!blobAttributes.load()) {
-                log.warn("Failed to load {}.", blobAttributes.toString())
+            if ((!blobAttributes) || (!blobAttributes.load())) {
+                log.warn("Failed to load {} {}.", blobIdStr, blobAttributes.toString())
                 continue
             }
             def properties = blobAttributes.getProperties() as Properties
             def repoName = properties.getProperty(HEADER_PREFIX + REPO_NAME_HEADER)
             if (!repoName) {
-                log.warn("No repo-name found for ${blobId}")
+                log.warn("No repo-name found for ${blobIdStr}")
                 continue
             }
             def formatName = repository.repositoryManager[repoName].getFormat().getValue()
             if (!formatName) {
-                log.warn("No format found for repo-name:${repoName}, ${blobId}")
+                log.warn("No format found for repo-name:${repoName}, ${blobIdStr}")
                 continue
             }
             def deletedDateTime = properties.getProperty(DELETED_DATETIME_ATTRIBUTE) as Long
@@ -167,51 +164,54 @@ def main(params) {
             }
             // Remove soft delete flag then restore blob
             if (!blobAttributes.deleted) {
-                log.debug("BlobId:{} is not deleted, so not un-deleting.", blobId)
+                log.info("BlobId:{} does not have 'deleted=true'.", blobIdStr)
             } else {
-                log.info("Un-deleting blobId:{} (DryRun:{})", blobId, params.dryRun)
-                def softDeletedLocation = blobAttributes.getSoftDeletedLocation();
-                if (softDeletedLocation.isPresent()) {
-                    log.debug("Deleting softDeletedLocation:{} (DryRun:{})", softDeletedLocation.get(), params.dryRun)
-                    if (!params.dryRun) {
-                        store.deleteCopiedAttributes(blobIdObj, softDeletedLocation.get())
-                    }
-                }
                 if (!params.dryRun) {
                     // From org.sonatype.nexus.blobstore.BlobStoreSupport.undelete
                     blobAttributes.setDeleted(false)
-                    //blobAttributes.setDeletedReason(null);    // Keeping this one so that can find the props edited by this task
-                    blobAttributes.setSoftDeletedLocation(null);
+                    //blobAttributes.setDeletedReason(null)    // Keeping this one so that can find the props edited by this task
+                    blobAttributes.setSoftDeletedLocation(null)
+                    // For special blob stores such as S3.
                     store.doUndelete(blobIdObj, blobAttributes)
                     blobAttributes.store()
                 }
-                log.debug("Undeleted blobAttributes:{} (DryRun:{})", blobAttributes, params.dryRun)
+                log.info("Undeleted blobId:{} (DryRun:{})\n{}", blobIdStr, params.dryRun, blobAttributes)
             }
-            log.info("Restoring blobId:{} (DryRun:{})", blobId, params.dryRun)
+
+            // Based on org.sonatype.nexus.blobstore.BlobStoreSupport#undelete and from 3.83.2
+            def softDeletedLocation = blobAttributes.getSoftDeletedLocation();
+            if (softDeletedLocation.isPresent()) {
+                if (!params.dryRun) {
+                    store.deleteCopiedAttributes(blobIdObj, softDeletedLocation.get())
+                }
+                log.info("Deleted softDeletedLocation:{} (DryRun:{})", softDeletedLocation.get(), params.dryRun)
+            }
+
             def className = RBSs.lookupRestoreBlobStrategy(formatName, params.isOrient)
             if (!className) {
                 // TODO: may not work with some minor formats such as bower, cocoapods, conda
                 log.warn("Using 'Base' as didn't find restore blob strategy className for format:{}, isOrient:{}", formatName, params.isOrient)
                 className = RBSs.lookupRestoreBlobStrategy("base", params.isOrient)
             }
-            log.debug("className:{} for blobId:{}, format:{}, isOrient:{}", className, blobId, formatName, params.isOrient)
+            log.debug("Restoring with className:{} for blobId:{}, format:{}, isOrient:{}", className, blobIdStr, formatName, params.isOrient)
             def restoreBlobStrategy = container.lookup(className) as RestoreBlobStrategy
             if (restoreBlobStrategy == null) {
                 log.error("Didn't find restore blob strategy for format:{}, isOrient:{}", formatName, params.isOrient)
                 continue
             }
             restoreBlobStrategy.restore(properties, blob, store, params.dryRun)
+            log.info("Restored blobId:{} (DryRun:{})", blobIdStr, params.dryRun)
             restoredNum++
         }
         catch (Exception e) {
-            log.warn("Exception while un-deleting from line:{} - {}", line, e.getMessage())
+            log.warn("Exception while undeleting and restoring from line:{} - {}", line, e.getMessage())
             if (params.dryRun) {    // If dryRun stops at the exception
                 throw e
             }
         }
         // NOTE: not doing blobStoreIntegrityCheck as wouldn't need for this script
     }
-    log.info("Undeleted {}/{}", restoredNum, blobIDs.size())
+    log.info("Restored {}/{}", restoredNum, blobIDs.size())
     return ['checked': lineCounter, 'restored': restoredNum, 'dryRun': params.dryRun]
 }
 
