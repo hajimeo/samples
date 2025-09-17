@@ -81,6 +81,8 @@ var _USE_REGEX *bool
 var _SAVE_TO *string
 var _SAVE_TO_F *os.File
 
+var _DISABLE_DATE_BLOBPATH = true // for backward compatibility, TODO: remove this later
+
 // as it should have only .bytes and .properties, probably not needed any more
 //var _EXCLUDE_FILE *string
 //var _INCLUDE_FILE *string
@@ -918,8 +920,9 @@ func convRepoNamesToAssetTableName(repoNames string) (result []string) {
 	rnSlice := strings.Split(repoNames, ",")
 	u := make(map[string]bool)
 	for _, repoName := range rnSlice {
-		tableName := getFmtFromRepName(repoName) + "_asset"
-		if len(tableName) > 0 {
+		format := getFmtFromRepName(repoName)
+		if len(format) > 0 {
+			tableName := format + "_asset"
 			if _, ok := u[tableName]; !ok {
 				result = append(result, tableName)
 				u[tableName] = true
@@ -1195,12 +1198,42 @@ func myHashCode(s string) int32 {
 	return h
 }
 
-func genBlobPath(blobId string) string {
+func genBlobPath(blobIdLikeString string) string {
+	var matches []string
+
+	if !_DISABLE_DATE_BLOBPATH {
+		// NOTE: this returns path without slash at the beginning and no extension
+		NewBlobIdPattern := regexp.MustCompile(`.*([a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12})@(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2}).*`)
+		matches = NewBlobIdPattern.FindStringSubmatch(blobIdLikeString)
+		if len(matches) > 6 {
+			// 6c1d3423-ecbc-4c52-a0fe-01a45a12883a@2025-08-14T02:44
+			// 2025/08/14/02/44/6c1d3423-ecbc-4c52-a0fe-01a45a12883a.properties
+			return filepath.Join(matches[2], matches[3], matches[4], matches[5], matches[6], matches[1])
+		}
+		NewBlobIdPattern2 := regexp.MustCompile(`/?([0-9]{4})/([0-9]{2})/([0-9]{2})/([0-9]{2})/([0-9]{2})/([a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}).*`)
+		matches = NewBlobIdPattern2.FindStringSubmatch(blobIdLikeString)
+		if len(matches) > 6 {
+			return filepath.Join(matches[1], matches[2], matches[3], matches[4], matches[5], matches[6])
+		}
+		BlobIdPattern := regexp.MustCompile(`.*([a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}).*`)
+		matches = BlobIdPattern.FindStringSubmatch(blobIdLikeString)
+		if matches == nil || len(matches) < 2 {
+			return ""
+		}
+	} else {
+		BlobIdPattern := regexp.MustCompile(`.*([a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}).*`)
+		matches = BlobIdPattern.FindStringSubmatch(blobIdLikeString)
+	}
+
+	if matches == nil || len(matches) < 2 {
+		return ""
+	}
+
+	hashInt := myHashCode(matches[1])
 	// org.sonatype.nexus.blobstore.VolumeChapterLocationStrategy#location
-	hashInt := myHashCode(blobId)
 	vol := math.Abs(math.Mod(float64(hashInt), 43)) + 1
 	chap := math.Abs(math.Mod(float64(hashInt), 47)) + 1
-	return filepath.Join(fmt.Sprintf("vol-%02d", int(vol)), fmt.Sprintf("chap-%02d", int(chap)), blobId)
+	return filepath.Join(fmt.Sprintf("vol-%02d", int(vol)), fmt.Sprintf("chap-%02d", int(chap)), matches[1])
 }
 
 func softDeletedCount(dbConStr string) {

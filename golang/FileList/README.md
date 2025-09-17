@@ -98,13 +98,15 @@ sed -n -E 's/.+([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})\..
 ### Remove 'deleted=true' (-RDel) which soft-deleted within 1 day (-dF <YYYY-MM-DD>) against S3 (-bsType S -b <bucket> -p <prefix>/content/vol-) but only "raw-s3-hosted" (-R -fP <regex>) , and outputs the contents of .properties (-P) to check, but *Dry Run* (-Dry)
 ```
 export AWS_REGION=us-east-1 AWS_ACCESS_KEY_ID="xxxxxxxxxxx" AWS_SECRET_ACCESS_KEY="yyyyyyyyyyyyy" #AWS_ENDPOINT_URL="http://127.0.0.1:9000"
-S3_BUCKET="apac-support-bucket" S3_PREFIX="filelist-test"
+S3_BUCKET="apac-support-bucket" S3_PREFIX="filelist-test"   # S3 prefex can't start with '/'
 file-list -RDel -dF "$(date -d "1 day ago" +%Y-%m-%d)" -bsType S -b "${S3_BUCKET}" -p "${S3_PREFIX}/content/vol-" -P -R -fP "@Bucket\.repo-name=raw-s3-hosted,.+deleted=true" -s ./undelete_raw-s3-hosted.out -Dry
 ```
 Just get the list
 ```
-S3_BUCKET="apac-support-bucket" S3_PREFIX="filelist-test"
+S3_BUCKET="apac-support-bucket" S3_PREFIX="filelist-test" # S3 prefex can't start with '/'
 file-list -bsType S -b "${S3_BUCKET}" -p "${S3_PREFIX}/content/vol-" -P -R -fP "@Bucket\.repo-name=raw-s3-hosted,.+deleted=true" -s ./raw-s3-hosted_deleted.out
+# If Nexus version is 3.83+
+file-list -bsType S -b "${S3_BUCKET}" -p "${S3_PREFIX}/content/2025" -P -R -fP "@Bucket\.repo-name=raw-s3-hosted,.+deleted=true" -s ./raw-s3-hosted_deleted.out
 ```
 
 ### Remove 'deleted=true' (-RDel) which @BlobStore.blob-name=/test/test_1k.img but only "raw-hosted" (-R -fP <regex>) , and outputs the contents of .properties (-P) to check, but *Dry Run* (-Dry)
@@ -113,11 +115,12 @@ file-list -RDel -dF "$(date +%Y-%m-%d)" -b ./content -p "vol-" -R -fP "@BlobStor
 ```
 ### Check orphaned files by querying against PostgreSQL (-db "\<conn string or nexus-store.properties file path) with max 10 DB connections (-c 10), and using -P as it's faster because of generating better SQL query, and checking only *.properties files with -f (excluding .bytes files)
 ```
-file-list -b ./content -p vol- -c 10 -db "host=localhost port=5432 user=nxrm3pg password=******** dbname=nxrm3pg" -P -f ".properties"
-# or
-file-list -b ./content -p vol- -c 10 -db /nexus-data/etc/fabric/nexus-store.properties -P -f ".properties"
+file-list -b ./content -p vol- -c 10 -db "host=localhost port=5432 user=nexus password=nexus123 dbname=nxrmdummydb options=-csearch_path=public" -P -f ".properties" -R -fPX ",deleted=true," -s ./orphaned_blobs_excl_soft_deleted.tsv
+# or (TODO: if the jdbcUrl contains `?` for extra option, the below does not work)
+file-list -b ./content -p vol- -c 10 -db /nexus-data/etc/fabric/nexus-store.properties -P -f ".properties" -R -fPX ",deleted=true," -s ./orphaned_blobs_excl_soft_deleted.tsv
 ```
-NOTE: the above outputs blobs with properties content, which are not in <format>_asset table, which means it doesn't check the asset_blobs which are soft-deleted by Cleanup unused asset blobs task.
+NOTE: the above outputs blobs with properties content, which are not in <format>_asset table, which means it doesn't check the asset_blobs which are soft-deleted by Cleanup unused asset blobs task.   
+TODO: Currently this feature is broken when the repository in the .properties file do not exist in the database (eg: deleted repository).
 
 ### Check orphaned files from the text file (-bF ./blobIds.txt), which contains Blob IDs, instead of walking blobs directory, against 'default' blob store (-bsName 'default')
 ```

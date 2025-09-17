@@ -157,6 +157,15 @@ func TestGenBlobPath(t *testing.T) {
 	if path != "vol-16/chap-36/b5e06792-4487-4925-bac8-3fbb78d3f561" {
 		t.Errorf("path was not 'vol-16/chap-36/b5e06792-4487-4925-bac8-3fbb78d3f561', but %v", path)
 	}
+	return
+	path = genBlobPath("/2025/08/14/02/44/6c1d3423-ecbc-4c52-a0fe-01a45a12883a.properties")
+	if path != "2025/08/14/02/44/6c1d3423-ecbc-4c52-a0fe-01a45a12883a" {
+		t.Errorf("path was not '025/08/14/02/44/6c1d3423-ecbc-4c52-a0fe-01a45a12883a', but %v", path)
+	}
+	path = genBlobPath("6c1d3423-ecbc-4c52-a0fe-01a45a12883a@2025-08-14T02:44")
+	if path != "2025/08/14/02/44/6c1d3423-ecbc-4c52-a0fe-01a45a12883a" {
+		t.Errorf("path was not '025/08/14/02/44/6c1d3423-ecbc-4c52-a0fe-01a45a12883a', but %v", path)
+	}
 }
 
 func TestPrintMissingBlobLines(t *testing.T) {
