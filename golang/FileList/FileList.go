@@ -1141,7 +1141,7 @@ func getDirsS3(client *s3.Client) []string {
 		}
 	}
 
-	_log("DEBUG", fmt.Sprintf("Retriving sub folders under %s", *_PREFIX))
+	_log("DEBUG", fmt.Sprintf("Retrieving sub folders under %s", *_PREFIX))
 	// Not expecting more than 1000 sub folders, so no MaxKeys
 	input := &s3.ListObjectsV2Input{
 		Bucket:    aws.String(*_BASEDIR),
