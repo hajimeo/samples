@@ -238,6 +238,7 @@ func _setGlobals() {
 		// If DB connection is provided but the source is not specified, using BlobStore as the source of the truth (will work like DeadBlobsFInder)
 		if len(*_TRUTH) == 0 {
 			*_TRUTH = "BS"
+			_log("INFO", "Setting -src=BS as -db is provided")
 		}
 		if _, err := os.Stat(*_DB_CON_STR); err == nil {
 			*_DB_CON_STR = genDbConnStrFromFile(*_DB_CON_STR)
@@ -662,9 +663,11 @@ func _printLineExtra(output string, path string, modTimeTs int64, db *sql.DB, cl
 	// If 'contents' is given, get the repository name and use it in the query.
 	if len(*_DB_CON_STR) > 0 && len(*_TRUTH) > 0 && *_TRUTH == "BS" {
 		blobId := extractBlobIdFromString(path)
-		// Script is asked to output if this blob is missing in DB
 		if !isBlobMissingInDB(contents, blobId, db) {
+			// In this line, this script is checking if this blob is missing in DB, so if it exists, just return empty
 			return ""
+		} else {
+			_log("WARN", "blobId:"+blobId+" does not exist in database.")
 		}
 	}
 
@@ -912,7 +915,7 @@ func getFmtFromRepName(repoName string) string {
 			return repoFmt
 		}
 	}
-	_log("WARN", fmt.Sprintf("repoName: %s is not in reposToFmt\n%v", repoName, _REPO_TO_FMT))
+	_log("DEBUG", fmt.Sprintf("repoName: %s is not in reposToFmt\n%v", repoName, _REPO_TO_FMT))
 	return ""
 }
 
@@ -942,7 +945,7 @@ func getAssetTables(contents string) []string {
 	if len(contents) > 0 {
 		m := _R_REPO_NAME.FindStringSubmatch(contents)
 		if len(m) < 2 {
-			_log("WARN", "No _R_REPO_NAME in "+contents)
+			_log("DEBUG", "No _R_REPO_NAME in "+contents)
 			// At this moment, if no blobName, assuming NOT missing...
 			return nil
 		}
@@ -958,12 +961,13 @@ func isBlobMissingInDB(contents string, blobId string, db *sql.DB) bool {
 	// UNION ALL query against many tables is slow. so if contents is given, using specific table
 	tableNames := getAssetTables(contents)
 	if tableNames == nil || len(tableNames) == 0 { // Mainly for unit test
-		_log("WARN", "tableNames is nil for contents: "+contents)
-		return false
+		_log("WARN", "Cannot identify the format from the repo-name for blobId: "+blobId)
+		_log("DEBUG", contents)
+		return true
 	}
 	query := genBlobIdCheckingQuery(blobId, tableNames)
 	if len(query) == 0 { // Mainly for unit test
-		_log("WARN", fmt.Sprintf("query is empty for blobId: %s and tableNames: %v", blobId, tableNames))
+		_log("ERROR", fmt.Sprintf("Could not generate SQL for blobId: %s and tableNames: %v. Skipping (not treating as missing)", blobId, tableNames))
 		return false
 	}
 	if _SLOW_MS == 100 {
@@ -973,7 +977,8 @@ func isBlobMissingInDB(contents string, blobId string, db *sql.DB) bool {
 	rows := queryDb(query, db)
 	_SLOW_MS = int64(100)
 	if rows == nil { // Mainly for unit test
-		_log("WARN", "rows is nil for query: "+query)
+		_log("ERROR", fmt.Sprintf("Could not get the correct response from the DB for blobId: %s and tableNames: %v. Skipping (not treating as missing)", blobId, tableNames))
+		_log("DEBUG", query)
 		return false
 	}
 	defer rows.Close()
@@ -1199,9 +1204,10 @@ func myHashCode(s string) int32 {
 }
 
 func genBlobPath(blobIdLikeString string) string {
-	var matches []string
+	blobId := blobIdLikeString
 
 	if !_DISABLE_DATE_BLOBPATH {
+		var matches []string
 		// NOTE: this returns path without slash at the beginning and no extension
 		NewBlobIdPattern := regexp.MustCompile(`.*([a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12})@(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2}).*`)
 		matches = NewBlobIdPattern.FindStringSubmatch(blobIdLikeString)
@@ -1220,20 +1226,14 @@ func genBlobPath(blobIdLikeString string) string {
 		if matches == nil || len(matches) < 2 {
 			return ""
 		}
-	} else {
-		BlobIdPattern := regexp.MustCompile(`.*([a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}).*`)
-		matches = BlobIdPattern.FindStringSubmatch(blobIdLikeString)
+		blobId = matches[1]
 	}
 
-	if matches == nil || len(matches) < 2 {
-		return ""
-	}
-
-	hashInt := myHashCode(matches[1])
 	// org.sonatype.nexus.blobstore.VolumeChapterLocationStrategy#location
+	hashInt := myHashCode(blobId)
 	vol := math.Abs(math.Mod(float64(hashInt), 43)) + 1
 	chap := math.Abs(math.Mod(float64(hashInt), 47)) + 1
-	return filepath.Join(fmt.Sprintf("vol-%02d", int(vol)), fmt.Sprintf("chap-%02d", int(chap)), matches[1])
+	return filepath.Join(fmt.Sprintf("vol-%02d", int(vol)), fmt.Sprintf("chap-%02d", int(chap)), blobId)
 }
 
 func softDeletedCount(dbConStr string) {

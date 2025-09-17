@@ -115,12 +115,12 @@ file-list -RDel -dF "$(date +%Y-%m-%d)" -b ./content -p "vol-" -R -fP "@BlobStor
 ```
 ### Check orphaned files by querying against PostgreSQL (-db "\<conn string or nexus-store.properties file path) with max 10 DB connections (-c 10), and using -P as it's faster because of generating better SQL query, and checking only *.properties files with -f (excluding .bytes files)
 ```
-file-list -b ./content -p vol- -c 10 -db "host=localhost port=5432 user=nexus password=nexus123 dbname=nxrmdummydb options=-csearch_path=public" -P -f ".properties" -R -fPX ",deleted=true," -s ./orphaned_blobs_excl_soft_deleted.tsv
+file-list -b ./content -p vol- -c 10 -db "host=localhost port=5432 user=nexus password=nexus123 dbname=nxrmdummydb options=-csearch_path=public" -P -f ".properties" -R -fPX ",deleted=true," -s ./orphaned_blobs_excl_soft_deleted.tsv 2>./file-list_orphaned.log
 # or (TODO: if the jdbcUrl contains `?` for extra option, the below does not work)
-file-list -b ./content -p vol- -c 10 -db /nexus-data/etc/fabric/nexus-store.properties -P -f ".properties" -R -fPX ",deleted=true," -s ./orphaned_blobs_excl_soft_deleted.tsv
+file-list -b ./content -p vol- -c 10 -db /nexus-data/etc/fabric/nexus-store.properties -P -f ".properties" -R -fPX ",deleted=true," -s ./orphaned_blobs_excl_soft_deleted.tsv 2>./file-list_orphaned.log
 ```
-NOTE: the above outputs blobs with properties content, which are not in <format>_asset table, which means it doesn't check the asset_blobs which are soft-deleted by Cleanup unused asset blobs task.   
-TODO: Currently this feature is broken when the repository in the .properties file do not exist in the database (eg: deleted repository).
+NOTE: the above outputs blobs with properties content, which are not in <format>_asset table (hence orphaned), which means it doesn't check the <format>_asset_blobs so that using '-R -fPX ",deleted=true,"'    
+Please also check WARN/ERROR in the "./file-list_orphaned.log".
 
 ### Check orphaned files from the text file (-bF ./blobIds.txt), which contains Blob IDs, instead of walking blobs directory, against 'default' blob store (-bsName 'default')
 ```
