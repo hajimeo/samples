@@ -48,12 +48,15 @@ var BsType = "" // 'file' for File, 's3' for AWS S3, (TODO) 'az' for Azure, 'g' 
 var BlobIDFIle = ""
 var BlobIDFIleType = ""
 var RemoveDeleted bool
+var BytesChk bool
 var WriteIntoStr = ""
 var Query = ""
 var RxSelect = regexp.MustCompile(`(?i)^ *SELECT .*(?:\A|\z|\s)blob_id(?:\A|\z|\s)[^;]+;?$`)
 var RxAnd = regexp.MustCompile(`(?i)^ *AND `)
-var Container = "" // Azure: Container name, S3: Bucket name
+var Container = "" // Azure: Container name, S3: Bucket name, Google: Bucket name
 var Prefix = ""
+var GetFile = ""
+var GetTo = ""
 
 // Database related
 var DbConnStr = ""
