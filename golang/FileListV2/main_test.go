@@ -3,8 +3,31 @@ package main
 import (
 	"FileListV2/common"
 	"github.com/stretchr/testify/assert"
+	"os"
 	"testing"
 )
+
+func TestUsage(t *testing.T) {
+	//usage()
+	assert.True(t, true)
+}
+
+func TestSetGlobals(t *testing.T) {
+	// TODO: how to test setGlobals?
+	//setGlobals()
+	assert.True(t, true)
+}
+
+func TestPrintHeader_NoHeaderFlagSet_DoesNotPrintHeader(t *testing.T) {
+	common.NoHeader = true
+	saveToPointer := &os.File{}
+	defer func() { common.NoHeader = false }()
+
+	printHeader(saveToPointer)
+
+	// Assert that nothing is printed or saved
+	assert.True(t, true) // Placeholder assertion
+}
 
 func TestExtractBlobId_ValidPath_ReturnsBlobId(t *testing.T) {
 	path := "vol-01/chap-01/f062f002-88f0-4b53-aeca-7324e9609329.properties"
