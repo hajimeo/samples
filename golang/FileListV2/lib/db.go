@@ -31,8 +31,13 @@ func GenDbConnStrFromFile(filePath string) string {
 	}
 	params := ""
 	if len(matches) > 3 {
+		// TODO: database/sql does not support 'targetServerType', so hard-coding this extra logic...
+		//       Not sure why replacing withtarget_session_attrs doesn't work.
+		//       https://www.postgresql.org/docs/current/libpq-connect.html#LIBPQ-PARAMKEYWORDS
+		ptn := regexp.MustCompile(`&?targetServerType=[^&]*`)
+		extraparams := ptn.ReplaceAllString(matches[4], "")
 		// NOTE: probably need to escape the 'params'?
-		params = " " + strings.ReplaceAll(matches[4], "&", " ")
+		params = " " + strings.ReplaceAll(extraparams, "&", " ")
 	}
 	// Check if props has password
 	if len(props["password"]) == 0 {
