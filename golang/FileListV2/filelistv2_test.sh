@@ -11,7 +11,18 @@
 #
 # HOW TO RUN EXAMPLE:
 #   ./filelistv2_test.sh <blobstore> <path/prefix>
-#   export _TEST_WORKDIR="$HOME/Documents/tests/nxrm_3.77.1-01_filelist_test/sonatype-work/nexus3"
+#
+# Prepare the test data using setup_nexus3_repos.sh:
+#   f_install_nexus3 3.77.1-01 filelistv2test
+#   # Then start this Nexus
+#   _AUTO=true main
+#   f_upload_dummies_all_hosted
+#   #f_backup_postgresql_component
+#   f_delete_all_assets
+#   #f_run_tasks_by_type "assetBlob.cleanup" # if Postgresql with nexus.assetBlobCleanupTask.blobCreatedDelayMinute=0
+#
+# Example environment variables (specify the workdir of the existing Nexus 3):
+#   export _TEST_WORKDIR="./sonatype-work/nexus3"
 #
 # If File type blobstore:
 #   $HOME/IdeaProjects/samples/golang/FileListV2/filelistv2_test.sh "${_TEST_WORKDIR%/}/blobs/default"
@@ -22,12 +33,6 @@
 #   export AZURE_STORAGE_ACCOUNT_NAME="..." AZURE_STORAGE_ACCOUNT_KEY="..."
 #   $HOME/IdeaProjects/samples/golang/FileListV2/filelistv2_test.sh "az://filelist-test/"
 #
-# Prepare the test data using setup_nexus3_repos.sh:
-#   _AUTO=true main
-#   f_upload_dummies_all_hosted
-#   f_delete_all_assets
-#   #f_run_tasks_by_type "assetBlob.cleanup" # if Postgresql with nexus.assetBlobCleanupTask.blobCreatedDelayMinute=0
-
 ### Global variables
 : ${_TEST_WORKDIR:=""}      #./sonatype-work/nexus3
 : ${_TEST_BLOBSTORE:=""}    #./sonatype-work/nexus3/blobs/default
@@ -214,9 +219,10 @@ function test_6_Orphaned() {
     [ -n "${_TEST_DB_CONN_PWD}" ] && export PGPASSWORD="${_TEST_DB_CONN_PWD}"
 
     local _out_file="/tmp/test_orphaned.tsv"
-    _exec_filelist "filelist2 -b '${_b}' -p '${_p}' -src BS -db ${_nexus_store} -pRxNot \"deleted=true\" -H" "${_out_file}"
+    _exec_filelist "filelist2 -b '${_b}' -p '${_p}' -src BS -db ${_nexus_store} -pRxNot \"deleted=true\" -BytesChk -H" "${_out_file}"
     if [ "$?" == "0" ]; then
         echo "TEST=OK (${_out_file})"
+        echo "To remove: cat ${_out_file} | sed -n -E 's/^(.+)\.properties.+/\1/p' | xargs -P2 -t -I{} mv {}.{properties,bytes} /tmp/"
     else
         echo "TEST=ERROR: Could not generate ${_out_file} (check /tmp/test_last.*)"
         return 1
@@ -228,6 +234,7 @@ function test_6_Orphaned() {
         local _expected_num="$(_line_num ${_out_file})"
         if [ ${_expected_num:-"0"} -gt 0 ]; then
             echo "TEST=OK : ${_out_file}, expected:${_expected_num}"
+        echo "To remove: cat ${_out_file} | sed -n -E 's/^(.+)\.properties.+/\1/p' | xargs -P2 -t -I{} mv {}.{properties,bytes} /tmp/"
         else
             echo "TEST=WARN: ${_out_file} should not be empty (or no soft-deleted blobs) (check /tmp/test_last.*)"
         fi
@@ -301,7 +308,10 @@ function test_8_TextFileToCheckDatabase() {
     fi
     [ -n "${_TEST_DB_CONN_PWD}" ] && export PGPASSWORD="${_TEST_DB_CONN_PWD}"
 
-    find ${_b%/} -maxdepth 4 -name '*.properties' -path '*/content/vol*' -print | head -n10 >/tmp/test_mock_blob_ids.txt
+    #find ${_b%/} -maxdepth 4 -name '*.properties' -path '*/content/vol*' -print | head -n10 >/tmp/test_mock_blob_ids.txt
+    # Assuming / hoping the newer files wouldn't be orphaned files.
+    _exec_filelist "filelist2 -b ${_b} -p '/(vol-\d\d|20\d\d)/' -pRxNot 'deletedReason=' -n 1000" "/tmp/test_mock_blob_ids.tmp"
+    cat /tmp/test_mock_blob_ids.tmp | sort -k2r,3r | head -n10 > /tmp/test_mock_blob_ids.txt
     if [ ! -s "/tmp/test_mock_blob_ids.txt" ]; then
         echo "TEST=WARN: No mock .properties files found in ${_b}, so skipping"
         return 0
@@ -338,6 +348,7 @@ function test_9_GenerateBlobIDsFileFromDB() {
         echo "TEST=OK (${_out_file}) result:${_result_num}"
     else
         echo "TEST=ERROR: result:${_result_num} (check /tmp/test_last.*)"
+        echo "May need to run f_setup_raw && f_upload_dummies_raw first"
         return 1
     fi
 }
@@ -419,6 +430,7 @@ function _find_sample_repo_name() {
         _log "WARN" "No repo-name found in ${_prop}"
         return 1
     fi
+    _log "INFO" "Using repo-name ${_rn}"
     export _TEST_REPO_NAME="${_rn}"
 }
 
