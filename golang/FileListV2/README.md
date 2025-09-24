@@ -24,7 +24,7 @@ NOTE: The arguments, which name starts with a Capital letter, are boolean type. 
 filelist2 -b "./sonatype-work/nexus3/blobs/default/content"
 filelist2 -b "file://sonatype-work/nexus3/blobs/default/content"
 #export AWS_ACCESS_KEY_ID="*******" AWS_SECRET_ACCESS_KEY="*********************" AWS_REGION="ap-southeast-2"
-filelist2 -b "s3://${AWS_BLOB_STORE_NAME}/content" -n 5
+filelist2 -b "s3://${AWS_BLOB_STORE_NAME}/${AWS_BLOB_STORE_PREFIX}/content" -n 5
 #export AZURE_STORAGE_ACCOUNT_NAME="********" AZURE_STORAGE_ACCOUNT_KEY="*********************"
 filelist2 -b "az://${AZURE_STORAGE_CONTAINER_NAME}/content"
 TODO: filelist2 -b "gc://google-test-storage/google-test-prefix/content"
@@ -133,4 +133,9 @@ echo "select blob_ref from asset where bucket.repository_name = 'xxxxxxx'" | ori
 filelist2 -b s3://apac-support-bucket/filelist-test/content/ -p 2025 -pRx "deleted=true" -wStr "deleted=true"
 # To confirm
 filelist2 -b s3://apac-support-bucket/filelist-test -pRx "deleted=true" -T
+```
+
+### Misc. note
+```
+filelist2 -b "s3://${AWS_BLOB_STORE_NAME}/${AWS_BLOB_STORE_PREFIX}/content" -mDF 2025-08-06 -P -T -s all_props_since-6th.tsv
 ```
