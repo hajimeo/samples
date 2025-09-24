@@ -27,7 +27,7 @@ var Client bs_clients.Client
 
 func usage() {
 	fmt.Println(`
-List .properties and .bytes files as *Tab* Separated Values (Path LastModified Size).
+List .properties and .bytes files as *Tab* Separated Values (Path LastModified Size ...).
     
 HOW TO and USAGE EXAMPLES:
     https://github.com/hajimeo/samples/blob/master/golang/FileListV2/README.md`)
@@ -41,41 +41,50 @@ func setGlobals() {
 	// TODO: 'b' should accept the comma separated values for supporting the group blob store
 	flag.StringVar(&common.BaseDir, "b", "", "Blob store directory or URI (eg. 's3://s3-test-bucket/s3-test-prefix/'), which location contains 'content' directory (default: '.')")
 	flag.BoolVar(&common.DateBsLayout, "DateBS", false, "Created Date based Blob Store layout")
-	flag.StringVar(&common.Filter4Path, "p", "", "Regular Expression for directory *path* (eg 'vol-'), or S3 prefix.")
+	flag.StringVar(&common.Filter4Path, "p", "", "Regular Expression for directory *path* (eg '/(vol-\\d\\d|20\\d\\d)/'), or S3 prefix.")
 	flag.StringVar(&common.Filter4FileName, "f", "", "Regular Expression for the file *name* (eg: '\\.properties' to include only this extension)")
 	flag.BoolVar(&common.WithProps, "P", false, "If true, the .properties file content is included in the output")
 	flag.StringVar(&common.Filter4PropsIncl, "pRx", "", "Regular Expression for the content of the .properties files (eg: 'deleted=true')")
 	flag.StringVar(&common.Filter4PropsExcl, "pRxNot", "", "Excluding Regular Expression for .properties (eg: 'BlobStore.blob-name=.+/maven-metadata.xml.*')")
 	flag.StringVar(&common.SaveToFile, "s", "", "Save the output (TSV text) into the specified path")
-	flag.BoolVar(&common.SavePerDir, "SaveDir", false, "If true and -s is given, save the output per sub-directory")
-	flag.Int64Var(&common.TopN, "n", 0, "Return first N lines (0 = no limit). Can't be less than '-c'")
+	flag.BoolVar(&common.SavePerDir, "SavePerDir", false, "If true and -s is given, save the output per sub-directory")
+	flag.Int64Var(&common.TopN, "n", 0, "Return first N lines per *thread* (0 = no limit). Can't be less than '-c'")
 	flag.IntVar(&common.Conc1, "c", 1, "Concurrent number for reading directories")
 	flag.IntVar(&common.Conc2, "c2", 8, "2nd Concurrent number. Currently used when retrieving object from AWS S3")
 	flag.BoolVar(&common.NoHeader, "H", false, "If true, no header line")
-	// Reconcile / orphaned blob finding related
-	flag.StringVar(&common.Truth, "src", "", "Using database or blobstore as source [BS|DB|ALL] (if Blob ID file is provided, DB conn is not required)")
+
+	flag.StringVar(&common.BlobIDFIle, "rF", "", "Read from file path which contains the list of blob IDs")
+	// TODO: GetXxxx not used yet
+	flag.StringVar(&common.GetFile, "get", "", "Get a single file/blob from the blob store")
+	flag.StringVar(&common.GetTo, "getTo", "", "Get to the local path")
+
+	// DB / SQL related
 	flag.StringVar(&common.DbConnStr, "db", "", "DB connection string or path to DB connection properties file")
-	flag.StringVar(&common.BlobIDFIle, "rF", "", "file path to read the blob IDs")
-	flag.StringVar(&common.BsName, "bsName", "", "eg. 'default'. If provided, the SQL query will be faster")
+	flag.StringVar(&common.BsName, "bsName", "", "eg. 'default'. If provided, the SQL query might become faster (TODO: test this)")
 	flag.StringVar(&common.Query, "query", "", "SQL 'SELECT blob_id ...' or 'SELECT blob_ref as blob_id ...' to filter the data from the DB")
+
+	// Reconcile / orphaned blob finding related
+	flag.StringVar(&common.Truth, "src", "", "Using database or blobstore as source [BS|DB] for Dead or Orphaned blob finding")
 	flag.BoolVar(&common.RemoveDeleted, "RDel", false, "TODO: Remove 'deleted=true' from .properties. Requires -dF")
 	flag.StringVar(&common.WriteIntoStr, "wStr", "", "For testing. Write the string into the file (eg. deleted=true)")
 	flag.StringVar(&common.DelDateFromStr, "dDF", "", "Deleted date YYYY-MM-DD (from). Used to search deletedDateTime")
 	flag.StringVar(&common.DelDateToStr, "dDT", "", "Deleted date YYYY-MM-DD (to). To exclude newly deleted assets")
 	flag.StringVar(&common.ModDateFromStr, "mDF", "", "File modification date YYYY-MM-DD (from)")
 	flag.StringVar(&common.ModDateToStr, "mDT", "", "File modification date YYYY-MM-DD (to)")
+	flag.BoolVar(&common.BytesChk, "BytesChk", false, "Extra check to make sure the .bytes file exists")
 
-	// AWS S3 / Azure related
+	// Blob store specifics (AWS S3 / Azure related)
 	flag.IntVar(&common.MaxKeys, "m", 1000, "AWS S3: Integer value for Max Keys (<= 1000)")
 	flag.BoolVar(&common.WithOwner, "O", false, "AWS S3: If true, get the owner display name")
 	flag.BoolVar(&common.WithTags, "T", false, "AWS S3: If true, get tags of each object")
 
+	// Other options for troubleshooting
 	flag.Int64Var(&common.SlowMS, "slowMS", 1000, "Some methods show WARN log if that method takes more than this msec")
 	flag.IntVar(&common.CacheSize, "cacheSize", 1000, "How many .properties files to cache")
-
 	flag.BoolVar(&common.Debug, "X", false, "If true, verbose logging")
 	flag.BoolVar(&common.Debug2, "XX", false, "If true, more verbose logging (currently only for AWS")
 	//flag.BoolVar(&common.DryRun, "Dry", false, "If true, RDel does not do anything")	# No longer needed as -rF can be used
+
 	flag.Parse()
 
 	if common.Debug2 {
@@ -188,10 +197,10 @@ func setGlobals() {
 	// If Truth is not set but BlobIDFIle is given, needs to set Truth
 	if len(common.Truth) == 0 && len(common.BlobIDFIle) > 0 {
 		if len(common.BaseDir) > 0 {
-			h.Log("INFO", "-src is missing. Setting 'DB'")
+			h.Log("INFO", "BlobIDFIle and BaseDir are provided but -src is missing. Assuming '-src DB' to find Dead blobs")
 			common.Truth = "DB"
 		} else if len(common.DbConnStr) > 0 {
-			h.Log("INFO", "-src is missing. Setting 'BS'")
+			h.Log("INFO", "BlobIDFIle is provided but no BaseDir and -src is missing. Assuming '-src BS' to find Orphaned blobs")
 			common.Truth = "BS"
 		}
 	}
@@ -293,6 +302,9 @@ func printHeader(saveToPointer *os.File) {
 		if common.WithTags {
 			header += fmt.Sprintf("%sTags", common.SEP)
 		}
+		if len(common.Truth) > 0 {
+			header += fmt.Sprintf("%smisc", common.SEP)
+		}
 		printOrSave(header, saveToPointer)
 	}
 }
@@ -362,11 +374,24 @@ func genOutput(path string, bi bs_clients.BlobInfo, db *sql.DB) string {
 		if len(common.DbConnStr) > 0 {
 			blobId := extractBlobIdFromString(path)
 			// If props is empty, the below may use expensive query
-			if isOrphanedBlob(props, blobId, db) {
-				h.Log("ERROR", "Blob ID: "+blobId+" may not exist in the DB")
+			reason := isOrphanedBlob(props, blobId, db)
+			if len(reason) > 0 {
+				output = fmt.Sprintf("%s%s%s", output, common.SEP, reason)
 			} else {
-				h.Log("DEBUG", "Blob ID: "+blobId+" exists in the DB. Not including in the output.")
-				output = ""
+				var bytesChkErr error
+				bytesPath := blobId
+				if common.BytesChk {
+					// Check if .bytes file exists
+					bytesPath = h.AppendSlash(common.ContentPath) + genBlobPath(blobId, common.BYTES_EXT)
+					_, bytesChkErr = Client.GetFileInfo(bytesPath)
+				}
+				if bytesChkErr != nil {
+					h.Log("WARN", fmt.Sprintf("BYTES_MISSING for %s (error: %s)", bytesPath, bytesChkErr.Error()))
+					output = fmt.Sprintf("%s%s%s", output, common.SEP, "BYTES_MISSING")
+				} else {
+					h.Log("DEBUG", "Blob ID: "+blobId+" exists in the DB. Not including in the output.")
+					output = ""
+				}
 			}
 		}
 	}
@@ -641,42 +666,46 @@ func checkBlobIdDetailFromBS(maybeBlobId string) interface{} {
 
 	// basePath is the file path without extension
 	basePath := h.AppendSlash(common.ContentPath) + genBlobPath(blobId, "")
+
+	bytesPath := basePath + common.BYTES_EXT
+	if common.RxFilter4FileName == nil || common.RxFilter4FileName.MatchString(bytesPath) {
+		blobInfo, err := Client.GetFileInfo(bytesPath)
+		if err != nil {
+			h.Log("WARN", fmt.Sprintf("No %s in BS (error: %s)", bytesPath, err.Error()))
+		} else {
+			args := bs_clients.PrintLineArgs{
+				Path:  bytesPath,
+				BInfo: blobInfo,
+				DB:    common.DB,
+			}
+			printLineFromPath(args)
+		}
+	}
+
 	propsPath := basePath + common.PROP_EXT
 	// TODO: this is not accurate as it should be checking the file name, not the path
 	if common.RxFilter4FileName == nil || common.RxFilter4FileName.MatchString(propsPath) {
 		blobInfo, err := Client.GetFileInfo(propsPath)
 		if err != nil {
-			// As this is the check function, if not exist report
-			h.Log("WARN", fmt.Sprintf("Error %s : %s", propsPath, err))
-		} else {
-			args := bs_clients.PrintLineArgs{
-				Path:  propsPath,
-				BInfo: blobInfo,
-				DB:    common.DB,
-			}
-			printLineFromPath(args)
+			h.Log("WARN", fmt.Sprintf("No %s in BS (error: %s)", propsPath, err.Error()))
+			return nil
 		}
-	}
-	if common.RxFilter4FileName == nil || common.RxFilter4FileName.MatchString(basePath+common.BYTES_EXT) {
-		blobInfo, err := Client.GetFileInfo(basePath + common.BYTES_EXT)
-		if err != nil {
-			h.Log("WARN", fmt.Sprintf("No %s in BS", basePath+common.BYTES_EXT))
-		} else {
-			args := bs_clients.PrintLineArgs{
-				Path:  basePath + common.BYTES_EXT,
-				BInfo: blobInfo,
-				DB:    common.DB,
-			}
-			printLineFromPath(args)
+		args := bs_clients.PrintLineArgs{
+			Path:  propsPath,
+			BInfo: blobInfo,
+			DB:    common.DB,
 		}
+		printLineFromPath(args)
+		return blobInfo
 	}
 	return nil
 }
 
-func getAssetWithBlobRefAsCsv(blobId string, rnPerFmt []string, format string, db *sql.DB) string {
+func getAssetWithBlobRefAsCsv(blobId string, reposPerFmt []string, format string, db *sql.DB) string {
+	h.Log("DEBUG", fmt.Sprintf("repoNames: %v, format:%s", reposPerFmt, format))
 	var tableNames []string
-	query := genAssetBlobUnionQuery(tableNames, "", "blob_ref LIKE '%"+blobId+"' LIMIT 1", rnPerFmt, format)
-	rows := lib.Query(query, db, int64(len(rnPerFmt)*1000))
+	query := genAssetBlobUnionQuery(tableNames, "", "blob_ref LIKE '%"+blobId+"' LIMIT 1", reposPerFmt, format)
+	rows := lib.Query(query, db, int64(len(reposPerFmt)*1000))
 	if rows == nil { // Mainly for unit test
 		h.Log("WARN", "rows is nil for query: "+query)
 		return ""
@@ -768,12 +797,17 @@ func getRepoName(contents string) string {
 	return ""
 }
 
-func genAssetBlobUnionQuery(assetTableNames []string, columns string, afterWhere string, repoNames []string, format string) string {
+func genAssetBlobUnionQuery(assetTableNames []string, columns string, afterWhere string, reposPerFmt []string, format string) string {
 	cte := ""
 	cteJoin := ""
 	if len(assetTableNames) == 0 {
-		h.Log("DEBUG", fmt.Sprintf("No assetTableNames. Using the default AssetTables (%d)", len(common.AssetTables)))
-		assetTableNames = common.AssetTables
+		if len(format) > 0 {
+			h.Log("DEBUG", fmt.Sprintf("No assetTableNames but format %s is provided.", format))
+			assetTableNames = []string{format + "_asset"}
+		} else {
+			h.Log("DEBUG", fmt.Sprintf("No assetTableNames. Using the default AssetTables (%d)", len(common.AssetTables)))
+			assetTableNames = common.AssetTables
+		}
 	}
 	if len(columns) == 0 {
 		columns = "a.repository_id, a.asset_id, a.path, a.kind, a.component_id, ab.blob_ref, ab.blob_size, ab.blob_created"
@@ -781,11 +815,12 @@ func genAssetBlobUnionQuery(assetTableNames []string, columns string, afterWhere
 	if !h.IsEmpty(afterWhere) && !common.RxAnd.MatchString(afterWhere) {
 		afterWhere = "AND " + afterWhere
 	}
-	if len(repoNames) > 0 {
+	if len(reposPerFmt) > 0 {
 		if len(format) == 0 {
-			panic(fmt.Sprintf("No format provided for repositories: %s", repoNames))
+			format = getFmtFromRepName(reposPerFmt[0])
+			h.Log("DEBUG", fmt.Sprintf("No format for %v so using %s", reposPerFmt, format))
 		}
-		repoIn := `'` + strings.Join(repoNames, `', '`) + `'`
+		repoIn := `'` + strings.Join(reposPerFmt, `', '`) + `'`
 		// As not using LEFT JOIN, no need to use ` or r.name is NULL`
 		cte = "WITH r AS (select r.name, cr.repository_id from " + format + "_content_repository cr join repository r on r.id = cr.config_repository_id WHERE r.name IN (" + repoIn + ")) "
 		cteJoin = "JOIN r USING (repository_id)"
@@ -809,7 +844,7 @@ func genAssetBlobUnionQuery(assetTableNames []string, columns string, afterWhere
 	return query
 }
 
-func isOrphanedBlob(contents string, blobId string, db *sql.DB) bool {
+func isOrphanedBlob(contents string, blobId string, db *sql.DB) string {
 	// Orphaned blob is the blob which is in the blob store but not in the DB
 	// UNION ALL query against many tables is slow. so if contents is given, using specific table
 	repoName := getRepoName(contents)
@@ -817,7 +852,7 @@ func isOrphanedBlob(contents string, blobId string, db *sql.DB) bool {
 	tableNames := getAssetTableNamesFromRepoNames(repoName)
 	if len(repoName) > 0 && len(tableNames) == 0 {
 		h.Log("WARN", fmt.Sprintf("Repsitory: %s does not exist in the database, so assuming %s as orphan", repoName, blobId))
-		return true
+		return "ORPHAN:" + repoName + "/" + format + "(NO_REPO)"
 	}
 	var repoNames []string
 	if len(repoName) > 0 {
@@ -826,16 +861,17 @@ func isOrphanedBlob(contents string, blobId string, db *sql.DB) bool {
 	// Generating query to search the blobId from the blob_ref, and returning only asset_id column
 	// Supporting only 3.47 and higher for performance (was adding ending %) (NEXUS-35934)
 	// Not using common.BsName as can't trust blob store name in blob_ref, and may not work with group blob stores
+	h.Log("DEBUG", fmt.Sprintf("repoNames: %v, format:%s", repoNames, format))
 	query := genAssetBlobUnionQuery(tableNames, "asset_id", "blob_ref LIKE '%"+blobId+"' LIMIT 1", repoNames, format)
 	if len(query) == 0 { // Mainly for unit test
 		h.Log("WARN", fmt.Sprintf("query is empty for blobId: %s and tableNames: %v", blobId, tableNames))
-		return false
+		return "UNKNOWN1:" + repoName + "/" + format
 	}
 	// This query can take longer so not showing too many WARNs
 	rows := lib.Query(query, db, int64(len(tableNames)*100))
 	if rows == nil { // Mainly for unit test
 		h.Log("WARN", "rows is nil for query: "+query)
-		return false
+		return "UNKNOWN2:" + repoName + "/" + format
 	}
 	defer rows.Close()
 	var cols []string
@@ -852,13 +888,68 @@ func isOrphanedBlob(contents string, blobId string, db *sql.DB) bool {
 				sort.Strings(cols)
 			}
 			vals := lib.GetRow(rows, cols)
-			// As using LEFT JOIN 'asset_id' can be NULL (nil), but rows size is not 0
 			h.Log("DEBUG", fmt.Sprintf("blobId: %s row: %v", blobId, vals))
 		}
 		noRows = false
 		break
 	}
-	return noRows
+	if noRows {
+		h.Log("WARN", fmt.Sprintf("Orphaned Blob Found:%s for repo:%s, format:%s", blobId, repoName, format))
+		return "ORPHAN:" + repoName + "/" + format
+	}
+	return ""
+}
+
+func checkDeadBlobs(repoName string, db *sql.DB) bool {
+	// TODO: probably this is not working.
+	// Dead blob is the blob which is in the database but not in the blob store file system
+	// This function gets the stream the blob IDs from the database and checks if the blob ID exists in the blob store
+	// Return false if error or found dead blobs
+	format := getFmtFromRepName(repoName)
+	tableNames := getAssetTableNamesFromRepoNames(repoName)
+	if len(repoName) > 0 && len(tableNames) == 0 {
+		h.Log("ERROR", fmt.Sprintf("Repsitory: %s does not exist in the database", repoName))
+		return false
+	}
+
+	// Not using common.BsName as can't trust blob store name in blob_ref, and may not work with group blob stores
+	// ab.blob_size is added in case validating the size of the blob later
+	cols := []string{"asset_id", "blob_ref", "blob_size"}
+	h.Log("DEBUG", fmt.Sprintf("repoName: %s, format:%s", repoName, format))
+	query := genAssetBlobUnionQuery(tableNames, "asset_id, ab.blob_ref, ab.blob_size", "", []string{repoName}, format)
+	if len(query) == 0 { // Mainly for unit test
+		h.Log("ERROR", fmt.Sprintf("query is empty for repoName: %s and tableNames: %v", repoName, tableNames))
+		return false
+	}
+
+	// This query can take longer so not showing too many WARNs
+	rows := lib.Query(query, db, int64(len(tableNames)*100))
+	if rows == nil { // Mainly for unit test
+		h.Log("WARN", "rows is nil for query: "+query)
+		return false
+	}
+	defer rows.Close()
+	noDeadBlob := true
+	for rows.Next() {
+		vals := lib.GetRow(rows, cols)
+		// As not using LEFT JOIN, 'asset_id' can not be NULL (nil)
+		h.Log("DEBUG", fmt.Sprintf("row: %v", vals))
+		// Check if the blob ID exists in the blob store
+		assetId := vals[1].(int64)
+		blobRef := vals[2].(string)
+		blobSize := vals[3].(int64)
+		blobInfo := checkBlobIdDetailFromBS(blobRef)
+		if blobInfo == nil {
+			h.Log("ERROR", fmt.Sprintf("Dead Blob Found for assetId: %d, blobRef:%s", assetId, blobRef))
+			noDeadBlob = false
+			continue
+		}
+		if blobInfo.(bs_clients.BlobInfo).Size != blobSize {
+			h.Log("ERROR", fmt.Sprintf("assetId:%d, blobRef:%s has size mismatch. DB %d vs. BS %d", assetId, blobRef, blobSize, blobInfo.(bs_clients.BlobInfo).Size))
+			continue
+		}
+	}
+	return noDeadBlob
 }
 
 func runParallel(chunks [][]string, apply func(string, *sql.DB), conc int) {
