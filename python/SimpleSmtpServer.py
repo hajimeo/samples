@@ -4,7 +4,7 @@
 import asyncio
 import ssl
 import sys
-
+# pip install aiosmtpd
 from aiosmtpd.smtp import SMTP
 from aiosmtpd.controller import Controller
 from aiosmtpd.handlers import Debugging
@@ -20,7 +20,8 @@ async def main(port=587, hostname='localhost'):
     controller = ControllerStarttls(Debugging(), port=port, hostname=hostname)
     controller.start()
     print(f"SMTP server started on {controller.hostname}:{controller.port}")
-    print(f"Connection test: echo -n | openssl s_client -servername {controller.hostname} -connect {controller.hostname}:{controller.port} -starttls smtp")
+    print(f"# Connection test:")
+    print(f"echo -n | openssl s_client -servername {controller.hostname} -connect {controller.hostname}:{controller.port} -starttls smtp")
 
     try:
         # Keep the server running until interrupted
