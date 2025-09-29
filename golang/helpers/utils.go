@@ -301,18 +301,19 @@ func StreamLines(path string, conc int, apply func(string) interface{}) []interf
 	}()
 
 	var wg sync.WaitGroup
-
 	for i := 0; i < conc; i++ {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
 			for line := range input {
 				returns = append(returns, apply(line))
+				//time.Sleep(100 * time.Millisecond) // for test
 			}
 		}()
 	}
+
+	//close(input) // no need to close as closed in the first go func
 	wg.Wait()
-	//close(input) // Seems no need to close
 	// TODO: as per AI, using returns is not thread safe, and it's not used anyway
 	return returns
 }
