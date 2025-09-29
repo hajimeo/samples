@@ -285,12 +285,13 @@ func OpenStdInOrFIle(path string) *os.File {
 }
 
 func StreamLines(path string, conc int, apply func(string) interface{}) []interface{} {
+	var returns []interface{}
+	input := make(chan string, conc)
+
+	// Open the file from the path
 	fp := OpenStdInOrFIle(path)
 	defer fp.Close()
-	var returns []interface{}
-
 	scanner := bufio.NewScanner(fp)
-	input := make(chan string)
 
 	go func() {
 		for scanner.Scan() {
@@ -300,6 +301,7 @@ func StreamLines(path string, conc int, apply func(string) interface{}) []interf
 	}()
 
 	var wg sync.WaitGroup
+
 	for i := 0; i < conc; i++ {
 		wg.Add(1)
 		go func() {
@@ -310,6 +312,8 @@ func StreamLines(path string, conc int, apply func(string) interface{}) []interf
 		}()
 	}
 	wg.Wait()
+	close(input)
+	// TODO: as per AI, using returns is not thread safe, and it's not used anyway
 	return returns
 }
 
