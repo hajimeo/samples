@@ -312,7 +312,7 @@ func StreamLines(path string, conc int, apply func(string) interface{}) []interf
 		}()
 	}
 	wg.Wait()
-	close(input)
+	//close(input) // Seems no need to close
 	// TODO: as per AI, using returns is not thread safe, and it's not used anyway
 	return returns
 }
