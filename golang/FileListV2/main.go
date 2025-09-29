@@ -60,12 +60,12 @@ func setGlobals() {
 
 	// DB / SQL related
 	flag.StringVar(&common.DbConnStr, "db", "", "DB connection string or path to DB connection properties file")
-	flag.StringVar(&common.BsName, "bsName", "", "eg. 'default'. If provided, the SQL query might become faster (TODO: test this)")
+	flag.StringVar(&common.BsName, "bsName", "", "eg. 'default'. If provided, the SQL query might become faster")
 	flag.StringVar(&common.Query, "query", "", "SQL 'SELECT blob_id ...' or 'SELECT blob_ref as blob_id ...' to filter the data from the DB")
 
 	// Reconcile / orphaned blob finding related
 	flag.StringVar(&common.Truth, "src", "", "Using database or blobstore as source [BS|DB] for Dead or Orphaned blob finding")
-	flag.BoolVar(&common.RemoveDeleted, "RDel", false, "TODO: Remove 'deleted=true' from .properties. Requires -dF")
+	flag.BoolVar(&common.RemoveDeleted, "RDel", false, "Remove 'deleted=true' from .properties. Requires -dF")
 	// TODO: Not tested `-RDel` with the new blob store layout and with S3 / Azure
 	flag.StringVar(&common.WriteIntoStr, "wStr", "", "For testing. Write the string into the file (eg. deleted=true)")
 	flag.StringVar(&common.DelDateFromStr, "dDF", "", "Deleted date YYYY-MM-DD (from). Used to search deletedDateTime")
@@ -138,7 +138,7 @@ func setGlobals() {
 		if common.DB == nil {
 			panic("-db is provided but cannot open the database.") // Can't output _DB_CON_STR as it may include password
 		}
-		initRepoFmtMap(common.DB) // TODO: copy the function from FileList
+		initRepoFmtMap(common.DB)
 	}
 
 	if len(common.Query) > 0 {
@@ -610,7 +610,6 @@ func printLineFromPath(args bs_clients.PrintLineArgs) bool {
 		if len(args.SaveDir) == 0 || args.SaveDir == "." {
 			panic("SavePerDir is true but SaveDir is nil or '.'")
 		}
-		// TODO: SaveDir is the basename (directory name) of the `dir` but chap-01 was given
 		saveFile := filepath.Base(args.SaveDir) + ".tsv"
 		saveToPointer, err = os.OpenFile(filepath.Join(common.SaveToFile, saveFile), os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
 		if err != nil {
@@ -710,7 +709,7 @@ func checkBlobIdDetailFromBS(maybeBlobId string) interface{} {
 	}
 
 	propsPath := basePath + common.PROP_EXT
-	// TODO: this is not accurate as it should be checking the file name, not the path
+	// TODO: this is not accurate as it should be checking the base file name, not the path
 	if common.RxFilter4FileName == nil || common.RxFilter4FileName.MatchString(propsPath) {
 		blobInfo, err := Client.GetFileInfo(propsPath)
 		if err != nil {
@@ -1067,7 +1066,7 @@ func main() {
 			return
 		} else if len(common.Truth) > 0 && len(common.BlobIDFIleType) > 0 && common.Truth != common.BlobIDFIleType {
 			panic("TODO: 'rF' is provided but 'rF' type:" + common.BlobIDFIleType + " does not match with 'src' type:" + common.Truth + ", so this file will be used against filelist result.")
-			// TODO: implement this
+			// TODO: implement this. Read the -src and check against the -rF file
 		}
 	}
 
