@@ -70,7 +70,7 @@ func Query(query string, db *sql.DB, slowMs int64) *sql.Rows {
 	if common.Debug || slowMs == 0 {
 		// If debug mode or slowMs is 0, always log as DEBUG
 		slowMs = 0
-		slowMsg = h.TruncateStr("DEBUG query: "+query, 400)
+		slowMsg = h.TruncateStr("DEBUG query: "+query, 1000)
 	}
 	defer h.Elapsed(time.Now().UnixMilli(), slowMsg, slowMs)
 	if db == nil { // For unit tests

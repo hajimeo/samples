@@ -53,9 +53,34 @@ func TestExtractBlobId_PathWithMultipleMatches_ReturnsFirstMatch(t *testing.T) {
 	assert.Equal(t, "f062f002-88f0-4b53-aeca-7324e9609329", result)
 }
 
+func TestExtractBlobId_PathWithMultipleMatches_ReturnsFirstMatch_NewLayout(t *testing.T) {
+	path := "2022/10/20/12/33/f062f002-88f0-4b53-aeca-7324e9609329.properties"
+	result := extractBlobIdFromString(path)
+	assert.Equal(t, "f062f002-88f0-4b53-aeca-7324e9609329@2022-10-20T12:33", result)
+	path = "/2022/10/20/12/33/f062f002-88f0-4b53-aeca-7324e9609329.properties"
+	result = extractBlobIdFromString(path)
+	assert.Equal(t, "f062f002-88f0-4b53-aeca-7324e9609329@2022-10-20T12:33", result)
+	// Probably this is not necessary but just in case
+	path = "aaaa f062f002-88f0-4b53-aeca-7324e9609329@2022-10-20T12:33 bbbb"
+	result = extractBlobIdFromString(path)
+	assert.Equal(t, "f062f002-88f0-4b53-aeca-7324e9609329@2022-10-20T12:33", result)
+}
+
 func TestGenBlobPath_ValidBlobId_ReturnsCorrectPath(t *testing.T) {
 	result := genBlobPath("f062f002-88f0-4b53-aeca-7324e9609329", ".properties")
 	expected := "vol-42/chap-31/f062f002-88f0-4b53-aeca-7324e9609329.properties"
+	assert.Equal(t, expected, result)
+}
+
+func TestGenBlobPath_ValidBlobId_ReturnsCorrectPath_NewLayout(t *testing.T) {
+	result := genBlobPath("f062f002-88f0-4b53-aeca-7324e9609329@2022-10-20T12:33", ".properties")
+	expected := "2022/10/20/12/33/f062f002-88f0-4b53-aeca-7324e9609329.properties"
+	assert.Equal(t, expected, result)
+}
+
+func TestGenBlobPath_ValidBlobId_ReturnsCorrectPath_NewLayout2(t *testing.T) {
+	result := genBlobPath("/2022/10/20/12/33/f062f002-88f0-4b53-aeca-7324e9609329", ".properties")
+	expected := "2022/10/20/12/33/f062f002-88f0-4b53-aeca-7324e9609329.properties"
 	assert.Equal(t, expected, result)
 }
 

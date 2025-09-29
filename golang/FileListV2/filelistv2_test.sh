@@ -14,9 +14,16 @@
 #
 # Prepare the test data using setup_nexus3_repos.sh:
 #   f_install_nexus3 3.77.1-01 filelistv2test
-#   # Then start this Nexus
+#   # After starting this Nexus, populate the data:
 #   _AUTO=true main
 #   f_upload_dummies_all_hosted
+#   #f_backup_postgresql_component
+#   f_delete_all_assets
+#   #f_run_tasks_by_type "assetBlob.cleanup" # if Postgresql with nexus.assetBlobCleanupTask.blobCreatedDelayMinute=0
+#
+#   f_install_nexus3 3.84.1-01 filelistv2test2
+#   # After starting this Nexus, populate the data:
+#   f_upload_dummies_raw "" "1000"
 #   #f_backup_postgresql_component
 #   f_delete_all_assets
 #   #f_run_tasks_by_type "assetBlob.cleanup" # if Postgresql with nexus.assetBlobCleanupTask.blobCreatedDelayMinute=0
@@ -36,7 +43,7 @@
 ### Global variables
 : ${_TEST_WORKDIR:=""}      #./sonatype-work/nexus3
 : ${_TEST_BLOBSTORE:=""}    #./sonatype-work/nexus3/blobs/default
-: ${_TEST_FILTER_PATH:="vol-"}
+: ${_TEST_FILTER_PATH:="/(vol-\d\d|20\d\d)/"}
 : ${_TEST_DB_CONN:=""}      #host=localhost user=nexus dbname=nxrm
 : ${_TEST_DB_CONN_PWD:="nexus123"}
 : ${_TEST_STOP_ERROR:=true}
@@ -115,7 +122,7 @@ function test_4_SizeAndCount() {
 
     local _out_file="/tmp/test_count_size.tsv"
     _TEST_MAX_NUM=0 _exec_filelist "filelist2 -b '${_b}' -p '${_p}' -f '.bytes' -H" "${_out_file}"
-    local _result="$(rg "Listed.+ bytes" -o /tmp/test_last.err)"
+    local _result="$(rg "Listed.+ Size: (\d+) bytes" -o -r '$1' /tmp/test_last.err)"
     if [ -z "${_result}" ]; then
         echo "TEST=ERROR: Could not find 'Listed.+ bytes' in /tmp/test_last.err"
         return 1
@@ -129,8 +136,10 @@ function test_4_SizeAndCount() {
 
     local _find="find"
     type gfind &>/dev/null && _find="gfind"
-    # "c*2" is because the filelist2 checks both .properties and .bytes files
-    local _expect="$(${_find} ${_b} -type f -name '*.bytes*' -path "*${_p}*" -printf '%s\n' | awk '{ c+=1;s+=$1 }; END { print "Listed: "c" (checked: "c*2"), Size: "s" bytes" }')"
+    # As the new blob store layout introduced the deletion marker files, can't count the files easily, so checking only the size.
+    local _expect_cmd="${_find} ${_b} -type f -name '*.bytes*' \( -path '*content/vol-*' -o  -path '*content/20*' \) -printf '%s\n' | awk '{ s+=\$1 }; END { print s }'"
+    echo "DEBUG: expect_cmd=${_expect_cmd}" >&2
+    local _expect="$(eval "${_expect_cmd}")"
 
     if [ -n "${_expect}" ] && [ "${_result}" == "${_expect}" ]; then
         echo "TEST=OK : ${_result}"
@@ -210,7 +219,7 @@ function test_6_Orphaned() {
     local _p="${2:-"${_TEST_FILTER_PATH}"}"
     local _work_dir="${3:-"${_TEST_WORKDIR}"}"
     #local _blob_id="$(uuidgen)"
-    #filelist2 -b "$BLOB_STORE" -p 'vol-' -c 10 -src BS -db "host=localhost user=nexus dbname=nexus" -s ./orphaned_blobs_Src-BS.tsv
+    #filelist2 -b "$BLOB_STORE" -p '/(vol-\d\d|20\d\d)/' -c 10 -src BS -db "host=localhost user=nexus dbname=nexus" -s ./orphaned_blobs_Src-BS.tsv
     local _nexus_store="$(find ${_work_dir%/} -maxdepth 3 -name 'nexus-store.properties' -path '*/etc/fabric/*' -print | head -n1)"
     if [ -z "${_nexus_store}" ]; then
         echo "TEST=ERROR: Could not find nexus-store.properties in ${_work_dir}"
@@ -253,8 +262,10 @@ function test_7_TextFileToCheckBlobStore() {
         echo "TEST=Skipped this test for S3/Az for now."
         return 0
     fi
+    local _find="find"
+    type gfind &>/dev/null && _find="gfind"
 
-    find ${_b%/} -maxdepth 4 -name '*.properties' -path '*/content/vol*' -print | head -n10 >/tmp/test_mock_blob_ids.txt
+    ${_find} ${_b%/} -name '*.properties' \( -path '*content/vol-*' -o  -path '*content/20*' \) -print | head -n10 >/tmp/test_mock_blob_ids.txt
     if [ ! -s "/tmp/test_mock_blob_ids.txt" ]; then
         echo "TEST=ERROR: No mock .properties files found in ${_b}"
         return 1    # Environment issue but return 1
@@ -268,10 +279,10 @@ function test_7_TextFileToCheckBlobStore() {
     fi
     local _expected_num="$(_line_num /tmp/test_mock_blob_ids.txt)"
     local _result_num="$(_line_num ${_out_file})"
-    if [ ${_expected_num:-"0"} -gt 0 ] && [ "$((_expected_num * 2))" -eq "${_result_num}" ]; then
+    if [ ${_expected_num:-"0"} -gt 0 ] && [ "${_expected_num}" -eq "${_result_num}" ]; then
         echo "TEST=OK (${_out_file})"
     else
-        echo "TEST=ERROR: [ expected:${_expected_num}*2 -eq result:${_result_num} ] is false"
+        echo "TEST=ERROR: [ expected:${_expected_num} -eq result:${_result_num} ] is false"
         return 1
     fi
 
@@ -310,14 +321,19 @@ function test_8_TextFileToCheckDatabase() {
 
     #find ${_b%/} -maxdepth 4 -name '*.properties' -path '*/content/vol*' -print | head -n10 >/tmp/test_mock_blob_ids.txt
     # Assuming / hoping the newer files wouldn't be orphaned files.
-    _exec_filelist "filelist2 -b ${_b} -p '/(vol-\d\d|20\d\d)/' -pRxNot 'deletedReason=' -n 1000" "/tmp/test_mock_blob_ids.tmp"
-    cat /tmp/test_mock_blob_ids.tmp | sort -k2r,3r | head -n10 > /tmp/test_mock_blob_ids.txt
+    # Can not use -pRxNot 'deletedReason=' and '-n 1000' with the new blob store layout...
+    _TEST_MAX_NUM=100000 _exec_filelist "filelist2 -b ${_b} -p '${_p}'" "/tmp/test_mock_blob_ids.tmp"
+    #cat /tmp/test_mock_blob_ids.tmp | sort -k2r,3r | head -n10 > /tmp/test_mock_blob_ids.txt
+    # The last rg with 1 means most likely not soft-deleted files
+    rg '/([^/]+\.properties)' -o -r '$1' /tmp/test_mock_blob_ids.tmp | sort | uniq -c | rg '^\s*1\s(\S+)' -o -r '$1' | head -n10 > /tmp/test_mock_blob_ids_maybeNotDeleted.tmp
+    cat /tmp/test_mock_blob_ids_maybeNotDeleted.tmp | xargs -P2 -I{} rg "content/.*{}" -o -m1 /tmp/test_mock_blob_ids.tmp > /tmp/test_mock_blob_ids.txt
     if [ ! -s "/tmp/test_mock_blob_ids.txt" ]; then
         echo "TEST=WARN: No mock .properties files found in ${_b}, so skipping"
         return 0
     fi
 
     local _out_file="/tmp/test_assets_from_db.tsv"
+    # [INFO] [main.setGlobals:206] BlobIDFIle is provided but no BaseDir and -src is missing. Assuming '-src BS' to find Orphaned blobs
     _exec_filelist "filelist2 -db ${_nexus_store} -bsName $(basename "${_b}") -rF /tmp/test_mock_blob_ids.txt -H" "${_out_file}"
     local _expected_num="$(_line_num /tmp/test_mock_blob_ids.txt)"
     local _result_num="$(_line_num ${_out_file})"
@@ -424,8 +440,8 @@ function _find_sample_repo_name() {
         return 0
     fi
 
-    # Found _rn (repository name) which has at lest 10 .properties files
-    local _rn="$(rg --no-filename -d 4 -g '*.properties' "^@Bucket.repo-name=(\S+)$" -o -r '$1' ${_b%/} | head -n100 | sort | uniq -c | sort -nr | head -n1 | rg -o '^\s*\d+\s+(\S+)$' -r '$1')"
+    # Finding _rn (repository name) which has at lest 10 .properties files. NOTE: ` -d 4` does not work with the new blob store layout
+    local _rn="$(rg --no-filename -g '*.properties' "^@Bucket.repo-name=(\S+)$" -o -r '$1' ${_b%/} | head -n100 | sort | uniq -c | sort -nr | head -n1 | rg -o '^\s*\d+\s+(\S+)$' -r '$1')"
     if [ -z "${_rn}" ]; then
         _log "WARN" "No repo-name found in ${_prop}"
         return 1

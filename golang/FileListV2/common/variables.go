@@ -26,7 +26,7 @@ const SEP = "	" // Tab separator (should this be changeable?)
 // Display / output related
 var NoHeader bool
 var WithProps bool
-var DateBsLayout = false // To support new created date based blobstore layout
+var NoDateBsLayout = false // To support new created date based blobstore layout
 
 // var WithBlobSize bool
 var TopN int64
@@ -86,6 +86,8 @@ var RxDeletedDT = regexp.MustCompile("[^#]?deletedDateTime=([0-9]+)")
 var RxDeleted = regexp.MustCompile("deleted=true") // should not use ^ as replacing one-line text
 var RxRepoName = regexp.MustCompile(`[^#]?@Bucket\.repo-name=([^,$]+)`)
 var RxBlobId = regexp.MustCompile("[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}")
+var RxBlobIdNew = regexp.MustCompile(`.*([a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12})@(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2}).*`)
+var RxBlobIdNew2 = regexp.MustCompile(`/?([0-9]{4})/([0-9]{2})/([0-9]{2})/([0-9]{2})/([0-9]{2})/([a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}).*`)
 
 // Counters and misc.
 var Conc1 int

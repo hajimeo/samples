@@ -40,7 +40,7 @@ func setGlobals() {
 
 	// TODO: 'b' should accept the comma separated values for supporting the group blob store
 	flag.StringVar(&common.BaseDir, "b", "", "Blob store directory or URI (eg. 's3://s3-test-bucket/s3-test-prefix/'), which location contains 'content' directory (default: '.')")
-	flag.BoolVar(&common.DateBsLayout, "DateBS", false, "Created Date based Blob Store layout")
+	flag.BoolVar(&common.NoDateBsLayout, "NoDateBS", false, "Disable the date based blob store layout (YYYY/MM/DD/hh/mm/uuid) to force checking the old vol-XX/chap-XX/uuid layout")
 	flag.StringVar(&common.Filter4Path, "p", "", "Regular Expression for directory *path* (eg '/(vol-\\d\\d|20\\d\\d)/'), or S3 prefix.")
 	flag.StringVar(&common.Filter4FileName, "f", "", "Regular Expression for the file *name* (eg: '\\.properties' to include only this extension)")
 	flag.BoolVar(&common.WithProps, "P", false, "If true, the .properties file content is included in the output")
@@ -54,9 +54,9 @@ func setGlobals() {
 	flag.BoolVar(&common.NoHeader, "H", false, "If true, no header line")
 
 	flag.StringVar(&common.BlobIDFIle, "rF", "", "Read from file path which contains the list of blob IDs")
-	// TODO: GetXxxx not used yet
 	flag.StringVar(&common.GetFile, "get", "", "Get a single file/blob from the blob store")
 	flag.StringVar(&common.GetTo, "getTo", "", "Get to the local path")
+	// TODO: GetXxxx not used yet
 
 	// DB / SQL related
 	flag.StringVar(&common.DbConnStr, "db", "", "DB connection string or path to DB connection properties file")
@@ -66,6 +66,7 @@ func setGlobals() {
 	// Reconcile / orphaned blob finding related
 	flag.StringVar(&common.Truth, "src", "", "Using database or blobstore as source [BS|DB] for Dead or Orphaned blob finding")
 	flag.BoolVar(&common.RemoveDeleted, "RDel", false, "TODO: Remove 'deleted=true' from .properties. Requires -dF")
+	// TODO: Not tested `-RDel` with the new blob store layout and with S3 / Azure
 	flag.StringVar(&common.WriteIntoStr, "wStr", "", "For testing. Write the string into the file (eg. deleted=true)")
 	flag.StringVar(&common.DelDateFromStr, "dDF", "", "Deleted date YYYY-MM-DD (from). Used to search deletedDateTime")
 	flag.StringVar(&common.DelDateToStr, "dDT", "", "Deleted date YYYY-MM-DD (to). To exclude newly deleted assets")
@@ -111,6 +112,10 @@ func setGlobals() {
 		h.Log("ERROR", "-c is lower than 1.")
 		os.Exit(1)
 	}
+	if common.TopN > 0 && common.Conc1 > int(common.TopN) {
+		common.Conc1 = int(common.TopN)
+		h.Log("INFO", "-c is larger than -n. Setting -c with -n: "+strconv.Itoa(common.Conc1))
+	}
 
 	if len(common.DbConnStr) > 0 {
 		// If it's nexus-store.properties file, read the file and get the DB connection string
@@ -146,7 +151,6 @@ func setGlobals() {
 		if len(common.BlobIDFIle) > 0 {
 			panic("Currently -rF and -query can't be used togather")
 		}
-		common.BlobIDFIleType = "DB"
 	}
 
 	if len(common.DelDateFromStr) > 0 {
@@ -197,11 +201,11 @@ func setGlobals() {
 	// If Truth is not set but BlobIDFIle is given, needs to set Truth
 	if len(common.Truth) == 0 && len(common.BlobIDFIle) > 0 {
 		if len(common.BaseDir) > 0 {
-			h.Log("INFO", "BlobIDFIle and BaseDir are provided but -src is missing. Assuming '-src DB' to find Dead blobs")
-			common.Truth = "DB"
+			h.Log("WARN", "BlobIDFIle and BaseDir are provided but '-src DB' is missing to find Dead blobs")
+			//common.Truth = "DB"
 		} else if len(common.DbConnStr) > 0 {
-			h.Log("INFO", "BlobIDFIle is provided but no BaseDir and -src is missing. Assuming '-src BS' to find Orphaned blobs")
-			common.Truth = "BS"
+			h.Log("WARN", "BlobIDFIle is provided but no BaseDir and '-src BS' is missing to find Orphaned blobs")
+			//common.Truth = "BS"
 		}
 	}
 
@@ -209,22 +213,22 @@ func setGlobals() {
 		if len(common.BlobIDFIle) == 0 && len(common.Query) == 0 && (len(common.DbConnStr) == 0 || len(common.BaseDir) == 0) {
 			panic("-src without -rF requires -b and -db")
 		}
+	}
 
-		// If BlobIDFIle is given, DB connection or BaseDir is required
-		if len(common.DbConnStr) == 0 && len(common.BaseDir) == 0 {
-			panic("-src with -rF requires -b or -db")
-		}
-		if len(common.BlobIDFIle) > 0 && len(common.BlobIDFIleType) == 0 {
-			if len(common.DbConnStr) > 0 && len(common.BaseDir) > 0 {
-				h.Log("DEBUG", "-rF, -b, and -db are given, so using Blob IDs in -rF as if BS output.")
-				common.BlobIDFIleType = "BS"
-			} else if len(common.DbConnStr) > 0 && len(common.BaseDir) == 0 {
-				h.Log("DEBUG", "-rF and -db are given, so using Blob IDs in -rF as if BS output.")
-				common.BlobIDFIleType = "BS"
-			} else if len(common.DbConnStr) == 0 && len(common.BaseDir) > 0 {
-				h.Log("DEBUG", "-rF and -b are given, so using Blob IDs in -rF as if DB output.")
-				common.BlobIDFIleType = "DB"
-			}
+	// If BlobIDFIle is given, DB connection or BaseDir is required
+	if len(common.DbConnStr) == 0 && len(common.BaseDir) == 0 {
+		panic("-src with -rF requires -b or -db")
+	}
+	if len(common.BlobIDFIle) > 0 && len(common.BlobIDFIleType) == 0 {
+		if len(common.DbConnStr) > 0 && len(common.BaseDir) > 0 {
+			h.Log("DEBUG", "-b, and -db are given. Using Blob IDs in -rF as if saved BS output.")
+			common.BlobIDFIleType = "BS"
+		} else if len(common.DbConnStr) > 0 && len(common.BaseDir) == 0 {
+			h.Log("DEBUG", "-db is given but no -b. Using Blob IDs in -rF as if saved BS output.")
+			common.BlobIDFIleType = "BS"
+		} else if len(common.DbConnStr) == 0 && len(common.BaseDir) > 0 {
+			h.Log("DEBUG", "-b is given but no -db. Using Blob IDs in -rF as if saved DB output.")
+			common.BlobIDFIleType = "DB"
 		}
 	}
 
@@ -283,11 +287,11 @@ func initRepoFmtMap(db *sql.DB) {
 		}
 	}
 	h.Log("DEBUG", fmt.Sprintf("Repo2Fmt = %v", common.Repo2Fmt))
-	logLevel := "DEBUG"
 	if len(common.BsName) > 0 {
-		logLevel = "INFO"
+		h.Log("INFO", fmt.Sprintf("AssetTables = %v for '%s' blob store", common.AssetTables, common.BsName))
+	} else {
+		h.Log("DEBUG", fmt.Sprintf("AssetTables = %v", common.AssetTables))
 	}
-	h.Log(logLevel, fmt.Sprintf("AssetTables = %v", common.AssetTables))
 }
 
 func printHeader(saveToPointer *os.File) {
@@ -309,20 +313,50 @@ func printHeader(saveToPointer *os.File) {
 	}
 }
 
-func extractBlobIdFromString(line string) string {
-	//fileName := filepath.Base(line)
+func extractBlobIdFromString(pathLikeLine string) string {
+	//fileName := filepath.Base(pathLikeLine)
 	//return getPathWithoutExt(fileName)
-	return common.RxBlobId.FindString(line)
+	if !common.NoDateBsLayout {
+		var matches []string
+		// Checking the path like blob ID regex first
+		matches = common.RxBlobIdNew2.FindStringSubmatch(pathLikeLine)
+		if len(matches) > 6 {
+			// 2025/08/14/02/44/6c1d3423-ecbc-4c52-a0fe-01a45a12883a
+			return matches[6] + "@" + matches[1] + "-" + matches[2] + "-" + matches[3] + "T" + matches[4] + ":" + matches[5]
+		}
+		// Probably because the path like string is provide, no need to consider @2025-08-14T02:44 but just in case...
+		matches = common.RxBlobIdNew.FindStringSubmatch(pathLikeLine)
+		if len(matches) > 6 {
+			// 6c1d3423-ecbc-4c52-a0fe-01a45a12883a@2025-08-14T02:44
+			return matches[1] + "@" + matches[2] + "-" + matches[3] + "-" + matches[4] + "T" + matches[5] + ":" + matches[6]
+		}
+	}
+	return common.RxBlobId.FindString(pathLikeLine)
 }
 
-func genBlobPath(blobId string, extension string) string {
-	// org.sonatype.nexus.blobstore.VolumeChapterLocationStrategy#location
-	// TODO: Support the Date-based layout `nexus.blobstore.datebased.layout.enabled` or DB <format>_asset_blob.use_date_path column (NEXUS-43674)
-	// default@e60e55f0-2bce-43fd-b767-85b329ddbd20@2024-12-20T15:53 => content/2024/01/01/10/15/UUID.properties
+func genBlobPath(blobIdLikeString string, extension string) string {
+	// NOTE: this returns path without slash at the beginning
+	blobId := blobIdLikeString
+	if !common.NoDateBsLayout {
+		var matches []string
+		matches = common.RxBlobIdNew.FindStringSubmatch(blobIdLikeString)
+		if len(matches) > 6 {
+			// 6c1d3423-ecbc-4c52-a0fe-01a45a12883a@2025-08-14T02:44
+			// 2025/08/14/02/44/6c1d3423-ecbc-4c52-a0fe-01a45a12883a.properties
+			return filepath.Join(matches[2], matches[3], matches[4], matches[5], matches[6], matches[1]) + extension
+		}
+		matches = common.RxBlobIdNew2.FindStringSubmatch(blobIdLikeString)
+		if len(matches) > 6 {
+			return filepath.Join(matches[1], matches[2], matches[3], matches[4], matches[5], matches[6]) + extension
+		}
+	}
+
+	blobId = common.RxBlobId.FindString(blobIdLikeString)
 	if len(blobId) == 0 {
 		h.Log("WARN", "genBlobPath got empty blobId.")
 		return ""
 	}
+	// org.sonatype.nexus.blobstore.VolumeChapterLocationStrategy#location
 	hashInt := lib.HashCode(blobId)
 	vol := math.Abs(math.Mod(float64(hashInt), 43)) + 1
 	chap := math.Abs(math.Mod(float64(hashInt), 47)) + 1
@@ -653,19 +687,12 @@ func checkBlobIdDetailFromDB(maybeBlobId string) interface{} {
 }
 
 func checkBlobIdDetailFromBS(maybeBlobId string) interface{} {
-	blobId := extractBlobIdFromString(maybeBlobId)
-	if len(blobId) == 0 {
+	// basePath is the file path without extension
+	basePath := h.AppendSlash(common.ContentPath) + genBlobPath(maybeBlobId, "")
+	if len(basePath) == 0 {
 		h.Log("DEBUG", fmt.Sprintf("Empty blobId in '%s'", maybeBlobId))
 		return nil
 	}
-
-	if common.DateBsLayout {
-		panic("Date Blob store layout is not implemented yet.")
-		// TODO: Probably need to find the created date from the database?
-	}
-
-	// basePath is the file path without extension
-	basePath := h.AppendSlash(common.ContentPath) + genBlobPath(blobId, "")
 
 	bytesPath := basePath + common.BYTES_EXT
 	if common.RxFilter4FileName == nil || common.RxFilter4FileName.MatchString(bytesPath) {
@@ -704,7 +731,12 @@ func checkBlobIdDetailFromBS(maybeBlobId string) interface{} {
 func getAssetWithBlobRefAsCsv(blobId string, reposPerFmt []string, format string, db *sql.DB) string {
 	h.Log("DEBUG", fmt.Sprintf("repoNames: %v, format:%s", reposPerFmt, format))
 	var tableNames []string
-	query := genAssetBlobUnionQuery(tableNames, "", "blob_ref LIKE '%"+blobId+"' LIMIT 1", reposPerFmt, format)
+	blobIdTmp := blobId
+	// If needs to consider the new blob store layout and if the blobId does not contain @, adding % to the blobId
+	if !common.NoDateBsLayout && !strings.Contains(blobId, "@") {
+		blobIdTmp = blobId + "%"
+	}
+	query := genAssetBlobUnionQuery(tableNames, "", "blob_ref LIKE '%"+blobIdTmp+"' LIMIT 1", reposPerFmt, format)
 	rows := lib.Query(query, db, int64(len(reposPerFmt)*1000))
 	if rows == nil { // Mainly for unit test
 		h.Log("WARN", "rows is nil for query: "+query)
@@ -862,7 +894,12 @@ func isOrphanedBlob(contents string, blobId string, db *sql.DB) string {
 	// Supporting only 3.47 and higher for performance (was adding ending %) (NEXUS-35934)
 	// Not using common.BsName as can't trust blob store name in blob_ref, and may not work with group blob stores
 	h.Log("DEBUG", fmt.Sprintf("repoNames: %v, format:%s", repoNames, format))
-	query := genAssetBlobUnionQuery(tableNames, "asset_id", "blob_ref LIKE '%"+blobId+"' LIMIT 1", repoNames, format)
+	// If blobId does not contain `@`, append '%' to match the old style blob IDs
+	blobIdTmp := blobId
+	if !common.NoDateBsLayout && !strings.Contains(blobId, "@") {
+		blobIdTmp = blobId + "%"
+	}
+	query := genAssetBlobUnionQuery(tableNames, "asset_id", "blob_ref LIKE '%"+blobIdTmp+"' LIMIT 1", repoNames, format)
 	if len(query) == 0 { // Mainly for unit test
 		h.Log("WARN", fmt.Sprintf("query is empty for blobId: %s and tableNames: %v", blobId, tableNames))
 		return "UNKNOWN1:" + repoName + "/" + format
@@ -1004,8 +1041,13 @@ func main() {
 		var tempDir = os.TempDir()
 		common.BlobIDFIle = filepath.Join(tempDir, "blob_ids_from_query.tsv")
 		lib.GetRows(common.Query, db, common.BlobIDFIle, 200)
-		h.Log("INFO", "Query result is saved into "+common.BlobIDFIle)
+		h.Log("DEBUG", "Query result is saved into "+common.BlobIDFIle)
+		if common.BlobIDFIleType == "" {
+			common.BlobIDFIleType = "DB" // assuming the query returns blob_ref values
+		}
 	}
+
+	startMs := time.Now().UnixMilli()
 
 	// NOTE: Header is written only when one file is used
 	printHeader(common.SaveToPointer)
@@ -1014,24 +1056,23 @@ func main() {
 	if len(common.BlobIDFIle) > 0 {
 		// If Truth (src) is not set or Truth and BlobIDFile type are the same, reading this file as source
 		if len(common.Truth) == 0 || (len(common.Truth) > 0 && common.Truth == common.BlobIDFIleType) {
-			h.Log("DEBUG", "'rf' is provided and 'rf' type matches with 'src', so reading 'rf' as "+common.Truth+" result.")
 			if common.BlobIDFIleType == "BS" {
+				h.Log("INFO", fmt.Sprintf("checkBlobIdDetailFromDB: path=%s, conc=%d", common.BlobIDFIle, common.Conc1))
 				_ = h.StreamLines(common.BlobIDFIle, common.Conc1, checkBlobIdDetailFromDB)
-				h.Log("INFO", "Completed 'checkBlobIdDetailFromDB' from "+common.BlobIDFIle+" ("+common.BlobIDFIleType+")")
 			} else if common.BlobIDFIleType == "DB" {
+				h.Log("INFO", fmt.Sprintf("checkBlobIdDetailFromBS: path=%s, conc=%d", common.BlobIDFIle, common.Conc1))
 				_ = h.StreamLines(common.BlobIDFIle, common.Conc1, checkBlobIdDetailFromBS)
-				h.Log("INFO", "Completed 'checkBlobIdDetailFromBS' from "+common.BlobIDFIle+" ("+common.BlobIDFIleType+")")
 			}
+			h.Elapsed(startMs, fmt.Sprintf("Completed. Listed: %d (checked: %d), Size: %d bytes", common.PrintedNum, common.CheckedNum, common.TotalSize), 0)
 			return
 		} else if len(common.Truth) > 0 && len(common.BlobIDFIleType) > 0 && common.Truth != common.BlobIDFIleType {
-			panic("TODO: 'rf' is provided but 'rf' type:" + common.BlobIDFIleType + " does not match with 'src' type:" + common.Truth + ", so this file will be used against filelist result.")
+			panic("TODO: 'rF' is provided but 'rF' type:" + common.BlobIDFIleType + " does not match with 'src' type:" + common.Truth + ", so this file will be used against filelist result.")
 			// TODO: implement this
 		}
 	}
 
 	// If the Blob ID file is not provided, run per directory
 	h.Log("DEBUG", fmt.Sprintf("Starting GetDirs with %s, %s, %d", common.ContentPath, common.Filter4Path, common.MaxDepth))
-	startMs := time.Now().UnixMilli()
 	subDirs, err := Client.GetDirs(common.ContentPath, common.Filter4Path, common.MaxDepth)
 	if err != nil {
 		h.Log("ERROR", "Failed to list directories in "+common.ContentPath+" with filter: "+common.Filter4Path)
@@ -1045,10 +1086,4 @@ func main() {
 	// Always log this elapsed time by using 0 thresholdMs
 	h.Elapsed(startMs, fmt.Sprintf("Completed. Listed: %d (checked: %d), Size: %d bytes", common.PrintedNum, common.CheckedNum, common.TotalSize), 0)
 	return
-
-	// If Truth is DB, find unnecessary blobs from the Blob store (orphaned blobs)
-	// Also, if the Blob ID file is provided, find the orphaned blobs by using it (no need to connect to DB)
-
-	// If Truth is BS, find unnecessary DB records from the database (dead blobs)
-	// Also, if the Blob ID file is provided, find the dead blobs by using it (no need to connect to DB)
 }
