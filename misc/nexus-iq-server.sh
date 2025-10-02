@@ -42,7 +42,7 @@ if ${JAVA} -XX:+PrintFlagsFinal -version 2>&1 | grep -q GCLogFileSize; then
     # -XX:+PrintTenuringDistribution -XX:+PrintClassHistogramBeforeFullGC
     JAVA_OPTIONS="${JAVA_OPTIONS} -XX:+PrintGCDetails -XX:+PrintGCDateStamps -XX:+PrintGCCause -XX:+UseGCLogFileRotation -XX:NumberOfGCLogFiles=10 -XX:GCLogFileSize=100M -Xloggc:${NEXUS_IQ_SONATYPEWORK}/log/gc.%t.log -XX:+PrintClassHistogramAfterFullGC"
 else
-    # default, expecting java 11 (@see: https://docs.oracle.com/en/java/java-components/enterprise-performance-pack/epp-user-guide/printing-jvm-information.html)
+    # Java 11 / 17 (@see: https://docs.oracle.com/en/java/java-components/enterprise-performance-pack/epp-user-guide/printing-jvm-information.html)
     # https://docs.azul.com/prime/Unified-GC-Logging
     #JAVA_OPTIONS="${JAVA_OPTIONS} -Xlog:gc*,classhisto*=trace:file=${NEXUS_IQ_SONATYPEWORK}/log/gc.%t.log:time,uptime:filecount=10,filesize=100m"
     JAVA_OPTIONS="${JAVA_OPTIONS} -Xlog:gc*,safepoint:file=${NEXUS_IQ_SONATYPEWORK}/log/gc.%t.log:time,uptime:filecount=10,filesize=100m"
