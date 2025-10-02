@@ -128,7 +128,7 @@ function test_4_SizeAndCount() {
         return 1
     fi
 
-    # TODO: if not File type, return in here (add other types)
+    # If not File type, return in here (TODO: add other types)
     if [[ "${_b}" =~ ^(s3|az):// ]]; then
         echo "TEST=OK : ${_result}"
         return 0
@@ -452,7 +452,6 @@ function _find_sample_repo_name() {
 
 
 
-# TODO: currently only works with File type blobstore
 function main() {
     local _b="${1:-"${_TEST_BLOBSTORE}"}"   # blobstore
     local _p="${2:-"${_TEST_FILTER_PATH}"}" # path/prefix TODO: If S3, also should support an empty prefix?
