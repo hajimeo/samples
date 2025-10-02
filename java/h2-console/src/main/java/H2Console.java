@@ -329,7 +329,8 @@ public class H2Console {
         } catch (JdbcSQLException e) {
             if (e.getMessage().contains("corrupted while reading record")) {
                 System.out.println();
-                log("ERROR: '" + query + "' failed with " + e.getMessage() + "(" + lastRid + ")");
+                log("ERROR: '" + query + "' failed with " + e.getMessage() + " (lastRid:" + lastRid + ")");
+                // TODO: print Throwable.stacktrace
             }
             throw new RuntimeException(e);
         } catch (SQLException e) {
@@ -541,7 +542,7 @@ public class H2Console {
                 }
                 input = reader.readLine(prompt);
             } catch (SQLException e) {
-                log(e.getMessage());
+                log("SQLException: " + e.getMessage());
                 input = "";
             } catch (UserInterruptException e) {
                 // User hit ctrl-C, just clear the current line and try again.
