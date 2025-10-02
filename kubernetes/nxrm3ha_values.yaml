@@ -1,0 +1,135 @@
+
+
+
+
+
+
+
+namespaces:
+  nexusNs:
+    enabled: false
+    name: nexusrepo
+
+statefulset:
+  name: nxrm-statefulset
+  serviceName: nxrm-statefulset-service
+  replicaCount: 1
+  hostAliases:
+   - ip: 192.168.4.31
+     hostnames:
+     - nxiqha-k8s.standalone.localdomain
+     - nxiqha-admin-k8s.standalone.localdomain
+  clustered: true
+  additionalVolumeMounts:
+    - name: nexus-deploy-volume
+      mountPath: /opt/sonatype/nexus/deploy
+    - name: nexus-blobs-volume
+      mountPath: /nexus-data/blobs
+  additionalVolumes:
+    - name: nexus-deploy-volume
+      persistentVolumeClaim:
+        claimName: nxrm3ha-deploy-nfs-pv-claim
+    - name: nexus-blobs-volume
+      persistentVolumeClaim:
+        claimName: nxrm3ha-blobs-nfs-pv-claim
+  initContainers:
+    - name: chown-nexusdata-owner-to-nexus-and-init-log-dir
+      image: busybox:1.33.1
+      command: [/bin/sh]
+      args:
+        - -c
+        - >-
+          mkdir -p /nexus-data/etc/logback &&
+          mkdir -p /nexus-data/log/tasks &&
+          mkdir -p /nexus-data/log/audit &&
+          touch -a /nexus-data/log/tasks/allTasks.log &&
+          touch -a /nexus-data/log/audit/audit.log &&
+          touch -a /nexus-data/log/request.log &&
+          find /nexus-data -mindepth 0 -maxdepth 3 -type d -not -path */blobs/* ! -user 200 | xargs -P3 -I{} -t chown 200:200 {}
+      volumeMounts:
+        - name: nexus-data
+          mountPath: /nexus-data
+      resources:
+        limits:
+          cpu: 0.2
+          memory: 512Mi
+        requests:
+          cpu: 0.1
+          memory: 256Mi
+  container:
+    image:
+      repository: sonatype/nexus3
+    resources:
+      requests:
+        cpu: 1
+        memory: '3Gi'
+      limits:
+        cpu: 1
+        memory: '3Gi'
+    containerPort: 8081
+    pullPolicy: Always
+    terminationGracePeriod: 120
+    env:
+      nexusDBName: nxrm3helmha
+      nexusDBPort: 5432
+      install4jAddVmParams: '-Xms2g -Xmx2g -Dcom.redhat.fips=false -Dnexus.scripts.allowCreation=true -Dnexus.datastore.nexus.maximumPoolSize=10 -Dnexus.datastore.nexus.advanced=maxLifetime=30000 -Dnexus.jwt.expiry=28800'
+      jdbcUrlParams: ?targetServerType=primary # Must start with a '?' e.g. '?foo=bar&baz=foo'
+      zeroDowntimeEnabled: true
+    additionalEnv:
+      - name: NEXUS_LICENSE_FILE
+        value: '/var/nexus-repo-license/nexus-repo-license.lic'
+  imagePullSecrets: {}
+
+pvc:
+  accessModes: ReadWriteMany
+  storage: 10Gi
+  volumeClaimTemplate:
+    enabled: true
+storageClass:
+  enabled: false
+  name: nfs-client
+
+service:  #Nexus Repo NodePort Service
+  nexus:
+    enabled: true
+    type: NodePort
+    protocol: TCP
+    port: 8081
+    targetPort: 8081
+
+secret:
+  secretProviderClass: 'secretProviderClass'
+  provider: provider # e.g. aws, azure etc
+  dbSecret:
+    name: 'nxrm-db-secret'
+    enabled: true
+  db:
+    user: 'nxrm3ha'
+    userAlias: nxrm-db-user-alias
+    password: 'nxrm3ha'
+    passwordAlias: nxrm-db-password-alias
+    host: '192.168.4.31'
+    hostAlias: nxrm-db-host-alias
+  nexusAdmin:
+    name: 'nexusAdminPassword'
+    alias: 'admin-nxrm-password-alias'
+  nexusAdminSecret:
+    enabled: true
+    adminPassword: 'admin123'
+  nexusSecret:
+    enabled: true
+  license:
+    name: nexus-repo-license.lic
+    licenseSecret:
+      enabled: true
+      fileContentsBase64: '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'
+      mountPath: /var/nexus-repo-license
+
+nexus:
+  docker:
+    enabled: true
+    type: NodePort
+    protocol: TCP
+    registries:
+      - port: 5000
+        targetPort: 4999

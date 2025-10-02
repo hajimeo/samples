@@ -43,7 +43,7 @@ namespaces:
 statefulset:
   name: nxrm-statefulset
   serviceName: nxrm-statefulset-service
-  replicaCount: 2
+  replicaCount: 1
   hostAliases:
    - ip: "192.168.4.31"
      hostnames:
@@ -105,7 +105,7 @@ statefulset:
     env:
       nexusDBName: nxrm3helmha
       nexusDBPort: 5432
-      install4jAddVmParams: '-Xms2g -Xmx2g -Dcom.redhat.fips=false -Dnexus.scripts.allowCreation=true -Dnexus.datastore.nexus.maximumPoolSize=10 -Dnexus.datastore.nexus.advanced=maxLifetime=30000'
+      install4jAddVmParams: '-Xms2g -Xmx2g -Dcom.redhat.fips=false -Dnexus.scripts.allowCreation=true -Dnexus.datastore.nexus.maximumPoolSize=10 -Dnexus.datastore.nexus.advanced=maxLifetime=30000 -Dnexus.jwt.expiry=28800'
       jdbcUrlParams: ?targetServerType=primary # Must start with a '?' e.g. '?foo=bar&baz=foo'
       zeroDowntimeEnabled: true
     additionalEnv:
