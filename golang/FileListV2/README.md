@@ -92,7 +92,8 @@ NOTE: Cleanup unused asset blob tasks should be run before this script. Also, `-
 ```
 # Accessing DB by using the connection string and check all formats for orphaned blobs (-src BS)
 export PGPASSWORD="*******"
-filelist2 -b "$BLOB_STORE" -p '/(vol-\d\d|20\d\d)/' -c 10 -src BS -db "host=localhost user=nexus dbname=nexus" -pRxNot "deleted=true" -s ./orphaned_blobs.tsv
+filelist2 -b "$BLOB_STORE" -p '/(vol-\d\d|20\d\d)/' -c 10 -src BS -db "host=localhost user=nexus dbname=nexus" -P -pRxNot "deleted=true" -s ./orphaned_blobs.tsv
+filelist2 -b sonatype-work/nexus3/blobs/default/content/ -p '/(vol-\d\d|20\d\d)' -src BS -db ./sonatype-work/nexus3/etc/fabric/nexus-store.properties -P -s ./orphaned_including_soft_deleted.tsv
 ```
 
 Using Blob IDs file (TODO: confusing):
