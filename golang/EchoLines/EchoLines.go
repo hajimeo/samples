@@ -58,7 +58,7 @@ Read one file and output only necessary lines.
         (experimental) If single thread, using the start line key matched by ELAPSED_KEY_REGEX as the label.
 
 # USAGE EXAMPLES:
-## Read the result with 'q' (after "rg '^# (.+)' -o -r '$1' > ./durations.out"):
+## Misc. Read the result with 'q' (after "rg '^# (.+)' -o -r '$1' > ./durations.out"):
     q -O -d"|" -T "SELECT c1 as start_time, c2 as end_time, CAST(c3 as INT) as ms, c4 as key FROM ./durations.out WHERE ms > 10000 ORDER BY ms DESC"
 
 ## Thread dumps
@@ -129,9 +129,13 @@ NOTE: "rg" is used several times in the below examples because it is faster than
 ### Get duration of Eclipse Memory Analyzer Tool (MAT) threads (<file-name>.threads)
     echolines ./java_pid1404494.threads "^Thread 0x\S+" "" "./threads_per_thread"
 
+### Get duration postgresql.log for Nexus 3 startup (so single thread)
+    export ELAPSED_REGEX="^\d\d\d\d-\d\d-\d\d.(\d\d:\d\d:\d\d)" ASCII_DISABLED=Y
+    echolines ./execute_sqls.out "^\d\d\d\d-\d\d-\d\d.\d\d:\d\d:\d\d" "^\d\d\d\d-\d\d-\d\d.\d\d:\d\d:\d\d" | rg '^# '
+
 ### Get duration of mvn/maven download (need org.slf4j.simpleLogger.showDateTime=true org.slf4j.simpleLogger.dateTimeFormat=yyyy-MM-dd HH:mm:ss.SSS)
-    export ELAPSED_REGEX="^\[?\d\d\d\d-\d\d-\d\d.(\d\d:\d\d:\d\d.\d\d\d)" ELAPSED_KEY_REGEX="https?://\S+" EXTRA_FROM_ENDLINE_REGEX="\([0-9.]+ \S+ at [0-9.]+ \S+/s\)$"
-    ASCII_DISABLED=Y echolines ./mvn.log "Downloading from \S+: \S+" "(^.+Downloaded from \S+: \S+)" | rg '^# ' > durations.out
+    export ELAPSED_REGEX="^\[?\d\d\d\d-\d\d-\d\d.(\d\d:\d\d:\d\d.\d\d\d)" ELAPSED_KEY_REGEX="https?://\S+" EXTRA_FROM_ENDLINE_REGEX="\([0-9.]+ \S+ at [0-9.]+ \S+/s\)$" ASCII_DISABLED=Y
+    echolines ./mvn.log "Downloading from \S+: \S+" "(^.+Downloaded from \S+: \S+)" | rg '^# ' > durations.out
     # After adding headers
     q -O -d"|" -H -T "SELECT * FROM ./durations.out WHERE MISC NOT LIKE '% MB/s)' ORDER BY MS DESC LIMIT 10"
 END`)
@@ -554,12 +558,17 @@ func asciiChart(startTimeStr string, durationMs int64, divideMs int64) string {
 
 func str2time(timeStr string) time.Time {
 	if len(ELAPSED_FORMAT) == 0 {
-		if len(timeStr) > 12 {
+		if len(timeStr) > 19 {
 			ELAPSED_FORMAT = "2006-01-02 15:04:05,000"
+		} else if len(timeStr) == 19 {
+			ELAPSED_FORMAT = "2006-01-02 15:04:05"
+		} else if len(timeStr) == 8 {
+			ELAPSED_FORMAT = "15:04:05"
 		} else {
 			ELAPSED_FORMAT = "15:04:05,000"
 		}
 	}
+	helpers.Log("DEBUG", "ELAPSED_FORMAT:"+ELAPSED_FORMAT+" for "+timeStr)
 	t, err := time.Parse(ELAPSED_FORMAT, timeStr)
 	if err != nil {
 		fmt.Println(err) //time.Time{}
