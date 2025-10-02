@@ -51,6 +51,7 @@ func setGlobals() {
 	flag.Int64Var(&common.TopN, "n", 0, "Return first N lines per *thread* (0 = no limit). Can't be less than '-c'")
 	flag.IntVar(&common.Conc1, "c", 1, "Concurrent number for reading directories")
 	flag.IntVar(&common.Conc2, "c2", 8, "2nd Concurrent number. Currently used when retrieving object from AWS S3")
+	flag.IntVar(&common.MaxDepth, "mD", 5, "Max Depth for finding sub-directories (default: 5 for YYYY/MM/DD/hh/mm/)")
 	flag.BoolVar(&common.NoHeader, "H", false, "If true, no header line")
 
 	flag.StringVar(&common.BlobIDFIle, "rF", "", "Read from file path which contains the list of blob IDs")
@@ -736,7 +737,11 @@ func getAssetWithBlobRefAsCsv(blobId string, reposPerFmt []string, format string
 		blobIdTmp = blobId + "%"
 	}
 	query := genAssetBlobUnionQuery(tableNames, "", "blob_ref LIKE '%"+blobIdTmp+"' LIMIT 1", reposPerFmt, format)
-	rows := lib.Query(query, db, int64(len(reposPerFmt)*1000))
+	slowMs := int64(1000)
+	if len(reposPerFmt) > 0 {
+		slowMs = int64(len(reposPerFmt) * 500)
+	}
+	rows := lib.Query(query, db, slowMs)
 	if rows == nil { // Mainly for unit test
 		h.Log("WARN", "rows is nil for query: "+query)
 		return ""
@@ -904,7 +909,11 @@ func isOrphanedBlob(contents string, blobId string, db *sql.DB) string {
 		return "UNKNOWN1:" + repoName + "/" + format
 	}
 	// This query can take longer so not showing too many WARNs
-	rows := lib.Query(query, db, int64(len(tableNames)*100))
+	slowMs := int64(1000)
+	if len(tableNames) > 0 {
+		slowMs = int64(len(tableNames) * 300)
+	}
+	rows := lib.Query(query, db, slowMs)
 	if rows == nil { // Mainly for unit test
 		h.Log("WARN", "rows is nil for query: "+query)
 		return "UNKNOWN2:" + repoName + "/" + format
@@ -959,7 +968,11 @@ func checkDeadBlobs(repoName string, db *sql.DB) bool {
 	}
 
 	// This query can take longer so not showing too many WARNs
-	rows := lib.Query(query, db, int64(len(tableNames)*100))
+	slowMs := int64(1000)
+	if len(tableNames) > 0 {
+		slowMs = int64(len(tableNames) * 300)
+	}
+	rows := lib.Query(query, db, slowMs)
 	if rows == nil { // Mainly for unit test
 		h.Log("WARN", "rows is nil for query: "+query)
 		return false
@@ -1071,7 +1084,7 @@ func main() {
 	}
 
 	// If the Blob ID file is not provided, run per directory
-	h.Log("DEBUG", fmt.Sprintf("Starting GetDirs with %s, %s, %d", common.ContentPath, common.Filter4Path, common.MaxDepth))
+	h.Log("INFO", fmt.Sprintf("Finding sub directories under %s with filter:%s, depth:%d (may take while)...", common.ContentPath, common.Filter4Path, common.MaxDepth))
 	subDirs, err := Client.GetDirs(common.ContentPath, common.Filter4Path, common.MaxDepth)
 	if err != nil {
 		h.Log("ERROR", "Failed to list directories in "+common.ContentPath+" with filter: "+common.Filter4Path)
