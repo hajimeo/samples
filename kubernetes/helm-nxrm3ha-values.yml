@@ -23,7 +23,7 @@
 #$ helm repo update sonatype-helm && helm search repo sonatype-helm/nxrm-ha --versions | head
 #$ #helm uninstall ${RELEASE_NAME} -n ${NAME_SPACE}
 #$ eval "echo \"$(cat ./helm-nxrm3ha-values.yml | grep -v '^\s*#')\"" > ./${RELEASE_NAME}_values.yaml
-#$ helm upgrade -i ${RELEASE_NAME} sonatype-helm/nxrm-ha -f ./${RELEASE_NAME}_values.yaml -n ${NAME_SPACE} #--version 72.0.0  --debug --dry-run
+#$ helm upgrade -i ${RELEASE_NAME} sonatype-helm/nxrm-ha -f ./${RELEASE_NAME}_values.yaml -n ${NAME_SPACE} --set-file secret.nexusSecret.secretKeyfile=./nexus-secrets.json
 
 
 # For troubleshooting:
