@@ -28,7 +28,7 @@ fi
 # Debug network performance with curl
 alias curld='curl -w "\ntime_namelookup:\t%{time_namelookup}\ntime_connect:\t%{time_connect}\ntime_appconnect:\t%{time_appconnect}\ntime_pretransfer:\t%{time_pretransfer}\ntime_redirect:\t%{time_redirect}\ntime_starttransfer:\t%{time_starttransfer}\n----\ntime_total:\t%{time_total}\nhttp_code:\t%{http_code}\nspeed_download:\t%{speed_download}\nspeed_upload:\t%{speed_upload}\n"'
 # output the longest line *number* as wc|gwc -L does not show the line number
-alias longest_line="awk 'length > max_length { max_length = length; longest_line_num = NR } END { print longest_line_num }'"
+alias longest_line_no="awk 'length > max_length { max_length = length; longest_line_num = NR } END { print longest_line_num }'"
 # count a specific character from each line with the line number. eg. gunzip -c large.sql.gz |
 function count_char() {
     awk '/'$1'/ {print NR, gsub(/'$1'/, "", $0)}' $2 # if '/' needs to be '\/'
@@ -252,16 +252,15 @@ alias samurai='java -Xmx4g -jar $HOME/Apps/samurali/samurai.jar &>/tmp/samurai.o
 alias tda='java -Xmx4g -jar $HOME/Apps/tda-bin-2.4/tda.jar &>/tmp/tda.out &' #https://github.com/irockel/tda/releases/latest
 alias gcviewer='java -Xmx4g -jar $HOME/Apps/gcviewer-1.37-SNAPSHOT.jar'      # &>/tmp/gcviewer.out & # Mac can't stop this so not put in background
 alias gitbucket='java -jar gitbucket.war &> /tmp/gitbucket.out &'            #https://github.com/gitbucket/gitbucket/releases/download/4.34.0/gitbucket.war
-alias groovyi='groovysh -e ":set interpreterMode true"'
-# JAVA_HOME_11 is set in bash_profile.sh
+#alias groovyi='JAVA_HOME="$JAVA_HOME_17" groovysh -e ":set interpreterMode true"'
 alias jenkins='${JAVA_HOME_17%/}/bin/java -Djava.util.logging.config.file=$HOME/Apps/jenkins-logging.properties -jar $HOME/Apps/jenkins.war' #curl -o $HOME/Apps/jenkins.war -L https://get.jenkins.io/war-stable/2.426.3/jenkins.war
 # http (but https fails) + reverse proxy server https://www.mock-server.com/mock_server/getting_started.html
 alias mockserver='java -jar $HOME/Apps/mockserver-netty.jar'                                      #curl -o $HOME/Apps/mockserver-netty.jar -L https://search.maven.org/remotecontent?filepath=org/mock-server/mockserver-netty/5.11.1/mockserver-netty-5.11.1-jar-with-dependencies.jar
 alias jkCli='java -jar $HOME/Apps/jenkins-cli.jar -s http://localhost:8080/ -auth admin:admin123' #curl -o $HOME/Apps/jenkins-cli.jar -L http://localhost:8080/jnlpJars/jenkins-cli.jar
-[ -f $HOME/IdeaProjects/samples/misc/orient-console.jar ] && alias orient-console="java -jar $HOME/IdeaProjects/samples/misc/orient-console.jar"
-[ -f $HOME/IdeaProjects/samples/misc/h2-console.jar ] && alias h2-console="java -jar $HOME/IdeaProjects/samples/misc/h2-console.jar"
-[ -f $HOME/IdeaProjects/samples/misc/h2-console_v200.jar ] && alias h2-console_v200="java -jar $HOME/IdeaProjects/samples/misc/h2-console_v200.jar"
-[ -f $HOME/IdeaProjects/samples/misc/h2-console_v224.jar ] && alias h2-console_v224="java -jar $HOME/IdeaProjects/samples/misc/h2-console_v224.jar"
+[ -f $HOME/IdeaProjects/samples/misc/orient-console.jar ] && alias orient-console="${JAVA_HOME_8:-"/Library/Java/JavaVirtualMachines/zulu-8.jdk/Contents/Home"}/bin/java -jar $HOME/IdeaProjects/samples/misc/orient-console.jar"
+[ -f $HOME/IdeaProjects/samples/misc/h2-console.jar ] && alias h2-console="$JAVA_HOME_17/bin/java -jar $HOME/IdeaProjects/samples/misc/h2-console.jar"
+[ -f $HOME/IdeaProjects/samples/misc/h2-console_v200.jar ] && alias h2-console_v200="$JAVA_HOME_17/bin/java -jar $HOME/IdeaProjects/samples/misc/h2-console_v200.jar"
+[ -f $HOME/IdeaProjects/samples/misc/h2-console_v224.jar ] && alias h2-console_v224="$JAVA_HOME_17/bin/java -jar $HOME/IdeaProjects/samples/misc/h2-console_v224.jar"
 # requires Java 11 or higher
 [ -f $HOME/IdeaProjects/samples/misc/h2-console_v232.jar ] && alias h2-console_v232="/opt/homebrew/opt/openjdk\@17/libexec/openjdk.jdk/Contents/Home/bin/java -jar $HOME/IdeaProjects/samples/misc/h2-console_v232.jar"
 [ -f $HOME/IdeaProjects/samples/misc/pg-console.jar ] && alias pg-console="java -jar $HOME/IdeaProjects/samples/misc/pg-console.jar"
@@ -285,11 +284,13 @@ alias kapa='open -na "Google Chrome" --args --app="https://chat.kapa.ai/dadecd3d
 alias winchrome='/opt/google/chrome/chrome --user-data-dir=$HOME/.chromep --proxy-server=socks5://localhost:38080  --user-agent="Mozilla/5.0 (Windows NT 10.0; WOW64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/88.0.4324.96 Safari/537.36"'
 
 ## Work specific aliases
-alias hwxS3='s3cmd ls s3://private-repo-1.hortonworks.com/HDP/centos7/2.x/updates/'
-# TODO: public-repo-1.hortonworks.com private-repo-1.hortonworks.com
 # Slack API Search
 [ -s $HOME/IdeaProjects/samples/python/SimpleWebServer.py ] && alias slackS="pyvN && cd $HOME/IdeaProjects/samples/python/ && python3 ./SimpleWebServer.py &> /tmp/SimpleWebServer.out &"
+# up to python 3.11
 alias smtpdemo='python -m smtpd -n -c DebuggingServer localhost:2500'
+if [ -s "/Users/hosako/IdeaProjects/work/demo-mcp/mcps.json" ]; then
+    alias mcp-cli='mcphost -m ollama:qwen2.5 --config "/Users/hosako/IdeaProjects/work/demo-mcp/mcps.json"'
+fi
 
 ### Functions (some command syntax does not work with alias eg: sudo) ##################################################
 # mac doesn't have namei (util-linux)
@@ -625,13 +626,17 @@ function avg_time() {
 function mov2gif() {
     local _in="$1"
     local _out="$2"
+    local _width="${3:-1024}"
+    local _fps="${4:-10}"
+    local _speed="${5}" # TODO: not working
     # based on https://gist.github.com/dergachev/4627207
     [ -z "${_out}" ] && _out="$(basename "${_in}" ".mov").gif"
-    if which gifsicle &>/dev/null; then
-        ffmpeg -i "${_in}" -pix_fmt rgb24 -r 6 -f gif - | gifsicle --optimize=3 --delay=5 >"${_out}"
-    else
-        ffmpeg -i "${_in}" -pix_fmt rgb24 -r 6 -f gif "${_out}"
+    #ffmpeg -i "${_in}" -vf "fps=${_fps},scale=${_width}:-1:" -f gif - | gifsicle --optimize=3 --delay=5 >"${_out}"
+    local _ffmpeg_cmd="ffmpeg -i \"${_in}\" -vf \"fps=${_fps},scale=${_width}:-1:flags=lanczos,split[s0][s1];[s0]palettegen[p];[s1][p]paletteuse\" -f gif \"${_out}\""
+    if [ -n "${_speed}" ]; then
+        _ffmpeg_cmd="${_ffmpeg_cmd} -vf \"setpts=PTS/${_speed}\" -af \"atempo=${_speed}\""
     fi
+    eval "${_ffmpeg_cmd}"
 }
 # Grep STDIN with \d\d\d\d-\d\d-\d\d.\d\d:\d (upto 10 mins) and pass to bar_chart
 function bar() {
@@ -1153,6 +1158,7 @@ function pubS() {
         [ $HOME/IdeaProjects/samples/bash/utils_container.sh -nt /tmp/pubS.last ] && scp -C $HOME/IdeaProjects/samples/bash/utils_container.sh ${_backup_server}:/var/tmp/share/ && cp -v -f $HOME/IdeaProjects/samples/bash/utils_container.sh $HOME/share/sonatype/
         [ $HOME/IdeaProjects/samples/bash/_setup_host.sh -nt /tmp/pubS.last ] && scp -C $HOME/IdeaProjects/samples/bash/_setup_host.sh ${_backup_server}:/var/tmp/share/
         [ $HOME/IdeaProjects/samples/bash/setup_nexus3_repos.sh -nt /tmp/pubS.last ] && scp -C $HOME/IdeaProjects/samples/bash/setup_nexus3_repos.sh ${_backup_server}:/var/tmp/share/sonatype/ && cp -v -f $HOME/IdeaProjects/samples/bash/setup_nexus3_repos.sh $HOME/share/sonatype/ && cp -v -f $HOME/IdeaProjects/samples/bash/setup_nexus3_repos.sh $HOME/IdeaProjects/nexus-toolbox/scripts/
+        [ $HOME/IdeaProjects/samples/bash/setup_nexus_iq.sh -nt /tmp/pubS.last ] && scp -C $HOME/IdeaProjects/samples/bash/setup_nexus_iq.sh ${_backup_server}:/var/tmp/share/sonatype/ && cp -v -f $HOME/IdeaProjects/samples/bash/setup_nexus_iq.sh $HOME/share/sonatype/ && cp -v -f $HOME/IdeaProjects/samples/bash/setup_nexus_iq.sh $HOME/IdeaProjects/nexus-toolbox/scripts/
         [ $HOME/IdeaProjects/samples/bash/patch_java.sh -nt /tmp/pubS.last ] && scp -C $HOME/IdeaProjects/samples/bash/patch_java.sh ${_backup_server}:/var/tmp/share/java/
         [ $HOME/IdeaProjects/samples/misc/orient-console.jar -nt /tmp/pubS.last ] && scp $HOME/IdeaProjects/samples/misc/orient-console.jar ${_backup_server}:/var/tmp/share/java/
         [ $HOME/IdeaProjects/samples/misc/h2-console.jar -nt /tmp/pubS.last ] && scp $HOME/IdeaProjects/samples/misc/h2-console.jar ${_backup_server}:/var/tmp/share/java/
@@ -1268,14 +1274,18 @@ function startCommonUtils() {
     #chrome-work
     #open -na "Google Chrome"
 
-    return $?
     if type ollama &>/dev/null; then
         ollama serve &>/tmp/ollama.log &
         sleep 3
         ollama list
     fi
+    return $?
     # no webUI required for pandasai or jupyterlab-ai
     #if  [ -s "$HOME/.vnevAi/bin/open-webui" ]; then
-    #    source $HOME/.vnevAi/bin/activate && open-webui serve --host 127.0.0.1 --port 48080 &>/tmp/open-webui.log &
+    #    source $HOME/.vnevAi/bin/activate
+    #    open-webui serve --host 127.0.0.1 --port 48080 &>/tmp/open-webui.log &
+    #    if [ -s "/Users/hosako/IdeaProjects/work/demo-mcp/mcps.json" ]; then
+    #       mcpo --port 48000 --config /Users/hosako/IdeaProjects/work/demo-mcp/mcps.json &>/tmp/mcpo.log &
+    #    fi
     #fi
 }

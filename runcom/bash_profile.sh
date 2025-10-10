@@ -126,9 +126,12 @@ if [ "$(uname)" = "Darwin" ]; then
     export DOCKER_DEFAULT_PLATFORM="linux/amd64"
 fi
 
+# NOTE: sdkman may setup GROOVY_HOME
+export GROOVY_HOME=/opt/homebrew/opt/groovy/libexec
+
 #THIS MUST BE AT THE END OF THE FILE FOR SDKMAN TO WORK!!!
-export SDKMAN_DIR="$HOME/.sdkman"
-[[ -s "$HOME/.sdkman/bin/sdkman-init.sh" ]] && source "$HOME/.sdkman/bin/sdkman-init.sh"
+#export SDKMAN_DIR="$HOME/.sdkman"
+#[[ -s "$HOME/.sdkman/bin/sdkman-init.sh" ]] && source "$HOME/.sdkman/bin/sdkman-init.sh"
 
 # The next line updates PATH for the Google Cloud SDK.
 if [ -f '/Users/hosako/Apps/google-cloud-sdk/path.bash.inc' ]; then . '/Users/hosako/Apps/google-cloud-sdk/path.bash.inc'; fi

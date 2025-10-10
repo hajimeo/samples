@@ -114,7 +114,7 @@ function _get_iq_url() {
 # export JAVA_HOME=$JAVA_HOME_17
 #
 # To start Nexus with customer's database, _CUSTOM_DNS will use the dummy DNS server and also update the DB.
-#   _CUSTOM_DNS="$(hostname -f)" nxrmStart
+#   _NO_RM3_START_SQLS="Y" _CUSTOM_DNS="$(hostname -f)" nxrmStart
 #   TODO: If the blob store uses absolute path, need to change the path
 #   TODO: Update the notification emai in the tasks (and something else?)
 alias rmStart="nxrmStart"
@@ -145,9 +145,11 @@ function nxrmStart() {
     if [ -n "${_CUSTOM_DNS}" ]; then
         _java_opts="${_java_opts} -Dsun.net.spi.nameservice.nameservers=${_CUSTOM_DNS} -Dsun.net.spi.nameservice.provider.1=dns,sun"
     fi
-    if [ -n "${_ROOT_LEVEL}" ]; then
+    local _log_level="${_LOG_LEVEL:-"${_ROOT_LEVEL}"}"
+    if [ -n "${_log_level}" ]; then
         # Another way if PostgresSQL is 'INSERT INTO logging_overrides values (1, 'ROOT', 'DEBUG');'
-        _java_opts="${_java_opts} -Droot.level=${_ROOT_LEVEL} "
+        #  Some 3.8x version broke this root.level but logging.level.root still works
+        _java_opts="${_java_opts} -Droot.level=${_log_level} -Dlogging.level.root=${_log_level} "
     fi
 
     local _nexus_file="${_base_dir%/}/nexus/bin/nexus"
@@ -204,7 +206,9 @@ function nxrmStart() {
     if [ -n "${_CUSTOM_DNS}" ]; then
         _java_opts="${_java_opts} -Dsun.net.spi.nameservice.nameservers=${_CUSTOM_DNS} -Dsun.net.spi.nameservice.provider.1=dns,sun"
         _java_opts="${_java_opts} -Dhttp.proxyHost=non-existing-hostname -Dhttp.proxyPort=8800 -Dhttp.nonProxyHosts=\"*.sonatype.com\""
+    fi
 
+    if [ -n "${_CUSTOM_DNS}" ] && [ -z "${_NO_RM3_START_SQLS}" ]; then
         local _console=""
         # TODO: may need to use h2-console_v200 for older versions?
         # TODO: no support for OrientDB
@@ -219,22 +223,31 @@ function nxrmStart() {
                 echo "*** Updating DB with '${_console}' ***"; sleep 3;
                 _rm3StartSQLs_psql | eval "${_console}" || return $?
             fi
-        elif grep -q -w 'h2' "${_sonatype_work:-"."}/etc/fabric/nexus-store.properties" 2>/dev/null || [ -s "${_sonatype_work:-"."}/db/nexus.mv.db" ]; then
+        elif grep -q -w 'h2' "${_sonatype_work:-"."}/etc/fabric/nexus-store.properties" 2>/dev/null && [ -s "${_sonatype_work:-"."}/db/nexus.mv.db" ]; then
             if ! type h2-console_v232 &>/dev/null; then   # TODO: should switch h2-console by nexus version?
                 echo "ERROR: h2-console_v232 not found in the path. Please create a symlink to h2-console"
                 return 1
             fi
             # To avoid this backup, touch ./sonatype-work/nexus3/db/nexus.mv.db.gz
-            if [ -s "${_sonatype_work:-"."}/db/nexus.mv.db" ] && [ ! -f "${_sonatype_work:-"."}/db/nexus.mv.db.gz" ]; then
-                echo "No ${_sonatype_work:-"."}/db/nexus.mv.db.gz. Gzip-ing nexus.mv.db file ..."; sleep 3
-                gzip -k "$(readlink -f "${_sonatype_work:-"."}/db/nexus.mv.db")" || return $?
+            local _real_db="$(readlink -f "${_sonatype_work:-"."}/db/nexus.mv.db")"
+            if [ ! -f "${_real_db}.gz" ]; then
+                echo "No ${_real_db}.gz. Gzip-ing nexus.mv.db file ..."; sleep 2
+                gzip -k "${_real_db}" || return $?
             else
                 echo "WARN: Will update ${_sonatype_work:-"."}/db/nexus.mv.db without a new backup ....."; sleep 5;
             fi
-
+            # TODO: this version needs to be changed based on nexus version?
             _console="h2-console_v232 ${_sonatype_work:-"."}/db/nexus.mv.db"
             echo "*** Updating DB with '${_console}' ***"; sleep 3;
             _rm3StartSQLs_h2 | eval "${_console}" || return $?
+            # As H2 doesn't seem to have the option to replace JSON *field* value, need this extra step
+            echo "SELECT name, CAST(attributes AS VARCHAR) as attr_txt FROM repository WHERE (((attributes).\"httpclient\").\"authentication\").\"password\" LIKE '%_';" | eval "${_console}" | rg '^"' > /tmp/rm3_h2_repo_pwd.out
+            if [ -s /tmp/rm3_h2_repo_pwd.out ]; then
+                rg '^"([^"]+)",\s*"(.+\\"password\\":\\")_\d+(\\".+)"' -o -r "UPDATE repository SET attributes = JSON'\$2\$3' WHERE name = '\$1';" /tmp/rm3_h2_repo_pwd.out | sed 's/\\"/"/g' | eval "${_console}"
+            fi
+        else
+            echo "_CUSTOM_DNS is set but no fabric/nexus-store.properties or db/nexus.mv.db found"
+            return 10
         fi
 
         if [ -z "${_console}" ]; then
@@ -248,7 +261,8 @@ function nxrmStart() {
     local _cmd="INSTALL4J_ADD_VM_PARAMS=\"-XX:-MaxFDLimit ${INSTALL4J_ADD_VM_PARAMS} ${_java_opts}\" ${_nexus_file} ${_mode}"
     # TODO: should update the nexus.rc file with `app_java_home` for Java 17 or Java 11
     _java_home "${_nexus_ver}"
-    echo "${_cmd}"; sleep 2
+    echo "# Executing: ${_cmd}"
+    [ -n "${_CUSTOM_DNS}" ] && sleep 5
     eval "${_cmd}"
     # ulimit / Too many open files: https://help.sonatype.com/repomanager3/installation/system-requirements#SystemRequirements-MacOSX
 }
@@ -256,16 +270,20 @@ function _rm3StartSQLs_h2() {
     # NOTE: Not fixing 'org.sonatype.nexus.crypto.internal.error.CipherException: Unable find secret for the specified token'
     # TODO: May need to reset 'admin' user, and also use below query (after modifying for H2/PostgreSQL/OrientDB)
     # TODO: org.h2.jdbc.JdbcSQLDataException: Data conversion error converting "{""file"":{""path"":""s3/"; SQL statement:
+    # TODO: at least 3.83 does not work with `$shiro1$SHA-512$1024$NE+wqQq/TmjZMvfI7ENh/g==$V4yPw8T64UQ6GfJfxYq2hLsVrBY8D1v+bktfOxGdt4b/9BthpWPNUy/CBk6V9iA0nHpzYzJFWO8v/tZFtES8CA==`
     cat << 'EOF'
 UPDATE BLOB_STORE_CONFIGURATION SET TYPE = 'File', ATTRIBUTES = (JSON'{"file":{"path":"s3/'||NAME||'"}}') where TYPE = 'S3';
 UPDATE CAPABILITY_STORAGE_ITEM SET ENABLED = false WHERE TYPE IN ('firewall.audit', 'clm', 'webhook.repository', 'healthcheck', 'crowd');
-UPDATE SECURITY_USER SET PASSWORD='$shiro1$SHA-512$1024$NE+wqQq/TmjZMvfI7ENh/g==$V4yPw8T64UQ6GfJfxYq2hLsVrBY8D1v+bktfOxGdt4b/9BthpWPNUy/CBk6V9iA0nHpzYzJFWO8v/tZFtES8CA==' WHERE ID='admin';
+UPDATE SECURITY_USER SET PASSWORD='$shiro1$SHA-512$1024$NE+wqQq/TmjZMvfI7ENh/g==$V4yPw8T64UQ6GfJfxYq2hLsVrBY8D1v+bktfOxGdt4b/9BthpWPNUy/CBk6V9iA0nHpzYzJFWO8v/tZFtES8CA==';
+UPDATE SECURITY_USER SET STATUS = 'active' WHERE ID='admin';
 DELETE FROM USER_ROLE_MAPPING WHERE USER_ID = 'admin';
 INSERT INTO USER_ROLE_MAPPING (USER_ID, SOURCE, ROLES) VALUES ('admin', 'default', JSON'["nx-admin"]');
 DELETE FROM nuget_asset WHERE path = '/index.json';  -- NEXUS-36090
 TRUNCATE TABLE HTTP_CLIENT_CONFIGURATION;
 INSERT INTO HTTP_CLIENT_CONFIGURATION (ID, PROXY) VALUES (1, JSON'{"http":{"enabled":true,"host":"localhost","port":28080,"authentication":null},"https":{"enabled":true,"host":"localhost","port":28080,"authentication":null},"nonProxyHosts":["*.sonatype.com"]}');
 EOF
+# To check repo passwords: SELECT (((attributes)."httpclient")."authentication")."password" FROM repository WHERE (((attributes)."httpclient")."authentication")."password" IS NOT NULL;
+# To populate with an empty json: UPDATE repository SET attributes = JSON_OBJECT() WHERE name = 'dublin-thirdparty-public-repos';
 # TODO: The last INSERT might be broken and causing `Error attempting to get column 'PROXY' from result set`
 #UPDATE REALM_CONFIGURATION SET REALM_NAMES = '["NexusAuthenticatingRealm", "NexusAuthorizingRealm"]' FORMAT JSON where ID = 1;
 }
@@ -276,10 +294,12 @@ function _rm3StartSQLs_psql() {
     cat << 'EOF'
 UPDATE blob_store_configuration SET type = 'File', attributes = ('{"file":{"path":"s3/'||name||'"}}')::jsonb where type = 'S3';
 UPDATE capability_storage_item SET enabled = false WHERE type IN ('firewall.audit', 'clm', 'webhook.repository', 'healthcheck', 'crowd');
-UPDATE security_user SET password='$shiro1$SHA-512$1024$NE+wqQq/TmjZMvfI7ENh/g==$V4yPw8T64UQ6GfJfxYq2hLsVrBY8D1v+bktfOxGdt4b/9BthpWPNUy/CBk6V9iA0nHpzYzJFWO8v/tZFtES8CA==' WHERE id='admin';
+UPDATE security_user SET password='$shiro1$SHA-512$1024$NE+wqQq/TmjZMvfI7ENh/g==$V4yPw8T64UQ6GfJfxYq2hLsVrBY8D1v+bktfOxGdt4b/9BthpWPNUy/CBk6V9iA0nHpzYzJFWO8v/tZFtES8CA=='; -- WHERE id='admin'
+UPDATE security_user SET status = 'active' WHERE id='admin';
 DELETE FROM user_role_mapping WHERE user_id = 'admin';
 INSERT INTO user_role_mapping (user_id, source, roles) VALUES ('admin', 'default', '["nx-admin"]'::jsonb);
 DELETE FROM nuget_asset WHERE path = '/index.json'; -- NEXUS-36090
+UPDATE repository SET attributes = jsonb_set(attributes, '{httpclient,authentication,password}','\"\"'::jsonb) WHERE attributes->'httpclient'->'authentication'->>'password' is not null;
 TRUNCATE TABLE http_client_configuration;
 INSERT INTO http_client_configuration (id, proxy) VALUES (1, '{"http": {"host": "localhost", "port": 28080, "enabled": true, "authentication": null}, "https": {"host": "localhost", "port": 28080, "enabled": true, "authentication": null}, "nonProxyHosts": ["*.sonatype.com"]}', NULL);
 EOF
@@ -306,6 +326,9 @@ function _updateNexusProps() {
     grep -qE '^#?nexus.elasticsearch.autoRebuild' "${_cfg_file}" || echo "nexus.elasticsearch.autoRebuild=false" >> "${_cfg_file}"
     grep -qE '^#?nexus.search.updateIndexesOnStartup.enabled' "${_cfg_file}" || echo "nexus.search.updateIndexesOnStartup.enabled=false" >> "${_cfg_file}"
     grep -qE '^#?nexus.assetBlobCleanupTask.blobCreatedDelayMinute' "${_cfg_file}" || echo "nexus.assetBlobCleanupTask.blobCreatedDelayMinute=0" >> "${_cfg_file}"
+    grep -qE '^#?nexus.blobstore.get.retryDelayMs' "${_cfg_file}" || echo "nexus.blobstore.get.retryDelayMs=1" >> "${_cfg_file}"    # NEXUS-48573
+    grep -qE '^#?nexus.jwt.expiry' "${_cfg_file}" || echo "nexus.jwt.expiry=28800" >> "${_cfg_file}"    # NEXUS-43312 (only HA though)
+    #grep -qE '^#?nexus.analytics.enabled' "${_cfg_file}" || echo "nexus.analytics.enabled=false" >> "${_cfg_file}" # Many version stops starting
     # No longer works from 3.83
     #grep -qE '^#?nexus.malware.risk.enabled' "${_cfg_file}" || echo "nexus.malware.risk.enabled=false" >> "${_cfg_file}"
     #grep -qE '^#?nexus.malware.risk.on.disk.enabled' "${_cfg_file}" || echo "nexus.malware.risk.on.disk.enabled=false" >> "${_cfg_file}"
@@ -317,6 +340,8 @@ function _updateNexusProps() {
     # For OrientDB studio (hostname:2480/studio/index.html) (removed)
     #grep -qE '^#?nexus.orient.httpListenerEnabled' "${_cfg_file}" || echo "nexus.orient.httpListenerEnabled=true" >> "${_cfg_file}"
     #grep -qE '^#?nexus.orient.dynamicPlugins' "${_cfg_file}" || echo "nexus.orient.dynamicPlugins=true" >> "${_cfg_file}"
+    # To workaround: org.yaml.snakeyaml.error.YAMLException: The incoming YAML document exceeds the limit: 25165824 code points.
+    grep -qE '^#?nexus.helm.yaml.max.bytes' "${_cfg_file}" || echo "nexus.helm.yaml.max.bytes=36700160" >> "${_cfg_file}"
 
     if grep -q "^nexus.datastore.clustered.enabled=true" ${_cfg_file}; then
         echo "WARN: nexus.datastore.clustered.enabled=true is set, so not changing the port from ${_current_port}" >&2
@@ -718,14 +743,13 @@ function iqInstall() {
 #iqDocker "1.191.0" "" "8170:8070 8171:8071" #"--read-only -v /tmp/nxiq-test:/tmp"
 function iqDocker() {
     local _tag="${1:-"latest"}"
-    local _name="${2-"${_tag}"}"
+    local _name="${2-"nxiq-${_tag}"}"
     local _ports="${3:-"8070:8070 8071:8071 8444:8444"}"
     local _extra_opts="${4}"    # --platform=linux/amd64
 
     local _work_dir="${_WORK_DIR:-"/var/tmp/share"}"
     local _container_share_dir="/var/tmp/share"
     local _docker_host="${_DOCKER_HOST}"  #:-"dh1.standalone.localdomain:5000"
-    [ -z "${_name}" ] && _name="nxiq-${_tag}"
     local _nexus_data="${_work_dir%/}/sonatype/${_name}-data"
     [ ! -d "${_nexus_data%/}/etc" ] && mkdir -p -m 777 "${_nexus_data%/}/etc"
     [ ! -d "${_nexus_data%/}/log" ] && mkdir -p -m 777 "${_nexus_data%/}/log"
