@@ -64,18 +64,20 @@ func myHashCode(s string) int32 {
 func genPath(blobIdLikeString string, pathPfx string, ext string) string {
 	NewBlobIdPattern := regexp.MustCompile(`.*([a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12})@(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2}).*`)
 	matches := NewBlobIdPattern.FindStringSubmatch(blobIdLikeString)
-	if matches == nil {
-		BlobIdPattern := regexp.MustCompile(`.*([a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}).*`)
-		matches = BlobIdPattern.FindStringSubmatch(blobIdLikeString)
-		if matches == nil || len(matches) < 2 {
-			return ""
-		}
-	}
-
 	if len(matches) > 6 {
 		// 6c1d3423-ecbc-4c52-a0fe-01a45a12883a@2025-08-14T02:44
 		// 2025/08/14/02/44/6c1d3423-ecbc-4c52-a0fe-01a45a12883a.properties
 		return filepath.Join(pathPfx, matches[2], matches[3], matches[4], matches[5], matches[6], matches[1]+ext)
+	}
+	NewBlobIdPattern2 := regexp.MustCompile(`/?([0-9]{4})/([0-9]{2})/([0-9]{2})/([0-9]{2})/([0-9]{2})/([a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}).*`)
+	matches = NewBlobIdPattern2.FindStringSubmatch(blobIdLikeString)
+	if len(matches) > 6 {
+		return filepath.Join(pathPfx, matches[1], matches[2], matches[3], matches[4], matches[5], matches[6]+ext)
+	}
+	BlobIdPattern := regexp.MustCompile(`.*([a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}).*`)
+	matches = BlobIdPattern.FindStringSubmatch(blobIdLikeString)
+	if matches == nil || len(matches) < 2 {
+		return ""
 	}
 
 	hashInt := myHashCode(matches[1])
