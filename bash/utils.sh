@@ -336,7 +336,7 @@ function _trim() {
     echo "${_string}" | _sed -e 's/^ *//g' -e 's/ *$//g'
 }
 
-# For For loop
+# For For loop: for _m in $(_split "${_members}")
 function _split() {
     local _string="$1"
     local _delimiter="${2:-","}"

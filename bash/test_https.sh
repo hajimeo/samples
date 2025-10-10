@@ -299,14 +299,17 @@ function test_https() {
     fi
 }
 
-# Test email server's (SMTP) connectivity for STARTTLS
-# Below are not perfect as it won't send STARTTLS
+# Test email server's (SMTP) connectivity. Below are not perfect as it won't work with STARTTLS
 #curl -v -sf -k --ssl-reqd "smtps://localhost:465"
 #curl -v -sf -k "smtps://localhost:465" --mail-from "testemail@hajigle.com" --mail-rcpt "hosako@sonatype.com" -T<(echo "TEST")
 #keytool -J-Djavax.net.debug=ssl:record:plaintext -printcert -sslserver localhost:25
 function test_smtps() {
     local _host_port="${1}" # smtp.office365.com:587
-    echo -n | openssl s_client -connect ${_host_port} -starttls smtp # -debug
+    if [[ "${_host_port}" =~ ^([^:]+):([0-9]+)$ ]]; then
+        _smtp_host="${BASH_REMATCH[1]}"
+        _smtp_port="${BASH_REMATCH[2]}"
+    fi
+    echo -n | openssl s_client -servername ${_smtp_host} -connect ${_host_port} -starttls smtp # -debug
     # If postgresql
     #echo -n | openssl s_client -connect localhost:5432 -starttls postgres
 }
@@ -445,6 +448,7 @@ function gen_cert_from_str() {
         cat ${_tmp_file}
     else
         cat ${_tmp_file} > ${_filename}
+        echo "keytool -printcert -file ${_filename}" >&2
     fi
 }
 

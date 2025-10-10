@@ -832,18 +832,19 @@ function f_gc_before_after_check() {
     local _keyword="${2-"sonatype"}"
     local _A_max="${3-"100"}"
     echo "# Total : 'date_time' '#instances' '#bytes'"
-    rg -z -N --sort=path --no-filename "(${_DT_FMT}.*\s+\[?Class Histogram|Total\s+\d+\s+\d+)" ${_log_dir} | paste - - | rg "(${_DT_FMT}).+\s+Total\s+(\d+\s+\d+)" -o -r '$1   $2' | sort | uniq
+    rg -z -N --sort=path --no-filename -s "(${_DT_FMT}.*\s+\[?Class Histogram .+after|Total\s+\d+\s+\d+)" ${_log_dir} | paste - - | rg "(${_DT_FMT}).+\s+Total\s+(\d+\s+\d+)" -o -r '$1   $2' | sort | uniq
     echo ""
     #rg -z -N --no-filename "^(${_DT_FMT}).+\bFull GC" -o -r '$1' ${_log_dir} | sort | uniq > /tmp/${FUNCNAME[0]}_datetimes_$$.tmp || return $?
     # NOTE: expecting filenames works with --sort=path
-    rg -z -N --sort=path --no-filename '\b(Full GC|Class Histogram)\b' -A ${_A_max} ${_log_dir}  > /tmp/${FUNCNAME[0]}_$$.tmp || return $?
+    # `Class Histogram (after full gc) [0-9.]ms` is printed in the end of Histogram
+    rg -z -N --sort=path --no-filename -s 'Class Histogram \(after full gc\)$' -A ${_A_max} ${_log_dir}  > /tmp/${FUNCNAME[0]}_$$.tmp || return $?
     cat /tmp/${FUNCNAME[0]}_$$.tmp | rg "\S*${_keyword:-"\S+"}\S*" -o | sort | uniq | while read -r _cls; do
         local _cls_escaped=$(echo "${_cls}" | tr -d '[' | sed 's/[$]/\\$/g')
         echo "# 'date_time' '#instances' '#bytes' for ${_cls_escaped}"
         rg "(${_DT_FMT}|\s+\d+\s+\d+\s+${_cls_escaped}$)" -o /tmp/${FUNCNAME[0]}_$$.tmp | rg "${_cls_escaped}" -B1 | rg -v -- '--' | paste - -
         echo ""
     done
-    echo "# diff between first and last for class includes '${_keyword}':"
+    echo "# diff between first and last for class includes '${_keyword}' (may not work if histo is truncated):"
     local _n1=$((${_A_max} + 1))
     diff -w -y -W200 <(head -n ${_n1} /tmp/${FUNCNAME[0]}_$$.tmp | rg "(\d+)\s+(\d+)\s+(.*${_keyword}.*)" -o -r '${3} ${2} ${1}') <(tail -n ${_n1} /tmp/${FUNCNAME[0]}_$$.tmp | rg "(\d+)\s+(\d+)\s+(.*${_keyword}.*)" -o -r '${3} ${2} ${1}')
     echo ""
@@ -1772,7 +1773,7 @@ function f_h2_start() {
     local _port="${2:-"8082"}"
     local _Xmx="${3:-"8g"}"
     local _h2_jar="${4}"
-    local _h2_ver="${5:-"2.2.224"}" # or 1.4.200 for RM3
+    local _h2_ver="${5:-"2.3.232"}"
     if [ -z "${_baseDir}" ]; then
         if [ -d ./sonatype-work/clm-server/data ]; then
             _baseDir="./sonatype-work/clm-server/data/"

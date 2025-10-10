@@ -179,12 +179,13 @@ function _docker_login() {
 
     _log "DEBUG" "${_cmd} login ${_host_port} --username ${_user} --password ********"
     if type timeout &>/dev/null; then
-        _cmd="timeout 5 ${_cmd}"
+        _cmd="timeout 10 ${_cmd}"
     fi
     if ! ${_cmd} login ${_host_port} --username ${_user} --password ${_pwd} &>${__TMP%/}/${FUNCNAME}.tmp; then
         cat ${__TMP%/}/${FUNCNAME}.tmp
         return 1
     fi
+    # output the worked host:port combination
     echo "${_host_port}"
 }
 

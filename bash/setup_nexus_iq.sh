@@ -606,14 +606,17 @@ function f_setup_webhook() {
 
 ### Integration setup related ###
 
-# NOTE: Do not forget export _IQ_GIT_TOKEN or GIT_TOKEN:
-#   export _IQ_GIT_TOKEN="*******************"
+## Setup Source Control Management (SCM) for IQ
+# 1. Create a repo on the SCM provider (e.g. "private-repo" on GitHub)
+# 2. Create a token (e.g. "ghp_xxx" on GitHub) with appropriate permission (repo/admin:org etc.)
+# 3. export _IQ_GIT_TOKEN="*******************", then run the function below:
 # To setup Org only: f_setup_scm   # this will create 'github-org' with token
 # To setup Org&app for github: f_setup_scm "github-org" "https://github.com/hajimeo/private-repo2"
 # To setup Org&app for gitlab: f_setup_scm "gitlab-org" "https://gitlab.com/emijah/private-repo.git" "gitlab" "master"
 # To setup Org&app for azure : f_setup_scm "azdevop-org" "https://dev.azure.com/hosako/_git/private-repo" "azure" "master"
+# To setup Org&app for bitbucket : f_setup_scm "bitbucket-org" "https://bitbucket.org/emijaho/private-repo" "bitbucket" "master"
 #
-### Another way with Automatic Application Creation and Automatic Source Control Configuration
+## Another way with Automatic Application Creation and Automatic Source Control Configuration
 # - Setup an IQ organization's SCM configuration (which is specified in the Automatic Application Creation)
 # - Create a git repository with just pom.xml file, and push to "main" branch
 # - Modify the pom.xml to add a vulnerable dependency, and push to a new branch (eg. "vul-branch"), then create a PR
@@ -632,8 +635,9 @@ function f_setup_scm() {
     local _git_url="${2}" # https://github.com/sonatype/support-apac-scm-test https://github.com/hajimeo/private-repo
     local _provider="${3:-"github"}"
     local _branch="${4:-"main"}"
-    local _token="${5:-"${_IQ_GIT_TOKEN:-"${GIT_TOKEN}"}"}"
-    local _parent_org="${6:-"${_IQ_PARENT_ORG}"}"
+    local _scm_user="${5}"  # Some SCM provider (e.g. Azure and BitBucket) may require user name
+    local _token="${6:-"${_IQ_GIT_TOKEN:-"${GIT_TOKEN}"}"}"
+    local _parent_org="${7:-"${_IQ_PARENT_ORG}"}"
     [ -z "${_org_name}" ] && _org_name="${_provider:-"scmtest"}-org"
 
     # Automatic Source Control Configuration. It's OK if fails
@@ -665,18 +669,25 @@ function f_setup_scm() {
             return 1
         fi
 
-        # https://help.sonatype.com/iqserver/automating/rest-apis/source-control-rest-api---v2
+        # If _scm_user is not set and if the provider is "azure" or "bitbucket", try to get from the parent directory of the git_url
+        if [ -z "${_scm_user}" ] && [[ "${_provider}" =~ ^(azure|bitbucket)$ ]]; then
+            _scm_user="$(basename "$(dirname "${_git_url}")")"
+            _log "INFO" "Using '${_scm_user}' as scm_user ..."
+            sleep 1
+        fi
+
+        # https://help.sonatype.com/en/source-control-rest-api.html
         # NOTE: It seems the remediationPullRequestsEnabled is false for default (if null UI may not show as Inherited)
         #       Also, do we need to set "sshEnabled" to false?
         _log "INFO" 'Configuring organization: '${_org_int_id}' with "token":"********","provider":"'${_provider}'","baseBranch":"'${_branch}' ...'
-        _curl "${_IQ_URL%/}/api/v2/sourceControl/organization/${_org_int_id}" -H "Content-Type: application/json" -d '{"token":"'${_token}'","provider":"'${_provider}'","baseBranch":"'${_branch}'","remediationPullRequestsEnabled":true,"statusChecksEnabled":true,"pullRequestCommentingEnabled":true,"sourceControlEvaluationsEnabled":true,"sshEnabled":false}' || return $?
+        _curl "${_IQ_URL%/}/api/v2/sourceControl/organization/${_org_int_id}" -H "Content-Type: application/json" -d '{"token":"'${_token}'","provider":"'${_provider}'","baseBranch":"'${_branch}'","username":"'${_scm_user}'","remediationPullRequestsEnabled":true,"statusChecksEnabled":true,"pullRequestCommentingEnabled":true,"sourceControlEvaluationsEnabled":true,"sshEnabled":false}' || return $?
     fi
 
     if [ "${_git_url}" ]; then
         local _app_pub_id="$(basename "${_git_url}")"
         f_api_create_app "${_app_pub_id}" "${_org_name}" &>/dev/null
-        local _app_int_id="$(f_api_appIntId "${_app_pub_id}" "${_org_name}")" || return $?
-        [ -n "${_app_int_id}" ] || return 12
+        local _app_int_id="$(f_api_appIntId "${_app_pub_id}")" || return $?
+        [ -z "${_app_int_id}" ] && return 12
 
         local _existing_config="$(_curl "${_IQ_URL%/}/api/v2/sourceControl/application/${_app_int_id}" 2>/dev/null)"
         if [ -n "${_existing_config}" ]; then
@@ -692,6 +703,20 @@ function f_setup_scm() {
         echo "NOTE: Form Maven, if scanner detects a. jar file, pom.xml is not utilised."
         echo "NOTE: if you face some strange SCM issue, try restarting IQ service or check 'git' config."
         #TODO: not sure if this is needed: curl -u admin:admin123 -sSf -X POST 'http://localhost:8070/api/v2/config/features/scan-pom-files-in-meta-inf-directory'
+        cat <<'EOF' >/dev/null
+# Typical git commands:
+git clone https://emijaho@bitbucket.org/emijaho/private-repo.git
+
+#git checkout master
+_branch_name="mytest-$(date +"%Y%m%d%H%M%S")"
+#git branch -a
+git checkout -b ${_branch_name}
+# modify pom.xml to add a vulnerable dependency
+git add pom.xml
+git commit -m "testing IQ scan for ${_branch_name}"
+git push origin HEAD
+# Then create a PR on the SCM provider's web console
+EOF
     fi
 }
 
@@ -821,7 +846,7 @@ function f_setup_bitbucket() {
     mkdir -p -m 777 /var/tmp/share/bitbucket
     docker run -v /var/tmp/share/bitbucket:/var/atlassian/application-data/bitbucket \
         --name=bitbucket -d -p 7990:7990 -p 7999:7999 atlassian/bitbucket:8.9.8
-    # Or use _setup_host.sh, f_bitbucket
+    # Or use: _setup_host.sh, f_bitbucket
 2. Create a Project and a Repository
 3. Create an access token 'http://localhost:7990/plugins/servlet/access-tokens/users/${_user}/manage'
     Write for Repository (read for Project)
@@ -836,6 +861,24 @@ function f_setup_bitbucket() {
     git add --all
     git commit -m "Initial Commit"
     git push
+EOF
+}
+
+function f_setup_bamboo() {
+    local __doc__="TODO: Setup Bamboo with Docker (might be slow with M1 Mac)"
+    cat <<'EOF'
+1. Setup Bamboo (probably not bamboo-server)
+    docker run --platform=linux/arm64 -v $(pwd):/var/atlassian/application-data/bamboo \
+        --name=bamboo -d -p 54663:54663 -p 8085:8085 atlassian/bamboo:latest
+    # TODO: create _setup_host.sh, f_bamboo for using just .jar
+2. After completing the wizard:
+    curl -O -u "admin" http://localhost:8085/agentServer/agentInstaller/atlassian-bamboo-agent-installer-11.0.5.jar
+    $JAVA_HOME_17/bin/java -jar ./atlassian-bamboo-agent-installer-11.0.5.jar http://localhost:8085/agentServer/
+    Then approve.
+3. Install Sonatype Bamboo plugin from http://localhost:8085/plugins/servlet/upm
+4. From the Bitbucket, create a "scoped" api token from https://id.atlassian.com/manage-profile/security/api-tokens
+5. Setup Job and repository
+
 EOF
 }
 

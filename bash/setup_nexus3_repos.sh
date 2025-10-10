@@ -379,7 +379,9 @@ function f_setup_pypi() {
     fi
     # add some data for xxxx-proxy
     _ASYNC_CURL="Y" f_get_asset "${_prefix}-proxy" "packages/unit/0.2.2/Unit-0.2.2.tar.gz"
-    # NOTE: https://pypi.org/project/python-policy-demo/#history
+    # NOTE: https://pypi.org/simple/python-policy-demo/
+    #http://localhost:8081/repository/pypi-proxy/packages/python-policy-demo/1.0.0/python-policy-demo-1.0.0.tar.gz#sha256=9c86f628b4b8f8ae78d2ca9bed2b456cf2b6806866c58496fac5b3a1b38f7160
+    #_ASYNC_CURL="Y" f_get_asset "${_prefix}-proxy" "packages/python-policy-demo/1.0.0/python-policy-demo-1.0.0.tar" # Good (normal) one
     #for i in {1..3}; do f_get_asset "pypi-proxy" "packages/python_policy_demo/1.$i.0/python_policy_demo-1.$i.0-py3-none-any.whl"; done
 
     # If no xxxx-hosted, create it
@@ -397,6 +399,8 @@ function f_setup_pypi() {
     # To test a pypi group metadata merge
     if [ -s "${_TMP%/}/Unit-9.9.9.tar.gz" ] || curl -sf -o ${_TMP%/}/Unit-9.9.9.tar.gz -L "https://github.com/hajimeo/samples/raw/master/misc/Unit-9.9.9.tar.gz"; then
         _ASYNC_CURL="Y" f_upload_asset "${_prefix}-hosted" -F "pypi.asset=@${_TMP%/}/Unit-9.9.9.tar.gz"
+        # Also need to request the metadata
+        _ASYNC_CURL="Y" f_get_asset "${_prefix}-group" "/simple/unit/"
     fi
 
     # If no xxxx-group, create it
@@ -601,7 +605,6 @@ function f_setup_docker() {
     # NOTE: How to test Docker subdomain connector https://help.sonatype.com/en/docker-subdomain-connector.html
     #curl -I -H 'Host: docker-proxy.${_DOMAIN#.}:8443' "${_NEXUS_URL%/}/repository/docker-proxy/v2/"
 
-    # TODO: use _get_version and if 3.83+, make sure configToValidate.pathEnabled is set (or Other Connectors)
     # If no xxxx-proxy, create it
     if ! _is_repo_available "${_prefix}-proxy"; then
         # "httpPort":18178 - 18179
@@ -610,7 +613,13 @@ function f_setup_docker() {
     fi
     if ! _is_repo_available "${_prefix}-quay-proxy"; then
         # "httpPort":18168 - 18169. For v1 test. cacheForeignLayers is true
-        _apiS '{"action":"coreui_Repository","method":"create","data":[{"attributes":{"docker":{"httpPort":18168,"httpsPort":18169,"forceBasicAuth":false,"v1Enabled":true},"proxy":{"remoteUrl":"https://quay.io","contentMaxAge":-1,"metadataMaxAge":1440},"dockerProxy":{"indexType":"REGISTRY","cacheForeignLayers":true,"useTrustStoreForIndexAccess":false},"httpclient":{"blocked":false,"autoBlock":true,"connection":{"useTrustStore":false}},"storage":{"blobStoreName":"'${_bs_name}'","strictContentTypeValidation":true'${_extra_sto_opt}'},"negativeCache":{"enabled":true,"timeToLive":1440},"cleanup":{"policyName":[]}},"name":"'${_prefix}'-quay-proxy","format":"","type":"","url":"","online":true,"routingRuleId":"","authEnabled":false,"httpRequestSettings":false,"recipe":"docker-proxy"}],"type":"rpc"}' || return $?
+        # If the version is 3.83 or higher, use pathEnabled (Path-Based Routing)
+        local _connector='"pathEnabled":"true",'
+        local _ver="$(_get_version)"
+        if [ -z "${_ver}" ] || [[ "${_ver}" =~ 3\.([3-7]|8[0-2]) ]]; then
+            _connector='"httpPort":18168,"httpsPort":18169,'
+        fi
+        _apiS '{"action":"coreui_Repository","method":"create","data":[{"attributes":{"docker":{'${_connector}'"forceBasicAuth":false,"v1Enabled":true},"proxy":{"remoteUrl":"https://quay.io","contentMaxAge":-1,"metadataMaxAge":1440},"dockerProxy":{"indexType":"REGISTRY","cacheForeignLayers":true,"useTrustStoreForIndexAccess":false},"httpclient":{"blocked":false,"autoBlock":true,"connection":{"useTrustStore":false}},"storage":{"blobStoreName":"'${_bs_name}'","strictContentTypeValidation":true'${_extra_sto_opt}'},"negativeCache":{"enabled":true,"timeToLive":1440},"cleanup":{"policyName":[]}},"name":"'${_prefix}'-quay-proxy","format":"","type":"","url":"","online":true,"routingRuleId":"","authEnabled":false,"httpRequestSettings":false,"recipe":"docker-proxy"}],"type":"rpc"}' || return $?
         #curl https://quay.io/v2/coreos/clair/manifests/v2.1.2|grep schemaVersion
         # Need docker version older than 27
         #docker pull local.standalone.localdomain:18169/coreos/clair:v2.1.2
@@ -672,6 +681,7 @@ function _populate_docker_proxy() {
     local _host_port="${2:-"${r_DOCKER_PROXY:-"${r_DOCKER_GROUP:-"${r_NEXUS_URL:-"${_NEXUS_DOCKER_HOSTNAME:-"${_NEXUS_URL}"}"}"}"}"}"
     local _backup_ports="${3-"18179 18178 15000 443"}"
     local _cmd="${4-"${r_DOCKER_CMD}"}"
+    # TODO: change this to use 'crane'
     [ -z "${_cmd}" ] && _cmd="$(_docker_cmd)"
     [ -z "${_cmd}" ] && return 0    # If no docker command, just exist
     _host_port="$(_docker_login "${_host_port}" "${_backup_ports}" "${r_ADMIN_USER:-"${_ADMIN_USER}"}" "${r_ADMIN_PWD:-"${_ADMIN_PWD}"}" "${_cmd}")" || return $?
@@ -703,6 +713,7 @@ function _populate_docker_hosted() {
     local _cmd="${6-"${r_DOCKER_CMD}"}"
     local _usr="${7:-"${_ADMIN_USER}"}"
     local _pwd="${8:-"${_ADMIN_PWD}"}"
+    # TODO: change this to use 'crane'
     [ -z "${_cmd}" ] && _cmd="$(_docker_cmd)"
     [ -z "${_cmd}" ] && return 0    # If no docker command, just exist
 
@@ -793,6 +804,8 @@ function f_setup_yum() {
     # If no xxxx-proxy, create it
     if ! _is_repo_available "${_prefix}-proxy"; then
         # http://mirror.centos.org/centos/ is dead
+        #sed -i 's/mirrorlist/#mirrorlist/g' /etc/yum.repos.d/CentOS-*
+        #sed -i 's|#baseurl=http://mirror.centos.org|baseurl=http://vault.centos.org|g' /etc/yum.repos.d/CentOS-*
         _apiS '{"action":"coreui_Repository","method":"create","data":[{"attributes":{"proxy":{"remoteUrl":"https://vault.centos.org/7.9.2009/os/x86_64/","contentMaxAge":1440,"metadataMaxAge":1440},"httpclient":{"blocked":false,"autoBlock":true},"storage":{"blobStoreName":"'${_bs_name}'","strictContentTypeValidation":true'${_extra_sto_opt}'},"negativeCache":{"enabled":true,"timeToLive":1440},"cleanup":{"policyName":[]}},"name":"'${_prefix}'-proxy","format":"","type":"","url":"","online":true,"routingRuleId":"","authEnabled":false,"httpRequestSettings":false,"recipe":"yum-proxy"}],"type":"rpc"}' || return $?
     fi
     # Add some data for xxxx-proxy (Ubuntu has "yum" command)
@@ -993,8 +1006,10 @@ function f_setup_helm() {
     [ -n "${_ds_name}" ] && _extra_sto_opt=',"dataStoreName":"'${_ds_name}'"'
     # If no xxxx-proxy, create it. NOTE: not supported with HA-C
     if ! _is_repo_available "${_prefix}-proxy"; then
-        # https://charts.helm.sh/stable looks like deprecated
-        _apiS '{"action":"coreui_Repository","method":"create","data":[{"attributes":{"proxy":{"remoteUrl":"https://charts.bitnami.com/bitnami","contentMaxAge":1440,"metadataMaxAge":1440},"httpclient":{"blocked":false,"autoBlock":true,"connection":{"useTrustStore":false}},"storage":{"blobStoreName":"'${_bs_name}'","strictContentTypeValidation":true'${_extra_sto_opt}'},"negativeCache":{"enabled":true,"timeToLive":1440},"cleanup":{"policyName":[]}},"name":"'${_prefix}'-proxy","format":"","type":"","url":"","online":true,"routingRuleId":"","authEnabled":false,"httpRequestSettings":false,"recipe":"helm-proxy"}],"type":"rpc"}' || return $?
+        # https://charts.helm.sh/stable and https://charts.bitnami.com/bitnami are deprecated (and not sure how long this one works)
+        # Alternative as of this typing seems to be https://repo.broadcom.com/bitnami-files/ but not sure how long this works
+        _log "INFO" "nexus.helm.yaml.max.bytes=36700160 may be required"
+        _apiS '{"action":"coreui_Repository","method":"create","data":[{"attributes":{"proxy":{"remoteUrl":"https://repo.broadcom.com/bitnami-files/","contentMaxAge":1440,"metadataMaxAge":1440},"httpclient":{"blocked":false,"autoBlock":true,"connection":{"useTrustStore":false}},"storage":{"blobStoreName":"'${_bs_name}'","strictContentTypeValidation":true'${_extra_sto_opt}'},"negativeCache":{"enabled":true,"timeToLive":1440},"cleanup":{"policyName":[]}},"name":"'${_prefix}'-proxy","format":"","type":"","url":"","online":true,"routingRuleId":"","authEnabled":false,"httpRequestSettings":false,"recipe":"helm-proxy"}],"type":"rpc"}' || return $?
     fi
     if ! _is_repo_available "${_prefix}-sonatype-proxy"; then
         _apiS '{"action":"coreui_Repository","method":"create","data":[{"attributes":{"proxy":{"remoteUrl":"https://sonatype.github.io/helm3-charts","contentMaxAge":1440,"metadataMaxAge":1440},"httpclient":{"blocked":false,"autoBlock":true,"connection":{"useTrustStore":false}},"storage":{"blobStoreName":"'${_bs_name}'","strictContentTypeValidation":true'${_extra_sto_opt}'},"negativeCache":{"enabled":true,"timeToLive":1440},"cleanup":{"policyName":[]}},"name":"'${_prefix}'-sonatype-proxy","format":"","type":"","url":"","online":true,"routingRuleId":"","authEnabled":false,"httpRequestSettings":false,"recipe":"helm-proxy"}],"type":"rpc"}' || return $?
@@ -1003,7 +1018,9 @@ function f_setup_helm() {
         #curl -D- -u admin:admin123 "http://localhost:8081/repository/helm-hosted/" -T nexus-iq-server-174.0.0.tgz
     fi
     # add some data for xxxx-proxy
-    f_get_asset "${_prefix}-proxy" "/mysql-9.4.1.tgz" "${_TMP%/}/mysql-9.4.1.tgz"
+    _ASYNC_CURL="Y" f_get_asset "${_prefix}-proxy" "/index.yaml"
+    local _sample_tgz="mysql-12.0.0.tgz"
+    #f_get_asset "${_prefix}-proxy" "/${_sample_tgz}" "${_TMP%/}/${_sample_tgz}"
 
     # If no xxxx-hosted, create it
     if ! _is_repo_available "${_prefix}-hosted"; then
@@ -1011,7 +1028,7 @@ function f_setup_helm() {
     fi
     # add some data for xxxx-hosted
     # https://issues.sonatype.org/browse/NEXUS-31326
-    [ -s "${_TMP%/}/mysql-9.4.1.tgz" ] && curl -sf -u "${r_ADMIN_USER:-"${_ADMIN_USER}"}:${r_ADMIN_PWD:-"${_ADMIN_PWD}"}" "${_NEXUS_URL%/}/repository/${_prefix}-hosted/" -T "${_TMP%/}/mysql-9.4.1.tgz"
+    [ -s "${_TMP%/}/${_sample_tgz}" ] && curl -sf -u "${r_ADMIN_USER:-"${_ADMIN_USER}"}:${r_ADMIN_PWD:-"${_ADMIN_PWD}"}" "${_NEXUS_URL%/}/repository/${_prefix}-hosted/" -T "${_TMP%/}/${_sample_tgz}"
 }
 
 function f_setup_bower() {
@@ -1466,7 +1483,7 @@ function f_setup_raw() {
     # Quicker way: NOTE --limit-rate=4k can be a handy option to test:
     # *NOTE*: The following test does not work with different extensions with the Strict Content Validation enabled.
     #   time curl -D- -u 'admin:admin123' -T <(echo 'test') "${_NEXUS_URL%/}/repository/raw-hosted/test/test.txt"
-    #   (Not working) Create a dummy 1K file: dd if=/dev/zero of=${_TMP%/}/test_1k.data bs=1024 count=1 oflag=dsync
+    #   (Not working on Mac) Create a dummy 1K file: dd if=/dev/zero of=${_TMP%/}/test_1k.data bs=1024 count=1 oflag=dsync
     dd if=/dev/zero of=${_TMP%/}/test_1k.data bs=1 count=0 seek=1024 && \
     _ASYNC_CURL="Y" f_upload_asset "${_prefix}-hosted" -F raw.directory=test -F raw.asset1=@${_TMP%/}/test_1k.data -F raw.asset1.filename=test_1k.data
     # If real large size is required:
@@ -1499,11 +1516,10 @@ function _get_work_dir() {
     fi
     readlink -f "${_work_dir}"
 }
-# TODO: haven't used yet. Thinking of adding conditions based on version
 function _get_version() {
     #curl -I "${_NEXUS_URL%/}/service/rest/v1/status" often doesn't work via reverse proxy
     [ -n "${_NEXUS_VER}" ] && [ "${_NEXUS_VER}" != "<null>" ] && echo "${_NEXUS_VER}" && return
-    local _app_ver="$(f_api "/service/rest/atlas/system-information" | grep -A1 '"nexus-status"' | grep '"version"' | sed -r 's/.*"version" *: *"([^"]+)".*/\1/g')"
+    local _app_ver="$(f_api "/service/rest/atlas/system-information" | grep -m1 -E '^\s*"version"' | sed -n -E 's/.*"version" *: *"([^"]+)".*/\1/gp')"
     [ -n "${_app_ver}" ] && export _NEXUS_VER="${_app_ver}" && echo "${_app_ver}"
 }
 function _get_blobstore_name() {
@@ -1634,7 +1650,9 @@ function f_create_s3_blobstore() {
             return 1
         fi
     fi
-    _log "DEBUG" "$(cat ${_TMP%/}/f_apiS_last.out)"
+    if [ -f "${_TMP%/}/f_apiS_last.out" ]; then
+        _log "DEBUG" "$(cat ${_TMP%/}/f_apiS_last.out)"
+    fi
     if [[ ! "${_NO_REPO_CREATE}" =~ [yY] ]] && ! _is_repo_available "raw-s3-hosted"; then
         # Not sure why but the file created by `dd` doesn't work if strictContentTypeValidation is true
         _apiS '{"action":"coreui_Repository","method":"create","data":[{"attributes":{"storage":{"blobStoreName":"'${_bs_name}'","writePolicy":"ALLOW","strictContentTypeValidation":false'$(_get_extra_sto_opt)'},"cleanup":{"policyName":[]}},"name":"raw-s3-hosted","format":"","type":"","url":"","online":true,"recipe":"raw-hosted"}],"type":"rpc"}' || return $?
@@ -1753,6 +1771,11 @@ function f_iq_connection() {
     local _enabled="${2:-"true"}"
     local _iq_user="${3:-"${_ADMIN_USER}"}"
     local _iq_pwd="${4:-"${_ADMIN_PWD}"}"
+    local _ver="$(_get_version)"
+    if [[ "${_ver}" =~ 3\.(8[3-9]|9) ]]; then
+        f_api "/service/rest/v1/iq" '{"enabled":'${_enabled}',"showLink":true,"url":"'${_iq_url}'","authenticationType":"USER","username":"'${_iq_user}'","password":"'${_iq_pwd}'","useTrustStoreForUrl":false,"timeoutSeconds":3}' "PUT"
+        return $?
+    fi
     _apiS '{"action":"clm_CLM","method":"update","data":[{"enabled":'${_enabled}',"url":"'${_iq_url}'","authenticationType":"USER","username":"'${_iq_user}'","password":"'${_iq_pwd}'","timeoutSeconds":null,"properties":"","showLink":true}],"type":"rpc"}'
 }
 
@@ -2471,21 +2494,35 @@ function f_create_cleanup_policy() {
 #f_api "/service/rest/internal/cleanup-policies" "{\"name\":\"maven2-without-sort\",\"notes\":null,\"format\":\"maven2\",\"criteriaLastBlobUpdated\":1,\"criteriaReleaseType\":\"RELEASES\",\"retain\":\"10\"}"
 
 # To restrict DELETE for npm logout
-#f_create_csel "npm-logout" "format == 'npm' and path =^ '/-/user/token/'" "npm-hosted" "delete"
+#f_create_csel "npm-logout" "format == 'npm' and path =^ '/-/user/token/'" "npm-hosted" "npm" "delete,read"
+#f_create_csel "docker-path-workaround" "path == '/v2/' or path =^ '/v2/token'" "*" "docker" "read"
 function f_create_csel() {
     local __doc__="Create/add a test content selector"
     local _csel_name="${1:-"csel-test"}"
     local _expression="${2:-"path =^ '/'"}" # TODO: currently can't use double quotes. Probably no need "format == 'raw'" in newer versions
     local _repo="${3}"
     local _format="${4}"
-    local _actions="${5:-'"browse","read","edit","add","delete"'}"
+    local _actions="${5:-'["browse","read","edit","add","delete"]'}"
     f_api "/service/rest/v1/security/content-selectors" "{\"name\":\"${_csel_name}\",\"description\":\"\",\"expression\":\"${_expression}\"}" || return $?
-    if [ -z "${_repos}" ]; then
+    if [ -z "${_repo}" ] || [ -z "${_format}" ]; then
+        _log "INFO" "No repository or format specified. Not creating a privilege for ${_csel_name}."
         return 0
     fi
-    # Newer version has "format" field
-    #_apiS '{"action":"coreui_Privilege","method":"create","data":[{"id":"NX.coreui.model.Privilege-99","name":"'${_csel_name}'-priv","description":"","version":"","type":"repository-content-selector","properties":{"contentSelector":"'${_csel_name}'","repository":"'${_repos}'","actions":"'${_actions}'"}}],"type":"rpc"}'
-    f_api "/service/rest/v1/security/privileges/repository-content-selector" '{"type":"repository-content-selector","name":"'${_csel_name}'-priv","description":"","contentSelector":"'${_csel_name}'","format":"'${_format}'","repository":"'${_repo}'","actions":['${_actions}']}' || return $?
+    # TODO: Newer version has "format" field, so support older version
+    #local _ver="$(_get_version)"
+    #_apiS '{"action":"coreui_Privilege","method":"create","data":[{"id":"NX.coreui.model.Privilege-99","name":"priv-'${_csel_name}'","description":"","version":"","type":"repository-content-selector","properties":{"contentSelector":"'${_csel_name}'","repository":"'${_repo}'","actions":['${_actions}']}}],"type":"rpc"}'
+    # If _actions does not start with " or does not end with ", add them
+    local _actions_list=""
+    for _a in $(echo "${_actions}" | sed "s/,/ /g"); do
+        [[ "${_a}" =~ ^\" ]] || _a="\"${_a}"
+        [[ "${_a}" =~ \"$ ]] || _a="${_a}\""
+        if [ -z "${_actions_list}" ]; then
+            _actions_list="${_a}"
+            continue
+        fi
+        _actions_list="${_actions_list%,},${_a}"
+    done
+    f_api "/service/rest/v1/security/privileges/repository-content-selector" '{"type":"repository-content-selector","name":"priv-'${_csel_name}'","description":"","contentSelector":"'${_csel_name}'","format":"'${_format}'","repository":"'${_repo}'","actions":['${_actions_list}']}' || return $?
 }
 
 # Create a test user and test role
@@ -3040,6 +3077,7 @@ function f_upload_dummies_raw() {
         local _bs_name="$(_get_blobstore_name)"
         local _extra_sto_opt="$(_get_extra_sto_opt "${_ds_name}")"
         _apiS '{"action":"coreui_Repository","method":"create","data":[{"attributes":{"storage":{"blobStoreName":"'${_bs_name}'","writePolicy":"ALLOW","strictContentTypeValidation":false'${_extra_sto_opt}'},"cleanup":{"policyName":[]}},"name":"'${_repo_name}'","format":"","type":"","url":"","online":true,"recipe":"raw-hosted"}],"type":"rpc"}' || return $?
+        _log "INFO" "Created ${_repo_name}"
     fi
 
     # -T<(echo "aaa") may not work with old bash, also somehow some of files become 0 byte, so creating a file
@@ -3546,7 +3584,8 @@ function f_upload_dummies_rubygem() {
     done
 }
 
-#_IMAGE_NAME="retaintest" f_upload_dummies_docker
+#_IMAGE_NAME="hyphentest" _DOCKER_TAG_PFX="226944e1c-" f_upload_dummies_docker "" "1"
+#_IMAGE_NAME="retaintest" f_upload_dummies_docker "${_NEXUS_DOCKER_HOSTNAME}:18182" "2"
 #_IMAGE_NAME="path-based-test" f_upload_dummies_docker "${_NEXUS_DOCKER_HOSTNAME}:8443/docker-hosted" "1"
 function f_upload_dummies_docker() {
     local __doc__="Upload dummy docker images into docker hosted repository (requires 'docker' command)"
@@ -3555,8 +3594,9 @@ function f_upload_dummies_docker() {
     local _parallel="${3:-"1"}"
     local _image_name="${4:-"${_IMAGE_NAME}"}"  # To create multiple tags in one image. If empty, dummy${i}-${j}
     local _base_img="${5:-"${_BASE_IMG:-"alpine:latest"}"}"    # "redhat/ubi9:9.4-1181"
-    local _usr="${6:-"${_ADMIN_USER}"}"
-    local _pwd="${7:-"${_ADMIN_PWD}"}"
+    local _tag_prefix="${6:-"${_DOCKER_TAG_PFX:-"tag-"}"}"
+    local _usr="${7:-"${_ADMIN_USER}"}"
+    local _pwd="${8:-"${_ADMIN_PWD}"}"
 
     local _cmd="$(_docker_cmd)"
     local _seq_start="${_SEQ_START:-1}"
@@ -3567,9 +3607,9 @@ function f_upload_dummies_docker() {
     _log "INFO" "docker login completed for ${_host_port}"
     for i in $(eval "${_seq}"); do
         for j in $(eval "seq 1 ${_parallel}"); do
-            local _img="dummy${i}-${j}:tag$(date +'%H%M%S')"
+            local _img="dummy${i}-${j}:${_tag_prefix}$(date +'%H%M%S')"
             if [ -n "${_image_name}" ]; then
-                _img="${_image_name}:tag-${i}-${j}-$(date +'%H%M%S')"
+                _img="${_image_name}:${_tag_prefix}${i}-${j}-$(date +'%H%M%S')"
             fi
             _log "INFO" "Populating ${_host_port} with ${_img} / base image: ${_base_img} ..."
             (_DOCKER_NO_LOGIN="Y" _populate_docker_hosted "${_base_img}" "${_host_port}" "${_img}" &> ${_TMP%/}/${FUNCNAME[0]}_$$_${i}_${j}.out && echo "[$(date +'%H:%M:%S')] INFO Pushed dummy image '${_img}' (${_base_img}) to ${_host_port} completed" || echo "[$(date +'%H:%M:%S')] WARN Pushed dummy image '${_img}' (${_base_img}) to ${_host_port} failed") &
@@ -3604,8 +3644,8 @@ function f_upload_dummies_helm() {
     local _tmpdir="$(mktemp -d)"
     # not using _tmpdir as don't want to download always
     if [ ! -s /tmp/helm_index.yaml ] || [ ! -s /tmp/helm_urls.out ]; then
-        curl -o /tmp/helm_index.yaml -f -L "https://charts.bitnami.com/bitnami/index.yaml" || return $?
-        grep -oE 'https://charts.bitnami.com/bitnami/.+\.tgz' /tmp/helm_index.yaml > /tmp/helm_urls.out
+        curl -o /tmp/helm_index.yaml -f -L "https://repo.broadcom.com/bitnami-files/index.yaml" || return $?
+        grep -oE 'https://(charts.bitnami.com/bitnami|repo.broadcom.com/bitnami-files)/.+\.tgz' /tmp/helm_index.yaml > /tmp/helm_urls.out
     fi
     if [ ! -s /tmp/helm_urls.out ]; then
         return 1
@@ -3968,7 +4008,7 @@ function f_test_download() {
         _log "INFO" "Crete a new repository ${_repo} ..."
         curl -sSf -u "${_usr}:${_pwd}" -k "${_NEXUS_URL%/}/service/rest/v1/repositories/raw/hosted" -H "Content-Type: application/json" -d '{"name":"'${_repo}'","online":true,"storage":{"blobStoreName":"'${_bs_name}'","strictContentTypeValidation":false,"writePolicy":"ALLOW"}}'
     fi
-    _log "INFO" "Creating ${_tmpdir%/}/test_100MB.data, and check how fast this location is ..."
+    _log "INFO" "Creating ${_tmpdir%/}/test_100MB.data, and check how fast this location disk is ..."
     #time dd if=/dev/zero of=${_tmpdir%/}/test_100MB.data bs=1 count=0 seek=$((1024*1024*100))
     time dd if=/dev/zero of=${_tmpdir%/}/test_100MB.data bs=1024 count=102400
     _log "INFO" "Uploading as ${_repo}/test/test_100MB.data, and check how fast ..."
@@ -4087,6 +4127,18 @@ function f_backup_postgresql_component() {
     PGGSSENCMODE=disable pg_dump -h ${_DBHOST} -p ${_DBPORT:-"5432"} -U ${_DBUSER} -d ${_DBNAME} -c -O -t "repository" -t "${_fmt}_content_repository" -t "${_fmt}_component" -t "${_fmt}_component_tag" -t "${_fmt}_asset" -t "${_fmt}_asset_blob" -t "tag" -Z 6 -f "${_exportTo}" || return $?
     ls -l "${_exportTo}"
 }
+function f_backup_postgresql() {
+    local __doc__="Export the database from PostgreSQL (for testing upgrade)"
+    local _exportTo="${1:-"./fullbackup_db_$(date +"%Y%m%d%H%M%S").sql.gz"}"
+    local _workingDirectory="${2}"
+    if [ -z "${_workingDirectory}" ]; then
+        _workingDirectory="$(_get_work_dir)"
+        [ -z "${_workingDirectory}" ] && _log "ERROR" "No sonatype work directory found (to read nexus-store.properties)" && return 1
+    fi
+    _export_postgres_config "${_workingDirectory%/}/etc/fabric/nexus-store.properties" || return $?
+    PGGSSENCMODE=disable pg_dump -h ${_DBHOST} -p ${_DBPORT:-"5432"} -U ${_DBUSER} -d ${_DBNAME} -c -O -Z 6 -f "${_exportTo}" || return $?
+    ls -l "${_exportTo}"
+}
 
 # How to verify
 #VACUUM(FREEZE, ANALYZE, VERBOSE);  -- or FULL (FREEZE marks the table as vacuumed)
@@ -4100,9 +4152,9 @@ function f_restore_postgresql_component() {
         [ -z "${_workingDirectory}" ] && _log "ERROR" "No sonatype work directory found (to read nexus-store.properties)" && return 1
     fi
     if [ -z "${_sql_file}" ]; then
-        _sql_file="$(ls -1 ./component_db_*.sql.gz | tail -n1)"
+        _sql_file="$(ls -1S ./component_db_*.sql* | head -n1)"
         if [ -z "${_sql_file}" ]; then
-            _sql_file="$(ls -1 ../component_db_*.sql.gz | tail -n1)"
+            _sql_file="$(ls -1S ../component_db_*.sql* | head -n1)"
             if [ -z "${_sql_file}" ]; then
                 _log "ERROR" "No sql file to restore/import" && return 1
             fi
@@ -4176,6 +4228,45 @@ function f_psql() {
     fi
     ${_cmd} ${_psql_opts} -c "WITH r AS (${_q_cte}) ${_query}"
     return $?
+}
+
+# Another way: nxrm3-db-test.sh startDbWebUi
+function f_h2_console() {
+    local __doc__="Start H2 Web Console. http://www.h2database.com/javadoc/org/h2/tools/Server.html"
+    local _port="${1:-"8282"}"
+    local _baseDir="${2}"
+    local _h2_jar="${3}"
+    local _h2_ver="${4:-"2.3.232"}"
+    # NXRM3
+    #Save Settings: Generic H2 (Embedded)
+    #Driver: org.h2.Driver
+    #JDBC URL: jdbc:h2:file:nexus
+    #username: <LEAVE BLANK>
+    #password: <LEAVE BLANK>
+    if [ -z "${_baseDir}" ]; then
+        if [ -d ./sonatype-work/nexus3/db ]; then
+            _baseDir="./sonatype-work/nexus3/db"
+        else
+            local _nexus_mv_db="$(find . -maxdepth 3 -type d -name "nexus.mv.db" | head -n1)"
+            if [ -n "${_nexus_mv_db}" ]; then
+                _baseDir="$(dirname ${_nexus_mv_db})"
+            else
+                _baseDir="."
+            fi
+        fi
+        _log "INFO" "Using ${_baseDir} as baseDir"
+    fi
+    if [ -z "${_h2_jar}" ]; then
+        if [ ! -s "${_TMP%/}/h2-${_h2_ver}.jar" ]; then
+            _log "INFO" "Downloading H2 ${_h2_ver} jar ..."
+            curl -f -o ${_TMP%/}/h2-${_h2_ver}.jar "https://repo1.maven.org/maven2/com/h2database/h2/${_h2_ver}/h2-${_h2_ver}.jar" || return $?
+        fi
+        _h2_jar="${_TMP%/}/h2-${_h2_ver}.jar"
+    fi
+    local _java="java"  # In case needs to change to java 8 / java 17
+    [ -n "${JAVA_HOME}" ] && _java="${JAVA_HOME%/}/bin/java"
+    _log "INFO" "Starting H2 Console from \"${_baseDir}\" on http://localhost:${_webPort}/ ..." >&2
+    ${_java} -cp ${_h2_jar} org.h2.tools.Server -webPort ${_port} -baseDir "${_baseDir}" -webAllowOthers -tcpAllowOthers -pgAllowOthers
 }
 
 # f_set_log_level "root"
@@ -4369,8 +4460,8 @@ function questions_docker_repos() {
 function _is_repo_available() {
     local _repo_name="$1"
     local _nexus_url="${2:-"${r_NEXUS_URL:-"${_NEXUS_URL}"}"}"
-    # At this moment, not always checking
-    find -L ${_TMP%/} -type f -name '_does_repo_exist*.out' -mmin +5 --exec rm -f {} \; 2>/dev/null
+    # At this moment, reusing the newer result. Somehow -delete or --exec rm do not work on Mac
+    find -L ${_TMP%/} -type f -name '_does_repo_exist*.out' -mmin +1 2>/dev/null | xargs -r rm -f
     if [ ! -s ${_TMP%/}/_does_repo_exist$$.out ]; then
         _NEXUS_URL="${_nexus_url}" f_api "/service/rest/v1/repositories" | grep '"name":' > ${_TMP%/}/_does_repo_exist$$.out
     fi

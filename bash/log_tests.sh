@@ -382,10 +382,12 @@ function _test_tmpl_auto() {
 
 
 ### Extracts ###################################################################
-function _split_by_start() {
+function f_splitByStart() {
     local _log_path="$1"
+    local _split_logs="${2:-"./_split_logs"}"
     local _start_log_line=""
     [ -z "${_log_path}" ] && return 1
+
     if [[ "${_log_path}" =~ (nexus)[^*]*log[^*]* ]]; then
         #_start_log_line=".*org.sonatype.nexus.(webapp.WebappBootstrap|events.EventSubscriberHost) - Initialized"  # NXRM2 (if no DEBUG)
         _start_log_line="(.*SonatypeNexusRepositoryApplication - Starting SonatypeNexusRepositoryApplication|.*org.sonatype.nexus.pax.logging.NexusLogActivator - start|.*org.sonatype.nexus.events.EventSubscriberHost - Initialized)" # NXRM3|NXRM2
@@ -394,7 +396,7 @@ function _split_by_start() {
     fi
     if [ -n "${_start_log_line}" ]; then
         if _size_check "${_log_path}" "$((${_LOG_THRESHOLD_BYTES} * 100))"; then
-            f_splitByRegex "${_log_path}" "${_start_log_line}" "_split_logs"
+            f_splitByRegex "${_log_path}" "${_start_log_line}" "${_split_logs}"
         else
             _LOG "WARN" "Not doing f_splitByRegex for '${_log_path}' as the size is larger than _LOG_THRESHOLD_BYTES:${_LOG_THRESHOLD_BYTES} * 100"
         fi
@@ -407,7 +409,7 @@ function e_app_log() {
     fi
     [ ! -s "${_log_path}" ] && return 1
 
-    _split_by_start "${_log_path}"
+    f_splitByStart "${_log_path}"
     local _since_last_restart="$(ls -1r _split_logs/* 2>/dev/null | head -n1)"
     local _excludes="(WARN .+ high disk watermark|This is NOT an error|Attempt to access soft-deleted blob .+nexus-repository-docker|CacheInfo missing for)"
     if [ -n "${_since_last_restart}" ]; then
@@ -511,6 +513,8 @@ function t_system() {
     fi
 
     local _jmx_json="$(_find "jmx.json")"
+    local _sysinfo_json="$(_find "sysinfo.json")"
+
     if [ -s "${_jmx_json}" ]; then
         local _xms="$(rg -i '\-Xms([a-zA-Z0-9]+)' -o -r '$1' "${_jmx_json}" --no-filename | tail -n1)"
         local _xmx="$(rg -i '\-Xmx([a-zA-Z0-9]+)' -o -r '$1' "${_jmx_json}" --no-filename | tail -n1)"
@@ -538,7 +542,6 @@ function t_system() {
         _head "WARN" "No jmx.json found"
     fi
 
-    local _sysinfo_json="$(_find "sysinfo.json")"
     if [ -s "${_sysinfo_json}" ]; then
         local _maxMemory="$(rg '"maxMemory"\s*:\s*(\d+)' "${_sysinfo_json}" --no-filename -o -r '$1' | sort | tail -n1)"
         if [ ${_maxMemory:-0} -lt 3221225472 ]; then
@@ -552,6 +555,8 @@ function t_system() {
         if _rg -q 'KUBERNETES_' "${_sysinfo_json}"; then
             _head "WARN" "Might be installed on KUBERNETES (shouldn't use H2/OrientDB)"
         fi
+        # TODO: if no _sysinfo_json, check _jmx_json
+        _test_template "$(rg '"(file.encoding|sun.jnu.encoding)" *: *"' "${_sysinfo_json}" | rg -v -w 'UTF')" "WARN" "'file.encoding' or 'sun.jnu.encoding' might not be UTF (eg: on Windows)"
     else
         _head "WARN" "No sysinfo.json found"
     fi
@@ -583,9 +588,9 @@ function t_pg_config() {
     local _effective_cache_size="$(_search_size_in_bytes "^[\"]?effective_cache_size\b" "${_pg_cfg_glob}")"
     if [ -n "${_effective_cache_size}" ]; then
         local _effective_cache_size_hf=$(_human_friendly "${_effective_cache_size}" "0")
-        if [ ${_effective_cache_size:-0} -lt $((4 * 1024 * 1024 * 1024)) ]; then
+        if [ ${_effective_cache_size:-0} -lt $((2 * 1024 * 1024 * 1024)) ]; then
             _head "ERROR" "effective_cache_size (${_effective_cache_size_hf}) in \"${_pg_cfg_glob}\" is too small"
-        elif [ ${_effective_cache_size:-0} -lt $((8 * 1024 * 1024 * 1024)) ]; then
+        elif [ ${_effective_cache_size:-0} -lt $((4 * 1024 * 1024 * 1024)) ]; then
             _head "WARN" "effective_cache_size (${_effective_cache_size_hf}) in \"${_pg_cfg_glob}\" might be too small"
         fi
     else
@@ -596,7 +601,7 @@ function t_pg_config() {
         local _shared_buffers_hf=$(_human_friendly "${_shared_buffers}" "0")
         if [ ${_shared_buffers:-0} -lt $((1 * 1024 * 1024 * 1024)) ]; then
             _head "ERROR" "shared_buffers (${_shared_buffers_hf}) in \"${_pg_cfg_glob}\" is too small"
-        elif [ ${_shared_buffers:-0} -lt $((4 * 1024 * 1024 * 1024)) ]; then
+        elif [ ${_shared_buffers:-0} -lt $((2 * 1024 * 1024 * 1024)) ]; then
             _head "WARN" "shared_buffers (${_shared_buffers_hf}) in \"${_pg_cfg_glob}\" might be too small"
         fi
     else
@@ -605,9 +610,9 @@ function t_pg_config() {
     local _work_mem="$(_search_size_in_bytes "^[\"]?work_mem\b" "${_pg_cfg_glob}")"
     if [ -n "${_work_mem}" ]; then
         local _work_mem_hf=$(_human_friendly "${_work_mem}" "0")
-        if [ ${_work_mem:-0} -lt $((4 * 1024 * 1024)) ]; then
+        if [ ${_work_mem:-0} -lt $((2 * 1024 * 1024)) ]; then
             _head "ERROR" "work_mem (${_work_mem_hf}) in \"${_pg_cfg_glob}\" is too small"
-        elif [ ${_work_mem:-0} -lt $((8 * 1024 * 1024)) ]; then
+        elif [ ${_work_mem:-0} -lt $((4 * 1024 * 1024)) ]; then
             _head "WARN" "work_mem (${_work_mem_hf}) in \"${_pg_cfg_glob}\" might be too small"
         fi
     else
@@ -659,6 +664,7 @@ for key in fsDicts['system-filestores']:
 # TODO: For this one, checking without size limit (not _rg)?
 function t_oome() {
     # audit.log can contains `attribute.changes` which contains large test and some Nuget package mentions OutOfMemoryError
+    # Should also check 'PSQLException: Ran out of memory retrieving query results'?
     _test_template "$(_RG_MAX_FILESIZE="6G" _rg 'java.lang.OutOfMemoryError:.+' -m1 -B1 -g "${_NXRM_LOG}" -g "${_NXIQ_LOG}" | sort | uniq)" "ERROR" "OutOfMemoryError detected from '${_NXRM_LOG}' or '${_NXIQ_LOG}' (Xms is too small?)"
 }
 function t_sofe() {
