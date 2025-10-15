@@ -1,9 +1,7 @@
 /*
 Doing same as org.sonatype.nexus.blobstore.VolumeChapterLocationStrategy#location and java.lang.String.hashCode
 
-To build:
-
-	GO_SKIP_TESTS=Y goBuild blobpath.go
+To build: GO_SKIP_TESTS=Y goBuild blobpath.go
 */
 package main
 
@@ -62,7 +60,7 @@ func myHashCode(s string) int32 {
 }
 
 func genPath(blobIdLikeString string, pathPfx string, ext string) string {
-	NewBlobIdPattern := regexp.MustCompile(`.*([a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12})@(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2}).*`)
+	NewBlobIdPattern := regexp.MustCompile(`.*([a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12})@(\d{4})-(\d{2})-(\d{2}).(\d{2}):(\d{2}).*`)
 	matches := NewBlobIdPattern.FindStringSubmatch(blobIdLikeString)
 	if len(matches) > 6 {
 		// 6c1d3423-ecbc-4c52-a0fe-01a45a12883a@2025-08-14T02:44
