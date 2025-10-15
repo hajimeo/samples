@@ -79,6 +79,10 @@ func GetUpToContent(path string) string {
 	}
 }
 
+func GetPathWithoutExt(path string) string {
+	return path[:len(path)-len(filepath.Ext(path))]
+}
+
 func SortToSingleLine(contents string) string {
 	// To use simpler regex, sorting line and converting to single line first
 	lines := strings.Split(contents, "\n")

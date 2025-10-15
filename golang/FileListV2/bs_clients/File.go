@@ -125,7 +125,7 @@ func (c *FileClient) GetDirs(baseDir string, pathFilter string, maxDepth int) ([
 			// Not sure if this is a good way to limit the depth
 			count := strings.Count(path, string(filepath.Separator))
 			if realMaxDepth > 0 && count > realMaxDepth {
-				h.Log("DEBUG", fmt.Sprintf("Reached to the max depth %d / %d (path: %s)", count, maxDepth, path))
+				h.Log("DEBUG", fmt.Sprintf("Reached to the real max depth %d / %d (path: %s)", count, realMaxDepth, path))
 				return filepath.SkipDir
 			}
 
@@ -176,7 +176,7 @@ func (c *FileClient) Convert2BlobInfo(f interface{}) BlobInfo {
 }
 
 func (c *FileClient) ListObjects(dir string, db *sql.DB, perLineFunc func(PrintLineArgs) bool) int64 {
-	// ListObjects: List all files in one directory.
+	// ListObjects: List all files in one directory, NOT recursively (different from other blob stores).
 	// Global variables should be only TopN, PrintedNum, MaxDepth
 	var subTtl int64
 	// NOTE: `filepath.Glob` does not work because currently Glob does not support ./**/*
@@ -201,9 +201,9 @@ func (c *FileClient) ListObjects(dir string, db *sql.DB, perLineFunc func(PrintL
 				return io.EOF
 			}
 		} else {
-			if common.MaxDepth > 1 && dir != path {
-				//TODO: Because GetDirs for "File" type returns all directories, this should not recursively check sub-directories. But if other blob store types will implement GetDirs differently, may need to change this line.
-				h.Log("DEBUG", fmt.Sprintf("Skipping sub directory: %s as it will be checked from the parent dir.", path))
+			if common.MaxDepth > 0 && dir != path {
+				// Because GetDirs for "File" type returns all directories, this should not check recursively unlike other blob stores
+				h.Log("DEBUG", fmt.Sprintf("Skipping this directory: %s", path))
 				return filepath.SkipDir
 			}
 		}

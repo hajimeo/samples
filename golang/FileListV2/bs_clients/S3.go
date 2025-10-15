@@ -30,6 +30,12 @@ func getS3Api() *s3.Client {
 	if S3Api != nil {
 		return S3Api
 	}
+	// if AWS_REGION environment variable is DEFAULT or default, unset AWS_REGION
+	currentAwsRegion := h.GetEnv("AWS_REGION", "")
+	if strings.EqualFold(currentAwsRegion, "DEFAULT") {
+		h.Log("DEBUG", fmt.Sprintf("Unsetting AWS_REGION environment variable as it is set to %s", currentAwsRegion))
+		h.SetEnv("AWS_REGION", "")
+	}
 	cfg, err := config.LoadDefaultConfig(context.TODO())
 	// To stop 'WARN Response has no supported checksum. Not validating response payload.'
 	cfg.ResponseChecksumValidation = 2
@@ -241,11 +247,12 @@ func (s *S3Client) GetDirs(baseDir string, pathFilter string, maxDepth int) ([]s
 			h.Log("DEBUG", fmt.Sprintf("Skipping %s as it does not match with %s", *item.Prefix, pathFilter))
 			continue
 		}
-		// if maxDepth is greater than -1, then check the depth (0 means current directory depth)
+		// if maxDepth is greater than -1, then check the current path with the maxDepth (0 means current directory depth)
 		if maxDepth >= 0 && strings.Count(*item.Prefix, "/") > maxDepth {
 			h.Log("DEBUG", fmt.Sprintf("Skipping %s as it exceeds max depth %d", *item.Prefix, maxDepth))
 			continue
 		}
+		// TODO: Currently not checking the sub directories if current is directory
 		h.Log("DEBUG", fmt.Sprintf("Appending %s in dirs", *item.Prefix))
 		dirs = append(dirs, *item.Prefix)
 	}

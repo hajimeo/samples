@@ -211,7 +211,7 @@ func (a *AzClient) GetDirs(baseDir string, pathFilter string, maxDepth int) ([]s
 			// Not sure if this is a good way to limit the depth
 			count := strings.Count(path, string(filepath.Separator))
 			if realMaxDepth > 0 && count > realMaxDepth {
-				h.Log("DEBUG", fmt.Sprintf("Reached to the max depth %d / %d (path: %s)", count, maxDepth, *prefix.Name))
+				h.Log("DEBUG", fmt.Sprintf("Reached to the real max depth %d / %d (path: %s)", count, realMaxDepth, *prefix.Name))
 				// Assuming Azure SDK returns the directories in order
 				break
 			}
@@ -237,7 +237,7 @@ func (a *AzClient) GetDirs(baseDir string, pathFilter string, maxDepth int) ([]s
 
 func (a *AzClient) ListObjects(dir string, db *sql.DB, perLineFunc func(PrintLineArgs) bool) int64 {
 	// ListObjects: List all files in one directory recursively.
-	// Global variables should be only TopN, PrintedNum, MaxDepth
+	// Global variables should be only TopN, PrintedNum
 	var subTtl int64
 	prefix := h.AppendSlash(dir)
 

@@ -223,7 +223,7 @@ func (a *GcClient) GetDirs(baseDir string, pathFilter string, maxDepth int) ([]s
 			// Not sure if this is a good way to limit the depth
 			count := strings.Count(path, string(filepath.Separator))
 			if realMaxDepth > 0 && count > realMaxDepth {
-				h.Log("DEBUG", fmt.Sprintf("Reached to the max depth %d / %d (path: %s)", count, maxDepth, *prefix.Name))
+				h.Log("DEBUG", fmt.Sprintf("Reached to the real max depth %d / %d (path: %s)", count, realMaxDepth, *prefix.Name))
 				break
 			}
 			if len(pathFilter) == 0 || filterRegex.MatchString(path) {

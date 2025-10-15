@@ -164,3 +164,28 @@ func TestGetContainerAndPrefix_URLWithContentPath_ReturnsHostnameAndTrimmedPrefi
 	assert.Equal(t, "example.com", hostname)
 	assert.Equal(t, "path/to", prefix) // not starting with /
 }
+
+func TestPathWithoutExt_ValidPath_ReturnsPathWithoutExtension(t *testing.T) {
+	result := GetPathWithoutExt("/path/to/file.txt")
+	assert.Equal(t, "/path/to/file", result)
+}
+
+func TestPathWithoutExt_PathWithoutExtension_ReturnsSamePath(t *testing.T) {
+	result := GetPathWithoutExt("/path/to/file")
+	assert.Equal(t, "/path/to/file", result)
+}
+
+func TestPathWithoutExt_EmptyPath_ReturnsEmptyString(t *testing.T) {
+	result := GetPathWithoutExt("")
+	assert.Equal(t, "", result)
+}
+
+func TestPathWithoutExt_PathWithMultipleDots_RemovesOnlyLastExtension(t *testing.T) {
+	result := GetPathWithoutExt("/path/to/file.tar.gz")
+	assert.Equal(t, "/path/to/file.tar", result)
+}
+
+func TestPathWithoutExt_PathWithTrailingDot_RemovesTrailingDot(t *testing.T) {
+	result := GetPathWithoutExt("/path/to/file.")
+	assert.Equal(t, "/path/to/file", result)
+}

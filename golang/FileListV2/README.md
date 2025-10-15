@@ -1,8 +1,9 @@
 # File List V2
+## Purpose / Scope of this tool
 - List files from specified location (File, S3, Azure, etc.)
-- Find missing blobs in database (Dead Blobs)
-- Find missing blobs in blob store (Orphaned Blobs)
-- (no need any more?) Remove `deleted=true` lines from the specified files in a text file or while listing
+- Remove `deleted=true` lines from the specified files
+- Find missing blobs in blob store (similar to Orphaned Blobs Finder)
+- TODO: Find missing blobs in database (similar to Dead Blobs Finder)
 
 ## Download and Install:
 Saving the binary as `filelist2` as an example:
@@ -15,21 +16,27 @@ chmod a+x ./filelist2
 ```
 $ filelist2 --help
 ```
-NOTE: The arguments, which name starts with a Capital letter, are boolean type. `-X` and `-XX` for Debug.
+NOTE: The argument name starts with a Capital letter is boolean type (no value). For example `-X` and `-XX` for Debug.
 
 ## Usage Examples
 
 ### List files under the Blob store content `-b "blob-store-uri"`
 ```
+# The default is `file://` so with or without works
 filelist2 -b "./sonatype-work/nexus3/blobs/default/content"
 filelist2 -b "file://sonatype-work/nexus3/blobs/default/content"
-#export AWS_ACCESS_KEY_ID="*******" AWS_SECRET_ACCESS_KEY="*********************" AWS_REGION="ap-southeast-2"
-filelist2 -b "s3://${AWS_BLOB_STORE_NAME}/${AWS_BLOB_STORE_PREFIX}/content" -n 5
-#export AZURE_STORAGE_ACCOUNT_NAME="********" AZURE_STORAGE_ACCOUNT_KEY="*********************"
-filelist2 -b "az://${AZURE_STORAGE_CONTAINER_NAME}/content"
-TODO: filelist2 -b "gc://google-test-storage/google-test-prefix/content"
+
+# If S3, use `s3://` and populate necessary environment variables
+export AWS_ACCESS_KEY_ID="*******" AWS_SECRET_ACCESS_KEY="*********************" AWS_REGION="ap-southeast-2"
+filelist2 -b "s3://${AWS_BLOB_STORE_NAME}/filelist-test/content" -n 5
+
+# If Azure, use `az://` and also populate necessary environment variables
+export AZURE_STORAGE_ACCOUNT_NAME="********" AZURE_STORAGE_ACCOUNT_KEY="*********************"
+filelist2 -b "az://${AZURE_STORAGE_CONTAINER_NAME}/content" -n 5
+
+TODO: filelist2 -b "gc://google-test-storage/google-test-prefix/content" -n 5
 ```
-#### List files which matches with specific repo and updated recently
+#### List files which matches with specific repo and modified from today
 ```
 filelist2 -b "$BLOB_STORE -P -pRx "@Bucket.repo-name=maven-group," -mDF $(date +%Y-%m-%d) 2>/dev/null
 ```
@@ -38,7 +45,7 @@ filelist2 -b "$BLOB_STORE -P -pRx "@Bucket.repo-name=maven-group," -mDF $(date +
 filelist2 -b "$BLOB_STORE" -p "/(vol-\d\d|20\d\d)/" -c 80 -s "/tmp/file-list_$(date +"%Y%m%d%H%M%S").tsv"
 ```
 NOTE: The recommended concurrency is less than (CPUs / 2) * 10, unless against slow disk/network.  
-Also, the concurrency is based on the directories under `-b` (max depth 3), so even the "vol-NN" is less than 50, the concurrency higher than 50 would work.  
+Also, the concurrency is based on the directories under `-b` (max depth 4), so even the "vol-NN" is less than 50, the concurrency higher than 50 would work.  
 Also, if S3, `-c 2 -c2 8` might be faster.
 
 #### Same as the above but only files which File name matches with `-f "file-filter"`, and including the Properties file content `-P` into the saving file
@@ -87,21 +94,55 @@ filelist2 -b "$BLOB_STORE" -p "/(vol-\d\d|20\d\d)/" -pRx "@Bucket\.repo-name=doc
 filelist2 -b "$BLOB_STORE" -rF ./docker-proxy_soft_deleted.tsv -RDel -P -c 80 -s docker-proxy_soft_deleted_undeleted.tsv 
 ```
 
-### Find blobs which exist in Blob store but not in database (Orphaned Blobs)
+### Find blobs which exist in Blob store but not in database with `-src BS` (like Orphaned Blobs Finder)
 NOTE: Cleanup unused asset blob tasks should be run before this script. Also, `-c` shouldn't be too high with `-db`.  
 ```
 # Accessing DB by using the connection string and check all formats for orphaned blobs (-src BS)
+# Also `-BytesChk` to exclude .properties files which do not have the .bytes file (deletion marker)
 export PGPASSWORD="*******"
-filelist2 -b "$BLOB_STORE" -p '/(vol-\d\d|20\d\d)/' -c 10 -src BS -db "host=localhost user=nexus dbname=nexus" -P -pRxNot "deleted=true" -s ./orphaned_blobs.tsv
-filelist2 -b sonatype-work/nexus3/blobs/default/content/ -p '/(vol-\d\d|20\d\d)' -src BS -db ./sonatype-work/nexus3/etc/fabric/nexus-store.properties -P -s ./orphaned_including_soft_deleted.tsv
+filelist2 -b "$BLOB_STORE" -p '/(vol-\d\d|20\d\d)/' -c 10 -src BS -db "host=localhost user=nexus dbname=nexus" -P -pRxNot "deleted=true" -BytesChk -s ./orphaned_blobs.tsv
+# NOTE: -db accepts the properties file: -db ./sonatype-work/nexus3/etc/fabric/nexus-store.properties
+
+# TODO: Nexus 3.86 may have the originalLocation line for the deletion marker, so may not need to use -BytesChk (if upgraded, confusing)
+filelist2 -b "$BLOB_STORE" -p '/(20\d\d)/' -c 10 -src BS -db "host=localhost user=nexus dbname=nexus" -P -pRxNot "(deleted=true|originalLocation)" -s ./orphaned_blobs.tsv
 ```
 
-Using Blob IDs file (TODO: confusing):
+Can use a text file which contains Blob IDs, so that no Blobstore access is needed:
 ```
-# Source is DB and no `-db`, so using -rF as if DB
-filelist2 -src DB -rF ./sql_output_from_DB.txt -b "$BLOB_STORE" -p '/(vol-\d\d|20\d\d)/' -c 80 -s ./missing_blobs_no-DB-access.tsv
-# Source is BS and no `-b`, so using -rf as if BS (previous filelist) result
-filelist2 -src BS -rF ./docker-proxy_blob_ids.tsv -db "host=localhost user=nexus dbname=nexus" -bsName default -s ./orphaned_blobs_no-BS-access.tsv
+filelist2 -src BS -rF ./some_filelist_result.tsv -db "host=localhost user=nexus dbname=nexus" -bsName default -s ./orphaned_blobs_no-BS-access.tsv
+```
+
+### Find blobs which exist in Database but not in Blob store with `-src DB` (like Dead Blobs Finder)
+NOTE: if `query` result is large, may want to split the query into smaller parts (e.g. order by asset_id limit 100000 offset N)
+```
+export PGPASSWORD="*******"
+filelist2 -b "$BLOB_STORE" -db "host=localhost user=nexus dbname=nexus" -query "select blob_ref as blob_id from raw_asset_blob where repository_id = {n}" -s ./potentially_dead_blobs.tsv
+# NOTE: -db accepts the properties file: -db ./sonatype-work/nexus3/etc/fabric/nexus-store.properties
+```
+
+Can use a text file which contains Blob IDs, so that no DB access is needed:
+```
+filelist2 -src BS -rF ./db_exported_blob_ids.txt -b "$BLOB_STORE" -p '/(vol-\d\d|20\d\d)/' -s ./dead_blobs_blobs_no-DB-access.tsv
+```
+
+
+
+
+### TEST: With undeleter, do similar to Point-In-Time-Recovery for blobs which exist in Blob store but not in DB
+NOTE: if `query` result is large, may want to split the query into smaller parts (e.g. order by record_id (or deleted_date) limit 100000 offset N)
+```
+export PGPASSWORD="*******"
+filelist2 -b "$BLOB_STORE" -db "host=localhost user=nexus dbname=nexus" -query "select blob_id||'@'||date_path_ref as blob_id from soft_deleted_blobs where source_blob_store_name = 'default' and deleted_date > NOW() - INTERVAL '{x} days' order by deleted_date" -s ./restoring_blobs.tsv
+# After reviewing ./restoring_blobs.tsv, removing unnecessary lines, then:
+bash ./nrm3-undelete-3.83.sh -I -s "default" -b ./restoring_blobs.tsv
+```
+
+### TODO: Copy specific blobs to another Blob store with `-bTo` (like Export/Import)
+Excluding the soft-deleted blobs and including only specific repo.
+```
+filelist2 -b "$BLOB_STORE" -bTo "$BLOB_STORE2" -P -pRx "@Bucket.repo-name=raw-hosted," -pRxNot "deleted=true" -s ./copied_blobs.tsv
+# After reviewing ./copied_blobs.tsv, execute the undelter against another Nexus instance
+bash ./nrm3-undelete-3.83.sh -I -s "default" -b ./copied_blobs.tsv
 ```
 
 
@@ -138,5 +179,5 @@ filelist2 -b s3://apac-support-bucket/filelist-test -pRx "deleted=true" -T
 
 ### Misc. note
 ```
-filelist2 -b "s3://${AWS_BLOB_STORE_NAME}/${AWS_BLOB_STORE_PREFIX}/content" -mDF 2025-08-06 -P -T -s all_props_since-6th.tsv
+filelist2 -b "s3://${AWS_BLOB_STORE_NAME}/filelist-test/content" -mDF 2025-08-06 -P -T -s all_props_since-6th.tsv
 ```

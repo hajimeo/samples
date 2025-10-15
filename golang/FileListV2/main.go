@@ -51,7 +51,7 @@ func setGlobals() {
 	flag.Int64Var(&common.TopN, "n", 0, "Return first N lines per *thread* (0 = no limit). Can't be less than '-c'")
 	flag.IntVar(&common.Conc1, "c", 1, "Concurrent number for reading directories")
 	flag.IntVar(&common.Conc2, "c2", 8, "2nd Concurrent number. Currently used when retrieving object from AWS S3")
-	flag.IntVar(&common.MaxDepth, "mD", 5, "Max Depth for finding sub-directories (default: 5 for YYYY/MM/DD/hh/mm/)")
+	flag.IntVar(&common.MaxDepth, "depth", 5, "Max Depth for finding sub-directories only for File type (default: 5 for YYYY/MM/DD/hh/mm/)")
 	flag.BoolVar(&common.NoHeader, "H", false, "If true, no header line")
 
 	flag.StringVar(&common.BlobIDFIle, "rF", "", "Read from file path which contains the list of blob IDs")
@@ -73,7 +73,7 @@ func setGlobals() {
 	flag.StringVar(&common.DelDateToStr, "dDT", "", "Deleted date YYYY-MM-DD (to). To exclude newly deleted assets")
 	flag.StringVar(&common.ModDateFromStr, "mDF", "", "File modification date YYYY-MM-DD (from)")
 	flag.StringVar(&common.ModDateToStr, "mDT", "", "File modification date YYYY-MM-DD (to)")
-	flag.BoolVar(&common.BytesChk, "BytesChk", false, "Extra check to make sure the .bytes file exists")
+	flag.BoolVar(&common.BytesChk, "BytesChk", false, "Check if .bytes file exists. Also the .bytes mod time is used for -mDF/-mDT")
 
 	// Blob store specifics (AWS S3 / Azure related)
 	flag.IntVar(&common.MaxKeys, "m", 1000, "AWS S3: Integer value for Max Keys (<= 1000)")
@@ -307,8 +307,8 @@ func printHeader(saveToPointer *os.File) {
 		if common.WithTags {
 			header += fmt.Sprintf("%sTags", common.SEP)
 		}
-		if len(common.Truth) > 0 {
-			header += fmt.Sprintf("%smisc", common.SEP)
+		if len(common.Truth) > 0 || common.BytesChk {
+			header += fmt.Sprintf("%sMisc.", common.SEP)
 		}
 		printOrSave(header, saveToPointer)
 	}
@@ -370,10 +370,35 @@ func genOutput(path string, bi bs_clients.BlobInfo, db *sql.DB) string {
 		return ""
 	}
 
+	var bytesChkErr error
+	var bytesInfo bs_clients.BlobInfo
+	var bytesPath string
+	if common.BytesChk && !strings.HasSuffix(path, common.BYTES_EXT) {
+		// If the path ends with .properties, replace with .bytes
+		bytesPath = lib.GetPathWithoutExt(path) + common.BYTES_EXT
+		bytesInfo, bytesChkErr = Client.GetFileInfo(bytesPath)
+		if bytesChkErr != nil {
+			if common.Truth != "BS" {
+				h.Log("WARN", fmt.Sprintf("BYTES_MISSING for %s (error: %s)", bytesPath, bytesChkErr.Error()))
+			} else {
+				h.Log("DEBUG", fmt.Sprintf("BYTES_MISSING for %s (probably deletion marker?)", bytesPath))
+			}
+		}
+	}
+
 	modTimestamp := bi.ModTime.Unix()
-	if !lib.IsTsMSecBetweenTs(modTimestamp*1000, common.ModDateFromTS, common.ModDateToTS) {
-		h.Log("DEBUG", fmt.Sprintf("path:%s modTime %d is outside of the range %d to %d", path, modTimestamp, common.ModDateFromTS, common.ModDateToTS))
-		return ""
+	// If BytesChk is false, use the .bytes file's modTime for the filter as the .properties mod time can be unexpected value
+	if common.BytesChk && bytesChkErr == nil && !strings.HasSuffix(path, common.BYTES_EXT) {
+		bytesModTimestamp := bytesInfo.ModTime.Unix()
+		if !lib.IsTsMSecBetweenTs(bytesModTimestamp*1000, common.ModDateFromTS, common.ModDateToTS) {
+			h.Log("DEBUG", fmt.Sprintf("Bytes path:%s modTime %d is outside of the range %d to %d", bytesPath, bytesModTimestamp, common.ModDateFromTS, common.ModDateToTS))
+			return ""
+		}
+	} else {
+		if !lib.IsTsMSecBetweenTs(modTimestamp*1000, common.ModDateFromTS, common.ModDateToTS) {
+			h.Log("DEBUG", fmt.Sprintf("path:%s modTime %d is outside of the range %d to %d", path, modTimestamp, common.ModDateFromTS, common.ModDateToTS))
+			return ""
+		}
 	}
 
 	var props string
@@ -404,29 +429,22 @@ func genOutput(path string, bi bs_clients.BlobInfo, db *sql.DB) string {
 		output = fmt.Sprintf("%s%s%s", output, common.SEP, bi.Tags)
 	}
 
+	if bytesChkErr != nil {
+		output = fmt.Sprintf("%s%s%s", output, common.SEP, "BYTES_MISSING")
+	}
+
 	if common.Truth == "BS" {
 		// If DB connection is given and the truth is blob store, check if the blob ID in the path exists in the DB
-		if len(common.DbConnStr) > 0 {
+		// But if bytesChkErr is not nil, it's not considered as orphaned, rather missing blob.
+		if len(common.DbConnStr) > 0 && bytesChkErr == nil {
 			blobId := extractBlobIdFromString(path)
 			// If props is empty, the below may use expensive query
 			reason := isOrphanedBlob(props, blobId, db)
 			if len(reason) > 0 {
 				output = fmt.Sprintf("%s%s%s", output, common.SEP, reason)
 			} else {
-				var bytesChkErr error
-				bytesPath := blobId
-				if common.BytesChk {
-					// Check if .bytes file exists
-					bytesPath = h.AppendSlash(common.ContentPath) + genBlobPath(blobId, common.BYTES_EXT)
-					_, bytesChkErr = Client.GetFileInfo(bytesPath)
-				}
-				if bytesChkErr != nil {
-					h.Log("WARN", fmt.Sprintf("BYTES_MISSING for %s (error: %s)", bytesPath, bytesChkErr.Error()))
-					output = fmt.Sprintf("%s%s%s", output, common.SEP, "BYTES_MISSING")
-				} else {
-					h.Log("DEBUG", "Blob ID: "+blobId+" exists in the DB. Not including in the output.")
-					output = ""
-				}
+				h.Log("DEBUG", "Blob ID: "+blobId+" exists in the DB. Not including in the output.")
+				output = ""
 			}
 		}
 	}
@@ -1050,6 +1068,7 @@ func main() {
 
 	// NOTE: when Query is set, BlobIdFile should be empty.
 	if len(common.Query) > 0 {
+		// TODO: should stream for the performance?
 		var tempDir = os.TempDir()
 		common.BlobIDFIle = filepath.Join(tempDir, "blob_ids_from_query.tsv")
 		lib.GetRows(common.Query, db, common.BlobIDFIle, 200)
@@ -1092,6 +1111,9 @@ func main() {
 	}
 	chunks := h.Chunk(subDirs, 1) // 1 is for spawning the Go routine per subDir.
 	h.Elapsed(startMs, fmt.Sprintf("GetDirs got %d directories", len(subDirs)), 200)
+	if common.Debug2 {
+		h.Log("DEBUG", fmt.Sprintf("Matched sub directories: %v", subDirs))
+	}
 
 	startMs = time.Now().UnixMilli()
 	runParallel(chunks, listObjects, common.Conc1)
