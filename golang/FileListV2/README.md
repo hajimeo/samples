@@ -131,10 +131,13 @@ filelist2 -src BS -rF ./db_exported_blob_ids.txt -b "$BLOB_STORE" -p '/(vol-\d\d
 ### TEST: With undeleter, do similar to Point-In-Time-Recovery for blobs which exist in Blob store but not in DB
 NOTE: if `query` result is large, may want to split the query into smaller parts (e.g. order by record_id (or deleted_date) limit 100000 offset N)
 ```
-export PGPASSWORD="*******"
-filelist2 -b "$BLOB_STORE" -db "host=localhost user=nexus dbname=nexus" -query "select blob_id||'@'||date_path_ref as blob_id from soft_deleted_blobs where source_blob_store_name = 'default' and deleted_date > NOW() - INTERVAL '{x} days' order by deleted_date" -s ./restoring_blobs.tsv
+filelist2 -b "$BLOB_STORE" -db ./sonatype-work/nexus3/etc/fabric/nexus-store.properties -query "SELECT blob_id||'@'||TO_CHAR(date_path_ref AT TIME ZONE 'UTC', 'YYYY-MM-DD\"T\"HH24:MI') as blob_id FROM soft_deleted_blobs WHERE source_blob_store_name = 'default' AND deleted_date > NOW() - INTERVAL '3 days' ORDER BY deleted_date LIMIT 1000" -s ./restoring_blobs.tsv
 # After reviewing ./restoring_blobs.tsv, removing unnecessary lines, then:
 bash ./nrm3-undelete-3.83.sh -I -s "default" -b ./restoring_blobs.tsv
+```
+To juat save the query result without accessing the Blob store with reusing `-rf`:
+```
+filelist2 -db ./sonatype-work/nexus3/etc/fabric/nexus-store.properties -query "SELECT 'test' as blob_id, * FROM soft_deleted_blobs WHERE source_blob_store_name = 'default' and deleted_date > NOW() - INTERVAL '300 days' ORDER BY deleted_date limit 2" -rF ./query_result.out
 ```
 
 ### TODO: Copy specific blobs to another Blob store with `-bTo` (like Export/Import)

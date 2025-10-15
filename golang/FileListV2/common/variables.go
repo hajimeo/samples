@@ -51,7 +51,7 @@ var RemoveDeleted bool
 var BytesChk bool
 var WriteIntoStr = ""
 var Query = ""
-var RxSelect = regexp.MustCompile(`(?i)^ *SELECT .*(?:\A|\z|\s)blob_id(?:\A|\z|\s)[^;]+;?$`)
+var RxSelect = regexp.MustCompile(`(?i)^ *SELECT ?.* +blob_id *, *[^;]+;?$`) // Currently max only one ';'
 var RxAnd = regexp.MustCompile(`(?i)^ *AND `)
 var Container = "" // Azure: Container name, S3: Bucket name, Google: Bucket name
 var Prefix = ""

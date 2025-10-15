@@ -114,7 +114,8 @@ func GetRows(query string, db *sql.DB, saveToFile string, slowMs int64) [][]inte
 	var fp *os.File
 	var err error
 	if len(saveToFile) > 0 {
-		fp, err = os.Create(saveToFile)
+		fp, err = os.OpenFile(saveToFile, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+		//fp, err = os.Create(saveToFile)
 		if err != nil {
 			panic(err)
 		}

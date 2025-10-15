@@ -55,8 +55,8 @@ func setGlobals() {
 	flag.BoolVar(&common.NoHeader, "H", false, "If true, no header line")
 
 	flag.StringVar(&common.BlobIDFIle, "rF", "", "Read from file path which contains the list of blob IDs")
-	flag.StringVar(&common.GetFile, "get", "", "Get a single file/blob from the blob store")
-	flag.StringVar(&common.GetTo, "getTo", "", "Get to the local path")
+	flag.StringVar(&common.GetFile, "get", "", "TODO: Get a single file/blob from the blob store")
+	flag.StringVar(&common.GetTo, "getTo", "", "TODO: Get to the local path")
 	// TODO: GetXxxx not used yet
 
 	// DB / SQL related
@@ -123,9 +123,9 @@ func setGlobals() {
 		if _, err := os.Stat(common.DbConnStr); err == nil {
 			common.DbConnStr = lib.GenDbConnStrFromFile(common.DbConnStr)
 		}
-		if len(common.Filter4FileName) == 0 {
+		if len(common.Truth) > 0 && len(common.Filter4FileName) == 0 {
 			// If Truth is set and DB connection is provided, probably want to check only .properties files
-			h.Log("INFO", "Setting '-f' with '"+common.PROPERTIES+"' as DB connection is provided.")
+			h.Log("INFO", "Setting '-f "+common.PROPERTIES+"' as DB connection is provided.")
 			common.Filter4FileName = common.PROPERTIES
 			//common.WithProps = false	// but probably wouldn't need to automatically output the content of .properties
 		}
@@ -149,9 +149,9 @@ func setGlobals() {
 		if len(common.DbConnStr) == 0 {
 			panic("Query requires DB connection string")
 		}
-		if len(common.BlobIDFIle) > 0 {
-			panic("Currently -rF and -query can't be used togather")
-		}
+		//if len(common.BlobIDFIle) > 0 {
+		//	panic("Currently -rF and -query can't be used togather")
+		//}
 	}
 
 	if len(common.DelDateFromStr) > 0 {
@@ -204,8 +204,9 @@ func setGlobals() {
 		if len(common.BaseDir) > 0 {
 			h.Log("WARN", "BlobIDFIle and BaseDir are provided but '-src DB' is missing to find Dead blobs")
 			//common.Truth = "DB"
-		} else if len(common.DbConnStr) > 0 {
-			h.Log("WARN", "BlobIDFIle is provided but no BaseDir and '-src BS' is missing to find Orphaned blobs")
+		} else if len(common.DbConnStr) > 0 && len(common.Query) == 0 {
+			// If Query and BlobIDFIle are provided, the DB result will be written into the BlobIDFile and not going to do the Orphaned blob check.
+			h.Log("WARN", "BlobIDFIle and DbConnStr are provided but no BaseDir and no '-src BS' to find Orphaned blobs")
 			//common.Truth = "BS"
 		}
 	}
@@ -1068,56 +1069,74 @@ func main() {
 
 	// NOTE: when Query is set, BlobIdFile should be empty.
 	if len(common.Query) > 0 {
-		// TODO: should stream for the performance?
-		var tempDir = os.TempDir()
-		common.BlobIDFIle = filepath.Join(tempDir, "blob_ids_from_query.tsv")
-		lib.GetRows(common.Query, db, common.BlobIDFIle, 200)
-		h.Log("DEBUG", "Query result is saved into "+common.BlobIDFIle)
-		if common.BlobIDFIleType == "" {
-			common.BlobIDFIleType = "DB" // assuming the query returns blob_ref values
+		if len(common.BlobIDFIle) == 0 {
+			var tempDir = os.TempDir()
+			tmpSaveToFIle := filepath.Join(tempDir, "blob_ids_from_query.tsv")
+			// If the temp file already exists, deleting it first
+			if _, err := os.Stat(tmpSaveToFIle); err == nil {
+				err = os.Remove(tmpSaveToFIle)
+				if err != nil {
+					h.Log("ERROR", "Failed to remove the existing "+tmpSaveToFIle)
+					panic(err)
+				}
+			}
+			common.BlobIDFIle = tmpSaveToFIle
+			h.Log("DEBUG", "Query result will be saving into "+common.BlobIDFIle)
+		} else {
+			// This is not so intuitive to use `-rF` for saving the query result, but probably better than adding another flag
+			h.Log("INFO", "Query result will be *appending* into "+common.BlobIDFIle)
 		}
+		common.BlobIDFIleType = "DB" // assuming the query returns blobIDs (from blob_ref)
+		lib.GetRows(common.Query, db, common.BlobIDFIle, 200)
 	}
 
 	startMs := time.Now().UnixMilli()
-
-	// NOTE: Header is written only when one file is used
-	printHeader(common.SaveToPointer)
 
 	// If the list of Blob IDs are provided, use it
 	if len(common.BlobIDFIle) > 0 {
 		// If Truth (src) is not set or Truth and BlobIDFile type are the same, reading this file as source
 		if len(common.Truth) == 0 || (len(common.Truth) > 0 && common.Truth == common.BlobIDFIleType) {
-			if common.BlobIDFIleType == "BS" {
+			if common.BlobIDFIleType == "BS" && len(common.DbConnStr) > 0 {
+				printHeader(common.SaveToPointer)
 				h.Log("INFO", fmt.Sprintf("checkBlobIdDetailFromDB: path=%s, conc=%d", common.BlobIDFIle, common.Conc1))
 				_ = h.StreamLines(common.BlobIDFIle, common.Conc1, checkBlobIdDetailFromDB)
-			} else if common.BlobIDFIleType == "DB" {
+			} else if common.BlobIDFIleType == "DB" && len(common.BaseDir) > 0 {
+				printHeader(common.SaveToPointer)
 				h.Log("INFO", fmt.Sprintf("checkBlobIdDetailFromBS: path=%s, conc=%d", common.BlobIDFIle, common.Conc1))
 				_ = h.StreamLines(common.BlobIDFIle, common.Conc1, checkBlobIdDetailFromBS)
+			} else {
+				h.Log("DEBUG", fmt.Sprintf("No action was taken for path=%s (type:%s) as DbConnStr or BaseDir is missing", common.BlobIDFIle, common.BlobIDFIleType))
 			}
 			h.Elapsed(startMs, fmt.Sprintf("Completed. Listed: %d (checked: %d), Size: %d bytes", common.PrintedNum, common.CheckedNum, common.TotalSize), 0)
 			return
 		} else if len(common.Truth) > 0 && len(common.BlobIDFIleType) > 0 && common.Truth != common.BlobIDFIleType {
-			panic("TODO: 'rF' is provided but 'rF' type:" + common.BlobIDFIleType + " does not match with 'src' type:" + common.Truth + ", so this file will be used against filelist result.")
+			panic("TODO: 'rF' is provided but 'rF' type:" + common.BlobIDFIleType + " does not match with 'src' type:" + common.Truth + ", so this file should be used to compare with the filelist result.")
 			// TODO: implement this. Read the -src and check against the -rF file
 		}
+		// TODO: what should we do when BlobIDFIleType is empty?
+		h.Log("INFO", fmt.Sprintf("No action was taken for path=%s (type:%s)", common.BlobIDFIle, common.BlobIDFIleType))
+		return
 	}
 
-	// If the Blob ID file is not provided, run per directory
-	h.Log("INFO", fmt.Sprintf("Finding sub directories under %s with filter:%s, depth:%d (may take while)...", common.ContentPath, common.Filter4Path, common.MaxDepth))
-	subDirs, err := Client.GetDirs(common.ContentPath, common.Filter4Path, common.MaxDepth)
-	if err != nil {
-		h.Log("ERROR", "Failed to list directories in "+common.ContentPath+" with filter: "+common.Filter4Path)
-		panic(err)
+	if len(common.BaseDir) > 0 {
+		printHeader(common.SaveToPointer)
+		// If the Blob ID file is not provided, run per directory
+		h.Log("INFO", fmt.Sprintf("Finding sub directories under %s with filter:%s, depth:%d (may take while)...", common.ContentPath, common.Filter4Path, common.MaxDepth))
+		subDirs, err := Client.GetDirs(common.ContentPath, common.Filter4Path, common.MaxDepth)
+		if err != nil {
+			h.Log("ERROR", "Failed to list directories in "+common.ContentPath+" with filter: "+common.Filter4Path)
+			panic(err)
+		}
+		chunks := h.Chunk(subDirs, 1) // 1 is for spawning the Go routine per subDir.
+		h.Elapsed(startMs, fmt.Sprintf("GetDirs got %d directories", len(subDirs)), 200)
+		if common.Debug2 {
+			h.Log("DEBUG", fmt.Sprintf("Matched sub directories: %v", subDirs))
+		}
+		// Reset the start time for listing
+		startMs = time.Now().UnixMilli()
+		runParallel(chunks, listObjects, common.Conc1)
+		// Always log this elapsed time by using 0 thresholdMs
+		h.Elapsed(startMs, fmt.Sprintf("Completed. Listed: %d (checked: %d), Size: %d bytes", common.PrintedNum, common.CheckedNum, common.TotalSize), 0)
 	}
-	chunks := h.Chunk(subDirs, 1) // 1 is for spawning the Go routine per subDir.
-	h.Elapsed(startMs, fmt.Sprintf("GetDirs got %d directories", len(subDirs)), 200)
-	if common.Debug2 {
-		h.Log("DEBUG", fmt.Sprintf("Matched sub directories: %v", subDirs))
-	}
-
-	startMs = time.Now().UnixMilli()
-	runParallel(chunks, listObjects, common.Conc1)
-	// Always log this elapsed time by using 0 thresholdMs
-	h.Elapsed(startMs, fmt.Sprintf("Completed. Listed: %d (checked: %d), Size: %d bytes", common.PrintedNum, common.CheckedNum, common.TotalSize), 0)
 	return
 }
