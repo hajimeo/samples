@@ -357,7 +357,7 @@ function _updateNexusProps() {
     # update the config with the port
     if [ -n "${_port}" ]; then
         if [ "${_port}" != "8081" ]; then
-            echo "WARN: Using non default port *** '${_port}' !!" >&2; sleep 5;
+            echo "WARN: Using non default port *** '${_port}' !! (export _NEXUS_URL=\"http://localhost:${_port}\")" >&2; sleep 5;
         elif [ "${_port}" != "${_current_port}" ]; then
             echo "WARN: Changing port to *** '${_port}' *** from ${_current_port} !!" >&2; sleep 3;
         fi
