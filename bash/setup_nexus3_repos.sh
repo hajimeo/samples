@@ -1616,7 +1616,8 @@ function f_branding() {
 
 function f_create_file_blobstore() {
     local __doc__="Create a File type blobstore"
-    local _bs_name="${1:-"default"}"
+    local _bs_name="${1:-"file_$(date +"%Y%m%d%H%M%S")"}"
+    _log "INFO" "Creating blobstore: ${_bs_name} ..."
     if ! _apiS '{"action":"coreui_Blobstore","method":"create","data":[{"type":"File","name":"'${_bs_name}'","isQuotaEnabled":false,"attributes":{"file":{"path":"'${_bs_name}'"}}}],"type":"rpc"}' > ${_TMP%/}/f_apiS_last.out; then
         _log "ERROR" "Blobstore ${_bs_name} does not exist."
         _log "ERROR" "$(cat ${_TMP%/}/f_apiS_last.out)"
@@ -1629,13 +1630,14 @@ function f_create_file_blobstore() {
 # _NO_REPO_CREATE=Y f_create_s3_blobstore
 function f_create_s3_blobstore() {
     local __doc__="Create a S3 blobstore. AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY are required"
-    local _bs_name="${1:-"s3-test"}"
+    local _bs_name="${1:-"s3-$(date +"%Y%m%d%H%M%S")"}"
     local _prefix="${2:-"$(hostname -s)_${_bs_name}"}"    # cat /etc/machine-id is not perfect if docker container
     local _bucket="${3:-"apac-support-bucket"}"
     local _region="${4:-"${AWS_REGION:-"ap-southeast-2"}"}"
     local _ak="${5:-"${AWS_ACCESS_KEY_ID}"}"
     local _sk="${6:-"${AWS_SECRET_ACCESS_KEY}"}"
     local _exp="${7:-"3"}"  # Not used since 3.80 (46435)
+    _log "INFO" "Creating blobstore: ${_bs_name} ..."
     if [ -n "${_prefix}" ]; then    # AWS S3 prefix shouldn't start with / (and may need to end with /)
         _prefix="${_prefix#/}"
         _prefix="${_prefix%/}/"
@@ -1677,10 +1679,11 @@ aws s3 cp s3://${_bucket}/${_prefix}content/vol-42/chap-31/f062f002-88f0-4b53-ae
 function f_create_azure_blobstore() {
     local __doc__="Create an Azure blobstore. AZURE_STORAGE_ACCOUNT_NAME and AZURE_STORAGE_ACCOUNT_KEY are required"
     #https://pkg.go.dev/github.com/Azure/azure-sdk-for-go/sdk/azidentity#readme-environment-variables
-    local _bs_name="${1:-"az-test"}"
+    local _bs_name="${1:-"az-$(date +"%Y%m%d%H%M%S")"}"
     local _container_name="${2:-"$(hostname -s | tr '[:upper:]' '[:lower:]')-${_bs_name}"}"
     local _an="${3:-"${AZURE_STORAGE_ACCOUNT_NAME}"}"
     local _ak="${4:-"${AZURE_STORAGE_ACCOUNT_KEY}"}"
+    _log "INFO" "Creating blobstore: ${_bs_name} ..."
     # NOTE: nexus.azure.server=<your.desired.blob.storage.server>
     # Container names can contain only lowercase letters, numbers, and the dash (-) character, and must be 3-63 characters long.
     if ! f_api "/service/rest/v1/blobstores/azure" '{"name":"'${_bs_name}'","bucketConfiguration":{"authentication":{"authenticationMethod":"ACCOUNTKEY","accountKey":"'${_ak}'"},"accountName":"'${_an}'","containerName":"'${_container_name}'"}}' > ${_TMP%/}/f_api_last.out; then
@@ -1698,13 +1701,14 @@ function f_create_azure_blobstore() {
 
 function f_create_google_blobstore() {
     local __doc__="Create an Google blobstore. GOOGLE_APPLICATION_CREDENTIALS is required (3.74+)"
-    local _bs_name="${1:-"gc-test"}"
+    local _bs_name="${1:-"gc-$(date +"%Y%m%d%H%M%S")"}"
     local _accountKeyFle="${2:-"${GOOGLE_APPLICATION_CREDENTIALS}"}"
     local _bucket="${3:-"${GOOGLE_BUCKET}"}"
     local _prefix="${4:-"$(hostname -s)_${_bs_name}"}"
     local _region="${5:-"${GOOGLE_REGION:-"australia-southeast1"}"}"
     local _accountKeyFle_content="$(cat "${_accountKeyFle}" | JSON_ESCAPE=Y _sortjson)"
     local _project_id="$(cat "${_accountKeyFle}" | JSON_SEARCH_KEY="project_id" _sortjson)"
+    _log "INFO" "Creating blobstore: ${_bs_name} ..."
     echo '{"name":"'${_bs_name}'","bucketConfiguration":{"bucketSecurity":{"authenticationMethod":"accountKey","file":{"0":{}},"accountKey":"'${_accountKeyFle_content}'"},"bucket":{"projectId":"'${_project_id}'","name":"'${_bucket}'","prefix":"'${_prefix}'","region":"'${_region}'"}}}' > ${_TMP%/}/${FUNCNAME[0]}_$$.json
     if ! f_api "/service/rest/v1/blobstores/google" "@${_TMP%/}/${FUNCNAME[0]}_$$.json" > ${_TMP%/}/f_api_last.out; then
         _log "ERROR" "Failed to create blobstore: ${_bs_name} ."
@@ -1721,12 +1725,13 @@ function f_create_google_blobstore() {
 
 function f_create_group_blobstore() {
     local __doc__="Create a new group blob store. Not promoting to group"
-    local _bs_name="${1:-"bs-group"}"
+    local _bs_name="${1:-"bs-group-$(date +"%Y%m%d%H%M%S")"}"
     local _member_pfx="${2:-"member"}"
     local _file_policy="${3:-"writeToFirst"}"   # writeToFirst or roundRobin
     local _repo_name="${4-"raw-grpbs-hosted"}"
     f_create_file_blobstore "${_member_pfx}1"
     f_create_file_blobstore "${_member_pfx}2"
+    _log "INFO" "Creating blobstore: ${_bs_name} ..."
     f_api '/service/rest/v1/blobstores/group' '{"name":"'${_bs_name}'","members":["'${_member_pfx}'1","'${_member_pfx}'2"],"fillPolicy":"'${_file_policy}'"}' || return $?
     if [ -n "${_repo_name}" ] && ! _is_repo_available "${_repo_name}"; then
         _apiS '{"action":"coreui_Repository","method":"create","data":[{"attributes":{"storage":{"blobStoreName":"'${_bs_name}'","writePolicy":"ALLOW","strictContentTypeValidation":true'$(_get_extra_sto_opt)'},"cleanup":{"policyName":[]}},"name":"'${_repo_name}'","format":"","type":"","url":"","online":true,"recipe":"raw-hosted"}],"type":"rpc"}' || return $?
@@ -2682,8 +2687,8 @@ function f_setup_http_proxy() {
     _apiS '{"action":"coreui_HttpSettings","method":"update","data":[{"httpEnabled":true,"httpHost":"'${_host}'","httpPort":"'${_port}'","httpAuthEnabled":false,"httpsEnabled":true,"httpsHost":"'${_host}'","httpsPort":"'${_port}'","httpsAuthEnabled":false,"nonProxyHosts":'${_nonProxyHosts_json}',"timeout":null,"retries":null}],"type":"rpc"}'
 }
 
-function _setup_reverse_proxy() {
-    local __doc__="TODO: Setup reverse proxy server with caddy (Not setting up Nexus)"
+function _install_reverse_proxy() {
+    local __doc__="Install/Setup reverse proxy server with caddy (Not setting up Nexus)"
     local _install_dir="${1:-"${_SHARE_DIR%/}/caddy"}"
     local _ver="${2:-"2.10.0"}"
     # https://github.com/caddyserver/caddy/releases/download/v2.10.0/caddy_2.10.0_linux_amd64.tar.gz
@@ -2696,28 +2701,45 @@ function _setup_reverse_proxy() {
     if [ -d "${_install_dir%/}" ]; then
         mkdir -v -p "${_install_dir%/}" || return $?
     fi
-    cd "${_install_dir%/}" || return $?
-    if [ ! -s "${_file_name}" ]; then
-        curl -O -L "https://github.com/caddyserver/caddy/releases/download/v${_ver}/${_file_name}" || return $?
+    if [ ! -s "${_install_dir%/}/${_file_name}" ]; then
+        curl -o "${_install_dir%/}/${_file_name}" -L "https://github.com/caddyserver/caddy/releases/download/v${_ver}/${_file_name}" || return $?
     fi
-    if [ ! -s "${_file_name}" ]; then
-        _log "ERROR" "Downloading ${_install_dir%/}/${_file_name} failed. Please check the URL."
+    if [ ! -s "${_install_dir%/}/${_file_name}" ]; then
+        _log "ERROR" "Downloading https://github.com/caddyserver/caddy/releases/download/v${_ver}/${_file_name} failed."
         return 1
     fi
-    tar -xf ${_file_name} caddy || return $?
-    chmod u+x caddy || return $?
+    tar -xvf ${_install_dir%/}/${_file_name} -C ${_install_dir%/} caddy  || return $?
+    chmod u+x "${_install_dir%/}/caddy" || return $?
 }
 function f_start_reverse_proxy() {
-    local __doc__="Install and start a reverse proxy server with caddy"
-    local _port="${1:-"8080"}"
-    local _install_dir="${2:-"${_SHARE_DIR%/}/caddy"}"
-    local _ver="${3:-"2.10.0"}"
+    local __doc__="Install and start a reverse proxy server with caddy @see https://caddyserver.com/docs/quick-starts/reverse-proxy"
+    local _host_port="${1}" # If empty, the default is using https://localhost:443/
+    local _host_port_to="${2:-"127.0.0.1:8081"}"    # can be https://{remote_address}:{port}
+    local _install_dir="${3:-"${_SHARE_DIR%/}/caddy"}"
+    local _ver="${4:-"2.10.0"}"
+    local _caddy="caddy"
     if type caddy &>/dev/null; then
         _log "INFO" "Caddy is already installed in the PATH. Using it ..."
     else
-        _setup_reverse_proxy "${_install_dir}" "${_ver}" || return $?
+        _install_reverse_proxy "${_install_dir}" "${_ver}" || return $?
+        _caddy="${_install_dir%/}/caddy"
     fi
-    # TODO: not completed
+    if [[ "${_host_port}" =~ ^([0-9]+)$ ]]; then
+        _host_port=":${BASH_REMATCH[1]}"
+    fi
+    if [[ "${_host_port_to}" =~ ^([0-9]+)$ ]]; then
+        _host_port_to="127.0.0.1:${BASH_REMATCH[1]}"
+    fi
+    local _cmd="caddy reverse-proxy --from ${_host_port} --to ${_host_port_to} --change-host-header"
+    if [ -z "${_host_port}" ]; then
+        _log "INFO" "Using default https://localhost:443/ for 'from' ..."; sleep 3
+        _cmd="caddy reverse-proxy --to ${_host_port_to} --change-host-header --debug"
+    fi
+    eval "${_cmd}" &> ${_TMP%/}/caddy_$$.log &
+    local _pid="$!"
+    sleep 2
+    echo "[INFO] Running '${_cmd}' in background"
+    echo "       PID: ${_pid}  Log: ${_TMP%/}/caddy_$$.log"
 }
 
 # friendly attributes {uid=[samluser], eduPersonAffiliation=[users], givenName=[saml], eduPersonPrincipalName=[samluser@standalone.localdomain], cn=[Saml User], sn=[user]}
@@ -3592,7 +3614,7 @@ function f_upload_dummies_docker() {
     local _host_port="${1:-"${_NEXUS_DOCKER_HOSTNAME}:18182"}"
     local _how_many="${2:-"10"}"    # this number * _parallel is the actual number of images
     local _parallel="${3:-"1"}"
-    local _image_name="${4:-"${_IMAGE_NAME}"}"  # To create multiple tags in one image. If empty, dummy${i}-${j}
+    local _image_name="${4:-"${_IMAGE_NAME}"}"  # To create multiple tags under *one* image. If empty, dummy${i}-${j}
     local _base_img="${5:-"${_BASE_IMG:-"alpine:latest"}"}"    # "redhat/ubi9:9.4-1181"
     local _tag_prefix="${6:-"${_DOCKER_TAG_PFX:-"tag-"}"}"
     local _usr="${7:-"${_ADMIN_USER}"}"
@@ -4594,8 +4616,8 @@ main() {
     _log "INFO" "Updating 'admin' user's password (may fail if already updated) ..."
     f_nexus_change_pwd "admin" "${r_ADMIN_PWD:-"${_ADMIN_PWD}"}" "" "."
 
-    if ! _is_blob_available "${r_BLOBSTORE_NAME}"; then
-        f_create_file_blobstore || return $?
+    if [ -n "${r_BLOBSTORE_NAME}" ] && ! _is_blob_available "${r_BLOBSTORE_NAME}"; then
+        f_create_file_blobstore "${r_BLOBSTORE_NAME}" || return $?
     fi
 
     _log "INFO" "Resetting Realms to this script's default realms ..."
