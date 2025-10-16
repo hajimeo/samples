@@ -355,6 +355,29 @@ function _gen_comp_id() {
     echo "${_comp_id}"
 }
 
+#f_api_comp_details "pkg:maven/log4j/log4j@1.2.12?type=jar"
+#f_api_comp_details '{"packageUrl":"pkg:npm/@nx/devkit@20.9.0"}'
+#f_api_comp_details '{"packageUrl":"pkg:npm/color@5.0.1"}'
+#f_api_comp_details 'b0e4da108211e81700433e167ced88e6296b1def'
+function f_api_comp_details() {
+    local __doc__="Call Component Details API https://help.sonatype.com/iqserver/automating/rest-apis/component-details-rest-api---v2"
+    local _component_identifier="$1"
+    local _comp_id="$(_gen_comp_id "${_component_identifier}")" || return $?
+    local _iq_url="$(_get_iq_url "${_IQ_URL%/}")" || return $?
+    _log "INFO" "/api/v2/components/details with '{\"components\":[${_comp_id}]}' ..."
+    _curl "${_iq_url%/}/api/v2/components/details" -H "Content-Type: application/json" -d '{"components":['${_comp_id}']}'
+}
+
+#f_api_comp_versions '{"format":"maven","coordinates":{"artifactId":"tomcat-util","groupId":"tomcat"}}'
+#f_api_comp_versions '{"packageUrl":"pkg:npm/react-native-share@9.2.4"}'
+function f_api_comp_versions() {
+    local __doc__="Call Component Versions API https://help.sonatype.com/iqserver/automating/rest-apis/component-versions-rest-api---v2"
+    local _component_identifier_without_ver="$1"
+    local _iq_url="$(_get_iq_url "${_IQ_URL%/}")" || return $?
+    _log "INFO" "/api/v2/components/versions with '${_component_identifier_without_ver}' ..."
+    _curl "${_iq_url%/}/api/v2/components/versions" -H "Content-Type: application/json" -d ${_component_identifier_without_ver}
+}
+
 function f_api_eval() {
     local __doc__="/api/v2/evaluation/applications/\${_app_int_id}"
     local _app_pub_id="${1:-"sandbox-application"}"
@@ -362,6 +385,7 @@ function f_api_eval() {
     local _app_int_id="$(f_api_appIntId "${_app_pub_id}")" || return $?
     local _comp_id="$(_gen_comp_id "${_comp_id_like_string}")" || return $?
     local _iq_url="$(_get_iq_url "${_IQ_URL%/}")" || return $?
+    _log "INFO" "/api/v2/evaluation/applications/${_app_int_id} with '{\"components\":[${_comp_id}]}' ..."
     local _results="$(_curl "${_iq_url%/}/api/v2/evaluation/applications/${_app_int_id}" -H "Content-Type: application/json" -d '{"components":['${_comp_id}']}')" || return $?
     if [ -n "${_results}" ]; then
         _resultsUrl="$(echo "[${_results}]" | JSON_SEARCH_KEY="resultsUrl" _sortjson)"
@@ -378,6 +402,7 @@ function f_api_eval_scm() {
     local _stage="${3:-"source"}"
     local _app_int_id="$(f_api_appIntId "${_app_pub_id}")" || return $?
     local _iq_url="$(_get_iq_url "${_IQ_URL%/}")" || return $?
+    _log "INFO" "/api/v2/evaluation/applications/${_app_int_id}/sourceControlEvaluation with '{\"stageId\":\"${_stage}\",\"branchName\":\"${_branch}\"}' ..."
     _curl "${_iq_url%/}/api/v2/evaluation/applications/${_app_int_id}/sourceControlEvaluation" -H "Content-Type: application/json" -d '{"stageId":"'${_stage}'","branchName":"'${_branch}'"}' | _sortjson
 }
 
@@ -1027,9 +1052,9 @@ function f_prep_scan_target_for_proprietary_component() {
 }
 
 function f_import_sbom() {
-    local __doc__="https://help.sonatype.com/en/sbom-manager-api.html"
+    local __doc__="https://help.sonatype.com/en/sbom-manager-api.html SBOM examples: https://help.sonatype.com/en/cyclonedx-rest-api.html#response-162417"
     local _sbom_file="${1}"
-    local _app_pub_id="${2}"
+    local _app_pub_id="${2:-"sandbox-application"}"
     local _app_ver="${3}"
     local _app_int_id="$(f_api_appIntId "${_app_pub_id}")"
     if [ -z "${_app_int_id}" ]; then
