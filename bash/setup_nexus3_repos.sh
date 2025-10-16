@@ -2690,12 +2690,13 @@ function f_setup_http_proxy() {
 function _install_reverse_proxy() {
     local __doc__="Install/Setup reverse proxy server with caddy (Not setting up Nexus)"
     local _install_dir="${1:-"${_SHARE_DIR%/}/caddy"}"
-    local _ver="${2:-"2.10.0"}"
-    # https://github.com/caddyserver/caddy/releases/download/v2.10.0/caddy_2.10.0_linux_amd64.tar.gz
+    local _ver="${2:-"2.10.2"}"
+    # https://github.com/caddyserver/caddy/releases/download/v2.10.2/caddy_2.10.2_linux_amd64.tar.gz
     local _file_prefix="caddy_${_ver}_linux"
     if [ "$(uname)" == "Darwin" ]; then
-        # https://github.com/caddyserver/caddy/releases/download/v2.10.0/caddy_2.10.0_mac_arm64.tar.gz
+        # https://github.com/caddyserver/caddy/releases/download/v2.10.2/caddy_2.10.2_mac_arm64.tar.gz
         _file_prefix="caddy_${_ver}_mac"
+        # Or use 'brew install caddy'
     fi
     local _file_name="${_file_prefix}_$(uname -m).tar.gz"
     if [ -d "${_install_dir%/}" ]; then
@@ -2716,7 +2717,7 @@ function f_start_reverse_proxy() {
     local _host_port="${1}" # If empty, the default is using https://localhost:443/
     local _host_port_to="${2:-"127.0.0.1:8081"}"    # can be https://{remote_address}:{port}
     local _install_dir="${3:-"${_SHARE_DIR%/}/caddy"}"
-    local _ver="${4:-"2.10.0"}"
+    local _ver="${4}"
     local _caddy="caddy"
     if type caddy &>/dev/null; then
         _log "INFO" "Caddy is already installed in the PATH. Using it ..."
