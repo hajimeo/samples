@@ -109,16 +109,15 @@ function pyvTest() {
 alias pyv='source $HOME/.pyvenv/bin/activate'
 alias pyvN='source $HOME/.pyvenv_new/bin/activate'
 
-## Below uses sys.argv[1] as sys.stdin.read() requires `echo -n`
-alias urlencode='python3 -c "import sys;from urllib import parse; print(parse.quote(sys.argv[1]))"'
-alias urldecode='python3 -c "import sys;from urllib import parse; print(parse.unquote(sys.argv[1]))"'
+alias urlencode='python3 -c "import sys;from urllib import parse; print(parse.quote(sys.argv[1] if len(sys.argv) > 1 else sys.stdin.read().strip()))"'
+alias urldecode='python3 -c "import sys;from urllib import parse; print(parse.unquote(sys.argv[1] if len(sys.argv) > 1 else sys.stdin.read().strip()))"'
 # base64 encode/decode (alternatives are coreutils's base64 or openssl base64 -e|-d)
-alias b64encode='python3 -c "import sys, base64; print(base64.b64encode(sys.argv[1].encode(\"utf-8\")).decode())"'
+alias b64encode='python3 -c "import sys, base64; print(base64.b64encode((sys.argv[1] if len(sys.argv) > 1 else sys.stdin.read().strip()).encode(\"utf-8\")).decode())"'
 #alias b64encode='python -c "import sys, base64; print(base64.b64encode(sys.argv[1]))"'
-alias b64decode='python3 -c "import sys, base64; b=sys.argv[1]; b += \"=\" * ((4-len(b)%4)%4); print(base64.b64decode(b).decode())"' # .decode() to remove "b'xxxx"
+alias b64decode='python3 -c "import sys, base64; b=(sys.argv[1] if len(sys.argv) > 1 else sys.stdin.read().strip()); b += \"=\" * ((4-len(b)%4)%4); print(base64.b64decode(b).decode())"' # .decode() to remove "b'xxxx"
 
-alias htmlencode="python3 -c \"import sys,html;print(html.escape(sys.stdin.read()))\""
-alias htmldecode="python3 -c \"import sys,html;print(html.unescape(sys.stdin.read()))\""
+alias htmlencode="python3 -c \"import sys,html;print(html.escape(sys.argv[1] if len(sys.argv) > 1 else sys.stdin.read().strip()))\""
+alias htmldecode="python3 -c \"import sys,html;print(html.unescape(sys.argv[1] if len(sys.argv) > 1 else sys.stdin.read().strip()))\""
 alias utc2int='python3 -c "import sys,time,dateutil.parser;from datetime import timezone;print(int(dateutil.parser.parse(sys.argv[1]).replace(tzinfo=timezone.utc).timestamp()))"' # doesn't work with yy/mm/dd (2 digits year)
 alias int2utc='python3 -c "import sys,datetime;print(datetime.datetime.fromtimestamp(int(sys.argv[1][0:10]), tz=datetime.timezone.utc).isoformat())"'
 alias dec2hex='printf "%x\n"'
@@ -140,14 +139,14 @@ alias prettyjson='python3 -c "import sys,json;print(json.dumps(json.loads(sys.st
 #alias prettyxml='python3 -c "import sys;from lxml import etree;t=etree.parse(sys.argv[1].encode(\"utf-8\"));print(etree.tostring(t,encoding=\"unicode\",pretty_print=True))"'
 #alias prettyxml='xmllint --format'
 # echo "xml like string" | prettyxml
-alias prettyxml='python3 -c "import sys;from lxml import etree;t=etree.fromstring(sys.stdin.read());print(etree.tostring(t,encoding=\"unicode\",pretty_print=True))"'
+alias prettyxml='python3 -c "import sys;from lxml import etree;t=etree.fromstring(sys.argv[1] if len(sys.argv) > 1 else sys.stdin.read().strip());print(etree.tostring(t,encoding=\"unicode\",pretty_print=True))"'
 # TODO: find with sys.argv[2] (no ".//"), then output as string
 alias xml_get='python3 -c "import sys;from lxml import etree;t=etree.parse(sys.argv[1]);r=t.getroot();print(r.find(sys.argv[2],namespaces=r.nsmap))"'
 # Search with 2nd arg and output the path(s)
 alias xml_path='python -c "import sys,pprint;from lxml import etree;t=etree.parse(sys.argv[1]);r=t.getroot();pprint.pprint([t.getelementpath(x) for x in r.findall(\".//\"+sys.argv[2],namespaces=r.nsmap)])"'
 # Strip XML / HTML to get text. NOTE: using sys.stdin.read. (TODO: maybe </br> without new line should add new line)
-alias strip_tags='python3 -c "import sys,html,re;rx=re.compile(r\"<[^>]+>\");print(html.unescape(rx.sub(\"\",sys.stdin.read())))"'
-alias escape4json='python3 -c "import sys,json;print(json.dumps(sys.stdin.read()))"'
+alias strip_tags='python3 -c "import sys,html,re;rx=re.compile(r\"<[^>]+>\");print(html.unescape(rx.sub(\"\",sys.argv[1] if len(sys.argv) > 1 else sys.stdin.read().strip())))"'
+alias escape4json='python3 -c "import sys,json;print(json.dumps(sys.argv[1] if len(sys.argv) > 1 else sys.stdin.read().strip()))"'
 alias jp='pyvN && jupyter-lab --AiExtension.allowed_providers=ollama &> /tmp/jupyter-lab.out' # not using & as I tend to forget to stop
 alias jn='pyvN && jupyter-notebook &> /tmp/jupyter-notebook.out'
 # php -S 0.0.0.0:7999
