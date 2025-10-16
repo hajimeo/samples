@@ -1098,12 +1098,13 @@ function f_wrapper2threads() {
         echo "${_output_to} exists."
         return 1
     fi
-    find ${_wrapper_dir%/} -name 'wrapper.log*' | sort -r | xargs -I{} -t cat {} | sed "s/^jvm 1    | //" >> ${_output_to}
+    # This doesn't work if wrapper.log.10 and higher exists
+    local _input_files="$(find ${_wrapper_dir%/} -name 'wrapper.log*' | sort -r | tr '\n' ',')"
     if ! type echolines &>/dev/null; then
         echo 'curl -o /usr/local/bin/echolines -L https://github.com/hajimeo/samples/raw/master/misc/logs2csv_$(uname)_$(uname -m)'
         return
     fi
-    echolines ${_output_to} "^\d\d\d\d-\d\d-\d\d \d\d:\d\d:\d\d$" "(${_end_regex})" > ${_output_to}.tmp
+    EXCL_REGEX="^(jvm 1\s+\|\s+\d\d\d\d-\d\d-\d\d \d\d:\d\d:\d\d.+|.+Pause reading child output to share cycles.+)" echolines "${_input_files%,}" "^jvm 1\s+\|\s+\d\d\d\d-\d\d-\d\d \d\d:\d\d:\d\d$" "(^\s+class space.+)" | sed 's/^jvm 1    | //' > ${_output_to}.tmp
     if [ -s ${_output_to}.tmp ]; then
         mv -v -f ${_output_to}.tmp ${_output_to}
     fi
