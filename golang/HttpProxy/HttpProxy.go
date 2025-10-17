@@ -5,13 +5,15 @@ Originally based on https://medium.com/@mlowicki/http-s-proxy-in-golang-in-less-
 
 	curl -o /usr/local/bin/httpproxy -L https://github.com/hajimeo/samples/raw/master/misc/httpproxy_$(uname)_$(uname -m)
 	chmod a+x /usr/local/bin/httpproxy
-    httpproxy [--debug --delay 3]
+    httpproxy [--delay 3 --debug --debug2]
 	# Test
 	curl -v --proxy localhost:8888 -k -L http://search.osakos.com/index.php
 
-    #openssl req -x509 -newkey rsa:2048 -keyout server.key -out server.pem -days 365 -nodes -subj "/CN=$(hostname -f)"
-    httpproxy --proto https --debug
-    httpproxy --proto https --debug2
+	# HTTPS proxy:
+    # The below openssl way will not work as curl doesn't trust the self-signed certificate wich is not signed by a trusted CA
+	#openssl req -x509 -newkey rsa:2048 -keyout server.key -out server.pem -days 365 -nodes -subj "/CN=$(hostname -f)"
+	# Instead, trust rootCA_standalone.crt on OS then
+	httpproxy --proto https --pem $HOME/IdeaProjects/samples/misc/standalone.localdomain.crt --key $HOME/IdeaProjects/samples/misc/standalone.localdomain.key
 	# Test
 	curl -v --proxy https://localhost:8888/ --proxy-insecure -L https://search.osakos.com/index.php
 
