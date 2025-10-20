@@ -44,8 +44,11 @@ func setGlobals() {
 	flag.StringVar(&common.Filter4Path, "p", "", "Regular Expression for directory *path* (eg '/(vol-\\d\\d|20\\d\\d)/'), or S3 prefix.")
 	flag.StringVar(&common.Filter4FileName, "f", "", "Regular Expression for the file *name* (eg: '\\.properties' to include only this extension)")
 	flag.BoolVar(&common.WithProps, "P", false, "If true, the .properties file content is included in the output")
-	flag.StringVar(&common.Filter4PropsIncl, "pRx", "", "Regular Expression for the content of the .properties files (eg: 'deleted=true')")
-	flag.StringVar(&common.Filter4PropsExcl, "pRxNot", "", "Excluding Regular Expression for .properties (eg: 'BlobStore.blob-name=.+/maven-metadata.xml.*')")
+	flag.StringVar(&common.Filter4PropsIncl, "pRx", "", "Regular Expression against the text of the .properties files (eg: 'deleted=true')")
+	flag.StringVar(&common.Filter4PropsExcl, "pRxNot", "", "Excluding Regular Expression for .properties files (eg: 'BlobStore.blob-name=.+/maven-metadata.xml.*')")
+	// TODO: not implemented yet
+	flag.StringVar(&common.Filter4BytesIncl, "bRx", "", "Regular Expression for .bytes files (max size 32KB)")
+	flag.StringVar(&common.Filter4BytesExcl, "bRxNot", "", "Excluding Regular Expression for .bytes files (max size 32KB)")
 	flag.StringVar(&common.SaveToFile, "s", "", "Save the output (TSV text) into the specified path")
 	flag.BoolVar(&common.SavePerDir, "SavePerDir", false, "If true and -s is given, save the output per sub-directory")
 	flag.Int64Var(&common.TopN, "n", 0, "Return first N lines per *thread* (0 = no limit). Can't be less than '-c'")
@@ -54,7 +57,7 @@ func setGlobals() {
 	flag.IntVar(&common.MaxDepth, "depth", 5, "Max Depth for finding sub-directories only for File type (default: 5 for YYYY/MM/DD/hh/mm/)")
 	flag.BoolVar(&common.NoHeader, "H", false, "If true, no header line")
 
-	flag.StringVar(&common.BlobIDFIle, "rF", "", "Read from file path which contains the list of blob IDs")
+	flag.StringVar(&common.BlobIDFIle, "rF", "", "Result File which contains the list of blob IDs")
 	flag.StringVar(&common.GetFile, "get", "", "TODO: Get a single file/blob from the blob store")
 	flag.StringVar(&common.GetTo, "getTo", "", "TODO: Get to the local path")
 	// TODO: GetXxxx not used yet
@@ -193,6 +196,12 @@ func setGlobals() {
 			common.RxExcl, _ = regexp.Compile(common.Filter4PropsExcl)
 		}
 	}
+	if len(common.Filter4BytesIncl) > 0 {
+		common.RxInclBytes, _ = regexp.Compile(common.Filter4BytesIncl)
+	}
+	if len(common.Filter4BytesExcl) > 0 {
+		common.RxExclBytes, _ = regexp.Compile(common.Filter4BytesExcl)
+	}
 
 	// This property is automatically changed in the above, so RxFilter4FileName needs to be set in the end
 	if len(common.Filter4FileName) > 0 {
@@ -201,11 +210,11 @@ func setGlobals() {
 
 	// If Truth is not set but BlobIDFIle is given, needs to set Truth
 	if len(common.Truth) == 0 && len(common.BlobIDFIle) > 0 {
-		if len(common.BaseDir) > 0 {
+		if common.RemoveDeleted == false && len(common.BaseDir) > 0 {
 			h.Log("WARN", "BlobIDFIle and BaseDir are provided but '-src DB' is missing to find Dead blobs")
 			//common.Truth = "DB"
 		} else if len(common.DbConnStr) > 0 && len(common.Query) == 0 {
-			// If Query and BlobIDFIle are provided, the DB result will be written into the BlobIDFile and not going to do the Orphaned blob check.
+			// If BlobIDFIle is not empty, Query should be empty as Query usesBlobIDFIle to save the result.
 			h.Log("WARN", "BlobIDFIle and DbConnStr are provided but no BaseDir and no '-src BS' to find Orphaned blobs")
 			//common.Truth = "BS"
 		}
@@ -355,7 +364,7 @@ func genBlobPath(blobIdLikeString string, extension string) string {
 
 	blobId = common.RxBlobId.FindString(blobIdLikeString)
 	if len(blobId) == 0 {
-		h.Log("WARN", "genBlobPath got empty blobId.")
+		h.Log("WARN", "genBlobPath got empty blobId for "+blobIdLikeString)
 		return ""
 	}
 	// org.sonatype.nexus.blobstore.VolumeChapterLocationStrategy#location
@@ -386,6 +395,8 @@ func genOutput(path string, bi bs_clients.BlobInfo, db *sql.DB) string {
 			}
 		}
 	}
+
+	//TODO: use shouldSkipBecauseOfBytes()
 
 	modTimestamp := bi.ModTime.Unix()
 	// If BytesChk is false, use the .bytes file's modTime for the filter as the .properties mod time can be unexpected value
@@ -533,29 +544,65 @@ func extraInfo(path string) (string, error) {
 		}
 	}
 
-	// Finally, generate the properties output
-	return genOutputFromContents(contents)
+	// For regex check, sorting the contents to single line first
+	sortedContents := lib.SortToSingleLine(contents)
+	err = shouldSkipThisContents(sortedContents)
+	if err != nil {
+		return "", err
+	}
+	return sortedContents, nil
 }
 
-func genOutputFromContents(contents string) (string, error) {
-	// Returns error only when RxIncl or RxExcl filtered the contents
-	sortedContents := lib.SortToSingleLine(contents)
-
+func shouldSkipThisContents(sortedContents string) error {
 	// Exclude check first
 	if common.RxExcl != nil && common.RxExcl.MatchString(sortedContents) {
-		return "", errors.New(fmt.Sprintf("Matched with the exclude regex: %s. Skipping.", common.RxExcl.String()))
+		return errors.New(fmt.Sprintf("Matched with the exclude regex: %s. Skipping.", common.RxExcl.String()))
 	}
 	if common.RxIncl != nil && len(common.RxIncl.String()) > 0 {
 		if common.RxIncl.MatchString(sortedContents) {
-			return sortedContents, nil
+			return nil
 		} else {
 			//h.Log("DEBUG", fmt.Sprintf("Sorted content did not match with '%s'", common.RxIncl.String()))
-			return "", errors.New(fmt.Sprintf("Does NOT match with the regex: %s. Skipping.", common.RxIncl.String()))
+			return errors.New(fmt.Sprintf("Does NOT match with the regex: %s. Skipping.", common.RxIncl.String()))
 		}
 	}
 
-	// As the text didn't match with any filters, just return the contents as single line
-	return sortedContents, nil
+	if common.RxExclBytes != nil {
+		if common.RxExclBytes.MatchString(sortedContents) {
+			return errors.New(fmt.Sprintf("Matched with the exclude regex: %s. Skipping.", common.RxExcl.String()))
+		}
+	}
+	if common.RxInclBytes != nil {
+		if len(common.RxIncl.String()) > 0 {
+			if common.RxIncl.MatchString(sortedContents) {
+				return nil
+			} else {
+				//h.Log("DEBUG", fmt.Sprintf("Sorted content did not match with '%s'", common.RxIncl.String()))
+				return errors.New(fmt.Sprintf("Does NOT match with the regex: %s. Skipping.", common.RxIncl.String()))
+			}
+		}
+	}
+	return nil
+}
+
+func shouldSkipBecauseOfBytes(bytesContents string) error {
+	// TODO: not properly implemented and not tested
+	if common.RxExclBytes != nil {
+		if common.RxExclBytes.MatchString(bytesContents) {
+			return errors.New(fmt.Sprintf("Matched with the exclude regex: %s. Skipping.", common.RxExcl.String()))
+		}
+	}
+	if common.RxInclBytes != nil {
+		if len(common.RxIncl.String()) > 0 {
+			if common.RxIncl.MatchString(bytesContents) {
+				return nil
+			} else {
+				//h.Log("DEBUG", fmt.Sprintf("Sorted content did not match with '%s'", common.RxIncl.String()))
+				return errors.New(fmt.Sprintf("Does NOT match with the regex: %s. Skipping.", common.RxIncl.String()))
+			}
+		}
+	}
+	return nil
 }
 
 func shouldBeUndeleted(contents string, path string) bool {
@@ -706,12 +753,12 @@ func checkBlobIdDetailFromDB(maybeBlobId string) interface{} {
 }
 
 func checkBlobIdDetailFromBS(maybeBlobId string) interface{} {
-	// basePath is the file path without extension
-	basePath := h.AppendSlash(common.ContentPath) + genBlobPath(maybeBlobId, "")
-	if len(basePath) == 0 {
+	if len(maybeBlobId) == 0 {
 		h.Log("DEBUG", fmt.Sprintf("Empty blobId in '%s'", maybeBlobId))
 		return nil
 	}
+	// basePath is the file path without extension
+	basePath := h.AppendSlash(common.ContentPath) + genBlobPath(maybeBlobId, "")
 
 	bytesPath := basePath + common.BYTES_EXT
 	if common.RxFilter4FileName == nil || common.RxFilter4FileName.MatchString(bytesPath) {
@@ -1071,18 +1118,22 @@ func main() {
 	if len(common.Query) > 0 {
 		if len(common.BlobIDFIle) == 0 {
 			var tempDir = os.TempDir()
-			tmpSaveToFIle := filepath.Join(tempDir, "blob_ids_from_query.tsv")
-			// If the temp file already exists, deleting it first
-			if _, err := os.Stat(tmpSaveToFIle); err == nil {
-				err = os.Remove(tmpSaveToFIle)
+			common.BlobIDFIle = filepath.Join(tempDir, "blob_ids_from_query.tsv")
+			// If the *temp* file already exists, removing
+			if _, err := os.Stat(common.BlobIDFIle); err == nil {
+				h.Log("INFO", "Temp file "+common.BlobIDFIle+" exists. Deleting ...")
+				err = os.Remove(common.BlobIDFIle)
 				if err != nil {
-					h.Log("ERROR", "Failed to remove the existing "+tmpSaveToFIle)
+					h.Log("ERROR", "Failed to remove the existing temp file: "+common.BlobIDFIle)
 					panic(err)
 				}
 			}
-			common.BlobIDFIle = tmpSaveToFIle
 			h.Log("DEBUG", "Query result will be saving into "+common.BlobIDFIle)
 		} else {
+			// If the file is not empty, exiting
+			if info, err := os.Stat(common.BlobIDFIle); err == nil && info.Size() > 0 {
+				panic("Currently -query and -rF {non empty file} can't be used togather")
+			}
 			// This is not so intuitive to use `-rF` for saving the query result, but probably better than adding another flag
 			h.Log("INFO", "Query result will be *appending* into "+common.BlobIDFIle)
 		}

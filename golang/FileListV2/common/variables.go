@@ -71,7 +71,11 @@ var RxFilter4FileName *regexp.Regexp
 var Filter4PropsIncl = ""
 var RxIncl *regexp.Regexp
 var Filter4PropsExcl = ""
-var RxExcl *regexp.Regexp
+var RxExcl *regexp.Regexp // As Golang does not support negative lookahead (?!)
+var Filter4BytesIncl = ""
+var RxInclBytes *regexp.Regexp
+var Filter4BytesExcl = ""
+var RxExclBytes *regexp.Regexp // As Golang does not support negative lookahead (?!)
 
 var DelDateFromStr = ""
 var DelDateFromTS int64
