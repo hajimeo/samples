@@ -79,6 +79,19 @@ func GetUpToContent(path string) string {
 	}
 }
 
+func GetAfterContent(path string) string {
+	path = strings.TrimSuffix(path, string(filepath.Separator))
+	searchWord := string(filepath.Separator) + common.CONTENT + string(filepath.Separator)
+	if strings.Contains(path, searchWord) {
+		// Get string after 'content/'
+		// 'dummy/content/sonatype-work/nexus3/blobs/default/content/vol-NN' -> 'vol-NN'
+		lastIndex := strings.LastIndex(path, searchWord)
+		lengthOfSearchWord := len(searchWord)
+		return path[lastIndex+lengthOfSearchWord:]
+	}
+	return ""
+}
+
 func GetPathWithoutExt(path string) string {
 	return path[:len(path)-len(filepath.Ext(path))]
 }
