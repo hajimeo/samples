@@ -154,13 +154,13 @@ Can use a text file which contains Blob IDs, so that no Blobstore access is need
 filelist2 -src BS -rF ./some_filelist_result.tsv -db ./sonatype-work/nexus3/etc/fabric/nexus-store.properties -bsName default -s /tmp/filelist_orphaned-blobs_no-BS-access.tsv
 ```
 
-### Find blobs which exist in Database but not in Blob store with `-src DB` (like Dead Blobs Finder)
+### TODO: Find blobs which exist in Database but not in Blob store with `-src DB` (like Dead Blobs Finder)
 
 NOTE: if `query` result is large, may want to split the query into smaller parts (e.g. order by asset_id limit 100000
 offset N)
 
 ```
-filelist2 -b "$BLOB_STORE" -db ./sonatype-work/nexus3/etc/fabric/nexus-store.properties -query "select blob_ref as blob_id from raw_asset_blob where repository_id = {n}" -s /tmp/filelist_potentially_dead-blobs.tsv
+filelist2 -b "$BLOB_STORE" -db ./sonatype-work/nexus3/etc/fabric/nexus-store.properties -query "select blob_ref as blob_id from raw_asset_blob" -src DB -s /tmp/filelist_potentially_dead-blobs.tsv
 ```
 
 Can use a text file which contains Blob IDs, so that no DB access is needed:
@@ -179,11 +179,16 @@ filelist2 -b "$BLOB_STORE" -db ./sonatype-work/nexus3/etc/fabric/nexus-store.pro
 # After reviewing the tsv file (removing unnecessary lines), then:
 bash ./nrm3-undelete-3.83.sh -I -s "default" -b ./restoring_blobs.tsv
 ```
+NOTE: The above result can be directly path to the undeleter script.
 
 #### Just saving the query result with `-rf`:
-
+In case want to quickly check the soft_deleted_blobs table (just in case, using LIMIT):
 ```
-filelist2 -db ./sonatype-work/nexus3/etc/fabric/nexus-store.properties -query "SELECT 'test' as blob_id, * FROM soft_deleted_blobs WHERE source_blob_store_name = 'default' and deleted_date > NOW() - INTERVAL '300 days' ORDER BY deleted_date limit 2" -rF ./query_result.out
+filelist2 -db ./sonatype-work/nexus3/etc/fabric/nexus-store.properties -query "SELECT blob_id, * FROM soft_deleted_blobs WHERE source_blob_store_name = 'default' and deleted_date > NOW() - INTERVAL '300 days' ORDER BY deleted_date limit 1000" -rF /tmp/filelist_query-result.out
+```
+Check / restore specific repository and specific path:
+```
+filelist2 -db ./sonatype-work/nexus3/etc/fabric/nexus-store.properties -query "SELECT ab.blob_ref as blob_id FROM raw_asset_blob ab JOIN raw_asset a USING (asset_blob_id) WHERE repository_id IN (1) and path like '/test%' LIMIT 1000" -rF /tmp/filelist_query-result_2.out
 ```
 
 ### TODO: Copy specific blobs to another Blob store with `-bTo` (like Export/Import)
