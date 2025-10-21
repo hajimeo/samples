@@ -224,6 +224,10 @@ func setGlobals() {
 		if len(common.BlobIDFIle) == 0 && len(common.Query) == 0 && (len(common.DbConnStr) == 0 || len(common.BaseDir) == 0) {
 			panic("-src without -rF requires -b and -db")
 		}
+		if common.Truth == "DB" {
+			// If Dead Blobs finder mode, always check .bytes file
+			common.BytesChk = true
+		}
 	}
 
 	// If BlobIDFIle is given, DB connection or BaseDir is required
@@ -383,7 +387,7 @@ func genOutput(path string, bi bs_clients.BlobInfo, db *sql.DB) string {
 	var bytesChkErr error
 	var bytesInfo bs_clients.BlobInfo
 	var bytesPath string
-	if common.BytesChk && !strings.HasSuffix(path, common.BYTES_EXT) {
+	if common.BytesChk && strings.HasSuffix(path, common.PROPERTIES) {
 		// If the path ends with .properties, replace with .bytes
 		bytesPath = lib.GetPathWithoutExt(path) + common.BYTES_EXT
 		bytesInfo, bytesChkErr = Client.GetFileInfo(bytesPath)
@@ -398,39 +402,62 @@ func genOutput(path string, bi bs_clients.BlobInfo, db *sql.DB) string {
 
 	//TODO: use shouldSkipBecauseOfBytes()
 
-	modTimestamp := bi.ModTime.Unix()
-	// If BytesChk is false, use the .bytes file's modTime for the filter as the .properties mod time can be unexpected value
-	if common.BytesChk && bytesChkErr == nil && !strings.HasSuffix(path, common.BYTES_EXT) {
-		bytesModTimestamp := bytesInfo.ModTime.Unix()
-		if !lib.IsTsMSecBetweenTs(bytesModTimestamp*1000, common.ModDateFromTS, common.ModDateToTS) {
-			h.Log("DEBUG", fmt.Sprintf("Bytes path:%s modTime %d is outside of the range %d to %d", bytesPath, bytesModTimestamp, common.ModDateFromTS, common.ModDateToTS))
-			return ""
-		}
-	} else {
-		if !lib.IsTsMSecBetweenTs(modTimestamp*1000, common.ModDateFromTS, common.ModDateToTS) {
-			h.Log("DEBUG", fmt.Sprintf("path:%s modTime %d is outside of the range %d to %d", path, modTimestamp, common.ModDateFromTS, common.ModDateToTS))
-			return ""
-		}
-	}
-
-	var props string
+	var output string
+	var sortedOneLineProps string
 	var skipReason error
-	output := fmt.Sprintf("%s%s%s%s%d", path, common.SEP, bi.ModTime, common.SEP, bi.Size)
-	// If .properties file is checked, depending on other flags, need to generate extra output
-	if shouldReadProps(path, modTimestamp) {
-		//h.Log("DEBUG", fmt.Sprintf("Extra info from properties is needed for '%s'", path))
-		props, skipReason = extraInfo(path)
-		if skipReason != nil {
-			h.Log("DEBUG", fmt.Sprintf("%s: %s", path, skipReason.Error()))
+	if bi.Error {
+		if common.Truth != "DB" {
+			h.Log("DEBUG", fmt.Sprintf("path:%s has error in getting BlobInfo. Skipping...", path))
 			return ""
 		}
-		//} else {
-		//	h.Log("DEBUG", fmt.Sprintf("Extra info from properties is NOT needed for '%s'", path))
+		output = fmt.Sprintf("%s%s%s%s%d", path, common.SEP, bi.ModTime, common.SEP, bi.Size)
+	} else {
+		modTimestamp := bi.ModTime.Unix()
+		// If BytesChk is false, use the .bytes file's modTime for the filter as the .properties mod time can be unexpected value
+		if common.BytesChk && bytesChkErr == nil && !strings.HasSuffix(path, common.BYTES_EXT) {
+			bytesModTimestamp := bytesInfo.ModTime.Unix()
+			if !lib.IsTsMSecBetweenTs(bytesModTimestamp*1000, common.ModDateFromTS, common.ModDateToTS) {
+				h.Log("DEBUG", fmt.Sprintf("Bytes path:%s modTime %d is outside of the range %d to %d", bytesPath, bytesModTimestamp, common.ModDateFromTS, common.ModDateToTS))
+				return ""
+			}
+		} else {
+			if !lib.IsTsMSecBetweenTs(modTimestamp*1000, common.ModDateFromTS, common.ModDateToTS) {
+				h.Log("DEBUG", fmt.Sprintf("path:%s modTime %d is outside of the range %d to %d", path, modTimestamp, common.ModDateFromTS, common.ModDateToTS))
+				return ""
+			}
+			output = fmt.Sprintf("%s%s%s%s%d", path, common.SEP, bi.ModTime, common.SEP, bi.Size)
+			// If .properties file is checked, depending on other flags, need to generate extra output
+			if shouldReadProps(path, modTimestamp) {
+				//h.Log("DEBUG", fmt.Sprintf("Extra info from properties is needed for '%s'", path))
+				sortedOneLineProps, skipReason = extraInfo(path)
+				if skipReason != nil {
+					h.Log("DEBUG", fmt.Sprintf("%s: %s", path, skipReason.Error()))
+					return ""
+				}
+				if common.BytesChk && bytesChkErr == nil && strings.HasSuffix(path, common.PROPERTIES) {
+					// If BytesChek is asked, compare the size with the size line in the .properties file (NOTE: 0 size is possible)
+					matches := common.RxSizeByte.FindStringSubmatch(sortedOneLineProps)
+					if matches == nil || len(matches) == 0 {
+						// For now, if no size line found, just log warning
+						h.Log("WARN", fmt.Sprintf("path:%s may not have the size", path))
+					} else {
+						sizeInProps, err := strconv.ParseInt(matches[1], 10, 64)
+						if err != nil {
+							h.Log("WARN", fmt.Sprintf("path:%s has non numeric size %v", path, matches))
+						} else if sizeInProps != bytesInfo.Size {
+							h.Log("WARN", fmt.Sprintf("path:%s has size mismatch between size=%s and .bytes (%d)", path, matches[1], bytesInfo.Size))
+						}
+					}
+				}
+				//} else {
+				//	h.Log("DEBUG", fmt.Sprintf("Extra info from properties is NOT needed for '%s'", path))
+			}
+		}
 	}
 
 	// NOTE: make sure the output order is same as the printHeader
 	if common.WithProps {
-		output = fmt.Sprintf("%s%s%s", output, common.SEP, props)
+		output = fmt.Sprintf("%s%s%s", output, common.SEP, sortedOneLineProps)
 	}
 
 	if common.WithOwner {
@@ -441,17 +468,14 @@ func genOutput(path string, bi bs_clients.BlobInfo, db *sql.DB) string {
 		output = fmt.Sprintf("%s%s%s", output, common.SEP, bi.Tags)
 	}
 
-	if bytesChkErr != nil {
-		output = fmt.Sprintf("%s%s%s", output, common.SEP, "BYTES_MISSING")
-	}
-
+	// "Misc." column
 	if common.Truth == "BS" {
 		// If DB connection is given and the truth is blob store, check if the blob ID in the path exists in the DB
 		// But if bytesChkErr is not nil, it's not considered as orphaned, rather missing blob.
 		if len(common.DbConnStr) > 0 && bytesChkErr == nil {
 			blobId := extractBlobIdFromString(path)
-			// If props is empty, the below may use expensive query
-			reason := isOrphanedBlob(props, blobId, db)
+			// If sortedOneLineProps is empty, the below may use expensive query
+			reason := isOrphanedBlob(sortedOneLineProps, blobId, db)
 			if len(reason) > 0 {
 				output = fmt.Sprintf("%s%s%s", output, common.SEP, reason)
 			} else {
@@ -459,6 +483,20 @@ func genOutput(path string, bi bs_clients.BlobInfo, db *sql.DB) string {
 				output = ""
 			}
 		}
+	} else if common.Truth == "DB" {
+		// NOTE: Expecting when Truth is "DB", the BytesChk is always true
+		if bi.Error && bytesChkErr != nil {
+			h.Log("DEBUG", fmt.Sprintf("path:%s has error (missing) and misisng bytes. Considering as DEAD blob.", path))
+			output = fmt.Sprintf("%s%s%s", output, common.SEP, "DEAD_BLOB:missing properties/bytes")
+		} else if bi.Error {
+			h.Log("DEBUG", fmt.Sprintf("path:%s has error (missing). Considering as DEAD blob.", path))
+			output = fmt.Sprintf("%s%s%s", output, common.SEP, "DEAD_BLOB:missing properties")
+		} else if bytesChkErr != nil {
+			h.Log("DEBUG", fmt.Sprintf("path:%s has no .bytes file. Considering as DEAD blob.", path))
+			output = fmt.Sprintf("%s%s%s", output, common.SEP, "DEAD_BLOB:missing bytes")
+		}
+	} else if bytesChkErr != nil {
+		output = fmt.Sprintf("%s%s%s", output, common.SEP, "BYTES_MISSING")
 	}
 
 	return output
@@ -496,7 +534,6 @@ func shouldReadProps(path string, modTimestamp int64) bool {
 func extraInfo(path string) (string, error) {
 	// This function returns the extra information (.properties contents) and the skip reason as error
 	// Also does extra checks. For example, this may return "" with the error, when RxIncl or RxExcl filtered the contents.
-
 	var contents string
 	var err error
 	var shouldInvalidateCache = false
@@ -554,6 +591,7 @@ func extraInfo(path string) (string, error) {
 }
 
 func shouldSkipThisContents(sortedContents string) error {
+	// NOTE: this function is only for the sorted one line contents
 	// Exclude check first
 	if common.RxExcl != nil && common.RxExcl.MatchString(sortedContents) {
 		return errors.New(fmt.Sprintf("Matched with the exclude regex: %s. Skipping.", common.RxExcl.String()))
@@ -746,13 +784,14 @@ func checkBlobIdDetailFromDB(maybeBlobId string) interface{} {
 		}
 	}
 	if !foundInDB {
-		// As this is the check function, if not exist report
+		// As this is the check function, if not exist, report as WARN
 		h.Log("WARN", fmt.Sprintf("No blobId:%s for %s in DB (Orphaned)", blobId, maybeBlobId))
 	}
 	return nil
 }
 
 func checkBlobIdDetailFromBS(maybeBlobId string) interface{} {
+	// Using this for the dead blobs check as well. If nil returned, means dead blob.
 	if len(maybeBlobId) == 0 {
 		h.Log("DEBUG", fmt.Sprintf("Empty blobId in '%s'", maybeBlobId))
 		return nil
@@ -760,36 +799,46 @@ func checkBlobIdDetailFromBS(maybeBlobId string) interface{} {
 	// basePath is the file path without extension
 	basePath := h.AppendSlash(common.ContentPath) + genBlobPath(maybeBlobId, "")
 
-	bytesPath := basePath + common.BYTES_EXT
-	if common.RxFilter4FileName == nil || common.RxFilter4FileName.MatchString(bytesPath) {
-		blobInfo, err := Client.GetFileInfo(bytesPath)
-		if err != nil {
-			h.Log("WARN", fmt.Sprintf("No %s in BS (error: %s)", bytesPath, err.Error()))
-		} else {
-			args := bs_clients.PrintLineArgs{
+	if common.BytesChk == false {
+		// If BytesChk is true, no need to do the followings as checking .properties file checks .bytes
+		bytesPath := basePath + common.BYTES_EXT
+		if common.RxFilter4FileName == nil || common.RxFilter4FileName.MatchString(bytesPath) {
+			blobInfo, err := Client.GetFileInfo(bytesPath)
+			bytesArgs := bs_clients.PrintLineArgs{
 				Path:  bytesPath,
 				BInfo: blobInfo,
 				DB:    common.DB,
 			}
-			printLineFromPath(args)
+			if err != nil {
+				h.Log("WARN", fmt.Sprintf("No %s in BS (error: %s)", bytesPath, err.Error()))
+				// This combination shouldn't be possible but just in case (if "DB", the BytesChk should be always true)
+				if common.Truth == "DB" {
+					printLineFromPath(bytesArgs)
+				}
+			} else {
+				printLineFromPath(bytesArgs)
+			}
 		}
 	}
 
 	propsPath := basePath + common.PROP_EXT
-	// TODO: this is not accurate as it should be checking the base file name, not the path
+	// NOTE: this may not be accurate as it should be checking the base file name, not the path
 	if common.RxFilter4FileName == nil || common.RxFilter4FileName.MatchString(propsPath) {
 		blobInfo, err := Client.GetFileInfo(propsPath)
-		if err != nil {
-			h.Log("WARN", fmt.Sprintf("No %s in BS (error: %s)", propsPath, err.Error()))
-			return nil
-		}
 		args := bs_clients.PrintLineArgs{
 			Path:  propsPath,
 			BInfo: blobInfo,
 			DB:    common.DB,
 		}
+		if err != nil {
+			h.Log("WARN", fmt.Sprintf("No %s in BS (error: %s)", propsPath, err.Error()))
+			if common.Truth == "DB" {
+				printLineFromPath(args)
+			}
+			return nil
+		}
 		printLineFromPath(args)
-		return blobInfo
+		//return blobInfo	// Currently the line use this function is not using the return value
 	}
 	return nil
 }
@@ -1009,62 +1058,6 @@ func isOrphanedBlob(contents string, blobId string, db *sql.DB) string {
 		return "ORPHAN:" + repoName + "/" + format
 	}
 	return ""
-}
-
-func checkDeadBlobs(repoName string, db *sql.DB) bool {
-	// TODO: probably this is not working.
-	// Dead blob is the blob which is in the database but not in the blob store file system
-	// This function gets the stream the blob IDs from the database and checks if the blob ID exists in the blob store
-	// Return false if error or found dead blobs
-	format := getFmtFromRepName(repoName)
-	tableNames := getAssetTableNamesFromRepoNames(repoName)
-	if len(repoName) > 0 && len(tableNames) == 0 {
-		h.Log("ERROR", fmt.Sprintf("Repsitory: %s does not exist in the database", repoName))
-		return false
-	}
-
-	// Not using common.BsName as can't trust blob store name in blob_ref, and may not work with group blob stores
-	// ab.blob_size is added in case validating the size of the blob later
-	cols := []string{"asset_id", "blob_ref", "blob_size"}
-	h.Log("DEBUG", fmt.Sprintf("repoName: %s, format:%s", repoName, format))
-	query := genAssetBlobUnionQuery(tableNames, "asset_id, ab.blob_ref, ab.blob_size", "", []string{repoName}, format)
-	if len(query) == 0 { // Mainly for unit test
-		h.Log("ERROR", fmt.Sprintf("query is empty for repoName: %s and tableNames: %v", repoName, tableNames))
-		return false
-	}
-
-	// This query can take longer so not showing too many WARNs
-	slowMs := int64(1000)
-	if len(tableNames) > 0 {
-		slowMs = int64(len(tableNames) * 300)
-	}
-	rows := lib.Query(query, db, slowMs)
-	if rows == nil { // Mainly for unit test
-		h.Log("WARN", "rows is nil for query: "+query)
-		return false
-	}
-	defer rows.Close()
-	noDeadBlob := true
-	for rows.Next() {
-		vals := lib.GetRow(rows, cols)
-		// As not using LEFT JOIN, 'asset_id' can not be NULL (nil)
-		h.Log("DEBUG", fmt.Sprintf("row: %v", vals))
-		// Check if the blob ID exists in the blob store
-		assetId := vals[1].(int64)
-		blobRef := vals[2].(string)
-		blobSize := vals[3].(int64)
-		blobInfo := checkBlobIdDetailFromBS(blobRef)
-		if blobInfo == nil {
-			h.Log("ERROR", fmt.Sprintf("Dead Blob Found for assetId: %d, blobRef:%s", assetId, blobRef))
-			noDeadBlob = false
-			continue
-		}
-		if blobInfo.(bs_clients.BlobInfo).Size != blobSize {
-			h.Log("ERROR", fmt.Sprintf("assetId:%d, blobRef:%s has size mismatch. DB %d vs. BS %d", assetId, blobRef, blobSize, blobInfo.(bs_clients.BlobInfo).Size))
-			continue
-		}
-	}
-	return noDeadBlob
 }
 
 func runParallel(chunks [][]string, apply func(string, *sql.DB), conc int) {
