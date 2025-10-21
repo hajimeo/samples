@@ -115,6 +115,34 @@ func (s *S3Client) WriteToPath(key string, contents string) error {
 	return nil
 }
 
+func (s *S3Client) GetReader(key string) (interface{}, error) {
+	obj, err := getS3Object(key)
+	if err != nil {
+		h.Log("ERROR", fmt.Sprintf("GetReader: %s failed with %s.", key, err.Error()))
+		return nil, err
+	}
+	return obj.Body, nil
+}
+
+func (s *S3Client) GetWriter(key string) (interface{}, error) {
+	// For S3 type blob store, creating a pipe reader and writer
+	// TODO: not considering the tags
+	pr, pw := io.Pipe()
+	go func() {
+		bucket := common.Container
+		input := &s3.PutObjectInput{
+			Bucket: &bucket,
+			Key:    &key,
+			Body:   pr,
+		}
+		resp, err := getS3Api().PutObject(context.TODO(), input)
+		if err != nil {
+			h.Log("ERROR", fmt.Sprintf("GetWriter PutObject for key: %s. Resp: %v, Error: %s", key, resp, err.Error()))
+		}
+	}()
+	return pw, nil
+}
+
 func (s *S3Client) GetPath(key string, localPath string) error {
 	if common.Debug {
 		defer h.Elapsed(time.Now().UnixMilli(), "Get "+key, int64(0))

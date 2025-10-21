@@ -122,6 +122,30 @@ func (a *AzClient) WriteToPath(path string, contents string) error {
 	return nil
 }
 
+func (a *AzClient) GetReader(path string) (interface{}, error) {
+	inFile, err := getAzObject(path)
+	if err != nil {
+		h.Log("ERROR", fmt.Sprintf("GetReader: %s failed with %s.", path, err.Error()))
+		return nil, err
+	}
+	return inFile.Body, nil
+}
+
+func (a *AzClient) GetWriter(path string) (interface{}, error) {
+	// For Azure blob store, we can use a pipe to write to the blob
+	pr, pw := io.Pipe()
+	go func() {
+		_, err := getAzApi().UploadStream(context.TODO(), common.Container, path, pr, nil)
+		if err != nil {
+			h.Log("ERROR", fmt.Sprintf("GetWriter: UploadStream for %s failed with %s.", path, err.Error()))
+			pr.CloseWithError(err)
+		} else {
+		}
+		pr.Close()
+	}()
+	return pw, nil
+}
+
 func (a *AzClient) GetPath(path string, localPath string) error {
 	if common.Debug {
 		defer h.Elapsed(time.Now().UnixMilli(), "Get "+path, int64(0))

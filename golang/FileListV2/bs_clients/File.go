@@ -53,6 +53,20 @@ func (c *FileClient) WriteToPath(path string, contents string) error {
 	return err
 }
 
+func (c *FileClient) GetReader(path string) (interface{}, error) {
+	reader, err := os.Open(path)
+	if err != nil {
+		h.Log("ERROR", fmt.Sprintf("GetReader: %s failed with %s.", path, err.Error()))
+		return nil, err
+	}
+	return reader, nil
+}
+
+func (c *FileClient) GetWriter(path string) (interface{}, error) {
+	// For File type blob store, same as CreateLocalFile
+	return CreateLocalFile(path)
+}
+
 func (c *FileClient) GetPath(path string, localPath string) error {
 	if common.Debug {
 		defer h.Elapsed(time.Now().UnixMilli(), "Get "+path, int64(0))

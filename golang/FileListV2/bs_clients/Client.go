@@ -1,7 +1,6 @@
 package bs_clients
 
 import (
-	"FileListV2/common"
 	"database/sql"
 	"fmt"
 	"github.com/pkg/errors"
@@ -28,6 +27,10 @@ type Client interface {
 	Convert2BlobInfo(interface{}) BlobInfo
 	// RemoveDeleted : Remove the deleted=true line. This is not a right location but for S3
 	RemoveDeleted(string, string) error
+	// GetReader : Get the reader for the path. Used for io.Copy
+	GetReader(string) (interface{}, error)
+	// GetWriter : Get the writer for the path. Used for io.Copy. Make sure this method creates subdirectories
+	GetWriter(string) (interface{}, error)
 }
 
 type BlobInfo struct {
@@ -40,20 +43,20 @@ type BlobInfo struct {
 }
 
 type PrintLineArgs struct {
-	Path    interface{}
+	Path    string
 	BInfo   BlobInfo
 	DB      *sql.DB
 	SaveDir string
 }
 
-func GetClient() Client {
-	if common.BsType == "s3" {
+func GetClient(bsType string) Client {
+	if bsType == "s3" {
 		return &S3Client{}
 	}
-	if common.BsType == "az" {
+	if bsType == "az" {
 		return &AzClient{}
 	}
-	//if common.BsType == "gs" {
+	//if bsType == "gs" {
 	//	return &GcClient{}
 	//}
 	// TODO: add more types
