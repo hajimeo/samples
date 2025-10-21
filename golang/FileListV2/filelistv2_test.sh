@@ -42,7 +42,7 @@
 #
 ### Global variables
 : ${_TEST_WORKDIR:=""}      #./sonatype-work/nexus3
-: ${_TEST_BLOBSTORE:=""}    #./sonatype-work/nexus3/blobs/default
+: ${_TEST_BLOBSTORE:=""}    #./sonatype-work/nexus3/blobs/default (no content/)
 : ${_TEST_FILTER_PATH:="/(vol-\d\d|20\d\d)/"}
 : ${_TEST_DB_CONN:=""}      #host=localhost user=nexus dbname=nxrm
 : ${_TEST_DB_CONN_PWD:="nexus123"}
@@ -253,7 +253,39 @@ function test_6_Orphaned() {
     fi
 }
 
-function test_7_TextFileToCheckBlobStore() {
+function test_7_DeadBlob() {
+    local _b="${1:-"${_TEST_BLOBSTORE}"}"
+    local _p="${2:-"${_TEST_FILTER_PATH}"}"
+    local _work_dir="${3:-"${_TEST_WORKDIR}"}"
+    #local _blob_id="$(uuidgen)"
+    #filelist2 -b "$BLOB_STORE" -p '/(vol-\d\d|20\d\d)/' -c 10 -src BS -db "host=localhost user=nexus dbname=nexus" -s ./orphaned_blobs_Src-BS.tsv
+    local _nexus_store="$(find ${_work_dir%/} -maxdepth 3 -name 'nexus-store.properties' -path '*/etc/fabric/*' -print | head -n1)"
+    if [ -z "${_nexus_store}" ]; then
+        echo "TEST=ERROR: Could not find nexus-store.properties in ${_work_dir}"
+        return 1
+    fi
+    [ -n "${_TEST_DB_CONN_PWD}" ] && export PGPASSWORD="${_TEST_DB_CONN_PWD}"
+
+    rm -f /tmp/test8_prep_query.out || return $?
+    _exec_filelist "filelist2 -b '${_b}' -p '${_p}' -src BS -db ${_nexus_store} -query \"select blob_ref as blob_id from raw_asset_blob order by asset_blob_id desc limit 1\" -rF /tmp/test8_prep_query.out" ""
+    if [ ! -s "/tmp/test8_prep_query.out" ]; then
+        echo "TEST=Skipped: Could not prepare blob ids from DB (check /tmp/test_last.* and /tmp/test8_prep_query.out)"
+        return 0
+    fi
+    cat /tmp/test8_prep_query.out | xargs -I{} blobpath {} | xargs -I{} mv "${_b%/}/content/{}" "${_b%/}/content/{}.bak"
+    local _out_file="/tmp/test_deadblob.tsv"
+    _exec_filelist "filelist2 -b '${_b}' -p '${_p}' -src BS -db ${_nexus_store} -query \"select blob_ref as blob_id from raw_asset_blob order by asset_blob_id desc limit 1\" -src DB -H" "${_out_file}"
+    local _final_rc="$?"
+    if [ "${_final_rc}" == "0" ]; then
+        echo "TEST=OK (${_out_file})"
+    else
+        echo "TEST=ERROR: Could not generate ${_out_file} (check /tmp/test_last.*)"
+    fi
+    cat /tmp/test8_prep_query.out | xargs -I{} blobpath {} | xargs -I{} mv "${_b%/}/content/{}.bak" "${_b%/}/content/{}"
+    return ${_final_rc}
+}
+
+function test_8_TextFileToCheckBlobStore() {
     local _b="${1:-"${_TEST_BLOBSTORE}"}"
     local _p="${2:-"${_TEST_FILTER_PATH}"}"
     local _work_dir="${3:-"${_TEST_WORKDIR}"}"
@@ -302,7 +334,7 @@ function test_7_TextFileToCheckBlobStore() {
     fi
 }
 
-function test_8_TextFileToCheckDatabase() {
+function test_9_TextFileToCheckDatabase() {
     local _b="${1:-"${_TEST_BLOBSTORE}"}"
     local _p="${2:-"${_TEST_FILTER_PATH}"}"
     local _work_dir="${3:-"${_TEST_WORKDIR}"}"
@@ -345,7 +377,7 @@ function test_8_TextFileToCheckDatabase() {
     fi
 }
 
-function test_9_GenerateBlobIDsFileFromDB() {
+function test_10_GenerateBlobIDsFileFromDB() {
     local _b="${1:-"${_TEST_BLOBSTORE}"}"
     local _p="${2:-"${_TEST_FILTER_PATH}"}"
     local _work_dir="${3:-"${_TEST_WORKDIR}"}"
@@ -403,7 +435,10 @@ function _exec_filelist() {
     if [ -s "${_out_file}" ]; then
         rm -f "${_out_file}" || return $?
     fi
-    local _cmd="${_cmd_without_s} -s ${_out_file}"
+    local _cmd="${_cmd_without_s}"
+    if [ -n "${_out_file}" ]; then
+        _cmd="${_cmd} -s '${_out_file}'"
+    fi
     if rg -q ' -b +.?s3://' <<<"${_cmd_without_s}"; then    # this is S3 only (not Azure)
         _cmd="${_cmd} -c 2 -c2 8"
     else
