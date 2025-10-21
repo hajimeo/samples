@@ -35,8 +35,16 @@ var WithTags bool  // AWS S3: Display tags
 
 // Paths/Directories related. End with "/", so that no need to append  string(filepath.Separator)
 var BaseDir = ""
+var BaseDir2 = ""
+var BsType = ""     // 'file' for File, 's3' for AWS S3, (TODO) 'az' for Azure, 'g' for Google
+var BsType2 = ""    // 'file' for File, 's3' for AWS S3, (TODO) 'az' for Azure, 'g' for Google
+var Container = ""  // Azure: Container name, S3: Bucket name, Google: Bucket name
+var Container2 = "" // Azure: Container name, S3: Bucket name, Google: Bucket name
+var Prefix = ""
+var Prefix2 = ""
+var ContentPath = ""  // BaseDirWithPrefix + "/content/"
+var ContentPath2 = "" // BaseDirWithPrefix + "/content/"
 var Filter4Path = ""
-var ContentPath = "" // BaseDirWithPrefix + "/content/"
 var SaveToFile = ""
 var SavePerDir = false
 var SaveToPointer *os.File
@@ -44,7 +52,6 @@ var MaxDepth = 5 // `vol-YY/chap-XX/` vs. `YYYY/MM/DD/hh/mm/`
 
 // Blob store related
 var BsName = ""
-var BsType = "" // 'file' for File, 's3' for AWS S3, (TODO) 'az' for Azure, 'g' for Google
 var BlobIDFIle = ""
 var BlobIDFIleType = ""
 var RemoveDeleted bool
@@ -53,8 +60,6 @@ var WriteIntoStr = ""
 var Query = ""
 var RxSelect = regexp.MustCompile(`(?i)^ *SELECT ?.* +blob_id *,? *[^;]+;?$`) // Currently max only one ';'
 var RxAnd = regexp.MustCompile(`(?i)^ *AND `)
-var Container = "" // Azure: Container name, S3: Bucket name, Google: Bucket name
-var Prefix = ""
 var GetFile = ""
 var GetTo = ""
 
