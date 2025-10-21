@@ -189,3 +189,28 @@ func TestPathWithoutExt_PathWithTrailingDot_RemovesTrailingDot(t *testing.T) {
 	result := GetPathWithoutExt("/path/to/file.")
 	assert.Equal(t, "/path/to/file", result)
 }
+
+func TestGetAfterContent_PathWithContentSubdir_ReturnsSubsequentPath(t *testing.T) {
+	result := GetAfterContent("sonatype-work/nexus3/blobs/default/content/vol-NN/chap-MM/UUID.properties")
+	assert.Equal(t, "vol-NN/chap-MM/UUID.properties", result)
+}
+
+func TestGetAfterContent_PathEndingWithContent_ReturnsEmptyString(t *testing.T) {
+	result := GetAfterContent("sonatype-work/nexus3/blobs/default/content")
+	assert.Equal(t, "", result)
+}
+
+func TestGetAfterContent_PathWithoutContent_ReturnsEmptyString(t *testing.T) {
+	result := GetAfterContent("sonatype-work/nexus3/blobs/default")
+	assert.Equal(t, "", result)
+}
+
+func TestGetAfterContent_EmptyPath_ReturnsEmptyString(t *testing.T) {
+	result := GetAfterContent("")
+	assert.Equal(t, "", result)
+}
+
+func TestGetAfterContent_PathWithMultipleContentSubdirs_ReturnsLastSubsequentPath(t *testing.T) {
+	result := GetAfterContent("sonatype-work/nexus3/content/blobs/default/content/vol-NN")
+	assert.Equal(t, "vol-NN", result)
+}
