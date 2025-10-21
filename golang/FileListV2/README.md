@@ -43,7 +43,7 @@ filelist2 -b "s3://${AWS_BLOB_STORE_NAME}/filelist-test/content" -n 5
 export AZURE_STORAGE_ACCOUNT_NAME="********" AZURE_STORAGE_ACCOUNT_KEY="*********************"
 filelist2 -b "az://${AZURE_STORAGE_CONTAINER_NAME}/content" -n 5
 
-TODO: filelist2 -b "gc://google-test-storage/google-test-prefix/content" -n 5
+TODO: filelist2 -b "gs://google-test-storage/google-test-prefix/content" -n 5
 ```
 
 #### List files which matches with specific repo and modified from yesterday

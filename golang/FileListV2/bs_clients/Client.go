@@ -53,7 +53,7 @@ func GetClient() Client {
 	if common.BsType == "az" {
 		return &AzClient{}
 	}
-	//if common.BsType == "gc" {
+	//if common.BsType == "gs" {
 	//	return &GcClient{}
 	//}
 	// TODO: add more types

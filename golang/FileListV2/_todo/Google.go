@@ -20,30 +20,30 @@ import (
 	"time"
 )
 
-type GcClient struct{}
+type GsClient struct{}
 
-var GcApi *storage.Client
-var GcBucket *storage.BucketHandle
+var GsApi *storage.Client
+var GsBucket *storage.BucketHandle
 
-func getGcApi() *storage.Client {
-	if GcApi != nil {
-		return GcApi
+func getGsApi() *storage.Client {
+	if GsApi != nil {
+		return GsApi
 	}
 	appCredentials := h.GetEnv("GOOGLE_APPLICATION_CREDENTIALS", "") // Json file path
 	if appCredentials == "" {
 		panic("Missing GOOGLE_APPLICATION_CREDENTIALS")
 	}
 	var err error
-	GcApi, err = storage.NewClient(context.TODO())
+	GsApi, err = storage.NewClient(context.TODO())
 	if err != nil {
 		panic("configuration error, " + err.Error())
 	}
-	return GcApi
+	return GsApi
 }
 
-func getGcContainer() *storage.BucketHandle {
-	if GcBucket != nil && GcBucket.BucketName() != "" {
-		return GcBucket
+func getGsContainer() *storage.BucketHandle {
+	if GsBucket != nil && GsBucket.BucketName() != "" {
+		return GsBucket
 	}
 	if len(common.Container) == 0 {
 		common.Container, common.Prefix = lib.GetContainerAndPrefix(common.BaseDir)
@@ -52,14 +52,14 @@ func getGcContainer() *storage.BucketHandle {
 		panic("container (bucket) is not set")
 	}
 
-	GcBucket = getGcApi().Bucket(common.Container)
-	if GcBucket == nil || GcBucket.BucketName() == "" {
+	GsBucket = getGsApi().Bucket(common.Container)
+	if GsBucket == nil || GsBucket.BucketName() == "" {
 		panic("container: " + common.Container + " is empty")
 	}
-	return GcBucket
+	return GsBucket
 }
 
-func getGcObject(path string) ([]byte, error) {
+func getGsObject(path string) ([]byte, error) {
 	if len(common.Container) == 0 {
 		common.Container, common.Prefix = lib.GetContainerAndPrefix(common.BaseDir)
 	}
@@ -67,7 +67,7 @@ func getGcObject(path string) ([]byte, error) {
 		return nil, fmt.Errorf("container is not set")
 	}
 
-	handle := getGcContainer().Object(path)
+	handle := getGsContainer().Object(path)
 	// Read the contents of the object
 	reader, err := handle.NewReader(context.TODO())
 	if err != nil {
@@ -84,14 +84,14 @@ func getGcObject(path string) ([]byte, error) {
 	return data, nil
 }
 
-func setGcObject(path string, contents string) error {
+func setGsObject(path string, contents string) error {
 	if len(common.Container) == 0 {
 		common.Container, common.Prefix = lib.GetContainerAndPrefix(common.BaseDir)
 	}
 	if len(common.Container) == 0 {
 		return fmt.Errorf("container is not set")
 	}
-	obj := getGcContainer().Object(path)
+	obj := getGsContainer().Object(path)
 	writer := obj.NewWriter(context.TODO())
 	if _, err := writer.Write([]byte(contents)); err != nil {
 		return fmt.Errorf("failed to write %s: %v", path, err)
@@ -99,7 +99,7 @@ func setGcObject(path string, contents string) error {
 	return nil
 }
 
-func (a *GcClient) ReadPath(path string) (string, error) {
+func (a *GsClient) ReadPath(path string) (string, error) {
 	if common.Debug {
 		// Record the elapsed time
 		defer h.Elapsed(time.Now().UnixMilli(), "Read "+path, int64(0))
@@ -108,23 +108,23 @@ func (a *GcClient) ReadPath(path string) (string, error) {
 		defer h.Elapsed(time.Now().UnixMilli(), "Slow file read for path:"+path, common.SlowMS*2)
 	}
 
-	data, err := getGcObject(path)
+	data, err := getGsObject(path)
 	if err != nil {
-		h.Log("DEBUG", fmt.Sprintf("getGcObject for %s failed with %s.", path, err.Error()))
+		h.Log("DEBUG", fmt.Sprintf("getGsObject for %s failed with %s.", path, err.Error()))
 		return "", err
 	}
 	// at this moment, assuming the content is text for this method (.properties file)
 	return string(data), nil
 }
 
-func (a *GcClient) WriteToPath(path string, contents string) error {
+func (a *GsClient) WriteToPath(path string, contents string) error {
 	if common.Debug {
 		defer h.Elapsed(time.Now().UnixMilli(), "Wrote "+path, 0)
 	} else {
 		defer h.Elapsed(time.Now().UnixMilli(), "Slow file write for path:"+path, common.SlowMS*2)
 	}
 
-	err := setGcObject(path, contents)
+	err := setGsObject(path, contents)
 	if err != nil {
 		h.Log("DEBUG", fmt.Sprintf("Path: %s. err: %v", path, err))
 		return err
@@ -132,7 +132,7 @@ func (a *GcClient) WriteToPath(path string, contents string) error {
 	return nil
 }
 
-func (a *GcClient) GetPath(path string, localPath string) error {
+func (a *GsClient) GetPath(path string, localPath string) error {
 	if common.Debug {
 		defer h.Elapsed(time.Now().UnixMilli(), "Get "+path, int64(0))
 	} else {
@@ -146,9 +146,9 @@ func (a *GcClient) GetPath(path string, localPath string) error {
 	}
 	defer outFile.Close()
 
-	data, err := getGcObject(path)
+	data, err := getGsObject(path)
 	if err != nil {
-		h.Log("DEBUG", fmt.Sprintf("getGcObject for %s failed with %s.", path, err.Error()))
+		h.Log("DEBUG", fmt.Sprintf("getGsObject for %s failed with %s.", path, err.Error()))
 		return err
 	}
 
@@ -157,7 +157,7 @@ func (a *GcClient) GetPath(path string, localPath string) error {
 	return err
 }
 
-func (a *GcClient) RemoveDeleted(path string, contents string) error {
+func (a *GsClient) RemoveDeleted(path string, contents string) error {
 	// if the contents is empty, read from the key
 	if len(contents) == 0 {
 		var err error
@@ -181,7 +181,7 @@ func (a *GcClient) RemoveDeleted(path string, contents string) error {
 	return a.WriteToPath(path, updatedContents)
 }
 
-func (a *GcClient) GetDirs(baseDir string, pathFilter string, maxDepth int) ([]string, error) {
+func (a *GsClient) GetDirs(baseDir string, pathFilter string, maxDepth int) ([]string, error) {
 	if common.Debug {
 		defer h.Elapsed(time.Now().UnixMilli(), "Walked "+baseDir, int64(0))
 	} else {
@@ -201,7 +201,7 @@ func (a *GcClient) GetDirs(baseDir string, pathFilter string, maxDepth int) ([]s
 		Delimiter: "/", // This is key to getting "directories"
 		// TODO: utilise MatchGlob
 	}
-	it := getGcContainer().Objects(context.TODO(), query)
+	it := getGsContainer().Objects(context.TODO(), query)
 	var dirs []string
 	for {
 		attrs, err := it.Next()
@@ -246,7 +246,7 @@ func (a *GcClient) GetDirs(baseDir string, pathFilter string, maxDepth int) ([]s
 	return matchingDirs, nil
 }
 
-func (a *GcClient) ListObjects(dir string, db *sql.DB, perLineFunc func(PrintLineArgs) bool) int64 {
+func (a *GsClient) ListObjects(dir string, db *sql.DB, perLineFunc func(PrintLineArgs) bool) int64 {
 	return 0
 	/*
 		ctx := context.Background()
@@ -281,8 +281,8 @@ func (a *GcClient) ListObjects(dir string, db *sql.DB, perLineFunc func(PrintLin
 		return subTtl */
 }
 
-func (a *GcClient) GetFileInfo(name string) (BlobInfo, error) {
-	blobClient := getGcContainer().NewBlobClient(name)
+func (a *GsClient) GetFileInfo(name string) (BlobInfo, error) {
+	blobClient := getGsContainer().NewBlobClient(name)
 	blobItemProps, err := blobClient.GetProperties(context.Background(), nil)
 	if err != nil {
 		return BlobInfo{Error: true}, err
@@ -301,7 +301,7 @@ func (a *GcClient) GetFileInfo(name string) (BlobInfo, error) {
 	return blobInfo, nil
 }
 
-func (a *GcClient) Convert2BlobInfo(f interface{}) BlobInfo {
+func (a *GsClient) Convert2BlobInfo(f interface{}) BlobInfo {
 	item := f.(*container.BlobItem)
 	owner := ""
 	if item.Properties.Owner != nil {
