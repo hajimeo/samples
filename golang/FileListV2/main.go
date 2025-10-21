@@ -9,6 +9,7 @@ import (
 	"flag"
 	"fmt"
 	h "github.com/hajimeo/samples/golang/helpers"
+	"io"
 	"log"
 	"math"
 	"os"
@@ -24,6 +25,7 @@ import (
 )
 
 var Client bs_clients.Client
+var Client2 bs_clients.Client
 
 func usage() {
 	fmt.Println(`
@@ -40,6 +42,7 @@ func setGlobals() {
 
 	// TODO: 'b' should accept the comma separated values for supporting the group blob store
 	flag.StringVar(&common.BaseDir, "b", "", "Blob store directory or URI (eg. 's3://s3-test-bucket/s3-test-prefix/'), which location contains 'content' directory (default: '.')")
+	flag.StringVar(&common.BaseDir2, "bTo", "", "Blob store directory or URI (eg. 's3://s3-test-bucket/s3-test-prefix/') for copying files from -b")
 	flag.BoolVar(&common.NoDateBsLayout, "NoDateBS", false, "Disable the date based blob store layout (YYYY/MM/DD/hh/mm/uuid) to force checking the old vol-XX/chap-XX/uuid layout")
 	flag.StringVar(&common.Filter4Path, "p", "", "Regular Expression for directory *path* (eg '/(vol-\\d\\d|20\\d\\d)/'), or S3 prefix.")
 	flag.StringVar(&common.Filter4FileName, "f", "", "Regular Expression for the file *name* (eg: '\\.properties' to include only this extension)")
@@ -100,17 +103,30 @@ func setGlobals() {
 
 	h.Log("DEBUG", "Starting setGlobals for "+strings.Join(os.Args[1:], " "))
 	h.Log("DEBUG", "common.BaseDir = "+common.BaseDir)
-	common.BaseDir = h.AppendSlash(common.BaseDir)
-	h.Log("DEBUG", "common.BaseDir with slash = "+common.BaseDir)
+	if len(common.BaseDir) > 0 {
+		common.BaseDir = h.AppendSlash(common.BaseDir)
+		h.Log("DEBUG", "common.BaseDir with slash = "+common.BaseDir)
+		common.BsType = lib.GetSchema(common.BaseDir)
+		h.Log("DEBUG", "common.BsType = "+common.BsType)
+		// if the BaseDir starts with "s3://", get hostname as the bucket name, and the rest as the prefix
+		common.Container, common.Prefix = lib.GetContainerAndPrefix(common.BaseDir)
+		h.Log("DEBUG", "common.Container = "+common.Container)
+		h.Log("DEBUG", "common.Prefix = "+common.Prefix)
+		common.ContentPath = lib.GetContentPath(common.BaseDir)
+		h.Log("DEBUG", "common.ContentPath = "+common.ContentPath)
+	}
 
-	common.BsType = lib.GetSchema(common.BaseDir)
-	h.Log("DEBUG", "common.BsType = "+common.BsType)
-	// if the BaseDir starts with "s3://", get hostname as the bucket name, and the rest as the prefix
-	common.Container, common.Prefix = lib.GetContainerAndPrefix(common.BaseDir)
-	h.Log("DEBUG", "common.Container = "+common.Container)
-	h.Log("DEBUG", "common.Prefix = "+common.Prefix)
-	common.ContentPath = lib.GetContentPath(common.BaseDir)
-	h.Log("DEBUG", "common.ContentPath = "+common.ContentPath)
+	if len(common.BaseDir2) > 0 {
+		common.BaseDir2 = h.AppendSlash(common.BaseDir2)
+		h.Log("DEBUG", "common.BaseDir2 with slash = "+common.BaseDir2)
+		common.BsType2 = lib.GetSchema(common.BaseDir2)
+		h.Log("DEBUG", "common.BsType2 = "+common.BsType2)
+		common.Container2, common.Prefix2 = lib.GetContainerAndPrefix(common.BaseDir2)
+		h.Log("DEBUG", "common.Container2 = "+common.Container2)
+		h.Log("DEBUG", "common.Prefix2 = "+common.Prefix2)
+		common.ContentPath2 = lib.GetContentPath(common.BaseDir2)
+		h.Log("DEBUG", "common.ContentPath = "+common.ContentPath2)
+	}
 
 	if common.Conc1 < 1 {
 		h.Log("ERROR", "-c is lower than 1.")
@@ -387,15 +403,23 @@ func genOutput(path string, bi bs_clients.BlobInfo, db *sql.DB) string {
 	var bytesChkErr error
 	var bytesInfo bs_clients.BlobInfo
 	var bytesPath string
-	if common.BytesChk && strings.HasSuffix(path, common.PROPERTIES) {
-		// If the path ends with .properties, replace with .bytes
-		bytesPath = lib.GetPathWithoutExt(path) + common.BYTES_EXT
-		bytesInfo, bytesChkErr = Client.GetFileInfo(bytesPath)
-		if bytesChkErr != nil {
-			if common.Truth != "BS" {
-				h.Log("WARN", fmt.Sprintf("BYTES_MISSING for %s (error: %s)", bytesPath, bytesChkErr.Error()))
-			} else {
-				h.Log("DEBUG", fmt.Sprintf("BYTES_MISSING for %s (probably deletion marker?)", bytesPath))
+	if strings.HasSuffix(path, common.PROP_EXT) {
+		// the properties file can not be empty (0 byte)
+		if bi.Size == 0 {
+			h.Log("WARN", fmt.Sprintf("path:%s has 0 byte size", path))
+			// No need to exit
+		}
+
+		if common.BytesChk {
+			// If the path ends with .properties, replace with .bytes
+			bytesPath = lib.GetPathWithoutExt(path) + common.BYTES_EXT
+			bytesInfo, bytesChkErr = Client.GetFileInfo(bytesPath)
+			if bytesChkErr != nil {
+				if common.Truth != "BS" {
+					h.Log("WARN", fmt.Sprintf("BYTES_MISSING for %s (error: %s)", bytesPath, bytesChkErr.Error()))
+				} else {
+					h.Log("DEBUG", fmt.Sprintf("BYTES_MISSING for %s (probably deletion marker?)", bytesPath))
+				}
 			}
 		}
 	}
@@ -434,7 +458,7 @@ func genOutput(path string, bi bs_clients.BlobInfo, db *sql.DB) string {
 					h.Log("DEBUG", fmt.Sprintf("%s: %s", path, skipReason.Error()))
 					return ""
 				}
-				if common.BytesChk && bytesChkErr == nil && strings.HasSuffix(path, common.PROPERTIES) {
+				if common.BytesChk && bytesChkErr == nil && strings.HasSuffix(path, common.PROP_EXT) {
 					// If BytesChek is asked, compare the size with the size line in the .properties file (NOTE: 0 size is possible)
 					matches := common.RxSizeByte.FindStringSubmatch(sortedOneLineProps)
 					if matches == nil || len(matches) == 0 {
@@ -733,15 +757,96 @@ func printLineFromPath(args bs_clients.PrintLineArgs) bool {
 	atomic.AddInt64(&common.CheckedNum, 1)
 
 	//h.Log("DEBUG", fmt.Sprintf("Generating the output for '%s'", path))
-	output := genOutput(path.(string), blobInfo, db)
+	output := genOutput(path, blobInfo, db)
 
 	// Updating counters before (saving and) returning
 	if len(output) > 0 {
 		atomic.AddInt64(&common.PrintedNum, 1)
 		atomic.AddInt64(&common.TotalSize, blobInfo.Size)
+
+		if len(common.BaseDir2) > 0 && strings.HasSuffix(path, common.PROP_EXT) {
+			finalErrorCode := ""
+			errorCode := copyToBaseDir2(path)
+			// regardless of the errorCode, try to copy the .bytes file as well
+			bytesPath := lib.GetPathWithoutExt(path) + common.BYTES_EXT
+			errorCode2 := copyToBaseDir2(bytesPath)
+			if len(errorCode) > 0 {
+				finalErrorCode = errorCode
+			}
+			if len(errorCode2) > 0 {
+				if len(finalErrorCode) > 0 {
+					finalErrorCode = finalErrorCode + "|" + errorCode2
+				} else {
+					finalErrorCode = errorCode2
+				}
+			}
+			if len(finalErrorCode) > 0 {
+				output = fmt.Sprintf("%s%s%s", output, common.SEP, finalErrorCode)
+			}
+		}
+
+		printOrSave(output, saveToPointer)
 	}
-	printOrSave(output, saveToPointer)
 	return true
+}
+
+func writeFromCache(path string, client bs_clients.Client) (bool, error) {
+	if common.CacheSize > 0 {
+		valueInCache := h.CacheGetObj(path)
+		if valueInCache != nil && len(valueInCache.(string)) > 0 {
+			contents := valueInCache.(string)
+			h.Log("DEBUG", fmt.Sprintf("Found %s in the cache (size:%d)", path, len(contents)))
+			err := client.WriteToPath(path, contents)
+			if err != nil {
+				return false, err
+			}
+			return true, nil
+		}
+	}
+	return false, nil
+}
+
+func copyToBaseDir2(path string) string {
+	writingPath := filepath.Join(common.ContentPath2, lib.GetAfterContent(path))
+	// If the path is .properties, first try to write by using the cache
+	if strings.HasSuffix(path, common.PROP_EXT) {
+		result, err := writeFromCache(writingPath, Client2)
+		if err != nil {
+			h.Log("ERROR", fmt.Sprintf("Writing path:%s to BaseDir2:%s failed with %s", writingPath, common.BaseDir2, err))
+			return "FROM_CACHE_FAILED"
+		}
+		if result {
+			// nothing to append as it worked
+			return ""
+		}
+	}
+
+	// if no error but result is false, means no cache, so didn't write by using the cache, so copying by stream
+	maybeWriter, errW := Client2.GetWriter(writingPath)
+	if errW != nil {
+		h.Log("ERROR", fmt.Sprintf("Getting writer for path:%s to BaseDir2:%s failed with %s", writingPath, common.BaseDir2, errW))
+		return "WRITE_FAILED"
+	}
+
+	writer := maybeWriter.(io.WriteCloser)
+	defer writer.Close()
+
+	maybeReader, errR := Client.GetReader(path)
+	if errR != nil {
+		h.Log("ERROR", fmt.Sprintf("Getting reader for path:%s from BaseDir:%s failed with %s", path, common.BaseDir, errR))
+		return "READ_FAILED"
+	}
+	reader := maybeReader.(io.ReadCloser)
+	defer reader.Close()
+
+	_, errC := io.Copy(writer, reader)
+	if errC != nil {
+		h.Log("ERROR", fmt.Sprintf("Copying data from path:%s to BaseDir2:%s failed with %s", path, common.BaseDir2, errC))
+		return "COPY_FAILED"
+	}
+
+	h.Log("DEBUG", fmt.Sprintf("Copied data from path:%s to BaseDir2:%s", path, writingPath))
+	return ""
 }
 
 func printOrSave(line string, saveToPointer *os.File) {
@@ -798,7 +903,6 @@ func checkBlobIdDetailFromBS(maybeBlobId string) interface{} {
 	}
 	// basePath is the file path without extension
 	basePath := h.AppendSlash(common.ContentPath) + genBlobPath(maybeBlobId, "")
-
 	if common.BytesChk == false {
 		// If BytesChk is true, no need to do the followings as checking .properties file checks .bytes
 		bytesPath := basePath + common.BYTES_EXT
@@ -1099,7 +1203,10 @@ func main() {
 	log.SetPrefix(time.Now().Format("2006-01-02 15:04:05"))
 	setGlobals()
 	// As currently not supporting multiple blob store types, Client should be only one instance
-	Client = bs_clients.GetClient()
+	Client = bs_clients.GetClient(common.BsType)
+	if len(common.BaseDir2) > 0 {
+		Client2 = bs_clients.GetClient(common.BsType2)
+	}
 	// Currently only one DB object ...
 	var db *sql.DB
 	if len(common.DbConnStr) > 0 {
