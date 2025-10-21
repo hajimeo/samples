@@ -137,6 +137,7 @@ func GetRows(query string, db *sql.DB, saveToFile string, slowMs int64) [][]inte
 		vals := GetRow(rows, cols)
 		if fp != nil {
 			result := h.ValsToString(vals, common.SEP)
+			// TODO: probably OK, but may want to check if this works well with large data
 			_, err = fp.WriteString(result + "\n")
 			if err != nil {
 				panic(err)
