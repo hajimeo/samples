@@ -36,6 +36,7 @@ type BlobInfo struct {
 	Size    int64
 	Owner   string
 	Tags    string // JSON string
+	Error   bool
 }
 
 type PrintLineArgs struct {

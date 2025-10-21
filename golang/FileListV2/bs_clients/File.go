@@ -156,7 +156,7 @@ func (c *FileClient) GetDirs(baseDir string, pathFilter string, maxDepth int) ([
 func (c *FileClient) GetFileInfo(path string) (BlobInfo, error) {
 	fileInfo, err := os.Stat(path)
 	if err != nil {
-		return BlobInfo{}, err
+		return BlobInfo{Error: true}, err
 	}
 	return c.Convert2BlobInfo(fileInfo), nil
 }

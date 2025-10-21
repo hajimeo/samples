@@ -283,7 +283,7 @@ func (a *AzClient) GetFileInfo(name string) (BlobInfo, error) {
 	blobClient := getAzContainer().NewBlobClient(name)
 	blobItemProps, err := blobClient.GetProperties(context.Background(), nil)
 	if err != nil {
-		return BlobInfo{}, err
+		return BlobInfo{Error: true}, err
 	}
 	owner := ""
 

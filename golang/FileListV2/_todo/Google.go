@@ -285,7 +285,7 @@ func (a *GcClient) GetFileInfo(name string) (BlobInfo, error) {
 	blobClient := getGcContainer().NewBlobClient(name)
 	blobItemProps, err := blobClient.GetProperties(context.Background(), nil)
 	if err != nil {
-		return BlobInfo{}, err
+		return BlobInfo{Error: true}, err
 	}
 	owner := ""
 

@@ -356,7 +356,7 @@ func (s *S3Client) GetFileInfo(key string) (BlobInfo, error) {
 	headObj, err := getS3Api().HeadObject(context.TODO(), input)
 	if err != nil {
 		h.Log("DEBUG", fmt.Sprintf("Retrieving %s failed with %s. Ignoring...", key, err.Error()))
-		return BlobInfo{}, err
+		return BlobInfo{Error: true}, err
 	}
 
 	// for Owner
