@@ -101,6 +101,7 @@ func TestGetPath_ValidKey_CopiesFileToLocalPath_S3(t *testing.T) {
 		t.Skip("AWS_BLOB_STORE_NAME is not set")
 	}
 	t.Logf("container: %s\n", container)
+	common.Container = container
 	common.BaseDir = "s3://" + container
 	client := &S3Client{}
 	// S3 Key should include the prefix.
@@ -110,6 +111,7 @@ func TestGetPath_ValidKey_CopiesFileToLocalPath_S3(t *testing.T) {
 	common.Debug = true
 	err := client.GetPath(key, localPath)
 	assert.NoError(t, err)
+	// To manually check: aws s3 ls s3://apac-support-bucket/filelist-test/
 
 	contents, err := os.ReadFile(localPath)
 	assert.NoError(t, err)

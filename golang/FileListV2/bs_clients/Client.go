@@ -56,12 +56,15 @@ func GetClient(bsType string) Client {
 	if bsType == "az" {
 		return &AzClient{}
 	}
-	//if bsType == "gs" {
-	//	return &GcClient{}
-	//}
-	// TODO: add more types
+	if bsType == "gs" {
+		// TODO: add this type (gs)
+		panic(bsType + " is currently not supported yet")
+	}
 	// Default is FileClient
-	return &FileClient{}
+	if bsType == "file" || bsType == "" {
+		return &FileClient{}
+	}
+	panic("Unknown type: " + bsType + ".")
 }
 
 func CreateLocalFile(localPath string) (*os.File, error) {

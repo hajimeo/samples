@@ -172,7 +172,7 @@ func TestListObjects_Azure(t *testing.T) {
 			h.Log("DEBUG", fmt.Sprintf("testFunc found Printed %d >= %d", common.PrintedNum, common.TopN))
 			return false
 		}
-		t.Logf("path: %v (%d)", args.Path.(string), common.PrintedNum)
+		t.Logf("path: %v (%d)", args.Path, common.PrintedNum)
 		common.PrintedNum++
 		return true
 	}
