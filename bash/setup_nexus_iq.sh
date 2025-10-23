@@ -994,6 +994,18 @@ function f_prep_yum_meta_for_scan() {
     echo "expat.x86_64                   2.5.0-2.el9                  @nexusiq-test" >>./yum-packages.txt
 }
 
+function f_prep_golang_meta_for_scan() {
+    local _tmpdir="$(mktemp -d)" || return $?
+    cd "${_tmpdir}" || return $?
+    cat <<'EOF' >./go.list
+github.com/caddyserver/caddy/v2
+cloud.google.com/go v0.54.0
+cloud.google.com/go/bigquery v1.4.0
+cloud.google.com/go/datastore v1.1.0
+cloud.google.com/go/pubsub v1.2.0
+EOF
+}
+
 function f_prep_docker_image_for_scan() {
     local __doc__="TODO: Incomplete. Generate an image for docker scanning"
     local _base_img="${1:-"alpine:latest"}"    # dh1.standalone.localdomain:15000/alpine:3.7
@@ -1255,7 +1267,7 @@ EOF
     sudo systemctl enable nexusiq.service
     _log "INFO" "Service configured. If Nexus is currently running, please stop, then 'systemctl start nexusiq'"
     _log "INFO" "Please modify ${_app_dir%/}/nexus-iq-server.sh for your environment."
-    # NOTE: for troubleshooting 'systemctl cat nexusiq'
+    # NOTE: for troubleshooting 'systemctl cat nexusiq' and 'journalctl -u nexusiq --no-pager -n 200'
 }
 
 #JAVA_TOOL_OPTIONS="-agentlib:jdwp=transport=dt_socket,server=y,suspend=y,address=5007" f_cli
