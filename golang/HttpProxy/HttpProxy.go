@@ -13,7 +13,7 @@ Originally based on https://medium.com/@mlowicki/http-s-proxy-in-golang-in-less-
 	curl -v --proxy localhost:8888 -k -L http://search.osakos.com/index.php
 
 # HTTPS proxy (without replacing certificate):
-	# Automatically uses standalone.localdomain.crt/.key.
+	# If no --key/--pem, automatically uses standalone.localdomain.crt/.key.
 	httpproxy --proto https --debug [--pem <path to pem> --key <path to key>]
 	# Test (need to trust rootCA_standalone.crt or with --proxy-insecure)
 	curl -v --proxy https://localhost:8888/ --proxy-insecure -L https://search.osakos.com/index.php
