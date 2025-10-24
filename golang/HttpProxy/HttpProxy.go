@@ -12,18 +12,20 @@ Originally based on https://medium.com/@mlowicki/http-s-proxy-in-golang-in-less-
 	# Test
 	curl -v --proxy localhost:8888 -k -L http://search.osakos.com/index.php
 
-# HTTPS proxy (without replacing certificate):
+# TODO: HTTPS proxy (without replacing certificate):
 	# If no --key/--pem, automatically uses standalone.localdomain.crt/.key.
 	httpproxy --proto https --debug [--pem <path to pem> --key <path to key>]
 	# Test (need to trust rootCA_standalone.crt or with --proxy-insecure)
 	curl -v --proxy https://localhost:8888/ --proxy-insecure -L https://search.osakos.com/index.php
 
-# HTTPS proxy with replacing certificate:
+# TODO: HTTPS proxy with replacing certificate:
 	httpproxy --proto https --replCert --debug
 	# Test (as replaced, --insecure/-k is needed)
 	curl -v --proxy https://localhost:8888/ --proxy-insecure -k -L https://search.osakos.com/index.php
 
 	TODO: Write proper tests
+	TODO: '--proto https' is not working.
+		  TLS handshake error from 127.0.0.1:64364: tls: first record does not look like a TLS handshake
 */
 
 package main
@@ -88,7 +90,10 @@ func dumpKeyValues(m map[string][]string) []string {
 func handleTunneling(w http.ResponseWriter, req *http.Request) {
 	hash := ""
 	if Debug {
-		if reqDump, err := httputil.DumpRequest(req, false); err == nil {
+		reqDump, err := httputil.DumpRequest(req, false)
+		if err != nil {
+			debug("DumpRequest failed for %s: %v\n", req.RequestURI, err)
+		} else {
 			// Use md5sum of reqDump as the hash because 'body' is false
 			hash = fmt.Sprintf("%x", md5.Sum(reqDump))
 			debug("Request: %s\n%s\n", hash, reqDump)
@@ -145,7 +150,10 @@ func handleTunneling(w http.ResponseWriter, req *http.Request) {
 			out("ERROR: Sending request to %s failed. %v\n", req.RequestURI, err)
 			return
 		}
-		if respDump, err := httputil.DumpResponse(resp, false); err == nil {
+		respDump, err := httputil.DumpResponse(resp, false)
+		if err != nil {
+			debug("DumpResponse failed for %s failed. %v\n", req.RequestURI, err)
+		} else {
 			debug("Response: %s\n", respDump)
 			if Debug2 {
 				resp.Body = saveBodyToFile(resp.Body, hash+".resp")
@@ -221,7 +229,10 @@ func transfer(destination io.WriteCloser, source io.ReadCloser, filename string)
 func handleHTTP(w http.ResponseWriter, req *http.Request) {
 	hash := ""
 	if Debug {
-		if reqDump, err := httputil.DumpRequest(req, false); err == nil {
+		reqDump, err := httputil.DumpRequest(req, false)
+		if err != nil {
+			debug("DumpRequest failed for %s: %v\n", req.RequestURI, err)
+		} else {
 			hash = fmt.Sprintf("%x", md5.Sum(reqDump))
 			debug("Request: %s\n%s\n", hash, reqDump)
 			if Debug2 {
@@ -238,7 +249,10 @@ func handleHTTP(w http.ResponseWriter, req *http.Request) {
 	w.WriteHeader(resp.StatusCode)
 	defer resp.Body.Close()
 	if Debug {
-		if respDump, err := httputil.DumpResponse(resp, false); err == nil {
+		respDump, err := httputil.DumpResponse(resp, false)
+		if err != nil {
+			debug("DumpResponse failed for %s failed. %v\n", req.RequestURI, err)
+		} else {
 			debug("Response %s\n", respDump)
 			if Debug2 {
 				resp.Body = saveBodyToFile(resp.Body, hash+".resp")
@@ -282,7 +296,7 @@ func saveBodyToFile(body io.ReadCloser, filename string) io.ReadCloser {
 	return save
 }
 
-func readFromRemote(downloadUrl string) []byte {
+func readFromRemote(downloadUrl string, saveTo string) []byte {
 	resp, err := http.Get(downloadUrl)
 	if err != nil {
 		log.Fatalf("Failed to download PEM file from %s: %v", downloadUrl, err)
@@ -292,6 +306,16 @@ func readFromRemote(downloadUrl string) []byte {
 	data, err := io.ReadAll(resp.Body)
 	if err != nil {
 		log.Fatalf("Failed to read PEM file from %s: %v", downloadUrl, err)
+	}
+
+	if len(saveTo) > 0 {
+		// write to specified file
+		err = os.WriteFile(saveTo, data, 0644)
+		if err != nil {
+			log.Printf("ERROR: Failed to write the body to %s: %v\n", saveTo, err)
+		} else {
+			debug("Saved body to %s\n", saveTo)
+		}
 	}
 	return data
 }
@@ -372,16 +396,19 @@ func main() {
 			downloadPath := "https://raw.githubusercontent.com/hajimeo/samples/refs/heads/master/misc/"
 			pemUrl := downloadPath + "standalone.localdomain.crt"
 			out("Downloading %s ...\n", pemUrl)
-			pemData := readFromRemote(pemUrl)
+			pemData := readFromRemote(pemUrl, "./server.pem")
 			keyUrl := downloadPath + "standalone.localdomain.key"
 			out("Downloading %s ...\n", keyUrl)
-			keyData := readFromRemote(keyUrl)
+			keyData := readFromRemote(keyUrl, "./server.key")
+			KeyPath = "./server.key"
+			PemPath = "./server.pem"
+			out("Using downloaded TLS with PEM: %s and Key: %s", PemPath, KeyPath)
 
 			Cert, err = tls.X509KeyPair(pemData, keyData)
 			if err != nil {
 				log.Fatalf("Failed to generate certificate: %v", err)
 			}
-			rootData := readFromRemote(downloadPath + "rootCA_standalone.crt")
+			rootData := readFromRemote(downloadPath+"rootCA_standalone.crt", "")
 			out("Please make sure to trust the following certificate:\n%s\n", string(rootData))
 		} else {
 			out("Using TLS with PEM: %s and Key: %s", PemPath, KeyPath)
@@ -399,6 +426,6 @@ func main() {
 			InsecureSkipVerify: true, // TODO: not sure if this is a good idea and not working
 		}
 		server.TLSConfig = tlsConfig
-		log.Fatal(server.ListenAndServeTLS("", ""))
+		log.Fatal(server.ListenAndServeTLS(PemPath, KeyPath))
 	}
 }
