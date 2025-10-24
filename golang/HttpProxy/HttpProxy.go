@@ -3,19 +3,25 @@ Originally based on https://medium.com/@mlowicki/http-s-proxy-in-golang-in-less-
 @see: https://eli.thegreenplace.net/2022/go-and-proxy-servers-part-2-https-proxies/
       https://github.com/eliben/code-for-blog/blob/main/2022/go-and-proxies/connect-mitm-proxy.go
 
+# INSTALL:
 	curl -o /usr/local/bin/httpproxy -L https://github.com/hajimeo/samples/raw/master/misc/httpproxy_$(uname)_$(uname -m)
 	chmod a+x /usr/local/bin/httpproxy
-    httpproxy [--delay 3 --debug --debug2]
+
+# Normal HTTP proxy (it works with https):
+    httpproxy [--delay {n} --debug --debug2]
 	# Test
 	curl -v --proxy localhost:8888 -k -L http://search.osakos.com/index.php
 
-	# HTTPS proxy:
-    # The below openssl way will not work as curl doesn't trust the self-signed certificate wich is not signed by a trusted CA
-	#openssl req -x509 -newkey rsa:2048 -keyout server.key -out server.pem -days 365 -nodes -subj "/CN=$(hostname -f)"
-	# Trust rootCA_standalone.crt on OS then start without any --pem/--key options (automatically uses standalone.localdomain.crt and .key)
-	httpproxy --proto https
-	# Test
+# HTTPS proxy (without replacing certificate):
+	# Automatically uses standalone.localdomain.crt/.key.
+	httpproxy --proto https --debug [--pem <path to pem> --key <path to key>]
+	# Test (need to trust rootCA_standalone.crt or with --proxy-insecure)
 	curl -v --proxy https://localhost:8888/ --proxy-insecure -L https://search.osakos.com/index.php
+
+# HTTPS proxy with replacing certificate:
+	httpproxy --proto https --replCert --debug
+	# Test (as replaced, --insecure/-k is needed)
+	curl -v --proxy https://localhost:8888/ --proxy-insecure -k -L https://search.osakos.com/index.php
 
 	TODO: Write proper tests
 */
@@ -45,6 +51,8 @@ var DelaySec int64
 var Proto string
 var KeyPath string
 var PemPath string
+var ReplCert bool
+var Cert tls.Certificate
 var CachePath string
 var Debug bool
 var Debug2 bool
@@ -56,6 +64,12 @@ func out(format string, v ...any) {
 func debug(format string, v ...any) {
 	if Debug {
 		out("DEBUG: "+format, v...)
+	}
+}
+
+func debug2(format string, v ...any) {
+	if Debug2 {
+		out("DEBUG2: "+format, v...)
 	}
 }
 
@@ -100,17 +114,15 @@ func handleTunneling(w http.ResponseWriter, req *http.Request) {
 		http.Error(w, err.Error(), http.StatusServiceUnavailable)
 	}
 
-	if Proto == "https" && Debug {
-		// TODO: this should use the certificate singed by some (root) CA
-		cert, err := tls.LoadX509KeyPair(PemPath, KeyPath)
-		if err != nil {
-			log.Fatalf("Failed to load certificate and key: %v", err)
-		}
+	if Proto == "https" && ReplCert {
+		// This TLS is for replacing the certificateextra debugging such as saving req/resp (`curl` needs --insecure/-k)
+		// NOTE: the Cert should be generated with proper CN / SAN to avoid client errors
+		//cert, err := tls.LoadX509KeyPair("server.pem", "server.key")
 		tlsConfig := &tls.Config{
 			CurvePreferences:   []tls.CurveID{tls.X25519, tls.CurveP256},
 			MinVersion:         tls.VersionTLS10,
-			Certificates:       []tls.Certificate{cert},
-			InsecureSkipVerify: true, // TODO: not sure if this is a good idea and not working
+			Certificates:       []tls.Certificate{Cert},
+			InsecureSkipVerify: true, // TODO: not sure if this is a good idea
 		}
 		tlsConn := tls.Server(clientConn, tlsConfig)
 		defer tlsConn.Close()
@@ -124,9 +136,9 @@ func handleTunneling(w http.ResponseWriter, req *http.Request) {
 			return
 		}
 
-		//debug("r.URL = %s\n", r.URL)	// "/index.php"
+		debug2("r.URL = %s\n", r.URL) // "/index.php"
 		changeRequestToTarget(r, req.Host)
-		//debug("r.URL = %s\n", r.URL)	// "https://search.osakos.com:443/index.php"
+		debug2("r.URL = %s\n", r.URL) // "https://search.osakos.com:443/index.php"
 
 		resp, err := http.DefaultClient.Do(r)
 		if err != nil {
@@ -196,6 +208,7 @@ func transfer(destination io.WriteCloser, source io.ReadCloser, filename string)
 	if Debug2 && filename != "" {
 		fullpath := filepath.Join(CachePath, filename)
 		// With io.TeeReader, instead of os.Stderr, write into a file
+		// TODO: if .req, it becomes binary (or https encrypted)
 		w, _ := os.OpenFile(fullpath, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
 		tee := io.TeeReader(source, w)
 		debug("Saving body to %s\n", fullpath)
@@ -304,10 +317,11 @@ func main() {
 	flag.StringVar(&Proto, "proto", "http", "Proxy protocol (http or https)")
 	var port string
 	flag.StringVar(&port, "port", "8888", "Listen port")
-	flag.StringVar(&CachePath, "cache", "", "Cache / temp directory path")
+	flag.BoolVar(&ReplCert, "replCert", false, "with '-proto https', replacing the certificate on HTTPS tunneling")
+	flag.StringVar(&CachePath, "cache", "", "Cache directory path (default: OS temp dir)")
 	flag.Int64Var(&DelaySec, "delay", -1, "Intentional delay in seconds for testing slowness")
-	flag.BoolVar(&Debug, "debug", false, "Debug / verbose output")
-	flag.BoolVar(&Debug2, "debug2", false, "More verbose output")
+	flag.BoolVar(&Debug, "debug", false, "Debug / verbose output (e.g. req/resp headers)")
+	flag.BoolVar(&Debug2, "debug2", false, "More verbose output (e.g. dump req/resp body)")
 	flag.Parse()
 
 	if Debug2 {
@@ -352,7 +366,6 @@ func main() {
 		log.Fatal(server.ListenAndServe())
 	} else {
 		var err error
-		var cert tls.Certificate
 
 		// If the file PemPath doesn't exist, automatically use https://raw.githubusercontent.com/hajimeo/samples/refs/heads/master/misc/...
 		if len(KeyPath) == 0 {
@@ -364,7 +377,7 @@ func main() {
 			out("Downloading %s ...\n", keyUrl)
 			keyData := readFromRemote(keyUrl)
 
-			cert, err = tls.X509KeyPair(pemData, keyData)
+			Cert, err = tls.X509KeyPair(pemData, keyData)
 			if err != nil {
 				log.Fatalf("Failed to generate certificate: %v", err)
 			}
@@ -374,7 +387,7 @@ func main() {
 			out("Using TLS with PEM: %s and Key: %s", PemPath, KeyPath)
 			//log.Fatal(server.ListenAndServeTLS(PemPath, KeyPath))
 			// The below lines would be probably almost same as the above line, except accepting old TLS version.
-			cert, err = tls.LoadX509KeyPair(PemPath, KeyPath)
+			Cert, err = tls.LoadX509KeyPair(PemPath, KeyPath)
 			if err != nil {
 				log.Fatalf("Failed to load certificate and key: %v", err)
 			}
@@ -382,7 +395,7 @@ func main() {
 
 		tlsConfig := &tls.Config{
 			MinVersion:         tls.VersionTLS10, // VersionTLS13
-			Certificates:       []tls.Certificate{cert},
+			Certificates:       []tls.Certificate{Cert},
 			InsecureSkipVerify: true, // TODO: not sure if this is a good idea and not working
 		}
 		server.TLSConfig = tlsConfig
