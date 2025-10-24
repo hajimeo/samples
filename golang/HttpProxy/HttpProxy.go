@@ -12,8 +12,8 @@ Originally based on https://medium.com/@mlowicki/http-s-proxy-in-golang-in-less-
 	# HTTPS proxy:
     # The below openssl way will not work as curl doesn't trust the self-signed certificate wich is not signed by a trusted CA
 	#openssl req -x509 -newkey rsa:2048 -keyout server.key -out server.pem -days 365 -nodes -subj "/CN=$(hostname -f)"
-	# Instead, trust rootCA_standalone.crt on OS then
-	httpproxy --proto https --pem $HOME/IdeaProjects/samples/misc/standalone.localdomain.crt --key $HOME/IdeaProjects/samples/misc/standalone.localdomain.key
+	# Trust rootCA_standalone.crt on OS then start without any --pem/--key options (automatically uses standalone.localdomain.crt and .key)
+	httpproxy --proto https
 	# Test
 	curl -v --proxy https://localhost:8888/ --proxy-insecure -L https://search.osakos.com/index.php
 
@@ -269,6 +269,20 @@ func saveBodyToFile(body io.ReadCloser, filename string) io.ReadCloser {
 	return save
 }
 
+func readFromRemote(downloadUrl string) []byte {
+	resp, err := http.Get(downloadUrl)
+	if err != nil {
+		log.Fatalf("Failed to download PEM file from %s: %v", downloadUrl, err)
+	}
+	defer resp.Body.Close()
+	debug("Downloaded PEM file from %s\n", downloadUrl)
+	data, err := io.ReadAll(resp.Body)
+	if err != nil {
+		log.Fatalf("Failed to read PEM file from %s: %v", downloadUrl, err)
+	}
+	return data
+}
+
 func drainBody(b io.ReadCloser) (r1, r2 io.ReadCloser, err error) {
 	if b == nil || b == http.NoBody {
 		// No copying needed. Preserve the magic sentinel meaning of NoBody.
@@ -285,13 +299,13 @@ func drainBody(b io.ReadCloser) (r1, r2 io.ReadCloser, err error) {
 }
 
 func main() {
-	flag.StringVar(&PemPath, "pem", "server.pem", "path to pem file")
-	flag.StringVar(&KeyPath, "key", "server.key", "path to key file")
+	flag.StringVar(&KeyPath, "key", "", "path to key file. If empty, use a dummy self-signed certificate")
+	flag.StringVar(&PemPath, "pem", "", "path to pem file for the key.")
 	flag.StringVar(&Proto, "proto", "http", "Proxy protocol (http or https)")
 	var port string
 	flag.StringVar(&port, "port", "8888", "Listen port")
 	flag.StringVar(&CachePath, "cache", "", "Cache / temp directory path")
-	flag.Int64Var(&DelaySec, "delay", -1, "Intentional delay in seconds")
+	flag.Int64Var(&DelaySec, "delay", -1, "Intentional delay in seconds for testing slowness")
 	flag.BoolVar(&Debug, "debug", false, "Debug / verbose output")
 	flag.BoolVar(&Debug2, "debug2", false, "More verbose output")
 	flag.Parse()
@@ -337,13 +351,35 @@ func main() {
 	if Proto == "http" {
 		log.Fatal(server.ListenAndServe())
 	} else {
-		debug("Using TLS with PEM: %s and Key: %s", PemPath, KeyPath)
-		//log.Fatal(server.ListenAndServeTLS(PemPath, KeyPath))
-		// The below lines would be probably almost same as the above line, except accepting old TLS version.
-		cert, err := tls.LoadX509KeyPair(PemPath, KeyPath)
-		if err != nil {
-			log.Fatalf("Failed to load certificate and key: %v", err)
+		var err error
+		var cert tls.Certificate
+
+		// If the file PemPath doesn't exist, automatically use https://raw.githubusercontent.com/hajimeo/samples/refs/heads/master/misc/...
+		if len(KeyPath) == 0 {
+			downloadPath := "https://raw.githubusercontent.com/hajimeo/samples/refs/heads/master/misc/"
+			pemUrl := downloadPath + "standalone.localdomain.crt"
+			out("Downloading %s ...\n", pemUrl)
+			pemData := readFromRemote(pemUrl)
+			keyUrl := downloadPath + "standalone.localdomain.key"
+			out("Downloading %s ...\n", keyUrl)
+			keyData := readFromRemote(keyUrl)
+
+			cert, err = tls.X509KeyPair(pemData, keyData)
+			if err != nil {
+				log.Fatalf("Failed to generate certificate: %v", err)
+			}
+			rootData := readFromRemote(downloadPath + "rootCA_standalone.crt")
+			out("Please make sure to trust the following certificate:\n%s\n", string(rootData))
+		} else {
+			out("Using TLS with PEM: %s and Key: %s", PemPath, KeyPath)
+			//log.Fatal(server.ListenAndServeTLS(PemPath, KeyPath))
+			// The below lines would be probably almost same as the above line, except accepting old TLS version.
+			cert, err = tls.LoadX509KeyPair(PemPath, KeyPath)
+			if err != nil {
+				log.Fatalf("Failed to load certificate and key: %v", err)
+			}
 		}
+
 		tlsConfig := &tls.Config{
 			MinVersion:         tls.VersionTLS10, // VersionTLS13
 			Certificates:       []tls.Certificate{cert},
