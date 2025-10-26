@@ -43,6 +43,7 @@ func handleRequest(w http.ResponseWriter, r *http.Request) {
 	if r.Method == http.MethodConnect {
 		handleConnect(w, r)
 	} else {
+		log.Printf("%s %s (host: %s)", r.Method, r.URL.String(), r.Host)
 		http.DefaultTransport.RoundTrip(r)
 	}
 }
@@ -67,6 +68,7 @@ func handleConnect(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Create a server-side TLS connection using a generated cert for the host
 	tlsCert, err := getCertForHost(host)
 	if err != nil {
 		log.Println("Cert error:", err)
@@ -77,7 +79,6 @@ func handleConnect(w http.ResponseWriter, r *http.Request) {
 	tlsConn := tls.Server(clientConn, &tls.Config{
 		Certificates: []tls.Certificate{*tlsCert},
 	})
-
 	err = tlsConn.Handshake()
 	if err != nil {
 		log.Println("TLS handshake error:", err)
@@ -85,25 +86,50 @@ func handleConnect(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// After TLS handshake, handle decrypted HTTPS traffic
+	// Serve HTTP over the single TLS connection so we can inspect/forward requests.
 	server := &http.Server{
 		Handler: http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			log.Printf("[%s] %s", host, r.URL.String())
-			resp, err := http.DefaultTransport.RoundTrip(r)
+			// Ensure the request is routable by RoundTrip:
+			// - RequestURI must be empty for client requests passed to Transport.
+			// - URL.Scheme must be "https"
+			// - URL.Host must be the target host (without proxy-info)
+			r.RequestURI = ""
+			// Some clients send absolute-form or origin-form; make sure Host is set
+			if r.Host == "" {
+				r.Host = strings.Split(host, ":")[0]
+			}
+			// Ensure URL has scheme and host
+			r.URL.Scheme = "https"
+			r.URL.Host = host
+
+			log.Printf("→ %s %s (host: %s)", r.Method, r.URL.String(), host)
+
+			// Use a fresh transport for the outgoing connection
+			tr := &http.Transport{
+				// You can set InsecureSkipVerify to true to bypass server cert checks while debugging.
+				// Do NOT use that in production unless you understand the consequences.
+				TLSClientConfig: &tls.Config{InsecureSkipVerify: false},
+			}
+
+			resp, err := tr.RoundTrip(r)
 			if err != nil {
+				log.Printf("RoundTrip error: %v", err)
 				http.Error(w, err.Error(), http.StatusServiceUnavailable)
 				return
 			}
 			defer resp.Body.Close()
 
+			// Copy response headers and status
 			for k, v := range resp.Header {
 				w.Header()[k] = v
 			}
 			w.WriteHeader(resp.StatusCode)
-			io.Copy(w, resp.Body)
+			_, _ = io.Copy(w, resp.Body)
 		}),
 	}
-	server.Serve(&singleUseListener{tlsConn})
+
+	// Serve will accept exactly one connection from this listener wrapper
+	_ = server.Serve(&singleUseListener{Conn: tlsConn})
 }
 
 func loadCA(certPath, keyPath string) {
@@ -116,16 +142,38 @@ func loadCA(certPath, keyPath string) {
 		log.Fatal("Failed to read CA key:", err)
 	}
 
+	// Parse CA certificate
 	block, _ := pem.Decode(certPEM)
+	if block == nil {
+		log.Fatal("Failed to decode CA cert PEM")
+	}
 	caCert, err = x509.ParseCertificate(block.Bytes)
 	if err != nil {
 		log.Fatal("Failed to parse CA cert:", err)
 	}
 
+	// Parse CA private key (PKCS#1 or PKCS#8)
 	block, _ = pem.Decode(keyPEM)
-	caKey, err = x509.ParsePKCS1PrivateKey(block.Bytes)
+	if block == nil {
+		log.Fatal("Failed to decode CA key PEM")
+	}
+
+	var parsedKey any
+	parsedKey, err = x509.ParsePKCS1PrivateKey(block.Bytes)
 	if err != nil {
-		log.Fatal("Failed to parse CA key:", err)
+		// Try PKCS#8 if PKCS#1 fails
+		var pk any
+		pk, err = x509.ParsePKCS8PrivateKey(block.Bytes)
+		if err != nil {
+			log.Fatal("Failed to parse CA key:", err)
+		}
+		parsedKey = pk
+	}
+
+	var ok bool
+	caKey, ok = parsedKey.(*rsa.PrivateKey)
+	if !ok {
+		log.Fatal("CA key is not RSA type")
 	}
 }
 
