@@ -1,35 +1,31 @@
 /*
-Originally based on https://medium.com/@mlowicki/http-s-proxy-in-golang-in-less-than-100-lines-of-code-6a51c2f2c38c
-@see: https://eli.thegreenplace.net/2022/go-and-proxy-servers-part-2-https-proxies/
-      https://github.com/eliben/code-for-blog/blob/main/2022/go-and-proxies/connect-mitm-proxy.go
-
 # INSTALL:
 	curl -o /usr/local/bin/httpproxy -L https://github.com/hajimeo/samples/raw/master/misc/httpproxy_$(uname)_$(uname -m)
 	chmod a+x /usr/local/bin/httpproxy
 
-# Optional step:
-	openssl genrsa -out "proxy.key" 4096
-	openssl req -x509 -new -nodes -key "proxy.key" -sha256 -days 3650 -out "proxy.crt" -subj "/CN=My Proxy CA"
+# Optional step (if didn't, generates self-signed CA automatically):
+	openssl genrsa -out "./proxy.key" 4096
+	openssl req -x509 -new -nodes -key "./proxy.key" -sha256 -days 3650 -out "./proxy.crt" -subj "/CN=My Proxy CA"
 
-# Normal HTTP proxy (it works with https):
+# Normal HTTP proxy (it works with https:// as well):
     httpproxy [--delay {n} --debug --debug2]
-	# Test
-	curl -v --proxy localhost:8080 -k -L http://search.osakos.com/index.php
+	# Test (no need to use -k)
+	curl -v --proxy localhost:8080 http://search.osakos.com/index.php
+	curl -v --proxy localhost:8080 https://search.osakos.com/index.php
 
-# TODO: HTTPS proxy (without replacing certificate):
-	# If no --key/--crt, automatically uses standalone.localdomain.crt/.key.
-	httpproxy --proto https --debug [--crt <path to pem certificate> --key <path to key>]
-	# Test (need to trust rootCA_standalone.crt or with --proxy-insecure)
-	curl -v --proxy https://localhost:8080/ --proxy-insecure -L https://search.osakos.com/index.php
+# HTTP proxy but replacing certificate:
+	# NOTE: If no --key/--crt, automatically uses self-signed CA
+	httpproxy --replCert --debug --crt <path to pem certificate> --key <path to key>
+	# Test (need -k as cert is replaced)
+	curl -v --proxy localhost:8080 -k https://search.osakos.com/index.php
 
 # TODO: HTTPS proxy with replacing certificate:
-	httpproxy --proto https --replCert --debug
-	# Test (as replaced, --insecure/-k is needed)
-	curl -v --proxy https://localhost:8080/ --proxy-insecure -k -L https://search.osakos.com/index.php
+	# NOTE: If no --key/--crt, automatically uses self-signed CA
+	httpproxy --replCert --proto https --debug [--crt <path to pem certificate> --key <path to key>]
+	# Test (need --proxy-insecure and -k)
+	curl -v --proxy https://localhost:8080/ --proxy-insecure -k https://search.osakos.com/index.php
 
 	TODO: Write proper tests
-	TODO: '--proto https' is not working.
-		  TLS handshake error from 127.0.0.1:64364: tls: first record does not look like a TLS handshake
 */
 
 package main
@@ -61,8 +57,9 @@ import (
 
 var DelaySec int64
 var Proto string
+var ReplCert bool
 var KeyPath string
-var PemPath string
+var CertPath string
 var CachePath string
 var Debug bool
 var Debug2 bool
@@ -80,18 +77,11 @@ func debug(format string, v ...any) {
 		out("DEBUG: "+format, v...)
 	}
 }
-
-/* Not in use currently
-func dumpKeyValues(m map[string][]string) []string {
-	var list []string
-	for name, values := range m {
-		for _, value := range values {
-			list = append(list, fmt.Sprintf("%s: \"%s\"", name, value))
-		}
+func debug2(format string, v ...any) {
+	if Debug2 {
+		out("DEBUG2: "+format, v...)
 	}
-	return list
 }
-*/
 
 func handleDefault(w http.ResponseWriter, req *http.Request) {
 	hash := ""
@@ -165,30 +155,6 @@ func saveBodyToFile(body io.ReadCloser, filename string) io.ReadCloser {
 	return save
 }
 
-func readFromRemote(downloadUrl string, saveTo string) []byte {
-	resp, err := http.Get(downloadUrl)
-	if err != nil {
-		log.Fatalf("Failed to download PEM file from %s: %v", downloadUrl, err)
-	}
-	defer resp.Body.Close()
-	debug("Downloaded PEM file from %s", downloadUrl)
-	data, err := io.ReadAll(resp.Body)
-	if err != nil {
-		log.Fatalf("Failed to read PEM file from %s: %v", downloadUrl, err)
-	}
-
-	if len(saveTo) > 0 {
-		// write to specified file
-		err = os.WriteFile(saveTo, data, 0644)
-		if err != nil {
-			log.Printf("ERROR: Failed to write the body to %s: %v", saveTo, err)
-		} else {
-			debug("Saved body to %s", saveTo)
-		}
-	}
-	return data
-}
-
 func drainBody(b io.ReadCloser) (r1, r2 io.ReadCloser, err error) {
 	if b == nil || b == http.NoBody {
 		// No copying needed. Preserve the magic sentinel meaning of NoBody.
@@ -258,6 +224,7 @@ func handleConnect(w http.ResponseWriter, req *http.Request) {
 	}
 
 	host := req.Host
+	//w.WriteHeader(http.StatusOK)	// TODO: not sure why this doesn't work
 	_, err = clientConn.Write([]byte("HTTP/1.1 200 Connection established\r\n\r\n"))
 	if err != nil {
 		out("ERROR: clientConn.Write %s failed: %v", host, err)
@@ -265,14 +232,25 @@ func handleConnect(w http.ResponseWriter, req *http.Request) {
 		return
 	}
 
-	// Create a server-side TLS connection using a generated cert for the host
+	if !ReplCert {
+		destConn, err := net.DialTimeout("tcp", req.Host, 20*time.Second)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusServiceUnavailable)
+			return
+		}
+
+		go transfer(destConn, clientConn, hash+".req")
+		go transfer(clientConn, destConn, hash+".resp")
+		return
+	}
+
+	// TODO: Create a server-side TLS connection using a generated cert for the host
 	tlsCert, err := getCertForHost(host)
 	if err != nil {
 		out("ERROR: getCertForHost %s error: %v", host, err)
 		clientConn.Close()
 		return
 	}
-
 	tlsConn := tls.Server(clientConn, &tls.Config{
 		Certificates: []tls.Certificate{*tlsCert},
 	})
@@ -335,6 +313,22 @@ func handleConnect(w http.ResponseWriter, req *http.Request) {
 	_ = server.Serve(&singleUseListener{Conn: tlsConn})
 }
 
+func transfer(destination io.WriteCloser, source io.ReadCloser, filename string) {
+	defer destination.Close()
+	defer source.Close()
+	if Debug2 && filename != "" {
+		fullpath := filepath.Join(CachePath, filename)
+		// With io.TeeReader, instead of os.Stderr, write into a file
+		// TODO: if .req, it becomes binary (https encrypted)
+		w, _ := os.OpenFile(fullpath, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+		tee := io.TeeReader(source, w)
+		debug("Saving body to %s\n", fullpath)
+		io.Copy(destination, tee)
+	} else {
+		io.Copy(destination, source)
+	}
+}
+
 var (
 	caCert    *x509.Certificate
 	caKey     *rsa.PrivateKey
@@ -351,7 +345,7 @@ func getCertForHost(host string) (*tls.Certificate, error) {
 		return cert, nil
 	}
 
-	// Generate leaf certificate
+	// TODO: Generate leaf certificate
 	serial, _ := rand.Int(rand.Reader, big.NewInt(1<<62))
 	template := x509.Certificate{
 		SerialNumber: serial,
@@ -364,15 +358,18 @@ func getCertForHost(host string) (*tls.Certificate, error) {
 	}
 
 	priv, _ := rsa.GenerateKey(rand.Reader, 2048)
-	debug("x509.CreateCertificate caCert: %v", caCert.Subject)
 	derBytes, err := x509.CreateCertificate(rand.Reader, &template, caCert, &priv.PublicKey, caKey)
 	if err != nil {
 		out("ERROR: x509.CreateCertificate %s error: %v", host, err)
 		return nil, err
 	}
+	debug("Executed x509.CreateCertificate caCert: %v", caCert.Subject)
 
 	certPEM := pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: derBytes})
 	keyPEM := pem.EncodeToMemory(&pem.Block{Type: "RSA PRIVATE KEY", Bytes: x509.MarshalPKCS1PrivateKey(priv)})
+
+	debug2("Generated certificate for %s:\n%s", host, certPEM)
+	debug2("Generated key for %s:\n%s", host, keyPEM)
 
 	cert, err := tls.X509KeyPair(certPEM, keyPEM)
 	if err != nil {
@@ -454,35 +451,48 @@ func makeTransportWithLogging(host string, v uint16) *http.Transport {
 	}
 }
 
-func genCaCertFromFile(caPath string) {
-	// Generate CA cert from the given caPath
-	certData, err := os.ReadFile(caPath)
+func loadCA(certPath, keyPath string) {
+	certPEM, err := os.ReadFile(certPath)
 	if err != nil {
-		log.Fatalf("Failed to read PEM file %s: %v", caPath, err)
+		log.Fatal("Failed to read CA cert:", err)
 	}
-	block, _ := pem.Decode(certData)
+	keyPEM, err := os.ReadFile(keyPath)
+	if err != nil {
+		log.Fatal("Failed to read CA key:", err)
+	}
+
+	// Parse CA certificate
+	block, _ := pem.Decode(certPEM)
 	if block == nil {
-		log.Fatalf("Failed to decode PEM file %s: %v", caPath, err)
+		log.Fatal("Failed to decode CA cert PEM")
 	}
 	caCert, err = x509.ParseCertificate(block.Bytes)
 	if err != nil {
-		log.Fatalf("Failed to parse PEM file %s: %v", caPath, err)
+		log.Fatal("Failed to parse CA cert:", err)
 	}
-}
 
-func genCaKeyFromFile(keyPath string) {
-	// Generate CA key from the given keyPath
-	keyData, err := os.ReadFile(keyPath)
-	if err != nil {
-		log.Fatalf("Failed to read Key file %s: %v", keyPath, err)
-	}
-	block, _ := pem.Decode(keyData)
+	// Parse CA private key (PKCS#1 or PKCS#8)
+	block, _ = pem.Decode(keyPEM)
 	if block == nil {
-		log.Fatalf("Failed to decode Key file %s: %v", keyPath, err)
+		log.Fatal("Failed to decode CA key PEM")
 	}
-	caKey, err = x509.ParsePKCS1PrivateKey(block.Bytes)
+
+	var parsedKey any
+	parsedKey, err = x509.ParsePKCS1PrivateKey(block.Bytes)
 	if err != nil {
-		log.Fatalf("Failed to parse Key file %s: %v", keyPath, err)
+		// Try PKCS#8 if PKCS#1 fails
+		var pk any
+		pk, err = x509.ParsePKCS8PrivateKey(block.Bytes)
+		if err != nil {
+			log.Fatal("Failed to parse CA key:", err)
+		}
+		parsedKey = pk
+	}
+
+	var ok bool
+	caKey, ok = parsedKey.(*rsa.PrivateKey)
+	if !ok {
+		log.Fatal("CA key is not RSA type")
 	}
 }
 
@@ -499,6 +509,50 @@ func tlsVersionString(v uint16) string {
 	default:
 		return fmt.Sprintf("0x%x", v)
 	}
+}
+
+func generateSelfSignedCA(keyPath, crtPath string) error {
+	// Generate RSA private key (4096 bits)
+	priv, err := rsa.GenerateKey(rand.Reader, 4096)
+	if err != nil {
+		return err
+	}
+
+	// Create certificate template
+	serialNumber, _ := rand.Int(rand.Reader, big.NewInt(1<<62))
+	template := x509.Certificate{
+		SerialNumber:          serialNumber,
+		Subject:               pkix.Name{CommonName: "My Proxy CA"},
+		NotBefore:             time.Now(),
+		NotAfter:              time.Now().Add(3650 * 24 * time.Hour), // 10 years
+		KeyUsage:              x509.KeyUsageCertSign | x509.KeyUsageCRLSign,
+		IsCA:                  true,
+		BasicConstraintsValid: true,
+	}
+
+	// Self-sign the certificate
+	derBytes, err := x509.CreateCertificate(rand.Reader, &template, &template, &priv.PublicKey, priv)
+	if err != nil {
+		return err
+	}
+
+	// Write private key to file
+	keyOut, err := os.Create(keyPath)
+	if err != nil {
+		return err
+	}
+	defer keyOut.Close()
+	pem.Encode(keyOut, &pem.Block{Type: "RSA PRIVATE KEY", Bytes: x509.MarshalPKCS1PrivateKey(priv)})
+
+	// Write certificate to file
+	crtOut, err := os.Create(crtPath)
+	if err != nil {
+		return err
+	}
+	defer crtOut.Close()
+	pem.Encode(crtOut, &pem.Block{Type: "CERTIFICATE", Bytes: derBytes})
+
+	return nil
 }
 
 /*
@@ -527,8 +581,9 @@ func main() {
 	var port string
 	flag.StringVar(&port, "port", "8080", "Listen port")
 	flag.StringVar(&KeyPath, "key", "", "path to key file. If empty, use a dummy self-signed certificate")
-	flag.StringVar(&PemPath, "crt", "", "path to pem certificate file for the key.")
-	flag.StringVar(&Proto, "proto", "http", "Proxy protocol (http or https)")
+	flag.StringVar(&CertPath, "crt", "", "path to pem certificate file for the key.")
+	flag.StringVar(&Proto, "proto", "http", "TODO: Proxy protocol (http or https)")
+	flag.BoolVar(&ReplCert, "replCert", false, "Replacing the certificate for https:// requests")
 	flag.StringVar(&CachePath, "cache", "", "Cache directory path (default: OS temp dir)")
 	flag.Int64Var(&DelaySec, "delay", -1, "Intentional delay in seconds for testing slowness")
 	flag.BoolVar(&Debug, "debug", false, "Debug / verbose output (e.g. req/resp headers)")
@@ -551,37 +606,54 @@ func main() {
 		Addr:    ":" + port,
 		Handler: http.HandlerFunc(handleRequest),
 	}
-	downloadPath := "https://raw.githubusercontent.com/hajimeo/samples/refs/heads/master/misc/"
-	if len(KeyPath) == 0 {
-		// If the file PemPath doesn't exist, automatically use https://raw.githubusercontent.com/hajimeo/samples/refs/heads/master/misc/...
-		KeyPath = "./proxy.key"
-		PemPath = "./proxy.crt"
 
-		pemUrl := downloadPath + "standalone.localdomain.crt"
-		debug("Downloading %s ...", pemUrl)
-		readFromRemote(pemUrl, PemPath)
-
-		keyUrl := downloadPath + "standalone.localdomain.key"
-		debug("Downloading %s ...", keyUrl)
-		readFromRemote(keyUrl, KeyPath)
-
-		rootData := readFromRemote(downloadPath+"rootCA_standalone.crt", "./proxyCA.crt")
-		out("Please make sure to trust the following certificate:\n%s", string(rootData))
+	if ReplCert && len(KeyPath) == 0 {
+		if _, err := os.Stat("./proxy.key"); err == nil {
+			out("Using existing key file: proxy.key (and cert file)")
+			KeyPath = "./proxy.key"
+			CertPath = "./proxy.crt"
+		}
 	}
 
-	genCaKeyFromFile(KeyPath)
-	genCaCertFromFile(PemPath)
+	if ReplCert && len(KeyPath) == 0 {
+		KeyPath = "./proxy.key"
+		CertPath = "./proxy.crt"
+		err := generateSelfSignedCA(KeyPath, CertPath)
+		if err != nil {
+			log.Fatal("Failed to generate self-signed CA:", err)
+		}
+		out("Generated a self-signed certificate: %s, %s", KeyPath, CertPath)
+	}
+
+	if ReplCert {
+		// Load CA cert and key for replacing certificate for HTTPS requests
+		loadCA(CertPath, KeyPath)
+		// Read CertPath data to show to user
+		certBytes, err := os.ReadFile(CertPath)
+		if err != nil {
+			log.Fatal("Failed to read generated CA cert:", CertPath, err)
+		}
+		out("NOTE: Please make sure to trust the following certificate:\n%s", string(certBytes))
+	}
 
 	if Proto == "http" {
 		log.Fatal(server.ListenAndServe())
-	} else {
-		// To override TLS config to accept old versions and insecure skip verify
+	}
+
+	out("WARN: Starting HTTPS with %s, %s (may not work)", CertPath, KeyPath)
+	// To override TLS config to accept old versions and insecure skip verify
+	/*
+		tlsCert, err := tls.LoadX509KeyPair(CertPath, KeyPath)
+		if err != nil {
+			log.Fatal("Failed to load server certificate and key:", err)
+		}
 		tlsConfig := &tls.Config{
 			MinVersion:         tls.VersionTLS10, // VersionTLS13
 			InsecureSkipVerify: true,             // TODO: not sure if this is a good idea
-			//Certificates:       []tls.Certificate{Cert},
+			Certificates:       []tls.Certificate{tlsCert},
 		}
 		server.TLSConfig = tlsConfig
-		log.Fatal(server.ListenAndServeTLS(PemPath, KeyPath))
-	}
+		log.Fatal(server.ListenAndServeTLS("", ""))
+	*/
+	log.Fatal(server.ListenAndServeTLS(CertPath, KeyPath))
 }
