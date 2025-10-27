@@ -7,21 +7,25 @@ Originally based on https://medium.com/@mlowicki/http-s-proxy-in-golang-in-less-
 	curl -o /usr/local/bin/httpproxy -L https://github.com/hajimeo/samples/raw/master/misc/httpproxy_$(uname)_$(uname -m)
 	chmod a+x /usr/local/bin/httpproxy
 
+# Optional step:
+	openssl genrsa -out "server.key" 4096
+	openssl req -x509 -new -nodes -key "server.key" -sha256 -days 3650 -out "server.pem" -subj "/CN=My Proxy CA"
+
 # Normal HTTP proxy (it works with https):
     httpproxy [--delay {n} --debug --debug2]
 	# Test
-	curl -v --proxy localhost:8888 -k -L http://search.osakos.com/index.php
+	curl -v --proxy localhost:8080 -k -L http://search.osakos.com/index.php
 
 # TODO: HTTPS proxy (without replacing certificate):
 	# If no --key/--pem, automatically uses standalone.localdomain.crt/.key.
 	httpproxy --proto https --debug [--pem <path to pem> --key <path to key>]
 	# Test (need to trust rootCA_standalone.crt or with --proxy-insecure)
-	curl -v --proxy https://localhost:8888/ --proxy-insecure -L https://search.osakos.com/index.php
+	curl -v --proxy https://localhost:8080/ --proxy-insecure -L https://search.osakos.com/index.php
 
 # TODO: HTTPS proxy with replacing certificate:
 	httpproxy --proto https --replCert --debug
 	# Test (as replaced, --insecure/-k is needed)
-	curl -v --proxy https://localhost:8888/ --proxy-insecure -k -L https://search.osakos.com/index.php
+	curl -v --proxy https://localhost:8080/ --proxy-insecure -k -L https://search.osakos.com/index.php
 
 	TODO: Write proper tests
 	TODO: '--proto https' is not working.
@@ -60,6 +64,10 @@ var Debug bool
 var Debug2 bool
 
 func out(format string, v ...any) {
+	// Make sure outputs newline
+	if !strings.HasSuffix(format, "\n") {
+		format += "\n"
+	}
 	log.Printf(format, v...)
 }
 
@@ -92,11 +100,11 @@ func handleTunneling(w http.ResponseWriter, req *http.Request) {
 	if Debug {
 		reqDump, err := httputil.DumpRequest(req, false)
 		if err != nil {
-			debug("DumpRequest failed for %s: %v\n", req.RequestURI, err)
+			debug("DumpRequest failed for %s: %v", req.RequestURI, err)
 		} else {
 			// Use md5sum of reqDump as the hash because 'body' is false
 			hash = fmt.Sprintf("%x", md5.Sum(reqDump))
-			debug("Request: %s\n%s\n", hash, reqDump)
+			debug("Request: %s\n%s", hash, reqDump)
 			if Debug2 {
 				req.Body = saveBodyToFile(req.Body, hash+".req")
 			}
@@ -137,24 +145,24 @@ func handleTunneling(w http.ResponseWriter, req *http.Request) {
 			return
 		} else if err != nil {
 			//log.Fatal(err)	// no need to stop, i think
-			out("ERROR: ReadRequest to %s failed. %v\n", req.RequestURI, err)
+			out("ERROR: ReadRequest to %s failed. %v", req.RequestURI, err)
 			return
 		}
 
-		debug2("r.URL = %s\n", r.URL) // "/index.php"
+		debug2("r.URL = %s", r.URL) // "/index.php"
 		changeRequestToTarget(r, req.Host)
-		debug2("r.URL = %s\n", r.URL) // "https://search.osakos.com:443/index.php"
+		debug2("r.URL = %s", r.URL) // "https://search.osakos.com:443/index.php"
 
 		resp, err := http.DefaultClient.Do(r)
 		if err != nil {
-			out("ERROR: Sending request to %s failed. %v\n", req.RequestURI, err)
+			out("ERROR: Sending request to %s failed. %v", req.RequestURI, err)
 			return
 		}
 		respDump, err := httputil.DumpResponse(resp, false)
 		if err != nil {
-			debug("DumpResponse failed for %s failed. %v\n", req.RequestURI, err)
+			debug("DumpResponse failed for %s failed. %v", req.RequestURI, err)
 		} else {
-			debug("Response: %s\n", respDump)
+			debug("Response: %s", respDump)
 			if Debug2 {
 				resp.Body = saveBodyToFile(resp.Body, hash+".resp")
 			}
@@ -163,7 +171,7 @@ func handleTunneling(w http.ResponseWriter, req *http.Request) {
 
 		// Send the target server's response back to the client.
 		if err := resp.Write(tlsConn); err != nil {
-			out("ERROR: Writing response back failed for %s failed. %v\n", req.RequestURI, err)
+			out("ERROR: Writing response back failed for %s failed. %v", req.RequestURI, err)
 			return
 		}
 	} else {
@@ -219,7 +227,7 @@ func transfer(destination io.WriteCloser, source io.ReadCloser, filename string)
 		// TODO: if .req, it becomes binary (or https encrypted)
 		w, _ := os.OpenFile(fullpath, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
 		tee := io.TeeReader(source, w)
-		debug("Saving body to %s\n", fullpath)
+		debug("Saving body to %s", fullpath)
 		io.Copy(destination, tee)
 	} else {
 		io.Copy(destination, source)
@@ -231,10 +239,10 @@ func handleHTTP(w http.ResponseWriter, req *http.Request) {
 	if Debug {
 		reqDump, err := httputil.DumpRequest(req, false)
 		if err != nil {
-			debug("DumpRequest failed for %s: %v\n", req.RequestURI, err)
+			debug("DumpRequest failed for %s: %v", req.RequestURI, err)
 		} else {
 			hash = fmt.Sprintf("%x", md5.Sum(reqDump))
-			debug("Request: %s\n%s\n", hash, reqDump)
+			debug("Request: %s\n%s", hash, reqDump)
 			if Debug2 {
 				req.Body = saveBodyToFile(req.Body, hash+".req")
 			}
@@ -251,9 +259,9 @@ func handleHTTP(w http.ResponseWriter, req *http.Request) {
 	if Debug {
 		respDump, err := httputil.DumpResponse(resp, false)
 		if err != nil {
-			debug("DumpResponse failed for %s failed. %v\n", req.RequestURI, err)
+			debug("DumpResponse failed for %s failed. %v", req.RequestURI, err)
 		} else {
-			debug("Response %s\n", respDump)
+			debug("Response %s", respDump)
 			if Debug2 {
 				resp.Body = saveBodyToFile(resp.Body, hash+".resp")
 			}
@@ -277,21 +285,21 @@ func saveBodyToFile(body io.ReadCloser, filename string) io.ReadCloser {
 	}
 	save, newBody, err := drainBody(body)
 	if body == nil || body == http.NoBody {
-		//debug("Not saving body as empty\n")
+		//debug("Not saving body as empty")
 		return save
 	}
 	data, err := io.ReadAll(newBody)
 	if err != nil {
-		log.Printf("ERROR: Failed to read the body: %v\n", err)
+		log.Printf("ERROR: Failed to read the body: %v", err)
 		return save
 	}
 	// TODO: this may overwrite an existing file? as md5 includes header, maybe OK?
 	fullpath := filepath.Join(CachePath, filename)
 	err = os.WriteFile(fullpath, data, 0644)
 	if err != nil {
-		log.Printf("ERROR: Failed to write the body to %s: %v\n", fullpath, err)
+		log.Printf("ERROR: Failed to write the body to %s: %v", fullpath, err)
 	} else {
-		debug("Saved body to %s\n", fullpath)
+		debug("Saved body to %s", fullpath)
 	}
 	return save
 }
@@ -302,7 +310,7 @@ func readFromRemote(downloadUrl string, saveTo string) []byte {
 		log.Fatalf("Failed to download PEM file from %s: %v", downloadUrl, err)
 	}
 	defer resp.Body.Close()
-	debug("Downloaded PEM file from %s\n", downloadUrl)
+	debug("Downloaded PEM file from %s", downloadUrl)
 	data, err := io.ReadAll(resp.Body)
 	if err != nil {
 		log.Fatalf("Failed to read PEM file from %s: %v", downloadUrl, err)
@@ -312,9 +320,9 @@ func readFromRemote(downloadUrl string, saveTo string) []byte {
 		// write to specified file
 		err = os.WriteFile(saveTo, data, 0644)
 		if err != nil {
-			log.Printf("ERROR: Failed to write the body to %s: %v\n", saveTo, err)
+			log.Printf("ERROR: Failed to write the body to %s: %v", saveTo, err)
 		} else {
-			debug("Saved body to %s\n", saveTo)
+			debug("Saved body to %s", saveTo)
 		}
 	}
 	return data
@@ -340,7 +348,7 @@ func main() {
 	flag.StringVar(&PemPath, "pem", "", "path to pem file for the key.")
 	flag.StringVar(&Proto, "proto", "http", "Proxy protocol (http or https)")
 	var port string
-	flag.StringVar(&port, "port", "8888", "Listen port")
+	flag.StringVar(&port, "port", "8080", "Listen port")
 	flag.BoolVar(&ReplCert, "replCert", false, "with '-proto https', replacing the certificate on HTTPS tunneling")
 	flag.StringVar(&CachePath, "cache", "", "Cache directory path (default: OS temp dir)")
 	flag.Int64Var(&DelaySec, "delay", -1, "Intentional delay in seconds for testing slowness")
@@ -359,21 +367,21 @@ func main() {
 		CachePath = os.TempDir()
 	}
 
-	log.Printf("Listening on Proto: %s, port: %s\n", Proto, port)
+	out("Listening on Proto: %s, port: %s", Proto, port)
 	server := &http.Server{
 		Addr: ":" + port,
 		Handler: http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			start := time.Now()
 			// To simulate slowness
 			if DelaySec > 0 {
-				debug("Delay %s for %d seconds\n", r.RequestURI, DelaySec)
+				debug("Delay %s for %d seconds", r.RequestURI, DelaySec)
 				// sleep delay seconds
 				time.Sleep(time.Duration(DelaySec) * time.Second)
 			}
 
 			// TODO: the URL.String should return the full URL, but doesn't work if HTTPS. Tried reqToUrlStr()
 			reqURLStr := r.URL.String()
-			debug("Connecting to %s\n", reqURLStr)
+			debug("Connecting to %s", reqURLStr)
 			if r.Method == http.MethodConnect {
 				handleTunneling(w, r)
 			} else {
@@ -381,7 +389,7 @@ func main() {
 			}
 			elapsed := time.Since(start)
 			// Show the elapsed time in seconds with 3 decimal places
-			out("Completed %s (%.3f s)\n", reqURLStr, elapsed.Seconds())
+			out("Completed %s (%.3f s)", reqURLStr, elapsed.Seconds())
 		}),
 		// Disable HTTP/2 for HJ
 		//TLSNextProto: make(map[string]func(*http.Server, *tls.Conn, http.Handler)),
@@ -395,10 +403,10 @@ func main() {
 		if len(KeyPath) == 0 {
 			downloadPath := "https://raw.githubusercontent.com/hajimeo/samples/refs/heads/master/misc/"
 			pemUrl := downloadPath + "standalone.localdomain.crt"
-			out("Downloading %s ...\n", pemUrl)
+			out("Downloading %s ...", pemUrl)
 			pemData := readFromRemote(pemUrl, "./server.pem")
 			keyUrl := downloadPath + "standalone.localdomain.key"
-			out("Downloading %s ...\n", keyUrl)
+			out("Downloading %s ...", keyUrl)
 			keyData := readFromRemote(keyUrl, "./server.key")
 			KeyPath = "./server.key"
 			PemPath = "./server.pem"
@@ -409,7 +417,7 @@ func main() {
 				log.Fatalf("Failed to generate certificate: %v", err)
 			}
 			rootData := readFromRemote(downloadPath+"rootCA_standalone.crt", "")
-			out("Please make sure to trust the following certificate:\n%s\n", string(rootData))
+			out("Please make sure to trust the following certificate:\n%s", string(rootData))
 		} else {
 			out("Using TLS with PEM: %s and Key: %s", PemPath, KeyPath)
 			//log.Fatal(server.ListenAndServeTLS(PemPath, KeyPath))
