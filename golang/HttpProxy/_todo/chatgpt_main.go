@@ -1,12 +1,14 @@
 package main
 
 import (
+	"context"
 	"crypto/rand"
 	"crypto/rsa"
 	"crypto/tls"
 	"crypto/x509"
 	"crypto/x509/pkix"
 	"encoding/pem"
+	"fmt"
 	"io"
 	"log"
 	"math/big"
@@ -17,6 +19,8 @@ import (
 	"sync"
 	"time"
 )
+
+var Debug bool
 
 var (
 	caCert    *x509.Certificate
@@ -29,7 +33,11 @@ var (
 
 func main() {
 	loadCA("server.pem", "server.key")
+	Debug = getEnvBool("DEBUG")
+	debug("Debug mode enabled")
 
+	debug("Starting proxy server on port 8080 (HTTP) ...")
+	// server.ListenAndServeTLS("proxy.crt", "proxy.key")
 	server := &http.Server{
 		Addr:    ":8080",
 		Handler: http.HandlerFunc(handleRequest),
@@ -39,11 +47,40 @@ func main() {
 	log.Fatal(server.ListenAndServe())
 }
 
+func out(format string, v ...any) {
+	// Make sure outputs newline
+	if !strings.HasSuffix(format, "\n") {
+		format += "\n"
+	}
+	log.Printf(format, v...)
+}
+
+func debug(format string, v ...any) {
+	if Debug {
+		out("DEBUG: "+format, v...)
+	}
+}
+
+func getEnvBool(key string) bool {
+	value, exists := os.LookupEnv(key)
+	if exists {
+		switch strings.ToLower(value) {
+		case
+			"true",
+			"y",
+			"yes":
+			return true
+		}
+	}
+	return false
+}
+
 func handleRequest(w http.ResponseWriter, r *http.Request) {
 	if r.Method == http.MethodConnect {
+		debug("%s: %s (host: %s)", r.Method, r.URL.String(), r.Host)
 		handleConnect(w, r)
 	} else {
-		log.Printf("%s %s (host: %s)", r.Method, r.URL.String(), r.Host)
+		debug("%s: %s (host: %s)", r.Method, r.URL.String(), r.Host)
 		http.DefaultTransport.RoundTrip(r)
 	}
 }
@@ -64,6 +101,7 @@ func handleConnect(w http.ResponseWriter, r *http.Request) {
 	host := r.Host
 	_, err = clientConn.Write([]byte("HTTP/1.1 200 Connection established\r\n\r\n"))
 	if err != nil {
+		log.Println("clientConn.Write failed", host, err)
 		clientConn.Close()
 		return
 	}
@@ -99,21 +137,17 @@ func handleConnect(w http.ResponseWriter, r *http.Request) {
 				r.Host = strings.Split(host, ":")[0]
 			}
 			// Ensure URL has scheme and host
-			r.URL.Scheme = "https"
+			if r.URL.Scheme == "" {
+				r.URL.Scheme = "https"
+			}
 			r.URL.Host = host
 
-			log.Printf("→ %s %s (host: %s)", r.Method, r.URL.String(), host)
+			out("→ %s %s (host: %s)", r.Method, r.URL.String(), host)
 
-			// Use a fresh transport for the outgoing connection
-			tr := &http.Transport{
-				// You can set InsecureSkipVerify to true to bypass server cert checks while debugging.
-				// Do NOT use that in production unless you understand the consequences.
-				TLSClientConfig: &tls.Config{InsecureSkipVerify: false},
-			}
-
-			resp, err := tr.RoundTrip(r)
+			// Use fresh transport for the outgoing connection
+			resp, err := roundTripWithTLSFallback(r, host)
 			if err != nil {
-				log.Printf("RoundTrip error: %v", err)
+				log.Println("RoundTrip error", host, err)
 				http.Error(w, err.Error(), http.StatusServiceUnavailable)
 				return
 			}
@@ -130,6 +164,91 @@ func handleConnect(w http.ResponseWriter, r *http.Request) {
 
 	// Serve will accept exactly one connection from this listener wrapper
 	_ = server.Serve(&singleUseListener{Conn: tlsConn})
+}
+
+func roundTripWithTLSFallback(req *http.Request, host string) (*http.Response, error) {
+	versions := []uint16{tls.VersionTLS13, tls.VersionTLS12, tls.VersionTLS11, tls.VersionTLS10}
+
+	var lastErr error
+	for _, v := range versions {
+		var tr *http.Transport
+		if Debug {
+			debug("Trying TLS %s for host %s", tlsVersionString(v), host)
+			tr = makeTransportWithLogging(host, v)
+		} else {
+			tr = &http.Transport{
+				ForceAttemptHTTP2: true,
+				TLSClientConfig: &tls.Config{
+					MinVersion:         v,
+					MaxVersion:         v,
+					ServerName:         strings.Split(host, ":")[0],
+					InsecureSkipVerify: true, // TODO: not sure if this is a good idea
+				},
+			}
+		}
+
+		resp, err := tr.RoundTrip(req)
+		if err != nil {
+			if strings.Contains(err.Error(), "handshake failure") ||
+				strings.Contains(err.Error(), "protocol version") {
+				out("TLS %s failed, retrying with lower version...", tlsVersionString(v))
+				lastErr = err
+				continue // try next lower
+			}
+			return nil, err // other errors, don't retry
+		}
+		return resp, nil
+	}
+	return nil, fmt.Errorf("all TLS versions failed: %v", lastErr)
+}
+
+func makeTransportWithLogging(host string, v uint16) *http.Transport {
+	return &http.Transport{
+		ForceAttemptHTTP2: true,
+		DialTLSContext: func(ctx context.Context, network, addr string) (net.Conn, error) {
+			dialer := &net.Dialer{Timeout: 10 * time.Second}
+			rawConn, err := dialer.DialContext(ctx, network, addr)
+			if err != nil {
+				return nil, err
+			}
+
+			conf := &tls.Config{
+				ServerName:         strings.Split(host, ":")[0],
+				MinVersion:         v,
+				MaxVersion:         v,
+				InsecureSkipVerify: true, // TODO: not sure if this is a good idea
+			}
+
+			tlsConn := tls.Client(rawConn, conf)
+			if err := tlsConn.Handshake(); err != nil {
+				rawConn.Close()
+				return nil, err
+			}
+
+			state := tlsConn.ConnectionState()
+			out("⇄ Upstream TLS: %s → %s | TLS %s | Cipher: %s",
+				tlsConn.LocalAddr(), addr,
+				tlsVersionString(state.Version),
+				tls.CipherSuiteName(state.CipherSuite))
+
+			return tlsConn, nil
+		},
+	}
+}
+
+func tlsVersionString(v uint16) string {
+	switch v {
+	case tls.VersionTLS13:
+		return "1.3"
+	case tls.VersionTLS12:
+		return "1.2"
+	case tls.VersionTLS11:
+		return "1.1"
+	case tls.VersionTLS10:
+		return "1.0"
+	default:
+		return fmt.Sprintf("0x%x", v)
+	}
 }
 
 func loadCA(certPath, keyPath string) {
@@ -215,6 +334,12 @@ func getCertForHost(host string) (*tls.Certificate, error) {
 	return &cert, nil
 }
 
+/*
+	  This implements net.Listener by:
+		Returning your single tls.Conn once from Accept()
+		Returning io.EOF afterward (so http.Server exits cleanly when done)
+		Providing dummy Close() and Addr() implementations
+*/
 type singleUseListener struct {
 	net.Conn
 }
