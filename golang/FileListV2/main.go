@@ -241,10 +241,10 @@ func setGlobals() {
 		if len(common.BlobIDFIle) == 0 && len(common.Query) == 0 && (len(common.DbConnStr) == 0 || len(common.BaseDir) == 0) {
 			panic("-src without -rF requires -b and -db")
 		}
-		//if common.Truth == "DB" {
-		// If Dead Blobs finder mode, always check .bytes file
-		//	common.BytesChk = true
-		//}
+		if common.Truth == "DB" {
+			// If Dead Blobs finder mode, always check .bytes file
+			common.BytesChk = true
+		}
 	}
 
 	// If BlobIDFIle is given, DB connection or BaseDir is required
@@ -411,7 +411,8 @@ func genOutput(path string, bi bs_clients.BlobInfo, db *sql.DB) string {
 			// No need to exit
 		}
 
-		if common.BytesChk && !bi.Error {
+		// Even there was error on the properties, check the .bytes file if BytesChk is true
+		if common.BytesChk {
 			// If the path ends with .properties, replace with .bytes
 			bytesPath = lib.GetPathWithoutExt(path) + common.BYTES_EXT
 			bytesInfo, bytesChkErr = Client.GetFileInfo(bytesPath)
