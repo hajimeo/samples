@@ -42,7 +42,7 @@ func setGlobals() {
 
 	// TODO: 'b' should accept the comma separated values for supporting the group blob store
 	flag.StringVar(&common.BaseDir, "b", "", "Blob store directory or URI (eg. 's3://s3-test-bucket/s3-test-prefix/'), which location contains 'content' directory (default: '.')")
-	flag.StringVar(&common.BaseDir2, "bTo", "", "Blob store directory or URI (eg. 's3://s3-test-bucket/s3-test-prefix/') for copying files from -b")
+	flag.StringVar(&common.BaseDir2, "bTo", "", "*Experimental* Blob store directory or URI (eg. 's3://s3-test-bucket/s3-test-prefix/') for copying files from -b")
 	flag.BoolVar(&common.NoDateBsLayout, "NoDateBS", false, "Disable the date based blob store layout (YYYY/MM/DD/hh/mm/uuid) to force checking the old vol-XX/chap-XX/uuid layout")
 	flag.StringVar(&common.Filter4Path, "p", "", "Regular Expression for directory *path* (eg '/(vol-\\d\\d|20\\d\\d)/'), or S3 prefix.")
 	flag.StringVar(&common.Filter4FileName, "f", "", "Regular Expression for the file *name* (eg: '\\.properties' to include only this extension)")
@@ -80,6 +80,7 @@ func setGlobals() {
 	flag.StringVar(&common.ModDateFromStr, "mDF", "", "File modification date YYYY-MM-DD (from)")
 	flag.StringVar(&common.ModDateToStr, "mDT", "", "File modification date YYYY-MM-DD (to)")
 	flag.BoolVar(&common.BytesChk, "BytesChk", false, "Check if .bytes file exists. Also the .bytes mod time is used for -mDF/-mDT")
+	flag.BoolVar(&common.NoSizeChk, "NoSizeChk", false, "Do not check the file size (for non S3 such as MinIO)")
 
 	// Blob store specifics (AWS S3 / Azure related)
 	flag.IntVar(&common.MaxKeys, "m", 1000, "AWS S3: Integer value for Max Keys (<= 1000)")
@@ -404,13 +405,13 @@ func genOutput(path string, bi bs_clients.BlobInfo, db *sql.DB) string {
 	var bytesInfo bs_clients.BlobInfo
 	var bytesPath string
 	if strings.HasSuffix(path, common.PROP_EXT) {
-		// the properties file can not be empty (0 byte)
-		if bi.Size == 0 {
+		// the properties file can not be empty (0 byte), but if already Error, no need another WARN
+		if !common.NoSizeChk && !bi.Error && bi.Size == 0 {
 			h.Log("WARN", fmt.Sprintf("path:%s has 0 byte size", path))
 			// No need to exit
 		}
 
-		if common.BytesChk {
+		if common.BytesChk && !bi.Error {
 			// If the path ends with .properties, replace with .bytes
 			bytesPath = lib.GetPathWithoutExt(path) + common.BYTES_EXT
 			bytesInfo, bytesChkErr = Client.GetFileInfo(bytesPath)
@@ -468,7 +469,7 @@ func genOutput(path string, bi bs_clients.BlobInfo, db *sql.DB) string {
 						sizeInProps, err := strconv.ParseInt(matches[1], 10, 64)
 						if err != nil {
 							h.Log("WARN", fmt.Sprintf("path:%s has non numeric size %v", path, matches))
-						} else if sizeInProps != bytesInfo.Size {
+						} else if !common.NoSizeChk && sizeInProps != bytesInfo.Size {
 							h.Log("WARN", fmt.Sprintf("path:%s has size mismatch between size=%s and .bytes (%d)", path, matches[1], bytesInfo.Size))
 						}
 					}

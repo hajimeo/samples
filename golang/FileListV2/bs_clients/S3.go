@@ -328,16 +328,16 @@ func (s *S3Client) ListObjects(dir string, db *sql.DB, perLineFunc func(PrintLin
 			}
 
 			i++
-			resp, err := p.NextPage(context.Background())
+			page, err := p.NextPage(context.Background())
 			if err != nil {
 				println("Got error retrieving list of objects:")
 				panic(err.Error())
 			}
 			if i > 1 {
-				h.Log("INFO", fmt.Sprintf("%s: Page %d, %d objects", dir, i, len(resp.Contents)))
+				h.Log("INFO", fmt.Sprintf("%s: Page %d, %d objects", dir, i, len(page.Contents)))
 			}
 
-			for _, item := range resp.Contents {
+			for _, item := range page.Contents {
 				if common.TopN > 0 && common.TopN <= common.PrintedNum {
 					h.Log("DEBUG", fmt.Sprintf("Printed %d >= %d for %s", common.PrintedNum, common.TopN, *item.Key))
 					break
@@ -383,7 +383,7 @@ func (s *S3Client) GetFileInfo(key string) (BlobInfo, error) {
 	}
 	headObj, err := getS3Api().HeadObject(context.TODO(), input)
 	if err != nil {
-		h.Log("DEBUG", fmt.Sprintf("Retrieving %s failed with %s. Ignoring...", key, err.Error()))
+		h.Log("DEBUG", fmt.Sprintf("Retrieving %s/%s failed with %s. Ignoring...", common.Container, key, err.Error()))
 		return BlobInfo{Error: true}, err
 	}
 

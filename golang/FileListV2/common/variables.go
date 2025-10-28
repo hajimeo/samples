@@ -56,6 +56,7 @@ var BlobIDFIle = ""
 var BlobIDFIleType = ""
 var RemoveDeleted bool
 var BytesChk bool
+var NoSizeChk bool
 var WriteIntoStr = ""
 var Query = ""
 var RxSelect = regexp.MustCompile(`(?i)^ *SELECT ?.* +blob_id *,? *[^;]+;?$`) // Currently max only one ';'

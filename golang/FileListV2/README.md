@@ -36,8 +36,12 @@ filelist2 -b "./sonatype-work/nexus3/blobs/default/content"
 filelist2 -b "file://sonatype-work/nexus3/blobs/default/content"
 
 # If S3, use `s3://` and populate necessary environment variables
-export AWS_ACCESS_KEY_ID="*******" AWS_SECRET_ACCESS_KEY="*********************" AWS_REGION="ap-southeast-2"
+export AWS_ACCESS_KEY_ID="*******" AWS_SECRET_ACCESS_KEY="********" AWS_REGION="ap-southeast-2"
 filelist2 -b "s3://${AWS_BLOB_STORE_NAME}/filelist-test/content" -n 5
+
+# If MinIO
+export AWS_ACCESS_KEY_ID="*******" AWS_SECRET_ACCESS_KEY="********" AWS_REGION="" AWS_ENDPOINT_URL="http://127.0.0.1:19000"
+filelist2 -b "s3://test2/aaaaaa/content" -n 5
 
 # If Azure, use `az://` and also populate necessary environment variables
 export AZURE_STORAGE_ACCOUNT_NAME="********" AZURE_STORAGE_ACCOUNT_KEY="*********************"
@@ -160,7 +164,7 @@ NOTE: if `query` result is large, may want to split the query into smaller parts
 offset N)
 
 ```
-filelist2 -b "$BLOB_STORE" -db ./sonatype-work/nexus3/etc/fabric/nexus-store.properties -query "select blob_ref as blob_id from raw_asset_blob" -src DB -s /tmp/filelist_potentially_dead-blobs.tsv
+filelist2 -b "$BLOB_STORE" -db ./sonatype-work/nexus3/etc/fabric/nexus-store.properties -query "select blob_ref as blob_id from raw_asset_blob ab join raw_asset a using (asset_blob_id) where repository_id IN (select cr.repository_id from raw_content_repository cr join repository r on r.id = cr.config_repository_id where r.name in ('raw-hosted'))" -src DB -s /tmp/filelist_potentially_dead-blobs.tsv
 ```
 
 Can use a text file which contains Blob IDs, so that no DB access is needed:
