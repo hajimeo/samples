@@ -241,10 +241,10 @@ func setGlobals() {
 		if len(common.BlobIDFIle) == 0 && len(common.Query) == 0 && (len(common.DbConnStr) == 0 || len(common.BaseDir) == 0) {
 			panic("-src without -rF requires -b and -db")
 		}
-		if common.Truth == "DB" {
-			// If Dead Blobs finder mode, always check .bytes file
-			common.BytesChk = true
-		}
+		//if common.Truth == "DB" {
+		// If Dead Blobs finder mode, always check .bytes file
+		//	common.BytesChk = true
+		//}
 	}
 
 	// If BlobIDFIle is given, DB connection or BaseDir is required
