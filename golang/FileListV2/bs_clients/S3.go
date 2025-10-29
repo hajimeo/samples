@@ -46,7 +46,14 @@ func getS3Api() *s3.Client {
 	if err != nil {
 		panic("configuration error, " + err.Error())
 	}
-	S3Api = s3.NewFromConfig(cfg)
+	if common.S3PathStyle {
+		h.Log("DEBUG", "Using S3 Path-Style access")
+		S3Api = s3.NewFromConfig(cfg, func(o *s3.Options) {
+			o.UsePathStyle = true
+		})
+	} else {
+		S3Api = s3.NewFromConfig(cfg)
+	}
 	return S3Api
 }
 

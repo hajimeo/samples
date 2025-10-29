@@ -27,11 +27,11 @@ const SEP = "	" // Tab separator (should this be changeable?)
 var NoHeader bool
 var WithProps bool
 var NoDateBsLayout = false // To support new created date based blobstore layout
-
-// var WithBlobSize bool
 var TopN int64
-var WithOwner bool // AWS S3: Display owner
-var WithTags bool  // AWS S3: Display tags
+
+var WithOwner bool   // AWS S3: Display owner
+var WithTags bool    // AWS S3: Display tags
+var S3PathStyle bool // AWS S3: Use Path-Style access
 
 // Paths/Directories related. End with "/", so that no need to append  string(filepath.Separator)
 var BaseDir = ""

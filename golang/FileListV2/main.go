@@ -86,6 +86,7 @@ func setGlobals() {
 	flag.IntVar(&common.MaxKeys, "m", 1000, "AWS S3: Integer value for Max Keys (<= 1000)")
 	flag.BoolVar(&common.WithOwner, "O", false, "AWS S3: If true, get the owner display name")
 	flag.BoolVar(&common.WithTags, "T", false, "AWS S3: If true, get tags of each object")
+	flag.BoolVar(&common.S3PathStyle, "PathStyle", false, "AWS S3: If true, use older path style (eg. http://s3.amazonaws.com/BUCKET/KEY)")
 
 	// Other options for troubleshooting
 	flag.Int64Var(&common.SlowMS, "slowMS", 1000, "Some methods show WARN log if that method takes more than this msec")
@@ -242,7 +243,7 @@ func setGlobals() {
 			panic("-src without -rF requires -b and -db")
 		}
 		if common.Truth == "DB" {
-			// If Dead Blobs finder mode, always check .bytes file
+			// If Dead Blobs finder mode, always check .bytes file (removing this will output unnecessary lines)
 			common.BytesChk = true
 		}
 	}
