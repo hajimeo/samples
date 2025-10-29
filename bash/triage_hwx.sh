@@ -70,7 +70,7 @@ function f_check_system() {
     cat /proc/meminfo &> ${_work_dir%/}/meminfo.out
     numactl -H &> ${_work_dir%/}/numa.out
     dmesg | grep 'link up' &> ${_work_dir%/}/dmesg_link_up.out
-    getenforce &> ${_work_dir%/}/getenforce.out
+    getenforce &> ${_work_dir%/}/getenforce.out # For SELinux. sestatus might be better
     iptables -nvL --line-number &> ${_work_dir%/}/iptables.out
     iptables -t nat -nvL --line-number 2>&1 >> ${_work_dir%/}/iptables.out
     timeout 3 time head -n 1 /dev/./urandom &> ${_work_dir%/}/random.out
