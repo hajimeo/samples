@@ -233,21 +233,23 @@ function f_api_orgId() {
     local _create="${2}"
     local _parent_org="${3:-"Root Organization"}"
     [ -z "${_org_name}" ] && return 11
-    local _org_int_id="$(_curl "${_IQ_URL%/}/api/v2/organizations" --get --data-urlencode "organizationName=${_org_name}" | _sortjson | sed -nE 's/^            "id": "(.+)",$/\1/p')"
+    local _org_int_id="$(_curl "${_IQ_URL%/}/api/v2/organizations" --get --data-urlencode "organizationName=${_org_name}" | JSON_SEARCH_KEY="organizations.id" _sortjson)"
     if [ -z "${_org_int_id}" ] && [[ "${_create}" =~ ^[yY] ]]; then
-        local _parent_org_id="$(_curl "${_IQ_URL%/}/api/v2/organizations" --get --data-urlencode "organizationName=${_parent_org}" | _sortjson | sed -nE 's/^            "id": "(.+)",$/\1/p')"
+        local _parent_org_id="$(_curl "${_IQ_URL%/}/api/v2/organizations" --get --data-urlencode "organizationName=${_parent_org}" | JSON_SEARCH_KEY="organizations.id" _sortjson)"
         if [ -z "${_parent_org_id}" ]; then
             if [ "${_parent_org}" == "Root Organization" ]; then
                 _parent_org_id="ROOT_ORGANIZATION_ID"
             else
-                _log "INFO" "Failed to find parent organization: ${_parent_org}"
+                _log "WARN" "Failed to find parent organization: ${_parent_org}"
                 return 1
             fi
         fi
-        _org_int_id="$(_curl "${_IQ_URL%/}/api/v2/organizations" -H "Content-Type: application/json" -d "{\"name\":\"${_org_name}\",\"parentOrganizationId\": \"${_parent_org_id}\"}" | JSON_SEARCH_KEY="id" _sortjson)"
+        _org_int_id="$(_curl "${_IQ_URL%/}/api/v2/organizations" -H "Content-Type: application/json" -d "{\"name\":\"${_org_name}\",\"parentOrganizationId\":\"${_parent_org_id}\"}" | JSON_SEARCH_KEY="id" _sortjson)" || return $?
+        #_log "DEBUG" "Created organization: ${_org_int_id}"
     fi
-    if [ -z "${_org_int_id}" ]; then
-        _log "ERROR" "Failed to find or create organization: ${_org_name}"
+    # If _org_int_id contains any space, it's not valid
+    if [ -z "${_org_int_id}" ] || [[ "${_org_int_id}" =~ [[:space:]] ]]; then
+        _log "ERROR" "Failed to find or create organization: ${_org_name} (${_org_int_id})"
         return 1
     fi
     echo "${_org_int_id}"
@@ -369,7 +371,7 @@ function f_api_comp_details() {
 }
 
 #f_api_comp_versions '{"format":"maven","coordinates":{"artifactId":"tomcat-util","groupId":"tomcat"}}'
-#f_api_comp_versions '{"packageUrl":"pkg:npm/react-native-share@9.2.4"}'
+#f_api_comp_versions '{"format":"golang","coordinates":{"name":"github.com/alecthomas/participle"}}'
 function f_api_comp_versions() {
     local __doc__="Call Component Versions API https://help.sonatype.com/iqserver/automating/rest-apis/component-versions-rest-api---v2"
     local _component_identifier_without_ver="$1"
@@ -458,17 +460,17 @@ function f_create_testuser() {
     local __doc__="Add/Create a test IQ user with test-role"
     local _username="${1:-"testuser"}"
     local _password="${2:-"${_username}123"}"
-    local _apporg_name="${3-"sandbox-application"}" # NOTE: Sometimes no 'Root Organization'
-    local _app_or_org="${4:-"application"}"
+    local _apporg_name="${3-"Root Organization"}" # NOTE: Sometimes no 'Root Organization'
+    local _app_or_org="${4:-"organization"}"
     if _apiS "/rest/user" '{"firstName":"'${_username}'","lastName":"test","email":"'${_username}'@example.com","username":"'${_username}'","password":"'${_password}'"}'; then
         _log "INFO" "Created user '${_username}'"
     fi
     # IQ does not have role create/delete API
-    _apiS "/rest/security/roles" '{"name":"test-role","description":"test_role_desc","builtIn":false,"permissionCategories":[{"displayName":"Administrator","permissions":[{"id":"VIEW_ROLES","displayName":"View","description":"All Roles","allowed":false}]},{"displayName":"IQ","permissions":[{"id":"MANAGE_PROPRIETARY","displayName":"Edit","description":"Proprietary Components","allowed":false},{"id":"CLAIM_COMPONENT","displayName":"Claim","description":"Components","allowed":false},{"id":"WRITE","displayName":"Edit","description":"IQ Elements","allowed":false},{"id":"READ","displayName":"View","description":"IQ Elements","allowed":true},{"id":"EDIT_ACCESS_CONTROL","displayName":"Edit","description":"Access Control","allowed":false},{"id":"EVALUATE_APPLICATION","displayName":"Evaluate","description":"Applications","allowed":true},{"id":"EVALUATE_COMPONENT","displayName":"Evaluate","description":"Individual Components","allowed":true},{"id":"ADD_APPLICATION","displayName":"Add","description":"Applications","allowed":false},{"id":"MANAGE_AUTOMATIC_APPLICATION_CREATION","displayName":"Manage","description":"Automatic Application Creation","allowed":false},{"id":"MANAGE_AUTOMATIC_SCM_CONFIGURATION","displayName":"Manage","description":"Automatic Source Control Configuration","allowed":false}]},{"displayName":"Remediation","permissions":[{"id":"WAIVE_POLICY_VIOLATIONS","displayName":"Waive","description":"Policy Violations","allowed":true},{"id":"CHANGE_LICENSES","displayName":"Change","description":"Licenses","allowed":false},{"id":"CHANGE_SECURITY_VULNERABILITIES","displayName":"Change","description":"Security Vulnerabilities","allowed":false},{"id":"LEGAL_REVIEWER","displayName":"Review","description":"Legal obligations for components licenses","allowed":false}]}]}' || return $?
+    _apiS "/rest/security/roles" '{"name":"test-role","description":"test_role_desc","builtIn":false,"permissionCategories":[{"displayName":"Administrator","permissions":[{"id":"VIEW_ROLES","displayName":"View","description":"All Roles","allowed":false}]},{"displayName":"IQ","permissions":[{"id":"MANAGE_PROPRIETARY","displayName":"Edit","description":"Proprietary Components","allowed":false},{"id":"CLAIM_COMPONENT","displayName":"Claim","description":"Components","allowed":false},{"id":"WRITE","displayName":"Edit","description":"IQ Elements","allowed":true},{"id":"READ","displayName":"View","description":"IQ Elements","allowed":true},{"id":"EDIT_ACCESS_CONTROL","displayName":"Edit","description":"Access Control","allowed":false},{"id":"EVALUATE_APPLICATION","displayName":"Evaluate","description":"Applications","allowed":true},{"id":"EVALUATE_COMPONENT","displayName":"Evaluate","description":"Individual Components","allowed":true},{"id":"ADD_APPLICATION","displayName":"Add","description":"Applications","allowed":true},{"id":"MANAGE_AUTOMATIC_APPLICATION_CREATION","displayName":"Manage","description":"Automatic Application Creation","allowed":false},{"id":"MANAGE_AUTOMATIC_SCM_CONFIGURATION","displayName":"Manage","description":"Automatic Source Control Configuration","allowed":false}]},{"displayName":"Remediation","permissions":[{"id":"WAIVE_POLICY_VIOLATIONS","displayName":"Waive","description":"Policy Violations","allowed":true},{"id":"CHANGE_LICENSES","displayName":"Change","description":"Licenses","allowed":false},{"id":"CHANGE_SECURITY_VULNERABILITIES","displayName":"Change","description":"Security Vulnerabilities","allowed":false},{"id":"LEGAL_REVIEWER","displayName":"Review","description":"Legal obligations for components licenses","allowed":false}]}]}' || return $?
     _log "INFO" "Created role 'test-role'"
     if [ -n "${_apporg_name}" ]; then
         f_api_role_mapping "test-role" "${_username}" "${_apporg_name}" "user" "${_app_or_org}" || return $?
-        _log "INFO" "Mapped 'test-role' for '${_username}' (user) with '${_apporg_name}'"
+        _log "INFO" "Mapped 'test-role' for '${_username}' (user) with '${_apporg_name}' (${_app_or_org})"
         _log "    " "${_IQ_URL%/}/assets/index.html#/roles"
         if [ "${_app_or_org}" == "application" ]; then
             _log "INFO" "To test some scan with ${_username}"
@@ -606,6 +608,26 @@ function f_deprecated_setup_ldap_freeipa() {
     [ -z "${_id}" ] && return 111
     _apiS "/rest/config/ldap/${_id}/connection" '{"id":null,"serverId":"'${_id}'","protocol":"LDAP","hostname":"'${_host}'","port":'${_port}',"searchBase":"cn=accounts,dc=standalone,dc=localdomain","authenticationMethod":"SIMPLE","saslRealm":null,"systemUsername":"uid=admin,cn=users,cn=accounts,dc=standalone,dc=localdomain","systemPassword":"'${_LDAP_PWD}'","connectionTimeout":30,"retryDelay":30}' "PUT" | python -m json.tool || return $?
     _apiS "/rest/config/ldap/${_id}/userMapping" '{"id":null,"serverId":"'${_id}'","userBaseDN":"cn=users","userSubtree":true,"userObjectClass":"person","userFilter":"","userIDAttribute":"uid","userRealNameAttribute":"cn","userEmailAttribute":"mail","userPasswordAttribute":"","groupMappingType":"DYNAMIC","groupBaseDN":"","groupSubtree":false,"groupObjectClass":null,"groupIDAttribute":null,"groupMemberAttribute":null,"groupMemberFormat":null,"userMemberOfGroupAttribute":"memberOf","dynamicGroupSearchEnabled":true}' "PUT" | python -m json.tool
+}
+
+function f_setup_forward_proxy() {
+    local __doc__="Setup Forward Proxy for IQ"
+    local _host="${1:-"localhost"}"
+    local _port="${2:-"8080"}"
+    local _nonProxyHosts_json="${3:-"null"}"  # JSON array of non-proxy hosts, e.g. ["localhost"]
+    local _username="${3}"
+    local _password="${4}"
+    if [ -n "${_username}" ]; then
+        _username="\"${_username}\""
+    else
+        _username="null"
+    fi
+    if [ -n "${_password}" ]; then
+        _password="\"${_password}\""
+    else
+        _password="null"
+    fi
+    _curl "${_IQ_URL%/}/api/v2/config/httpProxyServer" --data-raw '{"hostname":"'${_host}'","port":'${_port}',"username":'${_username}',"password":'${_password}',"passwordIsIncluded":true,"excludeHosts":'${_nonProxyHosts_json}'}' -X PUT
 }
 
 # after f_start_dummy_smtp
@@ -1006,6 +1028,27 @@ cloud.google.com/go/pubsub v1.2.0
 EOF
 }
 
+function f_golang_versions() {
+    local __doc__="Get available versions of the modules in the go.list by checking proxy.golang.org"
+    local _go_list_file="${1:-"./go.list"}"
+    [ ! -s "${_go_list_file}" ] && _log "ERROR" "'${_go_list_file}' not found." && return 1
+    # The go command seems to use the below URL to get the list of versions
+    # https://proxy.golang.org/github.com/cenkalti/backoff/@v/list
+    while read -r line; do
+        local _module="$(echo "${line}" | awk '{print $1}')"
+        local _ver="$(echo "${line}" | awk '{print $2}')"
+        if [ -n "${_module}" ] && [ -n "${_ver}" ]; then
+            local _url="https://proxy.golang.org/${_module}/@v/list"
+            local _versions="$(curl -sSf "${_url}")"
+            echo "# ${_url}"
+            if ! echo "${_versions}" | grep -q -w "${_ver}"; then
+                echo "# ${_module} ${_ver} : NOT FOUND"
+            fi
+            echo "${_versions}"
+        fi
+    done <"${_go_list_file}"
+}
+
 function f_prep_docker_image_for_scan() {
     local __doc__="TODO: Incomplete. Generate an image for docker scanning"
     local _base_img="${1:-"alpine:latest"}"    # dh1.standalone.localdomain:15000/alpine:3.7
@@ -1126,6 +1169,7 @@ function f_dummy_scans() {
 #export _IQ_URL="https://nxiqha-k8s.standalone.localdomain/"
 #_CREATE_UNDER_ORG="test-org" f_dummy_orgs_apps_with_scans
 #_NO_SCAN="Y" f_dummy_orgs_apps_with_scans "1000"    # To just create 1000 applications
+#_NO_SCAN="Y" _IQ_CRED="testuser:testuser123" f_dummy_orgs_apps_with_scans "1000"
 # TODO: this may not be working properly.
 function f_dummy_orgs_apps_with_scans() {
     local __doc__="Generate dummy organisations, applications with dummy scan"
@@ -1136,7 +1180,7 @@ function f_dummy_orgs_apps_with_scans() {
     local _scan_target="${5-"${_SCAN_TARGET}"}"   # If not given, use maven-policy-demo-1.3.0.jar
     local _iq_stage="${6:-${_IQ_STAGE:-"develop"}}" #develop|build|stage-release|release|operate
     local _no_scan="${7-"${_NO_SCAN}"}"
-    local _how_many_org="${8:-"${_HOW_MANY_ORG:-5}"}"   # Used for parallel *scan* and also for number of orgs
+    local _how_many_org="${8:-"${_HOW_MANY_ORG:-5}"}"   # Used for parallel scan and also for number of orgs
 
     local _seq_start="${_SEQ_START:-1}"
     local _seq_end="$((_seq_start + _how_many - 1))"
@@ -1155,31 +1199,44 @@ function f_dummy_orgs_apps_with_scans() {
     # Automatic applications was required but not any more
     #_apiS "/rest/config/automaticApplications" '{"enabled":true,"parentOrganizationId":"'${_under_org_int_id}'"}' "PUT" || return $?
 
-    local _completed=false
+    local _last_one=false
     local _counter=0
-    for i in $(eval "seq ${_seq_start} ${_seq_end}"); do
+    for _not_in_use in $(eval "seq ${_seq_start} ${_seq_end}"); do
         for j in $(eval "seq 1 ${_how_many_org}"); do
             _counter=$((_counter + 1))
-            f_api_orgId "${_org_name_prefix}${j}" "Y" "${_create_under_org}" >/dev/null || return $?
             local _this_app_name="${_app_name_prefix}${_counter}"
-            f_api_create_app "${_this_app_name}" "${_org_name_prefix}${j}" || return $?
-
-            if [[ ! "${_no_scan}" =~ [yY] ]]; then
-                _log "INFO" "Scanning for ${_this_app_name} (${_counter}/${_how_many})..."
-                _SIMPLE_SCAN="Y" f_cli "${_scan_target}" "${_this_app_name}" "${_iq_stage}" &>${_TMP%/}/${FUNCNAME[0]}_last.out &
-            fi
 
             if [ ${_counter} -ge ${_how_many} ]; then
-                _completed=true
+                _last_one=true
+                _dummy_orgs_apps_with_scans_inner "${_org_name_prefix}${j}" "${_this_app_name}" "${_create_under_org}" "${_no_scan}" "${_scan_target}" "${_iq_stage}" &>${_TMP%/}/${FUNCNAME[0]}_last.out &
                 break   # reached to _how_many, so break the inner loop
-            fi
+            else
+                _dummy_orgs_apps_with_scans_inner "${_org_name_prefix}${j}" "${_this_app_name}" "${_create_under_org}" "${_no_scan}" "${_scan_target}" "${_iq_stage}" &>/dev/null &
+            fi &>/dev/null
         done
         wait
-        if ${_completed}; then
+        if ${_last_one}; then
             _log "INFO" "Last Scan output: ${_TMP%/}/${FUNCNAME[0]}_last.out"
             break
+        else
+            _log "INFO" "Scanned up to ${_counter}/${_how_many} ..."
         fi
     done
+}
+
+function _dummy_orgs_apps_with_scans_inner() {
+    local _org_name="${1}"
+    local _app_name="${2}"
+    local _create_under_org="${3}"
+    local _no_scan="${4}"
+    local _scan_target="${5}"
+    local _iq_stage="${6}"
+    f_api_orgId "${_org_name}" "Y" "${_create_under_org}" >/dev/null || return $?
+    f_api_create_app "${_app_name}" "${_org_name}" || return $?
+
+    if [[ ! "${_no_scan}" =~ [yY] ]]; then
+        _SIMPLE_SCAN="Y" f_cli "${_scan_target}" "${_app_name}" "${_iq_stage}"
+    fi
 }
 
 
