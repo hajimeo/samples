@@ -50,9 +50,9 @@ function f_javaenvs() {
     fi
 
     local _jcmd="$(_find_jcmd "${_lib_dir}")"
-    [ -z "${JAVA_HOME}" ] && [ -n "${_jcmd}" ] && export JAVA_HOME="$(dirname $(dirname ${_jcmd}))"
+    #[ -z "${JAVA_HOME}" ] && [ -n "${_jcmd}" ] && export JAVA_HOME="$(dirname $(dirname ${_jcmd}))"
     if [ -z "${JAVA_HOME}" ]; then
-        echo "ERROR: Couldn't not set JAVA_HOME (by using jcmd location). Please set JAVA_HOME for javac and jar commands."
+        echo "ERROR: No JAVA_HOME. Please set JAVA_HOME for javac and jar commands."
         return 1
     fi
 
