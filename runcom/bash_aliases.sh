@@ -237,6 +237,7 @@ if [ -d $HOME/IdeaProjects/work/bash ]; then
     alias instSona="source $HOME/IdeaProjects/work/bash/install_sonatype.sh"
 fi
 #alias xmldiff="python $HOME/IdeaProjects/samples/python/xml_parser.py" # this is for Hadoop xml files
+alias caddy_reverse='caddy reverse-proxy --debug --change-host-header --header-up "REMOTE_USER: admin" --to '
 
 ## VM related
 # virt-manager remembers the connections, so normally would not need to start in this way.
@@ -257,9 +258,9 @@ alias jenkins='${JAVA_HOME_17%/}/bin/java -Djava.util.logging.config.file=$HOME/
 alias mockserver='java -jar $HOME/Apps/mockserver-netty.jar'                                      #curl -o $HOME/Apps/mockserver-netty.jar -L https://search.maven.org/remotecontent?filepath=org/mock-server/mockserver-netty/5.11.1/mockserver-netty-5.11.1-jar-with-dependencies.jar
 alias jkCli='java -jar $HOME/Apps/jenkins-cli.jar -s http://localhost:8080/ -auth admin:admin123' #curl -o $HOME/Apps/jenkins-cli.jar -L http://localhost:8080/jnlpJars/jenkins-cli.jar
 [ -f $HOME/IdeaProjects/samples/misc/orient-console.jar ] && alias orient-console="${JAVA_HOME_8:-"/Library/Java/JavaVirtualMachines/zulu-8.jdk/Contents/Home"}/bin/java -jar $HOME/IdeaProjects/samples/misc/orient-console.jar"
-[ -f $HOME/IdeaProjects/samples/misc/h2-console.jar ] && alias h2-console="$JAVA_HOME_17/bin/java -jar $HOME/IdeaProjects/samples/misc/h2-console.jar"
-[ -f $HOME/IdeaProjects/samples/misc/h2-console_v200.jar ] && alias h2-console_v200="$JAVA_HOME_17/bin/java -jar $HOME/IdeaProjects/samples/misc/h2-console_v200.jar"
-[ -f $HOME/IdeaProjects/samples/misc/h2-console_v224.jar ] && alias h2-console_v224="$JAVA_HOME_17/bin/java -jar $HOME/IdeaProjects/samples/misc/h2-console_v224.jar"
+[ -f $HOME/IdeaProjects/samples/misc/h2-console.jar ] && alias h2-console="\$JAVA_HOME_17/bin/java -jar $HOME/IdeaProjects/samples/misc/h2-console.jar"
+[ -f $HOME/IdeaProjects/samples/misc/h2-console_v200.jar ] && alias h2-console_v200="\$JAVA_HOME_17/bin/java -jar $HOME/IdeaProjects/samples/misc/h2-console_v200.jar"
+[ -f $HOME/IdeaProjects/samples/misc/h2-console_v224.jar ] && alias h2-console_v224="\$JAVA_HOME_17/bin/java -jar $HOME/IdeaProjects/samples/misc/h2-console_v224.jar"
 # requires Java 11 or higher
 [ -f $HOME/IdeaProjects/samples/misc/h2-console_v232.jar ] && alias h2-console_v232="/opt/homebrew/opt/openjdk\@17/libexec/openjdk.jdk/Contents/Home/bin/java -jar $HOME/IdeaProjects/samples/misc/h2-console_v232.jar"
 [ -f $HOME/IdeaProjects/samples/misc/pg-console.jar ] && alias pg-console="java -jar $HOME/IdeaProjects/samples/misc/pg-console.jar"
@@ -277,8 +278,9 @@ alias chrome-work='open -na "Google Chrome" --args --user-data-dir=$HOME/.chrome
 alias chrome-dh1='open -na "Google Chrome" --args --user-data-dir=$HOME/.chromep/dh1 --proxy-server=http://dh1:28080'
 alias k8s-dh1='open -na "Google Chrome" --args --user-data-dir=$HOME/.chromep/k8s-dh1 --proxy-server=socks5://dh1:38081'
 alias hblog='open -na "Google Chrome" --args --user-data-dir=$HOME/.chromep/hajigle https://www.blogger.com/blogger.g?blogID=9018688091574554712&pli=1#allposts'
-alias geminiWeb='open -na "Google Chrome" --args --app="https://gemini.google.com/u/1/app"' # --user-data-dir=$HOME/.chromep/hosako
-alias kapa='open -na "Google Chrome" --args --app="https://chat.kapa.ai/dadecd3d-2984-46d3-9c6b-09df9a67668c"'
+#alias geminiWeb='open -na "Google Chrome" --args --app="https://gemini.google.com/u/1/app"'
+alias geminiWeb='open -na "Google Chrome" --args --user-data-dir=$HOME/.chromep/work --app="https://gemini.google.com/"'
+alias kapaWeb='open -na "Google Chrome" --args --user-data-dir=$HOME/.chromep/work --app="https://chat.kapa.ai/dadecd3d-2984-46d3-9c6b-09df9a67668c"'
 # pretending windows chrome on Linux
 alias winchrome='/opt/google/chrome/chrome --user-data-dir=$HOME/.chromep --proxy-server=socks5://localhost:38080  --user-agent="Mozilla/5.0 (Windows NT 10.0; WOW64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/88.0.4324.96 Safari/537.36"'
 
@@ -1169,13 +1171,14 @@ function pubS() {
     #cp -v -f $HOME/IdeaProjects/work/nexus-groovy/src2/TrustStoreConverter.groovy $HOME/IdeaProjects/nexus-toolbox/scripts/
     [ $HOME/IdeaProjects/samples/java/asset-dupe-checker/src/main/java/AssetDupeCheckV2.java -nt /tmp/pubS.last ] && cp -v -f $HOME/IdeaProjects/samples/java/asset-dupe-checker/src/main/java/AssetDupeCheckV2.java $HOME/IdeaProjects/nexus-toolbox/asset-dupe-checker/src/main/java/ && cp -v -f $HOME/IdeaProjects/samples/misc/asset-dupe-checker-v2.jar $HOME/IdeaProjects/nexus-toolbox/asset-dupe-checker/
 
+    if [ -d "$HOME/IdeaProjects/nexus-toolbox/blob-lister/FileListV2" ]; then
+        rsync -av $HOME/IdeaProjects/samples/golang/FileListV2/ $HOME/IdeaProjects/nexus-toolbox/blob-lister/FileListV2/
+    fi
+
     if [ -d "$HOME/IdeaProjects/nexus-monitoring/resources" ]; then
-        if [ $HOME/IdeaProjects/samples/misc/h2-console.jar -nt /tmp/pubS.last ]; then
-            cp -v -f $HOME/IdeaProjects/samples/misc/*-console*.jar $HOME/IdeaProjects/nexus-monitoring/resources/
-        fi
-        if [ $HOME/IdeaProjects/samples/misc/filelist_Linux_x86_64 -nt /tmp/pubS.last ]; then
-            cp -v -f $HOME/IdeaProjects/samples/misc/filelist_* $HOME/IdeaProjects/nexus-monitoring/resources/
-        fi
+        rsync -av $HOME/IdeaProjects/samples/misc/*-console*.jar $HOME/IdeaProjects/nexus-monitoring/resources/
+        rsync -av $HOME/IdeaProjects/samples/misc/filelist_* $HOME/IdeaProjects/nexus-monitoring/resources/
+        rsync -av $HOME/IdeaProjects/samples/misc/filelistv2_* $HOME/IdeaProjects/nexus-monitoring/resources/
     fi
 
     sync_nexus_binaries &>/dev/null &
