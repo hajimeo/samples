@@ -2494,6 +2494,12 @@ function f_put_realms() {
     f_api "/service/rest/v1/security/realms/active" "[${_realms}]" "PUT" || return $?
 }
 
+function f_enable_rut() {
+    _log "INFO" "Enabling rut authentication realm (TODO: using f_put_realms) ..."
+    f_put_realms || return $?
+    _apiS '{"action":"capability_Capability","method":"create","data":[{"id":"NX.coreui.model.Capability-1","typeId":"rutauth","notes":"","enabled":true,"properties":{"httpHeader":"REMOTE_USER"}}],"type":"rpc"}'
+}
+
 function f_enable_quarantines() {
     local __doc__="Enable Firewall Audit & Quarantine capability against *all* proxy repositories"
     local _proxy_name_rx="${1:-"[^\"]+"}"
@@ -2742,10 +2748,11 @@ function _install_reverse_proxy() {
 }
 function f_start_reverse_proxy() {
     local __doc__="Install and start a reverse proxy server with caddy @see https://caddyserver.com/docs/quick-starts/reverse-proxy"
-    local _host_port="${1}" # If empty, the default is using https://localhost:443/
-    local _host_port_to="${2:-"127.0.0.1:8081"}"    # can be https://{remote_address}:{port}
-    local _install_dir="${3:-"${_SHARE_DIR%/}/caddy"}"
-    local _ver="${4}"
+    local _host_port_to="${1:-"127.0.0.1:8081"}"    # can be https://{1st_node}:{port},https://{2nd_node}:{port}
+    local _host_port_from="${2}" # If empty, the default is using https://localhost:443/
+    local _rut_as="${3-"admin"}"
+    local _install_dir="${4:-"${_SHARE_DIR%/}/caddy"}"
+    local _ver="${5}"
     local _caddy="caddy"
     if type caddy &>/dev/null; then
         _log "INFO" "Caddy is already installed in the PATH. Using it ..."
@@ -2753,16 +2760,19 @@ function f_start_reverse_proxy() {
         _install_reverse_proxy "${_install_dir}" "${_ver}" || return $?
         _caddy="${_install_dir%/}/caddy"
     fi
-    if [[ "${_host_port}" =~ ^([0-9]+)$ ]]; then
-        _host_port=":${BASH_REMATCH[1]}"
+    if [[ "${_host_port_from}" =~ ^([0-9]+)$ ]]; then
+        _host_port_from=":${BASH_REMATCH[1]}"
     fi
     if [[ "${_host_port_to}" =~ ^([0-9]+)$ ]]; then
         _host_port_to="127.0.0.1:${BASH_REMATCH[1]}"
     fi
-    local _cmd="caddy reverse-proxy --from ${_host_port} --to ${_host_port_to} --change-host-header"
-    if [ -z "${_host_port}" ]; then
+    local _cmd="caddy reverse-proxy --from ${_host_port_from} --to ${_host_port_to} --change-host-header"
+    if [ -z "${_host_port_from}" ]; then
         _log "INFO" "Using default https://localhost:443/ for 'from' ..."; sleep 3
         _cmd="caddy reverse-proxy --to ${_host_port_to} --change-host-header --debug"
+    fi
+    if [ -n "${_rut_as}" ]; then
+        _cmd="${_cmd} --header-up \"REMOTE_USER: admin\""
     fi
     eval "${_cmd}" &> ${_TMP%/}/caddy_$$.log &
     local _pid="$!"
