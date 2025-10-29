@@ -620,7 +620,7 @@ function f_setup_forward_proxy() {
     local __doc__="Setup Forward Proxy for IQ"
     local _host="${1:-"localhost"}"
     local _port="${2:-"8080"}"
-    local _nonProxyHosts_json="${3:-"null"}"  # JSON array of non-proxy hosts, e.g. ["localhost"]
+    local _nonProxyHosts_json="${3:-"[]"}"  # JSON array of non-proxy hosts, e.g. ["localhost"]
     local _username="${3}"
     local _password="${4}"
     if [ -n "${_username}" ]; then
@@ -633,7 +633,9 @@ function f_setup_forward_proxy() {
     else
         _password="null"
     fi
-    _curl "${_IQ_URL%/}/api/v2/config/httpProxyServer" --data-raw '{"hostname":"'${_host}'","port":'${_port}',"username":'${_username}',"password":'${_password}',"passwordIsIncluded":true,"excludeHosts":'${_nonProxyHosts_json}'}' -X PUT
+    _curl "${_IQ_URL%/}/api/v2/config/httpProxyServer" -H "Content-Type: application/json" -X PUT -d '{"hostname":"'${_host}'","port":'${_port}',"username":'${_username}',"password":'${_password}',"passwordIsIncluded":true,"excludeHosts":'${_nonProxyHosts_json}'}' || return $?
+    _log "INFO" "May need to trust the proxy's CA certificate by adding into Java 17 truststore."
+    echo 'keytool -importcert -file ./proxy.crt -alias httpproxy -keystore ${JAVA_HOME}/lib/security/cacerts -storepass changeit'
 }
 
 # after f_start_dummy_smtp
