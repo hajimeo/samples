@@ -58,6 +58,7 @@ import (
 var DelaySec int64
 var Proto string
 var ReplCert bool
+var GenCert bool
 var KeyPath string
 var CertPath string
 var CachePath string
@@ -511,33 +512,140 @@ func tlsVersionString(v uint16) string {
 	}
 }
 
-func generateSelfSignedCA(keyPath, crtPath string) error {
-	// Generate RSA private key (4096 bits)
-	priv, err := rsa.GenerateKey(rand.Reader, 4096)
-	if err != nil {
-		return err
+func generateKey() *rsa.PrivateKey {
+	if GenCert {
+		// Generate RSA private key (4096 bits)
+		priv, err := rsa.GenerateKey(rand.Reader, 4096)
+		if err != nil {
+			log.Fatal("Failed to generate private key:", err)
+		}
+		return priv
 	}
+	// Load existing key
+	privKeyStr := `-----BEGIN RSA PRIVATE KEY-----
+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
+-----END RSA PRIVATE KEY-----
+`
+	block, _ := pem.Decode([]byte(privKeyStr))
+	if block == nil {
+		log.Fatal("failed to decode hardcoded CA key PEM")
+	}
+	priv, err := x509.ParsePKCS1PrivateKey(block.Bytes)
+	if err != nil {
+		log.Fatalf("failed to parse hardcoded CA key: %v", err)
+	}
+	return priv
+}
 
+func generateCaCert(priv *rsa.PrivateKey) []byte {
+	if GenCert {
+		serialNumber, _ := rand.Int(rand.Reader, big.NewInt(1<<62))
+		template := x509.Certificate{
+			SerialNumber:          serialNumber,
+			Subject:               pkix.Name{CommonName: "My Proxy CA"},
+			NotBefore:             time.Now(),
+			NotAfter:              time.Now().Add(3650 * 24 * time.Hour), // 10 years
+			KeyUsage:              x509.KeyUsageCertSign | x509.KeyUsageCRLSign,
+			IsCA:                  true,
+			BasicConstraintsValid: true,
+		}
+
+		// Self-sign the certificate
+		derBytes, err := x509.CreateCertificate(rand.Reader, &template, &template, &priv.PublicKey, priv)
+		if err != nil {
+			log.Fatal("Failed to create certificate:", err)
+		}
+		return derBytes
+	}
+	certStr := `-----BEGIN CERTIFICATE-----
+MIIE8DCCAtigAwIBAgIILOlgHVUuGgswDQYJKoZIhvcNAQELBQAwFjEUMBIGA1UE
+AxMLTXkgUHJveHkgQ0EwHhcNMjUxMDI5MDQxMTA2WhcNMzUxMDI3MDQxMTA2WjAW
+MRQwEgYDVQQDEwtNeSBQcm94eSBDQTCCAiIwDQYJKoZIhvcNAQEBBQADggIPADCC
+AgoCggIBALKQgGEWopXXjOcIYSqMwms/5Lu+74QLvfwbCJKwR9o4aAMwxJ5mGOz5
+BOfQY2apBGtK87qUAXyrN/r132tET+5rbwifw9aftDcdXIuT4M4bm2HYLhkYc82s
+1se007g4Qr0RMmepb2GeA6POmZROJwpasnyA5l7941c7coYv1MGi4q4gEO7kssJZ
+jpwAl2XEk6eGl7Xg4bdXZ2KadJY+18E9tWsLmWv5M+Jkc+ji3bsJUBP/78gMN0X4
+iA+WpJ17Z0wT95YY2OmWKKS1AO/kY7XdXZYvSmDdE07O4Ws8eUqQuOIH3TEQ4pyL
+Z3MGyhGJGwKkMj/RJ+lLnjg9DoKtVbZ976u83vk7Q2cdCXE7V4xPYqW/m/180lz7
+inRX/x42CqOX+aAISoAL4NZVySh00PP3Q4/Gm9niC7n+7j0TGLo3H+/8NpE9MSlj
+32/o+vwQYOFXW90dNhKw4m63TccVxUD/lFoUgV6p6QIfDZ+xEKSq8YjjdmTyfqcP
+EEck1H4E+XCaQ6UJyPJRcpNedZ+52emkq7h6Hrk1tJbGI2goNcu8lMtzPyxB7JEk
+CVL2jIskx7KXOSUupcna4iEeqEfFizenTwx1+OxwgLo1CwOc+nNDM4KRq6mbap7q
+sLcgQPkohZp0rlKJuJlVbdVoXKSp/A8GYIgtKCOaeTTP982uh4ThAgMBAAGjQjBA
+MA4GA1UdDwEB/wQEAwIBBjAPBgNVHRMBAf8EBTADAQH/MB0GA1UdDgQWBBT81bC3
+FUHrRTCrg2W/Yu3roPPyhTANBgkqhkiG9w0BAQsFAAOCAgEACipJVcJCNLghqZfV
+/r/mLG53scnXqmPCyCu+AELG37CaPX6kgbuBLilzrJYZEsBOUGqCDX4nRlvjqroc
+K8todMShw1bKY2dklslJiUuv98LZYtU6Dmw4Zw3PUJmp08Nb4G/QOLfr09tpZ8g8
+owuJe6y8j04Mht7FaJ7yrl/ph4nIQfizwOsZ+2NZ4a0xG7V/QLVwe5a1FZ4q7kud
+IRoYkrD8HWpoSMhJwLGxwg1ILY81/J7xQfZSnm0U3/jjVXEtDcLRJW2F20TLVNRi
+zu7dpvFidtKSzDeCikJxzWKj6lIDbIw/OrCUOUgTcmhnVgSkn/xc30DzE9ITxMxz
+zokpvNUmk8MnGGx5QfhbS6PcocxjQY4rh5obiwoFntMpNPgmeXeCXjc523Pz3Oil
+CLy3omZKUfv9Dbj4YYKGTCbBMTLWGXU3S24T0t/fW1ZgOsGmqiWelXpMMg6bSies
+PbopmqQISQ8tmyOWojoWcEoUsegTuFQKBhdI9rwUwElOjnlZ7AWIKy39LtZH5h0/
+o00PT6oAzfFiCoGePX8LvgcXhFJEiC0Hp10Du2dq8fGjVnYRwcxo/sjA6SFalmtV
+qTekdO1xwMU4DRc5I3ts65UFcyjBTEZ/bhDXiRd43VcMbVOdNhCJIMSnz0Tkg8hc
+q8ThNM62tQlLhgKkdFfidwAn4rk=
+-----END CERTIFICATE-----`
+	block, _ := pem.Decode([]byte(certStr))
+	return block.Bytes
+}
+
+// Not in use but kept for reference in case 10 years later :-)
+func generateSelfSignedCA(keySaveTo string, crtSaveTo string) error {
 	// Create certificate template
-	serialNumber, _ := rand.Int(rand.Reader, big.NewInt(1<<62))
-	template := x509.Certificate{
-		SerialNumber:          serialNumber,
-		Subject:               pkix.Name{CommonName: "My Proxy CA"},
-		NotBefore:             time.Now(),
-		NotAfter:              time.Now().Add(3650 * 24 * time.Hour), // 10 years
-		KeyUsage:              x509.KeyUsageCertSign | x509.KeyUsageCRLSign,
-		IsCA:                  true,
-		BasicConstraintsValid: true,
-	}
-
-	// Self-sign the certificate
-	derBytes, err := x509.CreateCertificate(rand.Reader, &template, &template, &priv.PublicKey, priv)
-	if err != nil {
-		return err
-	}
+	priv := generateKey()
+	derBytes := generateCaCert(priv)
 
 	// Write private key to file
-	keyOut, err := os.Create(keyPath)
+	keyOut, err := os.Create(keySaveTo)
 	if err != nil {
 		return err
 	}
@@ -545,7 +653,7 @@ func generateSelfSignedCA(keyPath, crtPath string) error {
 	pem.Encode(keyOut, &pem.Block{Type: "RSA PRIVATE KEY", Bytes: x509.MarshalPKCS1PrivateKey(priv)})
 
 	// Write certificate to file
-	crtOut, err := os.Create(crtPath)
+	crtOut, err := os.Create(crtSaveTo)
 	if err != nil {
 		return err
 	}
@@ -584,6 +692,7 @@ func main() {
 	flag.StringVar(&CertPath, "crt", "", "path to pem certificate file for the key.")
 	flag.StringVar(&Proto, "proto", "http", "TODO: Proxy protocol (http or https)")
 	flag.BoolVar(&ReplCert, "replCert", false, "Replacing the certificate for https:// requests")
+	flag.BoolVar(&GenCert, "GenCert", false, "(Re)Generate a self-signed CA certificate")
 	flag.StringVar(&CachePath, "cache", "", "Cache directory path (default: OS temp dir)")
 	flag.Int64Var(&DelaySec, "delay", -1, "Intentional delay in seconds for testing slowness")
 	flag.BoolVar(&Debug, "debug", false, "Debug / verbose output (e.g. req/resp headers)")
@@ -616,13 +725,14 @@ func main() {
 	}
 
 	if ReplCert && len(KeyPath) == 0 {
-		KeyPath = "./proxy.key"
-		CertPath = "./proxy.crt"
+		KeyPath = filepath.Join(CachePath, "proxy.key")
+		CertPath = filepath.Join(CachePath, "proxy.crt")
 		err := generateSelfSignedCA(KeyPath, CertPath)
 		if err != nil {
-			log.Fatal("Failed to generate self-signed CA:", err)
+			log.Fatal("Failed to generate/reuse self-signed CA:", err)
 		}
-		out("Generated a self-signed certificate: %s, %s", KeyPath, CertPath)
+		debug("Saved private key: %s", KeyPath)
+		out("Saved certificate: %s", CertPath)
 	}
 
 	if ReplCert {
