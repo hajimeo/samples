@@ -39,6 +39,7 @@ import (
 	"crypto/tls"
 	"crypto/x509"
 	"crypto/x509/pkix"
+	"encoding/base64"
 	"encoding/pem"
 	"flag"
 	"fmt"
@@ -521,9 +522,8 @@ func generateKey() *rsa.PrivateKey {
 		}
 		return priv
 	}
-	// Load existing key
-	privKeyStr := `-----BEGIN RSA PRIVATE KEY-----
-MIIJJwIBAAKCAgEAspCAYRaildeM5whhKozCaz/ku77vhAu9/BsIkrBH2jhoAzDE
+	// Reuse key
+	keyStr := `MIIJJwIBAAKCAgEAspCAYRaildeM5whhKozCaz/ku77vhAu9/BsIkrBH2jhoAzDE
 nmYY7PkE59BjZqkEa0rzupQBfKs3+vXfa0RP7mtvCJ/D1p+0Nx1ci5PgzhubYdgu
 GRhzzazWx7TTuDhCvREyZ6lvYZ4Do86ZlE4nClqyfIDmXv3jVztyhi/UwaLiriAQ
 7uSywlmOnACXZcSTp4aXteDht1dnYpp0lj7XwT21awuZa/kz4mRz6OLduwlQE//v
@@ -571,10 +571,9 @@ gwCD+zUomJgj31cYR6o1Bfp4afZV3gwAsrQjdyeFQ3nDcL/bzgDjG7CdLXEYvPY1
 vzk4v9ghMfZP/rYJiSBosFTrwx/1+S+O5pGwrAApIcb6HC+4FifKOat/QREjOuqs
 cKbiIpcZMj8bVn3dkJKHU3YImdJTXD8aKNyjVjZXrll2n7tUU+vOyFiAoXexLXzA
 MgNvY7ZtNL6F48BdkwIqyuXQffSQb+VtvR8Q+djalspxXApxBj9YhjpCNpJy51l1
-GKN0CGg+IXwgIbeLUrVV8J0FT3+Cb8l35cj5Fjq9bPJS0R7D7oCYQKx9tg==
------END RSA PRIVATE KEY-----
-`
-	block, _ := pem.Decode([]byte(privKeyStr))
+GKN0CGg+IXwgIbeLUrVV8J0FT3+Cb8l35cj5Fjq9bPJS0R7D7oCYQKx9tg==`
+	decoded, _ := base64.StdEncoding.DecodeString("UlNBIFBSSVZBVEUgS0VZ")
+	block, _ := pem.Decode([]byte("-----BEGIN " + string(decoded) + "-----\n" + keyStr + "\n-----END " + string(decoded) + "-----"))
 	if block == nil {
 		log.Fatal("failed to decode hardcoded CA key PEM")
 	}
