@@ -79,6 +79,7 @@ Using previously saved response file and NO interviews:
 : ${_ADMIN_PWD:="admin123"}
 : ${_IQ_URL:="http://localhost:8070/"}
 : ${_IQ_TEST_URLS:="http://localhost:8070/ http://utm-ubuntu:8070/ https://nxiqha-k8s.${_DOMAIN#.}/"}
+: ${_CLM_STAGING:="Y"}
 _TMP="/tmp" # for downloading/uploading assets
 _DEBUG=false
 
@@ -142,10 +143,13 @@ function f_install_iq() {
         cp -p "${_cfg_file}" "${_cfg_file}.orig"
     fi
     # TODO: From v138, most of configs need to use API: https://help.sonatype.com/iqserver/automating/rest-apis/configuration-rest-api---v2
-    #grep -qE '^hdsUrl:' "${_cfg_file}" || echo -e "hdsUrl: https://clm-staging.sonatype.com/\n$(cat "${_cfg_file}")" >"${_cfg_file}"
+    if [[ "${_CLM_STAGING}" =~ ^[yY] ]]; then
+        grep -qE '^hdsUrl:' "${_cfg_file}" || echo -e "hdsUrl: https://clm-staging.sonatype.com/\n$(cat "${_cfg_file}")" >"${_cfg_file}"
+    fi
     grep -qE '^licenseFile' "${_cfg_file}" || echo -e "licenseFile: ${_license_path%/}\n$(cat "${_cfg_file}")" >"${_cfg_file}"
     grep -qE '^\s*port: 8070' "${_cfg_file}" && sed -i.tmp 's/port: 8070/port: '${_port}'/g' "${_cfg_file}"
     grep -qE '^\s*port: 8071' "${_cfg_file}" && sed -i.tmp 's/port: 8071/port: '$((${_port} + 1))'/g' "${_cfg_file}"
+    rm -f "${_cfg_file}.tmp"
 
     if [ -n "${_dbname}" ]; then
         # NOTE: currently assuming "database:" is the end of file
@@ -446,8 +450,10 @@ function f_config_update() {
         fi
         f_api_config '{"baseUrl":"'${_baseUrl%/}'/","forceBaseUrl":false}' || return $?
     fi
-    f_api_config '{"hdsUrl":"https://clm.sonatype.com/"}'
-    #f_api_config '{"hdsUrl":"https://clm-staging.sonatype.com/"}'
+    #f_api_config '{"hdsUrl":"https://clm.sonatype.com/"}'
+    if [[ "${_CLM_STAGING}" =~ ^[yY] ]]; then
+        f_api_config '{"hdsUrl":"https://clm-staging.sonatype.com/"}'
+    fi
     f_api_config '{"enableDefaultPasswordWarning":false}'
     f_api_config '{"sessionTimeout":120}' # between 3 and 120
     #f_api_config "" "/features/internalFirewallOnboardingEnabled" "POST"  # to enable
@@ -1170,6 +1176,8 @@ function f_dummy_scans() {
 #_CREATE_UNDER_ORG="test-org" f_dummy_orgs_apps_with_scans
 #_NO_SCAN="Y" f_dummy_orgs_apps_with_scans "1000"    # To just create 1000 applications
 #_NO_SCAN="Y" _IQ_CRED="testuser:testuser123" f_dummy_orgs_apps_with_scans "1000"
+#_HOW_MANY_ORG="10" _IQ_CRED="testuser:testuser123" f_dummy_orgs_apps_with_scans "100"
+#_SEQ_START="101" _HOW_MANY_ORG="10" _IQ_CRED="testuser:testuser123" f_dummy_orgs_apps_with_scans "100"
 # TODO: this may not be working properly.
 function f_dummy_orgs_apps_with_scans() {
     local __doc__="Generate dummy organisations, applications with dummy scan"
@@ -1178,7 +1186,7 @@ function f_dummy_orgs_apps_with_scans() {
     local _org_name_prefix="${3:-"dummy-org"}"
     local _create_under_org="${4-"${_CREATE_UNDER_ORG:-"Sandbox Organization"}"}"
     local _scan_target="${5-"${_SCAN_TARGET}"}"   # If not given, use maven-policy-demo-1.3.0.jar
-    local _iq_stage="${6:-${_IQ_STAGE:-"develop"}}" #develop|build|stage-release|release|operate
+    local _iq_stage="${6:-${_IQ_STAGE:-"build"}}" #(source)|build|stage-release|release    #develop (and operate) is not in UI
     local _no_scan="${7-"${_NO_SCAN}"}"
     local _how_many_org="${8:-"${_HOW_MANY_ORG:-5}"}"   # Used for parallel scan and also for number of orgs
 
@@ -1186,11 +1194,11 @@ function f_dummy_orgs_apps_with_scans() {
     local _seq_end="$((_seq_start + _how_many - 1))"
 
     if [[ ! "${_no_scan}" =~ [yY] ]] && [ -z "${_scan_target}" ]; then
-        _log "INFO" "No scan target is given. Using ./maven-policy-demo-1.3.0.jar"
         if [ ! -s "${_TMP%/}/maven-policy-demo-1.3.0.jar" ]; then
             curl -o "${_TMP%/}/maven-policy-demo-1.3.0.jar" -L "https://repo1.maven.org/maven2/org/sonatype/maven-policy-demo/1.3.0/maven-policy-demo-1.3.0.jar" || return $?
         fi
         _scan_target="${_TMP%/}/maven-policy-demo-1.3.0.jar"
+        _log "INFO" "No scan target is given. Using ${_scan_target}"
     fi
     if [ -n "${_create_under_org}" ]; then
         # Just in case, creating the base (under) organization
@@ -1201,19 +1209,20 @@ function f_dummy_orgs_apps_with_scans() {
 
     local _last_one=false
     local _counter=0
+    if [ "${_how_many_org}" -gt "${_how_many}" ]; then
+        _how_many_org="${_how_many}"
+    fi
+    _log "INFO" "Commencing ${_how_many} scans under ${_how_many_org} org(s) ..."
     for _not_in_use in $(eval "seq ${_seq_start} ${_seq_end}"); do
         for j in $(eval "seq 1 ${_how_many_org}"); do
+            _dummy_orgs_apps_with_scans_inner "${_org_name_prefix}${j}" "${_app_name_prefix}${_counter}" "${_create_under_org}" "${_no_scan}" "${_scan_target}" "${_iq_stage}" &>${_TMP%/}/${FUNCNAME[0]}_last_${j}.out &
             _counter=$((_counter + 1))
-            local _this_app_name="${_app_name_prefix}${_counter}"
-
             if [ ${_counter} -ge ${_how_many} ]; then
                 _last_one=true
-                _dummy_orgs_apps_with_scans_inner "${_org_name_prefix}${j}" "${_this_app_name}" "${_create_under_org}" "${_no_scan}" "${_scan_target}" "${_iq_stage}" &>${_TMP%/}/${FUNCNAME[0]}_last.out &
+                _log "INFO" "Last Scan started (${_TMP%/}/${FUNCNAME[0]}_last_${j}.out) ... "
                 break   # reached to _how_many, so break the inner loop
-            else
-                _dummy_orgs_apps_with_scans_inner "${_org_name_prefix}${j}" "${_this_app_name}" "${_create_under_org}" "${_no_scan}" "${_scan_target}" "${_iq_stage}" &>/dev/null &
-            fi &>/dev/null
-        done
+            fi
+        done &>/dev/null
         wait
         if ${_last_one}; then
             _log "INFO" "Last Scan output: ${_TMP%/}/${FUNCNAME[0]}_last.out"
