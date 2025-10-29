@@ -14,7 +14,7 @@
 Saving the binary as `filelist2` as an example:
 
 ```bash
-curl -o ./filelist2 -L https://github.com/hajimeo/samples/raw/master/misc/filelistv2_$(uname)_$(uname -m)
+curl -o ./filelist2 -L "https://github.com/sonatype-nexus-community/nexus-monitoring/raw/refs/heads/main/resources/filelistv2_$(uname)_$(uname -m)"
 chmod a+x ./filelist2
 ```
 
@@ -158,13 +158,13 @@ Can use a text file which contains Blob IDs, so that no Blobstore access is need
 filelist2 -src BS -rF ./some_filelist_result.tsv -db ./sonatype-work/nexus3/etc/fabric/nexus-store.properties -bsName default -s /tmp/filelist_orphaned-blobs_no-BS-access.tsv
 ```
 
-### TODO: Find blobs which exist in Database but not in Blob store with `-src DB` (like Dead Blobs Finder)
+### Find blobs which exist in Database but not in Blob store with `-src DB` (like Dead Blobs Finder)
 
 NOTE: if `query` result is large, may want to split the query into smaller parts (e.g. order by asset_id limit 100000
 offset N)
 
 ```
-filelist2 -b "$BLOB_STORE" -db ./sonatype-work/nexus3/etc/fabric/nexus-store.properties -query "select blob_ref as blob_id from raw_asset_blob ab join raw_asset a using (asset_blob_id) where repository_id IN (select cr.repository_id from raw_content_repository cr join repository r on r.id = cr.config_repository_id where r.name in ('raw-hosted'))" -src DB -s /tmp/filelist_potentially_dead-blobs.tsv
+filelist2 -b "$BLOB_STORE" -db ./sonatype-work/nexus3/etc/fabric/nexus-store.properties -c 10 -query "select blob_ref as blob_id from raw_asset_blob ab join raw_asset a using (asset_blob_id) where repository_id IN (select cr.repository_id from raw_content_repository cr join repository r on r.id = cr.config_repository_id where r.name in ('raw-hosted'))" -src DB -s /tmp/filelist_potentially_dead-blobs.tsv
 ```
 
 Can use a text file which contains Blob IDs, so that no DB access is needed:
