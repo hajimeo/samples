@@ -103,7 +103,7 @@ function createAssets() {
     #_AUTO=true main
     if [[ "${_WITH_S3}" =~ ^[yY] ]]; then
         _log "INFO" "Creating S3 '${_S3_BLOBSTORE}' (this also creates 'raw-s3-hosted' repo)..."
-        if ! _NO_DATA=Y f_create_s3_blobstore "${_S3_BLOBSTORE}" "${_S3_PREFIX}" "${_S3_BUCKET}"; then
+        if ! _NO_DATA=Y f_create_s3_blobstore "${_S3_BLOBSTORE}" "${_S3_BUCKET}" "${_S3_PREFIX}"; then
             # other params use AWS_XXXX env variables
             _log "ERROR" "Failed. Please make sure the AWS_ env variables are set."
             return 1
