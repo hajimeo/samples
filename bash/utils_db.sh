@@ -87,7 +87,8 @@ function _postgresql_configure() {
     # @see: https://pgtune.leopard.in.ua/#/ and https://pgpedia.info/index.html
     #       https://docs.aws.amazon.com/prescriptive-guidance/latest/tuning-postgresql-parameters/logging-parameters.html
     _psql_adm "ALTER SYSTEM SET max_connections TO '200'"   # NOTE: work_mem * max_conn < shared_buffers.
-    _psql_adm "ALTER SYSTEM SET statement_timeout TO '8h'" # NOTE: ALTER ROLE nexus SET statement_timeout = '1h';
+    #_psql_adm "ALTER SYSTEM SET statement_timeout TO '8h'" # NOTE: ALTER ROLE nexus SET statement_timeout = '1h';
+    _psql_adm "ALTER SYSTEM SET idle_in_transaction_session_timeout TO '30min'" # Default is 0 (no timeout), Probably no need to use idle_session_timeout
     _psql_adm "ALTER SYSTEM SET shared_buffers TO '1024MB'" # Default 8MB. RAM * 25%. Make sure enough kernel.shmmax (ipcs -l) and /dev/shm if very old Linux or BSD
     _psql_adm "ALTER SYSTEM SET work_mem TO '8MB'"    # Default 4MB. RAM * 25% / max_connections (200) + extra a few MB. NOTE: I'm not expecting my PG uses 200 though
     _psql_adm "ALTER SYSTEM SET maintenance_work_mem TO '1GB'" # RAM * 5%. Default 64MB. Used for VACUUM, CREATE INDEX etc.
