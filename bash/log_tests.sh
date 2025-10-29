@@ -525,7 +525,6 @@ function t_system() {
             _test_template "$(rg -i '\-Xm[sx]' "${_jmx_json}")" "WARN" "Xms (${_xms}) value might not be same as Xmx (${_xmx})"
         fi
 
-        #_test_template "$(rg -q -- '-XX:\+UseG1GC' "${_jmx_json}" || rg -- '-Xmx' "${_jmx_json}")" "WARN" "No '-XX:+UseG1GC' for below Xmx (only for Java 8)" "Also consider using -XX:+ExplicitGCInvokesConcurrent"
         _test_template "$(rg -q -- '-XX:MaxDirectMemorySize' "${_jmx_json}" || rg -- '-Xmx' "${_jmx_json}")" "WARN" "No '-XX:MaxDirectMemorySize' (better set '-Djdk.nio.maxCachedBufferSize=262144' as well)"
         #_test_template "$(rg 'UseCGroupMemoryLimitForHeap' "${_jmx_json}")" "WARN" "UseCGroupMemoryLimitForHeap is specified (not required from 8v191)"
         _test_template "$(rg 'MaxMetaspaceSize' "${_jmx_json}")" "WARN" "MaxMetaspaceSize is specified"
