@@ -2240,7 +2240,7 @@ function f_s3compatible() {
      -v $HOME/minio_data:/data:z \
      -e "MINIO_ROOT_USER=admin" \
      -e "MINIO_ROOT_PASSWORD=admin123" \
-     minio/minio:${_tag} server /data --console-address ":${_web_port}"
+     minio/minio:${_tag} server /data --console-address ":${_web_port}" || return $?
     _info "API: http://127.0.0.1:${_port}/"
     _info "Web: http://127.0.0.1:${_web_port}/"
     _info "Create bucket, create a user, create an access key, export AWS_ENDPOINT_URL=http://127.0.0.1:${_port}"
