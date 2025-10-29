@@ -116,7 +116,7 @@ _RESP_FILE=""
 # To re-install: _RECREATE_ALL=Y f_install_nexus3 "<version>" "<dbname>"
 # To install HA instances (port is automatic): _NEXUS_ENABLE_HA=Y _NXRM3_INSTALL_DIR="./nxrm3hatest1st"  f_install_nexus3 "" "nxrmlatestha"
 #     2nd node: _NEXUS_ENABLE_HA=Y _NXRM3_INSTALL_DIR="./nxrm3hatest2nd" f_install_nexus3 "" "nxrmlatestha"
-# To upgrade (from ${_dirpath}/): tar -xvf $HOME/.nexus_executable_cache/nexus-3.83.1-03-mac-aarch_64.tar.gz
+# To upgrade (from ${_dirpath}/): tar -xvf $HOME/.nexus_executable_cache/nexus-3.79.1-04-
 function f_install_nexus3() {
     local __doc__="Install specific NXRM3 version (to recreate sonatype-work and DB, _RECREATE_ALL=Y)"
     local _ver="${1:-"${r_NEXUS_VERSION}"}"     # 'latest' or '3.71.0-03-java17'
@@ -1607,8 +1607,21 @@ curl -u "${_ADMIN_USER}" "${_NEXUS_URL%/}/service/rest/v1/secrets/encryption/re-
 EOF
 }
 
+function f_ui_settings() {
+    local __doc__="Updating UI Settings capability"
+    local _sessionTimeout="${1:-"480"}"  # in minutes
+    #org.sonatype.nexus.internal.capability.storage.CapabilityStorageItemDAO.update - ==>  Preparing: UPDATE capability_storage_item SET version = ?, type = ?, enabled = ?, notes = ?, properties = ? WHERE id = ?;
+    #Parameters: 1(Integer), rapture.settings(String), true(Boolean), Automatically added on Mon Oct 20 09:54:09 AEST 2025(String), {"longRequestTimeout":"180","debugAllowed":"true","statusIntervalAnonymous":"120","statusIntervalAuthenticated":"10","sessionTimeout":"481","title":"Sonatype Nexus Repository","requestTimeout":"60"}(String), 0199fee5-112e-380f-8404-619d5d49b335(UUID)
+    local _id="$(_apiS '{"action":"capability_Capability","method":"read","data":null,"type":"rpc"}' "GET" | JSON_SEARCH_KEY="result.data" _sortjson | JSON_SEARCH_KEY="typeId,id" _sortjson | grep 'rapture.settings' | cut -d ',' -f2)"
+    if [ -z "${_id}" ]; then
+        _log "ERROR" "UI Settings capability (rapture.settings) not found."
+        return 1
+    fi
+    _apiS '{"action":"capability_Capability","method":"update","data":[{"id":"'${_id}'","typeId":"rapture.settings","notes":"Updated by f_ui_settings at '$(date -u +"%Y-%m-%dT%H:%M:%Sz")'","enabled":true,"properties":{"title":"Sonatype Nexus Repository","debugAllowed":"true","statusIntervalAuthenticated":"10","statusIntervalAnonymous":"120","sessionTimeout":"'${_sessionTimeout}'","requestTimeout":"60","longRequestTimeout":"180"}}],"type":"rpc"}'
+}
+
 function f_branding() {
-    local __doc__="NXRM3 branding|brand example"
+    local __doc__="Branding|brand capability example"
     local _msg="${1:-"HelloWorld!"}"
     #<marquee direction="right" behavior="alternate"><span style="color:#f0f8ff;">some text</span></marquee>
     _apiS '{"action":"capability_Capability","method":"create","data":[{"id":"NX.coreui.model.Capability-1","typeId":"rapture.branding","notes":"","enabled":true,"properties":{"headerEnabled":"true","headerHtml":"<div style=\"background-color:white;text-align:right\">'${_msg}'</a>&nbsp;</div>","footerEnabled":null,"footerHtml":""}}],"type":"rpc"}'
@@ -1616,7 +1629,7 @@ function f_branding() {
 
 function f_create_file_blobstore() {
     local __doc__="Create a File type blobstore"
-    local _bs_name="${1:-"file_$(date +"%Y%m%d%H%M%S")"}"
+    local _bs_name="${1:-"file_$(date +"%Y%m%d")"}"
     _log "INFO" "Creating blobstore: ${_bs_name} ..."
     if ! _apiS '{"action":"coreui_Blobstore","method":"create","data":[{"type":"File","name":"'${_bs_name}'","isQuotaEnabled":false,"attributes":{"file":{"path":"'${_bs_name}'"}}}],"type":"rpc"}' > ${_TMP%/}/f_apiS_last.out; then
         _log "ERROR" "Blobstore ${_bs_name} does not exist."
@@ -1628,40 +1641,51 @@ function f_create_file_blobstore() {
 
 # AWS_ACCESS_KEY_ID=xxx AWS_SECRET_ACCESS_KEY=yyy f_create_s3_blobstore
 # _NO_REPO_CREATE=Y f_create_s3_blobstore
+# MinIO: export AWS_ACCESS_KEY_ID="*********" AWS_SECRET_ACCESS_KEY="**********" AWS_REGION="" AWS_ENDPOINT_URL="http://127.0.0.1:9000"
 function f_create_s3_blobstore() {
     local __doc__="Create a S3 blobstore. AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY are required"
-    local _bs_name="${1:-"s3-$(date +"%Y%m%d%H%M%S")"}"
-    local _prefix="${2:-"$(hostname -s)_${_bs_name}"}"    # cat /etc/machine-id is not perfect if docker container
-    local _bucket="${3:-"apac-support-bucket"}"
-    local _region="${4:-"${AWS_REGION:-"ap-southeast-2"}"}"
+    local _bs_name="${1-"s3"}"  # If "", use date-based name
+    local _bucket="${2:-"apac-support-bucket"}"
+    local _prefix="${3:-"$(hostname -s)_$(date +"%Y%m%d")"}"    # cat /etc/machine-id is not perfect if docker container
+    local _region="${4:-"${AWS_REGION-"ap-southeast-2"}"}"
     local _ak="${5:-"${AWS_ACCESS_KEY_ID}"}"
     local _sk="${6:-"${AWS_SECRET_ACCESS_KEY}"}"
-    local _exp="${7:-"3"}"  # Not used since 3.80 (46435)
-    _log "INFO" "Creating blobstore: ${_bs_name} ..."
-    if [ -n "${_prefix}" ]; then    # AWS S3 prefix shouldn't start with / (and may need to end with /)
-        _prefix="${_prefix#/}"
-        _prefix="${_prefix%/}/"
+    local _ep="${7:-"${AWS_ENDPOINT_URL}"}"
+    local _exp="${8:-"3"}"  # Not used since 3.80 (46435)
+    if [ -z "${_bs_name}" ]; then
+        _bs_name="s3$(date +"%Y%m%d")"
+        _log "INFO" "Using blobstore name: ${_bs_name} ..."; sleep 3
     fi
-    # NOTE: 3.27 has ',"state":""'
-    #       From 3.78 'coreui_Blobstore' may not work, so trying the API first
-    if ! f_api "/service/rest/v1/blobstores/s3" '{"name":"'${_bs_name}'","bucketConfiguration":{"bucket":{"region":"'${_region}'","prefix":"'${_prefix}'","name":"'${_bucket}'","expiration":'${_exp}'},"bucketSecurity":{"secretAccessKey":"'${_sk}'","accessKeyId":"'${_ak}'"},"encryption":null,"advancedBucketConnection":{"endpoint":"","forcePathStyle":false},"failoverBuckets":[],"activeRegion":null}}' > ${_TMP%/}/f_api_last.out; then
-        if ! _apiS '{"action":"coreui_Blobstore","method":"create","data":[{"type":"S3","name":"'${_bs_name}'","isQuotaEnabled":false,"property_region":"'${_region}'","property_bucket":"'${_bucket}'","property_prefix":"'${_prefix%/}'","property_expiration":1,"authEnabled":true,"property_accessKeyId":"'${_ak}'","property_secretAccessKey":"'${_sk}'","property_assumeRole":"","property_sessionToken":"","encryptionSettingsEnabled":false,"advancedConnectionSettingsEnabled":false,"attributes":{"s3":{"region":"'${_region}'","bucket":"'${_bucket}'","prefix":"'${_prefix%/}'","expiration":"'${_exp}'","accessKeyId":"'${_ak}'","secretAccessKey":"'${_sk}'","assumeRole":"","sessionToken":""}}}],"type":"rpc"}' > ${_TMP%/}/f_apiS_last.out; then
-            _log "ERROR" "Failed to create blobstore: ${_bs_name} ."
-            _log "ERROR" "$(cat ${_TMP%/}/f_api_last.out)"
-            _log "ERROR" "$(cat ${_TMP%/}/f_apiS_last.out)"
-            return 1
+    if ! _is_blob_available "${_bs_name}"; then
+        _log "INFO" "Creating blobstore: ${_bs_name} ..."
+        if [ -n "${_prefix}" ]; then    # AWS S3 prefix shouldn't start with / (and may need to end with /)
+            _prefix="${_prefix#/}"
+            _prefix="${_prefix%/}/"
         fi
+        # From 3.78 'coreui_Blobstore' may not work, so trying the API first
+        if ! f_api "/service/rest/v1/blobstores/s3" '{"name":"'${_bs_name}'","bucketConfiguration":{"bucket":{"region":"'${_region}'","prefix":"'${_prefix}'","name":"'${_bucket}'","expiration":'${_exp}'},"bucketSecurity":{"secretAccessKey":"'${_sk}'","accessKeyId":"'${_ak}'"},"encryption":null,"advancedBucketConnection":{"endpoint":"'${_ep}'","forcePathStyle":false},"failoverBuckets":[],"activeRegion":null}}' > ${_TMP%/}/f_api_last.out; then
+            # TODO (minor): endpoint for older version
+            # NOTE: 3.27 has ',"state":""'
+            if ! _apiS '{"action":"coreui_Blobstore","method":"create","data":[{"type":"S3","name":"'${_bs_name}'","isQuotaEnabled":false,"property_region":"'${_region}'","property_bucket":"'${_bucket}'","property_prefix":"'${_prefix%/}'","property_expiration":1,"authEnabled":true,"property_accessKeyId":"'${_ak}'","property_secretAccessKey":"'${_sk}'","property_assumeRole":"","property_sessionToken":"","encryptionSettingsEnabled":false,"advancedConnectionSettingsEnabled":false,"attributes":{"s3":{"region":"'${_region}'","bucket":"'${_bucket}'","prefix":"'${_prefix%/}'","expiration":"'${_exp}'","accessKeyId":"'${_ak}'","secretAccessKey":"'${_sk}'","assumeRole":"","sessionToken":""}}}],"type":"rpc"}' > ${_TMP%/}/f_apiS_last.out; then
+                _log "ERROR" "Failed to create blobstore: ${_bs_name} ."
+                _log "ERROR" "$(cat ${_TMP%/}/f_api_last.out)"
+                _log "ERROR" "$(cat ${_TMP%/}/f_apiS_last.out)"
+                return 1
+            fi
+        fi
+        if [ -f "${_TMP%/}/f_apiS_last.out" ]; then
+            _log "DEBUG" "$(cat ${_TMP%/}/f_apiS_last.out)"
+        fi
+    else
+        _log "INFO" "Blobstore ${_bs_name} already exists."
     fi
-    if [ -f "${_TMP%/}/f_apiS_last.out" ]; then
-        _log "DEBUG" "$(cat ${_TMP%/}/f_apiS_last.out)"
-    fi
-    if [[ ! "${_NO_REPO_CREATE}" =~ [yY] ]] && ! _is_repo_available "raw-s3-hosted"; then
+    if [[ ! "${_NO_REPO_CREATE}" =~ [yY] ]] && ! _is_repo_available "raw-${_bs_name}-hosted"; then
         # Not sure why but the file created by `dd` doesn't work if strictContentTypeValidation is true
-        _apiS '{"action":"coreui_Repository","method":"create","data":[{"attributes":{"storage":{"blobStoreName":"'${_bs_name}'","writePolicy":"ALLOW","strictContentTypeValidation":false'$(_get_extra_sto_opt)'},"cleanup":{"policyName":[]}},"name":"raw-s3-hosted","format":"","type":"","url":"","online":true,"recipe":"raw-hosted"}],"type":"rpc"}' || return $?
-        if ! _is_repo_available "raw-s3-hosted"; then
-            _log "WARN" "Failed to create raw-s3-hosted"
+        _apiS '{"action":"coreui_Repository","method":"create","data":[{"attributes":{"storage":{"blobStoreName":"'${_bs_name}'","writePolicy":"ALLOW","strictContentTypeValidation":false'$(_get_extra_sto_opt)'},"cleanup":{"policyName":[]}},"name":"raw-'${_bs_name}'-hosted","format":"","type":"","url":"","online":true,"recipe":"raw-hosted"}],"type":"rpc"}' || return $?
+        if ! _is_repo_available "raw-${_bs_name}-hosted"; then
+            _log "WARN" "Failed to create raw-${_bs_name}-hosted"
         else
-            _log "INFO" "Created raw-s3-hosted"
+            _log "INFO" "Created raw-${_bs_name}-hosted"
         fi
     fi
     _log "INFO" "AWS CLI command examples (not AWS_REGION may matter):
@@ -1679,7 +1703,7 @@ aws s3 cp s3://${_bucket}/${_prefix}content/vol-42/chap-31/f062f002-88f0-4b53-ae
 function f_create_azure_blobstore() {
     local __doc__="Create an Azure blobstore. AZURE_STORAGE_ACCOUNT_NAME and AZURE_STORAGE_ACCOUNT_KEY are required"
     #https://pkg.go.dev/github.com/Azure/azure-sdk-for-go/sdk/azidentity#readme-environment-variables
-    local _bs_name="${1:-"az-$(date +"%Y%m%d%H%M%S")"}"
+    local _bs_name="${1:-"az-$(date +"%Y%m%d")"}"
     local _container_name="${2:-"$(hostname -s | tr '[:upper:]' '[:lower:]')-${_bs_name}"}"
     local _an="${3:-"${AZURE_STORAGE_ACCOUNT_NAME}"}"
     local _ak="${4:-"${AZURE_STORAGE_ACCOUNT_KEY}"}"
@@ -1701,7 +1725,7 @@ function f_create_azure_blobstore() {
 
 function f_create_google_blobstore() {
     local __doc__="Create an Google blobstore. GOOGLE_APPLICATION_CREDENTIALS is required (3.74+)"
-    local _bs_name="${1:-"gc-$(date +"%Y%m%d%H%M%S")"}"
+    local _bs_name="${1:-"gc-$(date +"%Y%m%d")"}"
     local _accountKeyFle="${2:-"${GOOGLE_APPLICATION_CREDENTIALS}"}"
     local _bucket="${3:-"${GOOGLE_BUCKET}"}"
     local _prefix="${4:-"$(hostname -s)_${_bs_name}"}"
@@ -1725,7 +1749,7 @@ function f_create_google_blobstore() {
 
 function f_create_group_blobstore() {
     local __doc__="Create a new group blob store. Not promoting to group"
-    local _bs_name="${1:-"bs-group-$(date +"%Y%m%d%H%M%S")"}"
+    local _bs_name="${1:-"bs-group-$(date +"%Y%m%d")"}"
     local _member_pfx="${2:-"member"}"
     local _file_policy="${3:-"writeToFirst"}"   # writeToFirst or roundRobin
     local _repo_name="${4-"raw-grpbs-hosted"}"
@@ -2633,12 +2657,12 @@ Also update _NEXUS_URL. For example: export _NEXUS_URL=\"https://local.standalon
     _log "INFO" "To trust this certificate, _trust_ca \"\${_ca_pem}\""
 }
 
-function f_start_http_proxy() {
-    local __doc__="Setup and start simple HTTP/HTTPS proxy server"
-    local _port="${1:-"8888"}"
+function f_start_forward_proxy() {
+    local __doc__="Setup and start simple HTTP/HTTPS/forward proxy server"
+    local _port="${1:-"8080"}"
     local _install_dir="${2:-"${_SHARE_DIR%/}/httpproxy"}"
-    local _debug="${3}"
-    local _is_https="${4}"
+    local _repl_cert="${3:-"${_REPL_CERT}"}"
+    local _debug="${4}"
     local _key="${5}"
     local _cert="${6}"
 
@@ -2658,14 +2682,12 @@ function f_start_http_proxy() {
 
     _cmd="${_cmd} -port ${_port}"
 
-    if [[ "${_is_https}" =~ ^(y|Y) ]]; then
+    if [[ "${_repl_cert}" =~ ^(y|Y) ]]; then
         if [ -z "${_key}" ] || [ -z "${_cert}" ]; then
-            if [ ! -s "${_install_dir%/}/server.key" ] || [ ! -s "${_install_dir%/}/server.pem" ]; then
-                _log "INFO" "Generating self-signed certificate for HTTPS proxy in ${_install_dir%/}/ ..."
-                openssl req -x509 -newkey rsa:2048 -keyout "${_install_dir%/}/server.key" -out "${_install_dir%/}/server.pem" -days 999 -nodes -subj "/CN=$(hostname -f)" || return $?
-            fi
+            _cmd="${_cmd} --replCert" # --proto https
+        else
+            _cmd="${_cmd} --replCert --key ${_key} --pem ${_cert}"
         fi
-        _cmd="${_cmd} --proto https --key ${_key} --pem ${_cert}"
     fi
 
     if [[ "${_debug}" =~ ^(y|Y) ]]; then
@@ -2673,18 +2695,24 @@ function f_start_http_proxy() {
         _cmd="${_cmd} --debug"
     fi
 
-    eval "${_cmd}" &> ${_TMP%/}/${_cmd}_$$.log &
+    eval "${_cmd}" &> ${_TMP%/}/httpproxy_$$.log &
     local _pid="$!"
     sleep 2
     echo "[INFO] Running '${_cmd}' in background"
-    echo "       PID: ${_pid}  Log: ${_TMP%/}/${_cmd}_$$.log"
+    echo "       PID: ${_pid}  Log: ${_TMP%/}/httpproxy_$$.log"
 }
-# TODO: Setup HTTP proxy on Nexus
-function f_setup_http_proxy() {
+
+function f_setup_forward_proxy() {
+    local __doc__="Update Nexus3 configuration for HTTP/HTTPS forward proxy"
     local _host="${1:-"localhost"}"
-    local _port="${2:-"8888"}"
+    local _port="${2:-"8080"}"
     local _nonProxyHosts_json="${3:-"[]"}"  # JSON array of non-proxy hosts, e.g. ["localhost"]
+    local _proxy_ca_cert="${4:-"./proxy.crt"}"
     _apiS '{"action":"coreui_HttpSettings","method":"update","data":[{"httpEnabled":true,"httpHost":"'${_host}'","httpPort":"'${_port}'","httpAuthEnabled":false,"httpsEnabled":true,"httpsHost":"'${_host}'","httpsPort":"'${_port}'","httpsAuthEnabled":false,"nonProxyHosts":'${_nonProxyHosts_json}',"timeout":null,"retries":null}],"type":"rpc"}'
+    if [ -s "${_proxy_ca_cert}" ]; then
+        _log "INFO" "Trusting proxy CA cert ${_proxy_ca_cert} ..."
+        f_api "/service/rest/v1/security/ssl/truststore" "$(cat "${_proxy_ca_cert}")"
+    fi
 }
 
 function _install_reverse_proxy() {
@@ -4167,7 +4195,7 @@ function f_backup_postgresql() {
 #VACUUM(FREEZE, ANALYZE, VERBOSE);  -- or FULL (FREEZE marks the table as vacuumed)
 #SELECT relname, reltuples as row_count_estimate FROM pg_class WHERE relnamespace ='public'::regnamespace::oid AND relkind = 'r' AND relname NOT LIKE '%_browse_%' AND (relname like '%repository%' OR relname like '%component%' OR relname like '%asset%') ORDER BY 2 DESC LIMIT 40;
 function f_restore_postgresql_component() {
-    local __doc__="Restore f_backup_postgresql_component generated gzip file into the database"
+    local __doc__="Restore f_backup_postgresql_component generated gzip file into the database for *testing*"
     local _sql_file="${1}"
     local _workingDirectory="${2}"
     if [ -z "${_workingDirectory}" ]; then
@@ -4332,6 +4360,7 @@ function f_setup_service() {
     local _env="#env="
     # NOTE: you can also use EnvironmentFile=/etc/envfile.conf
     #_env="Environment=\"INSTALL4J_ADD_VM_PARAMS=-agentlib:jdwp=transport=dt_socket,server=y,suspend=n,address=5005\""
+    #_env="Environment=\"INSTALL4J_JAVA_HOME_OVERRIDE=/usr/lib/jvm/java-1.8.0-openjdk-1.8.0.422.b05-2.el8.x86_64/jre\""
     local _bin_nexus="$(find "${_base_dir%/}" -maxdepth 3 -type f -name "nexus" -path '*/bin/*' | head -n1)"
     if [ -z "${_bin_nexus}" ]; then
         _log "ERROR" "Nexus executable does not exist under ${_base_dir%/}"
@@ -4367,7 +4396,8 @@ EOF
     sudo systemctl daemon-reload || return $?
     sudo systemctl enable nexus.service
     _log "INFO" "Service configured. If Nexus is currently running, please stop, then 'systemctl start nexus.service'"
-    # NOTE: for troubleshooting 'systemctl cat nexus'
+    # NOTE: For troubleshooting 'systemctl cat nexus' and 'journalctl -u nexus --no-pager -n 200'
+    #       Also, systemd-run --uid=${_usr} bash -c "/usr/bin/env > /tmp/env.out" (and compare with bash -i -c)
 }
 
 
