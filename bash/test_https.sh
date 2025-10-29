@@ -17,6 +17,10 @@
 #   -Djavax.net.debug=ssl:handshake:verbose
 #
 # Typical troubleshooting command for "PKIX path building failed" error:
+#   curl --trace-ascii - -sf -k -L "https://${_host}:${_port}/" &> ./curl_std_err_$$.out
+#   keytool -J-Djavax.net.debug=all -J-Dhttps.proxyHost=localhost -J-Dhttps.proxyPort=8080 -printcert -rfc -sslserver ${_host}:${_port}
+#   echo -n | openssl s_client -proxy "localhost:8080" -showcerts -connect ${_host}:${_port} | openssl x509 -outform PEM | tee ./certificates.pem
+#
 #   keytool -list -keystore $JAVA_HOME/lib/security/cacerts -storepass changeit > cacerts_sha256.out
 #   keytool -printcert -rfc -sslserver ${_host}:${_port} > server.pem
 #   keytool -printcert -file server.pem | grep -o -E 'SHA256:.+'
@@ -77,7 +81,7 @@ function test_tls_versions() {
 
     for _v in {1..3}; do  # 'ssl2' no longer works with openssl
         # Mac's curl may not work with --tlsv1.x options so using openssl, and probably it uses the highest protocol anyway
-        #curl -k -v -o/dev/null -f "https://${_host_port}/" --tlsv1.${_v} &> /tmp/get_tls_versions_tlsv1.${_v}.out
+        #curl --trace-ascii - -o/dev/null -sf -k "https://${_host_port}/" --tlsv1.${_v} &> /tmp/get_tls_versions_tlsv1.${_v}.out
         echo -n | openssl s_client -connect ${_host_port} -tls1_${_v} &> /tmp/get_tls_versions_tlsv1.${_v}.out
         local _rc=$?
         if [ ${_rc} -ne 0 ]; then
@@ -300,8 +304,8 @@ function test_https() {
 }
 
 # Test email server's (SMTP) connectivity. Below are not perfect as it won't work with STARTTLS
-#curl -v -sf -k --ssl-reqd "smtps://localhost:465"
-#curl -v -sf -k "smtps://localhost:465" --mail-from "testemail@hajigle.com" --mail-rcpt "hosako@sonatype.com" -T<(echo "TEST")
+#curl --trace-ascii - -sf -k --ssl-reqd "smtps://localhost:465"
+#curl --trace-ascii - -sf -k "smtps://localhost:465" --mail-from "testemail@hajigle.com" --mail-rcpt "hosako@sonatype.com" -T<(echo "TEST")
 #keytool -J-Djavax.net.debug=ssl:record:plaintext -printcert -sslserver localhost:25
 function test_smtps() {
     local _host_port="${1}" # smtp.office365.com:587
