@@ -60,6 +60,7 @@ Read one file and output only necessary lines.
 # USAGE EXAMPLES:
 ## Misc. Read the result with 'q' (after "rg '^# (.+)' -o -r '$1' > ./durations.out"):
     q -O -d"|" -T "SELECT c1 as start_time, c2 as end_time, CAST(c3 as INT) as ms, c4 as key FROM ./durations.out WHERE ms > 10000 ORDER BY ms DESC"
+    q -O -d"|" -T "SELECT AVG(CAST(c3 as INT)) as avg_ms, MIN(CAST(c3 as INT)) as min_ms, MAX(CAST(c3 as INT)) as max_ms, count(*) as c FROM ./durations.out"
 
 ## Thread dumps
 ### NXRM2 thread dumps (not perfect. still contains some junk lines):
