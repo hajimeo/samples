@@ -42,7 +42,7 @@ func setGlobals() {
 
 	// TODO: 'b' should accept the comma separated values for supporting the group blob store
 	flag.StringVar(&common.BaseDir, "b", "", "Blob store directory or URI (eg. 's3://s3-test-bucket/s3-test-prefix/'), which location contains 'content' directory (default: '.')")
-	flag.StringVar(&common.BaseDir2, "bTo", "", "*Experimental* Blob store directory or URI (eg. 's3://s3-test-bucket/s3-test-prefix/') for copying files from -b")
+	flag.StringVar(&common.BaseDir2, "bTo", "", "*Experimental* Blob store directory or URI (eg. 's3://s3-test-bucket/s3-test-prefix_to_content/') for copying files from -b")
 	flag.BoolVar(&common.NoDateBsLayout, "NoDateBS", false, "Disable the date based blob store layout (YYYY/MM/DD/hh/mm/uuid) to force checking the old vol-XX/chap-XX/uuid layout")
 	flag.StringVar(&common.Filter4Path, "p", "", "Regular Expression for directory *path* (eg '/(vol-\\d\\d|20\\d\\d)/'), or S3 prefix.")
 	flag.StringVar(&common.Filter4FileName, "f", "", "Regular Expression for the file *name* (eg: '\\.properties' to include only this extension)")
@@ -768,11 +768,12 @@ func printLineFromPath(args bs_clients.PrintLineArgs) bool {
 		atomic.AddInt64(&common.TotalSize, blobInfo.Size)
 
 		if len(common.BaseDir2) > 0 && strings.HasSuffix(path, common.PROP_EXT) {
-			finalErrorCode := ""
+			// if BaseDir2 (-bTo) is given, try to copy the .properties file and associated .bytes file to BaseDir2
 			errorCode := copyToBaseDir2(path)
-			// regardless of the errorCode, try to copy the .bytes file as well
+			// Regardless of the errorCode, try to copy the .bytes file as well
 			bytesPath := lib.GetPathWithoutExt(path) + common.BYTES_EXT
 			errorCode2 := copyToBaseDir2(bytesPath)
+			finalErrorCode := ""
 			if len(errorCode) > 0 {
 				finalErrorCode = errorCode
 			}
@@ -825,6 +826,9 @@ func copyToBaseDir2(path string) string {
 	}
 
 	// if no error but result is false, means no cache, so didn't write by using the cache, so copying by stream
+	if common.Debug2 {
+		h.Log("DEBUG", fmt.Sprintf("Preparing Writer for the desitination path:%s", writingPath))
+	}
 	maybeWriter, errW := Client2.GetWriter(writingPath)
 	if errW != nil {
 		h.Log("ERROR", fmt.Sprintf("Getting writer for path:%s to BaseDir2:%s failed with %s", writingPath, common.BaseDir2, errW))
@@ -834,6 +838,9 @@ func copyToBaseDir2(path string) string {
 	writer := maybeWriter.(io.WriteCloser)
 	defer writer.Close()
 
+	if common.Debug2 {
+		h.Log("DEBUG", fmt.Sprintf("Preparing Reader for the source (writing) path:%s", path))
+	}
 	maybeReader, errR := Client.GetReader(path)
 	if errR != nil {
 		h.Log("ERROR", fmt.Sprintf("Getting reader for path:%s from BaseDir:%s failed with %s", path, common.BaseDir, errR))
@@ -1207,8 +1214,10 @@ func main() {
 	setGlobals()
 	// As currently not supporting multiple blob store types, Client should be only one instance
 	Client = bs_clients.GetClient(common.BsType)
+	Client.SetClientNum(1)
 	if len(common.BaseDir2) > 0 {
 		Client2 = bs_clients.GetClient(common.BsType2)
+		Client2.SetClientNum(2)
 	}
 	// Currently only one DB object ...
 	var db *sql.DB

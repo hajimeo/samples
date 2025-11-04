@@ -195,15 +195,19 @@ Check / restore specific repository and specific path:
 filelist2 -db ./sonatype-work/nexus3/etc/fabric/nexus-store.properties -query "SELECT ab.blob_ref as blob_id FROM raw_asset_blob ab JOIN raw_asset a USING (asset_blob_id) WHERE repository_id IN (1) and path like '/test%' LIMIT 1000" -rF /tmp/filelist_query-result_2.out
 ```
 
-### TODO: Copy specific blobs to another Blob store with `-bTo` (like Export/Import)
+### *Experimental* Copy specific blobs to another Blob store with `-bTo` (like Export/Import)
 
 Excluding the soft-deleted blobs and including only specific repo.
 
 ```
-filelist2 -b "$BLOB_STORE" -bTo "$BLOB_STORE2" -P -pRx "@Bucket.repo-name=raw-hosted," -pRxNot "deleted=true" -s ./copied_blobs.tsv
+# For same blob store type but using different credential, appending _2 may work. For example, AWS S3 to MinIO
+# Copying one repository "raw-s3-hosted" (not soft-deleted) into MinIO (requires HTTPS)
+export AWS_ACCESS_KEY_ID_2="admin" AWS_SECRET_ACCESS_KEY_2="admin123" AWS_REGION_2="" AWS_ENDPOINT_URL_2="https://local.standalone.localdomain:19000" AWS_CA_BUNDLE_2="$HOME/minio_data/certs/public.crt"
+filelist2 -b "s3://apac-support-bucket/filelist-test/" -bTo "s3://apac-support-bucket/filelist-test_copied/" -PathStyle -P -pRx "@Bucket.repo-name=raw-s3-hosted," -pRxNot "deleted=true" -s ./copied_blobs.tsv
 # After reviewing ./copied_blobs.tsv, execute the undelter against another Nexus instance
 bash ./nrm3-undelete-3.83.sh -I -s "default" -b ./copied_blobs.tsv
 ```
+NOTE: Using `AWS_CA_BUNDLE` may break HTTPS requests to the real AWS S3. May also need to use `-PathStyle` if not wildcard certificate.
 
 ## Misc.
 
