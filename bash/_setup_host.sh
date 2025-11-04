@@ -2228,9 +2228,15 @@ function f_s3compatible() {
     local _port="${1:-"9000"}"
     local _data="${2:-"$HOME/minio_data"}"
     local _tag="${3-"RELEASE.2024-08-03T04-33-23Z"}"
+    local _cn="${4:-"localhost"}"
 
-    if [ ! -d "${_data%/}" ]; then
-        mkdir -v -p "${_data%/}" || return $?
+    if [ ! -d "${_data%/}/certs" ]; then
+        mkdir -v -p "${_data%/}/certs" || return $?
+    fi
+    if [ ! -s "${_data%/}/certs/private.key" ] || [ ! -s "${_data%/}/certs/public.crt" ]; then
+        _info "Generating self-signed certificate for MinIO ..."
+        openssl genrsa -out "${_data%/}/certs/private.key" 4096 || return $?
+    	openssl req -x509 -new -nodes -key ${_data%/}/certs/private.key -sha256 -days 3650 -out ${_data%/}/certs/public.crt -subj "/CN=${_cn}" -addext "basicConstraints=CA:TRUE" || return $?
     fi
     local _web_port="$((${_port} + 90))"
     docker run -t -d \
@@ -2240,10 +2246,12 @@ function f_s3compatible() {
      -v $HOME/minio_data:/data:z \
      -e "MINIO_ROOT_USER=admin" \
      -e "MINIO_ROOT_PASSWORD=admin123" \
-     minio/minio:${_tag} server /data --console-address ":${_web_port}" || return $?
-    _info "API: http://127.0.0.1:${_port}/"
-    _info "Web: http://127.0.0.1:${_web_port}/"
-    _info "Create bucket, create a user, create an access key, export AWS_ENDPOINT_URL=http://127.0.0.1:${_port}"
+     -e "MINIO_ACCESS_KEY=admin" \
+     -e "MINIO_SECRET_KEY=admin123" \
+     minio/minio:${_tag} server /data --certs-dir /data/certs --console-address ":${_web_port}" || return $?
+    _info "API: https://127.0.0.1:${_port}/"
+    _info "Web: https://127.0.0.1:${_web_port}/"
+    #_info "Create bucket, create a user, create an access key, export AWS_ENDPOINT_URL=https://127.0.0.1:${_port}"
 }
 
 function f_tabby() {

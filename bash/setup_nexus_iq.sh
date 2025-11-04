@@ -330,6 +330,7 @@ for r in a['memberMappings']:
 
 # purl/componentIdentifier examples:
 # pkg:maven/tomcat/tomcat-util@5.5.23?type=jar | pkg:pypi/apache-beam@2.8.0?extension=zip | pkg:pypi/tensorflow@2.0.0?extension=whl&qualifier=cp37-cp37m-manylinux2010_x86_64
+# pkg:maven/org.apache.beam/beam-model-fn-execution@2.52.0?classifier=javadoc&type=jar
 #{"componentIdentifier":{"format":"maven","coordinates":{"groupId":"tomcat","artifactId":"tomcat-util","version":"5.5.23","extension":"jar"}}}
 function _gen_comp_id() {
     local __doc__="https://help.sonatype.com/iqserver/automating/rest-apis/using-other-supported-formats-with-the-rest-api"
@@ -348,6 +349,12 @@ function _gen_comp_id() {
         _purl="pkg:maven/${BASH_REMATCH[1]}/${BASH_REMATCH[2]}@${BASH_REMATCH[3]}?type=jar"
         _comp_id="{\"packageUrl\":\"${_purl}\"}"
         #_comp_id="{\"componentIdentifier\":{\"format\":\"maven\",\"coordinates\":{\"groupId\":\"${BASH_REMATCH[1]}\",\"artifactId\":\"${BASH_REMATCH[2]}\",\"version\":\"${BASH_REMATCH[3]}\",\"extension\":\"jar\"}}}"
+    elif [[ "${_component_identifier}" =~ ^" "*([^: ]+)" "*:" "*([^: ]+)" "*:" "*([^: ]+)" "*:" "*([^: ]+)" "*$ ]]; then
+        _purl="pkg:maven/${BASH_REMATCH[1]}/${BASH_REMATCH[2]}@${BASH_REMATCH[4]}?type=${BASH_REMATCH[3]}"
+        _comp_id="{\"packageUrl\":\"${_purl}\"}"
+    elif [[ "${_component_identifier}" =~ ^" "*([^: ]+)" "*:" "*([^: ]+)" "*:" "*([^: ]+)" "*:" "*([^: ]+)" "*:" "*([^: ]+)" "*$ ]]; then
+        _purl="pkg:maven/${BASH_REMATCH[1]}/${BASH_REMATCH[2]}@${BASH_REMATCH[5]}?classifier=${BASH_REMATCH[4]}&type=${BASH_REMATCH[3]}"
+        _comp_id="{\"packageUrl\":\"${_purl}\"}"
     elif [[ "${_component_identifier}" =~ ^" "*([^: ]+)" "*:" "*([^: ]+)" "*$ ]]; then
         # NOTE: Assuming 'npm'
         _purl="pkg:npm/${BASH_REMATCH[1]}@${BASH_REMATCH[2]}"
@@ -369,6 +376,7 @@ function f_api_comp_details() {
     local __doc__="Call Component Details API https://help.sonatype.com/iqserver/automating/rest-apis/component-details-rest-api---v2"
     local _component_identifier="$1"
     local _comp_id="$(_gen_comp_id "${_component_identifier}")" || return $?
+    [ -z "${_comp_id}" ] && return 11
     local _iq_url="$(_get_iq_url "${_IQ_URL%/}")" || return $?
     _log "INFO" "/api/v2/components/details with '{\"components\":[${_comp_id}]}' ..."
     _curl "${_iq_url%/}/api/v2/components/details" -H "Content-Type: application/json" -d '{"components":['${_comp_id}']}'
@@ -390,6 +398,7 @@ function f_api_eval() {
     local _comp_id_like_string="${2}"
     local _app_int_id="$(f_api_appIntId "${_app_pub_id}")" || return $?
     local _comp_id="$(_gen_comp_id "${_comp_id_like_string}")" || return $?
+    [ -z "${_comp_id}" ] && return 11
     local _iq_url="$(_get_iq_url "${_IQ_URL%/}")" || return $?
     _log "INFO" "/api/v2/evaluation/applications/${_app_int_id} with '{\"components\":[${_comp_id}]}' ..."
     local _results="$(_curl "${_iq_url%/}/api/v2/evaluation/applications/${_app_int_id}" -H "Content-Type: application/json" -d '{"components":['${_comp_id}']}')" || return $?

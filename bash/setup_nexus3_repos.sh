@@ -644,6 +644,7 @@ function f_setup_docker() {
 
     # add some data for xxxx-proxy
     _log "INFO" "Populating ${_prefix}-proxy repository with some image ..."
+    # TODO: For IQ firewall/quarantine, might want to pull from https://hub.docker.com/r/sonatypecommunity/docker-policy-demo/tags
     if ! _populate_docker_proxy; then
         _log "WARN" "_populate_docker_proxy failed. May need f_setup_https (and FQDN) or 'Docker Bearer Token Realm' (not only for anonymous access)."
     fi
@@ -1432,7 +1433,38 @@ function f_setup_cargo() {
     fi
     echo "To test:
     curl -sSf -D- -o/dev/null -H \"Authorization: Basic <B64encoded_UserToken>\" ${_NEXUS_URL%/}/repository/${_prefix}-hosted/config.json
-    curl -sSf -D- ${_NEXUS_URL%/}/repository/${_prefix}-group/me"   # To get the token (but User Token should be actually used
+    #curl -sSf -D- ${_NEXUS_URL%/}/repository/${_prefix}-group/me   # To get the token (but User Token should be used)"
+    cat << EOF
+# Clean cargo project
+    #cargo clean
+    rm -r -v ~/.cargo/registry
+    #rm ./Cargo.lock
+EOF
+    mkdir -p $HOME/.cargo
+    if [ ! -s "$HOME/.cargo/config.toml" ]; then
+        cat << EOF > $HOME/.cargo/config.toml
+[registry]
+global-credential-providers = ["cargo:token"]
+[registries]
+# Should end with "/"
+cargo-proxy = { index = "sparse+${_NEXUS_URL%/}/repository/cargo-proxy/" }
+cargo-group = { index = "sparse+${_NEXUS_URL%/}/repository/cargo-group/" }
+[registries.cargo-hosted]
+index = "sparse+http://nexus.example/repository/cargo-hosted/"
+[source.crates-io]
+replace-with = "cargo-proxy"
+EOF
+    else
+        _log "INFO" "$HOME/.cargo/config.toml already exists."
+    fi
+    if [ ! -s "$HOME/.cargo/credentials.toml" ]; then
+        cat << EOF > $HOME/.cargo/credentials.toml
+[registries.cargo-hosted]
+token = "Basic {replace_with_base64_econded}"
+EOF
+    else
+        _log "INFO" "$HOME/.cargo/credentials.toml already exists."
+    fi
 }
 
 function f_setup_composer() {
@@ -1577,6 +1609,13 @@ function _get_extra_sto_opt() {
     echo "${_EXTRA_STO_OPT}"
 }
 
+function f_sec_diag() {
+    local __doc__="Run Security Diagnostic and get JSON output of specified user"
+    local _user="${1}"
+    [ -z "${_user}" ] && _log "ERROR" "User name is required." && return 1
+    f_api "/service/rest/atlas/security-diagnostic/user/${_user}"
+}
+
 function f_reencrypt() {
     local __doc__="Re-encrypt the secrets. https://help.sonatype.com/en/re-encryption-in-nexus-repository.html"
     local _id="${1:-"my-key"}"
@@ -1658,9 +1697,9 @@ function f_create_s3_blobstore() {
     fi
     if ! _is_blob_available "${_bs_name}"; then
         _log "INFO" "Creating blobstore: ${_bs_name} ..."
-        if [ -n "${_prefix}" ]; then    # AWS S3 prefix shouldn't start with / (and may need to end with /)
+        if [ -n "${_prefix}" ]; then    # AWS S3 prefix shouldn't start with / (and may need to end with /?)
             _prefix="${_prefix#/}"
-            _prefix="${_prefix%/}/"
+            #_prefix="${_prefix%/}/"    # Doesn't work with MinIO
         fi
         # From 3.78 'coreui_Blobstore' may not work, so trying the API first
         if ! f_api "/service/rest/v1/blobstores/s3" '{"name":"'${_bs_name}'","bucketConfiguration":{"bucket":{"region":"'${_region}'","prefix":"'${_prefix}'","name":"'${_bucket}'","expiration":'${_exp}'},"bucketSecurity":{"secretAccessKey":"'${_sk}'","accessKeyId":"'${_ak}'"},"encryption":null,"advancedBucketConnection":{"endpoint":"'${_ep}'","forcePathStyle":false},"failoverBuckets":[],"activeRegion":null}}' > ${_TMP%/}/f_api_last.out; then
@@ -2495,7 +2534,7 @@ function f_put_realms() {
 }
 
 function f_enable_rut() {
-    _log "INFO" "Enabling rut authentication realm (TODO: using f_put_realms) ..."
+    _log "INFO" "Enabling rut authentication realm (TODO: currently using f_put_realms) ..."
     f_put_realms || return $?
     _apiS '{"action":"capability_Capability","method":"create","data":[{"id":"NX.coreui.model.Capability-1","typeId":"rutauth","notes":"","enabled":true,"properties":{"httpHeader":"REMOTE_USER"}}],"type":"rpc"}'
 }
@@ -2533,17 +2572,32 @@ function f_create_cleanup_policy() {
 #f_create_csel "docker-path-workaround" "path == '/v2/' or path =^ '/v2/token'" "*" "docker" "read"
 function f_create_csel() {
     local __doc__="Create/add a test content selector"
-    local _csel_name="${1:-"csel-test"}"
+    local _csel_name="${1}"
     local _expression="${2:-"path =^ '/'"}" # TODO: currently can't use double quotes. Probably no need "format == 'raw'" in newer versions
-    local _repo="${3}"
-    local _format="${4}"
-    local _actions="${5:-'["browse","read","edit","add","delete"]'}"
+    local _repo="${3-"*"}"
+    local _format="${4-"*"}"
+    local _actions="${5:-"${_CSEL_ACTIONS:-"browse,read,edit,add,delete"}"}"   # comma separated actions
+    if [ -z "${_csel_name}" ]; then
+        _csel_name="csel-test"
+        if [ -n "${_format}" ] && [ "${_format}" != "*" ]; then
+            _csel_name="${_csel_name}-${_format}"
+        fi
+        _log "INFO" "Using \"${_csel_name}\" as content selector name ..."
+    fi
     f_api "/service/rest/v1/security/content-selectors" "{\"name\":\"${_csel_name}\",\"description\":\"\",\"expression\":\"${_expression}\"}" || return $?
+
+    if [ -n "${_format}" ] && [ "${_format}" != "*" ] && [ "${_repo}" == "*" ]; then
+        local _ver="$(_get_version)"
+        if [ -z "${_ver}" ] || [[ "${_ver}" =~ 3\.([3-7]|8[0-5]) ]]; then
+            _log "WARN" "Format \"${_format}\" and \"(All Repositories)\" may not work with Nexus 3.85 and older"; sleep 3
+            # Due to several issues such as NEXUS-48190, it's better specifying repo and format to create privilege.
+        fi
+    fi
     if [ -z "${_repo}" ] || [ -z "${_format}" ]; then
-        _log "INFO" "No repository or format specified. Not creating a privilege for ${_csel_name}."
+        _log "INFO" "Content Selector \"${_csel_name}\" created, but NO privilege because repository and format are not specified."
         return 0
     fi
-    # TODO: Newer version has "format" field, so support older version
+    # TODO: Newer version has "format" field and use the Rest API. The below was support older version based on repo
     #local _ver="$(_get_version)"
     #_apiS '{"action":"coreui_Privilege","method":"create","data":[{"id":"NX.coreui.model.Privilege-99","name":"priv-'${_csel_name}'","description":"","version":"","type":"repository-content-selector","properties":{"contentSelector":"'${_csel_name}'","repository":"'${_repo}'","actions":['${_actions}']}}],"type":"rpc"}'
     # If _actions does not start with " or does not end with ", add them
@@ -2558,17 +2612,18 @@ function f_create_csel() {
         _actions_list="${_actions_list%,},${_a}"
     done
     f_api "/service/rest/v1/security/privileges/repository-content-selector" '{"type":"repository-content-selector","name":"priv-'${_csel_name}'","description":"","contentSelector":"'${_csel_name}'","format":"'${_format}'","repository":"'${_repo}'","actions":['${_actions_list}']}' || return $?
+    _log "INFO" "Privilege \"priv-${_csel_name}\" for format \"${_format}\" with actions \"${_actions}\" created."
 }
 
 # Create a test user and test role
 function f_create_testuser() {
     local __doc__="Create/add a test user with a test role"
     local _userid="${1:-"testuser"}"
-    local _privs="${2-"\"nx-repository-view-*-*-*\",\"nx-search-read\",\"nx-component-upload\",\"nx-usertoken-current\",\"nx-apikey-all\""}"
-    # NOTE: nx-usertoken-current does not work with OSS because no User Token
-    #       nx-apikey-all is needed for Nuget AP key...
+    local _privs="${2-"\"nx-repository-view-*-*-add\",\"nx-repository-view-*-*-browse\",\"nx-repository-view-*-*-edit\",\"nx-repository-view-*-*-read\",\"nx-search-read\",\"nx-component-upload\",\"nx-usertoken-current\",\"nx-apikey-all\""}"
     local _role="${3-"test-role"}"
-    if [ -n "${_role}" ]; then
+    # NOTE: nx-usertoken-current does not work with OSS because no User Token.
+    #       nx-apikey-all is needed for Nuget AP key.
+    if [ -n "${_privs}" ] && [ -n "${_role}" ]; then
         f_api "/service/rest/v1/security/roles" "{\"id\":\"${_role}\",\"name\":\"${_role} name\",\"description\":\"${_role} desc\",\"privileges\":[${_privs}],\"roles\":[]}"
     fi
     _apiS '{"action":"coreui_User","method":"create","data":[{"userId":"'${_userid}'","version":"","firstName":"test","lastName":"user","email":"'${_userid}'@example.com","status":"active","roles":["'${_role:-"nx-anonymous"}'"],"password":"'${_userid}'"}],"type":"rpc"}'
