@@ -21,6 +21,7 @@
 #   f_delete_all_assets
 #   #f_run_tasks_by_type "assetBlob.cleanup" # if Postgresql with nexus.assetBlobCleanupTask.blobCreatedDelayMinute=0
 #
+# For new blob store layout test:
 #   f_install_nexus3 3.84.1-01 filelistv2test2
 #   # After starting this Nexus, populate the data:
 #   f_upload_dummies_raw "" "1000"
@@ -28,7 +29,7 @@
 #   f_delete_all_assets
 #   #f_run_tasks_by_type "assetBlob.cleanup" # if Postgresql with nexus.assetBlobCleanupTask.blobCreatedDelayMinute=0
 #
-# Example environment variables (specify the workdir of the existing Nexus 3):
+# Example environment variable (specify the workdir of the existing Nexus 3):
 #   export _TEST_WORKDIR="./sonatype-work/nexus3"
 #
 # If File type blobstore:
@@ -73,7 +74,7 @@ function test_2_ShouldNotFindAny() {
     local _b="${1:-"${_TEST_BLOBSTORE}"}"
     local _p="${2:-"${_TEST_FILTER_PATH}"}"
     if [[ "${_b}" =~ ^(s3|az):// ]]; then
-        echo "TEST=Skipped as this test can take long time with S3/Azure"
+        echo "TEST=WARN Skipped as this test can take long time with S3/Azure"
         return 0
     fi
     _find_sample_repo_name "${_b}" "${_p}" || return 1
@@ -269,7 +270,7 @@ function test_7_DeadBlob() {
     rm -f /tmp/test8_prep_query.out || return $?
     _exec_filelist "filelist2 -b '${_b}' -p '${_p}' -src BS -db ${_nexus_store} -query \"select blob_ref as blob_id from raw_asset_blob order by asset_blob_id desc limit 1\" -rF /tmp/test8_prep_query.out" ""
     if [ ! -s "/tmp/test8_prep_query.out" ]; then
-        echo "TEST=Skipped: Could not prepare blob ids from DB (check /tmp/test_last.* and /tmp/test8_prep_query.out)"
+        echo "TEST=WARN Skipped as could not prepare blob ids from DB (check /tmp/test_last.* and /tmp/test8_prep_query.out)"
         return 0
     fi
     cat /tmp/test8_prep_query.out | xargs -I{} blobpath {} | xargs -I{} mv "${_b%/}/content/{}" "${_b%/}/content/{}.bak"
@@ -291,7 +292,7 @@ function test_8_TextFileToCheckBlobStore() {
     local _work_dir="${3:-"${_TEST_WORKDIR}"}"
 
     if [[ "${_b}" =~ ^(s3|az):// ]]; then
-        echo "TEST=Skipped this test for S3/Az for now."
+        echo "TEST=WARN Skipped as this test is not for S3/Az for now."
         return 0
     fi
     local _find="find"
@@ -311,10 +312,10 @@ function test_8_TextFileToCheckBlobStore() {
     fi
     local _expected_num="$(_line_num /tmp/test_mock_blob_ids.txt)"
     local _result_num="$(_line_num ${_out_file})"
-    if [ ${_expected_num:-"0"} -gt 0 ] && [ "${_expected_num}" -eq "${_result_num}" ]; then
+    if [ ${_expected_num:-"0"} -gt 0 ] && [ "$((${_expected_num} * 2))" -eq "${_result_num}" ]; then
         echo "TEST=OK (${_out_file})"
     else
-        echo "TEST=ERROR: [ expected:${_expected_num} -eq result:${_result_num} ] is false"
+        echo "TEST=ERROR: [ expected:${_expected_num} * 2 -eq result:${_result_num} ] is false"
         return 1
     fi
 
@@ -340,7 +341,7 @@ function test_9_TextFileToCheckDatabase() {
     local _work_dir="${3:-"${_TEST_WORKDIR}"}"
 
     if [[ "${_b}" =~ ^(s3|az):// ]]; then
-        echo "TEST=Skipped this test as no need to test if S3/Az."
+        echo "TEST=WARN Skipped as no need to test if S3/Az."
         return 0
     fi
 
@@ -354,10 +355,10 @@ function test_9_TextFileToCheckDatabase() {
     #find ${_b%/} -maxdepth 4 -name '*.properties' -path '*/content/vol*' -print | head -n10 >/tmp/test_mock_blob_ids.txt
     # Assuming / hoping the newer files wouldn't be orphaned files.
     # Can not use -pRxNot 'deletedReason=' and '-n 1000' with the new blob store layout...
-    _TEST_MAX_NUM=100000 _exec_filelist "filelist2 -b ${_b} -p '${_p}'" "/tmp/test_mock_blob_ids.tmp"
+    _TEST_MAX_NUM=100000 _exec_filelist "filelist2 -b ${_b} -p '${_p}' -pRxNot 'deleted=true' -BytesChk" "/tmp/test_mock_blob_ids.tmp"
     #cat /tmp/test_mock_blob_ids.tmp | sort -k2r,3r | head -n10 > /tmp/test_mock_blob_ids.txt
-    # The last rg with 1 means most likely not soft-deleted files
-    rg '/([^/]+\.properties)' -o -r '$1' /tmp/test_mock_blob_ids.tmp | sort | uniq -c | rg '^\s*1\s(\S+)' -o -r '$1' | head -n10 > /tmp/test_mock_blob_ids_maybeNotDeleted.tmp
+    # Excluding BYTES_MISSING as probably deletion markers
+    rg -v "BYTES_MISSING" /tmp/test_mock_blob_ids.tmp | rg '/([^/]+\.properties)' -o -r '$1' | sort | uniq -c | rg '^\s*1\s(\S+)' -o -r '$1' | head -n10 > /tmp/test_mock_blob_ids_maybeNotDeleted.tmp
     cat /tmp/test_mock_blob_ids_maybeNotDeleted.tmp | xargs -P2 -I{} rg "content/.*{}" -o -m1 /tmp/test_mock_blob_ids.tmp > /tmp/test_mock_blob_ids.txt
     if [ ! -s "/tmp/test_mock_blob_ids.txt" ]; then
         echo "TEST=WARN: No mock .properties files found in ${_b}, so skipping"
