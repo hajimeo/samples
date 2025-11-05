@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 usage() {
     cat << EOF
-bash <(curl -sfL https://raw.githubusercontent.com/sonatype-nexus-community/nexus-monitoring/main/scripts/iq-threaddumps.sh --compressed)
+bash <(curl -sfL https://raw.githubusercontent.com/sonatype/nexus-monitoring/main/scripts/iq-threaddumps.sh --compressed)
 
 PURPOSE:
 Gather basic information to troubleshoot Java process related *performance* issues.
@@ -13,7 +13,7 @@ EXAMPLE:
     # Taking thread dumps whenever the log line contains "QuartzJobStoreTX"
     # as "nexus" user
     cd /sonatype-work;  # or cd /sonatype-work/clm-cluster;
-    curl --compressed -O -L https://raw.githubusercontent.com/sonatype-nexus-community/nexus-monitoring/main/scripts/iq-threaddumps.sh;
+    curl --compressed -O -L https://raw.githubusercontent.com/sonatype/nexus-monitoring/main/scripts/iq-threaddumps.sh;
     bash ./iq-threaddumps.sh -f /var/log/nexus-iq-server/clm-server.log -r "QuartzJobStoreTX";
 
 USAGE:

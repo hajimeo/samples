@@ -13,7 +13,7 @@ REQUIREMENTS:
 
 EXAMPLES:
     cd /some/workDir
-    curl --compressed -O -L https://raw.githubusercontent.com/sonatype-nexus-community/nexus-monitoring/main/scripts/nrm3-undelete.sh
+    curl --compressed -O -L https://raw.githubusercontent.com/sonatype/nexus-monitoring/main/scripts/nrm3-undelete.sh
     export _ADMIN_USER="admin" _ADMIN_PWD="******" _NEXUS_URL="http://localhost:8081/" #_DRY_RUN="true" _IS_ORIENT="true"
     bash ./nrm3-undelete.sh -I      # only once
     bash ./nrm3-undelete.sh -s default -b <blobIDs>

@@ -2,9 +2,9 @@
 usage() {
     cat <<EOF
 USAGE:
-    bash <(curl -sfL https://raw.githubusercontent.com/sonatype-nexus-community/nexus-monitoring/main/scripts/nrm3-db-test.sh --compressed)
+    bash <(curl -sfL https://raw.githubusercontent.com/sonatype/nexus-monitoring/main/scripts/nrm3-db-test.sh --compressed)
 # Or
-    curl -O -sfL https://raw.githubusercontent.com/sonatype-nexus-community/nexus-monitoring/main/scripts/nrm3-db-test.sh --compressed
+    curl -O -sfL https://raw.githubusercontent.com/sonatype/nexus-monitoring/main/scripts/nrm3-db-test.sh --compressed
     bash ./nrm3-db-test.sh [-i <installDir>] [-s /path/to/nexus-store.properties] [-q "query"]
 
 # Count & Size per Repository (format, repo_name, count, bytes)

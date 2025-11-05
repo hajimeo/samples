@@ -15,7 +15,7 @@ EXAMPLES:
     # Taking thread dumps whenever the log line contains "QuartzTaskInfo"
     # as "nexus" user
     cd /nexus-data;
-    curl --compressed -O -L https://raw.githubusercontent.com/sonatype-nexus-community/nexus-monitoring/main/scripts/threaddumps.sh;
+    curl --compressed -O -L https://raw.githubusercontent.com/sonatype/nexus-monitoring/main/scripts/threaddumps.sh;
     bash ./threaddumps.sh -p `lsof -ti:8081 -sTCP:LISTEN` -f ./log/nexus.log -r "QuartzTaskInfo";
 
 OPTIONS:
