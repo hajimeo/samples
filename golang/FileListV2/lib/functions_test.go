@@ -21,7 +21,7 @@ func TestGetSchema_ValidURL_ReturnsSchema(t *testing.T) {
 
 func TestGetContentPath_NoType_ReturnsFullPath(t *testing.T) {
 	common.BsType = ""
-	result := GetContentPath("/base/dir")
+	result := GetContentPath("/base/dir", "")
 	assert.Equal(t, "/base/dir/content", result)
 }
 
@@ -29,7 +29,7 @@ func TestGetContentPath_S3_ReturnsPrefixPlusContent(t *testing.T) {
 	common.BsType = "s3"
 	common.Container = "s3-test-bucket"
 	// TODO: not sure if this is correct, but for now, returning relative path
-	result := GetContentPath("s3://s3-test-bucket/s3-test-prefix/")
+	result := GetContentPath("s3://s3-test-bucket/s3-test-prefix/", "s3-test-bucket")
 	assert.Equal(t, "s3-test-prefix/content", result)
 }
 
@@ -44,32 +44,37 @@ func TestSortToSingleLine_EmptyContent_ReturnsEmptyString(t *testing.T) {
 }
 
 func TestGetContentPath_EmptyBsType_ReturnsFullPath(t *testing.T) {
-	result := GetContentPath("/base/dir")
+	result := GetContentPath("/base/dir", "test-container")
 	assert.Equal(t, "/base/dir/content", result)
 }
 
 func TestGetContentPath_FileBsType_ReturnsFullPath(t *testing.T) {
-	result := GetContentPath("/base/dir")
+	result := GetContentPath("/base/dir", "test-container")
 	assert.Equal(t, "/base/dir/content", result)
 }
 
 func TestGetContentPath_FileBsType_PathContainingContent(t *testing.T) {
-	result := GetContentPath("/base/dir/content/vol-NN/chap-MM")
+	result := GetContentPath("/base/dir/content/vol-NN/chap-MM", "test-container")
 	assert.Equal(t, "/base/dir/content", result)
 }
 
 func TestGetContentPath_WithProtocol_PathContainingContent(t *testing.T) {
-	result := GetContentPath("file://base/dir/content/vol-NN/chap-MM")
+	result := GetContentPath("file://base/dir/content/vol-NN/chap-MM", "test-container")
 	assert.Equal(t, "base/dir/content", result)
 }
 
+func TestGetContentPath_WithProtocol_PathEndsWithSlash(t *testing.T) {
+	result := GetContentPath("az://apac-support-bucket_filelist-test_copied/", "apac-support-bucket_filelist-test_copied")
+	assert.Equal(t, "content", result)
+}
+
 func TestGetContentPath_WithProtocol_FullPathContainingContent(t *testing.T) {
-	result := GetContentPath("file:///tmp/base/dir/content/vol-NN/chap-MM")
+	result := GetContentPath("file:///tmp/base/dir/content/vol-NN/chap-MM", "test-container")
 	assert.Equal(t, "/tmp/base/dir/content", result)
 }
 
 func TestGetContentPath_WithProtocol_FullPathContainingContent2(t *testing.T) {
-	result := GetContentPath("file:///Users/hosako/Documents/tests/nxrm_3.73.0-12_nxrm3730/sonatype-work/nexus3/blobs/default/")
+	result := GetContentPath("file:///Users/hosako/Documents/tests/nxrm_3.73.0-12_nxrm3730/sonatype-work/nexus3/blobs/default/", "test-container")
 	assert.Equal(t, "/Users/hosako/Documents/tests/nxrm_3.73.0-12_nxrm3730/sonatype-work/nexus3/blobs/default/content", result)
 }
 
@@ -86,6 +91,11 @@ func TestGetUpToContent_PathEndingWithContent_ReturnsSamePath(t *testing.T) {
 func TestGetUpToContent_PathWithoutContent_AddsContent(t *testing.T) {
 	result := GetUpToContent("sonatype-work/nexus3/blobs/default")
 	assert.Equal(t, "sonatype-work/nexus3/blobs/default/content", result)
+}
+
+func TestGetUpToContent_PathWithoutContent_EndsSlash(t *testing.T) {
+	result := GetUpToContent("apac-support-bucket_filelist-test_copied/")
+	assert.Equal(t, "apac-support-bucket_filelist-test_copied/content", result)
 }
 
 func TestGetUpToContent_EmptyPath_ReturnsContent(t *testing.T) {

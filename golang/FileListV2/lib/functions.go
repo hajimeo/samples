@@ -37,7 +37,8 @@ func GetContainerAndPrefix(uri string) (string, string) {
 	return u.Hostname(), prefix
 }
 
-func GetContentPath(blobStoreWithPrefix string) string {
+func GetContentPath(blobStoreWithPrefix string, container string) string {
+	// Return the relative path starting from 'content' folder
 	bsType := GetSchema(blobStoreWithPrefix)
 	h.Log("DEBUG", "(GetContentPath) bsType:"+bsType)
 	if strings.Contains(blobStoreWithPrefix, "://") {
@@ -49,10 +50,11 @@ func GetContentPath(blobStoreWithPrefix string) string {
 		return GetUpToContent(blobStoreWithPrefix)
 	} else if bsType == "s3" || bsType == "az" {
 		contentPath := GetUpToContent(blobStoreWithPrefix)
-		if len(common.Container) == 0 {
+		if len(container) == 0 {
 			return contentPath
 		}
-		return strings.SplitAfter(contentPath, common.Container+"/")[1]
+		//h.Log("DEBUG", "(GetContentPath) contentPath:"+contentPath+", container:"+container)
+		return strings.SplitAfter(contentPath, container+"/")[1]
 	} else {
 		h.Log("TODO", "Do something for Google etc. blob store content path")
 		return ""

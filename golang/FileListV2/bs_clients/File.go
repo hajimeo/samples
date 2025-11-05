@@ -16,7 +16,13 @@ import (
 	"time"
 )
 
-type FileClient struct{}
+type FileClient struct {
+	ClientNum int
+}
+
+func (c *FileClient) SetClientNum(num int) {
+	c.ClientNum = num
+}
 
 func (c *FileClient) ReadPath(path string) (string, error) {
 	if common.Debug {

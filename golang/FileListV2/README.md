@@ -14,7 +14,7 @@
 Saving the binary as `filelist2` as an example:
 
 ```bash
-curl -o ./filelist2 -L "https://github.com/sonatype-nexus-community/nexus-monitoring/raw/refs/heads/main/resources/filelistv2_$(uname)_$(uname -m)"
+curl -o ./filelist2 -L "https://github.com/sonatype/nexus-monitoring/raw/refs/heads/main/resources/filelistv2_$(uname)_$(uname -m)"
 chmod a+x ./filelist2
 ```
 
@@ -197,17 +197,26 @@ filelist2 -db ./sonatype-work/nexus3/etc/fabric/nexus-store.properties -query "S
 
 ### *Experimental* Copy specific blobs to another Blob store with `-bTo` (like Export/Import)
 
-Excluding the soft-deleted blobs and including only specific repo.
-
+Excluding the soft-deleted blobs and including only specific repo. For bTo uses a different credential, appending _2 may work. (e.g. AWS S3 to MinIO)
 ```
-# For same blob store type but using different credential, appending _2 may work. For example, AWS S3 to MinIO
-# Copying one repository "raw-s3-hosted" (not soft-deleted) into MinIO (requires HTTPS)
+# NOTE: MinIO example. HTTPS is required.
 export AWS_ACCESS_KEY_ID_2="admin" AWS_SECRET_ACCESS_KEY_2="admin123" AWS_REGION_2="" AWS_ENDPOINT_URL_2="https://local.standalone.localdomain:19000" AWS_CA_BUNDLE_2="$HOME/minio_data/certs/public.crt"
-filelist2 -b "s3://apac-support-bucket/filelist-test/" -bTo "s3://apac-support-bucket/filelist-test_copied/" -PathStyle -P -pRx "@Bucket.repo-name=raw-s3-hosted," -pRxNot "deleted=true" -s ./copied_blobs.tsv
+filelist2 -b "s3://apac-support-bucket/filelist-test/" -bTo "s3://apac-support-bucket/filelist-test_copied/" -PathStyle -P -pRx "@Bucket.repo-name=raw-s3-hosted," -pRxNot "deleted=true" -H -s ./copied_blobs.tsv
+```
+NOTE: Using `AWS_CA_BUNDLE` may break HTTPS requests to the real AWS S3. May also need to use `-PathStyle` if not wildcard certificate.
+```
+# NOTE: Azurite example. Need to create a Container. Can not use '_' in the container name.
+export AZURE_STORAGE_CONNECTION_STRING_2="DefaultEndpointsProtocol=http;AccountName=admin;AccountKey=YWRtaW4xMjM=;BlobEndpoint=http://localhost:10000/admin;"
+az storage container create --name "apac-support-bucket-filelist-test-copied" --connection-string "${AZURE_STORAGE_CONNECTION_STRING_2}"
+filelist2 -b "s3://apac-support-bucket/filelist-test/" -bTo "az://apac-support-bucket-filelist-test-copied/" -P -pRx "@Bucket.repo-name=raw-s3-hosted," -pRxNot "deleted=true" -H -s ./copied_blobs.tsv
+# To validate
+AZURE_STORAGE_CONNECTION_STRING="${AZURE_STORAGE_CONNECTION_STRING_2}" filelist2 -b "az://apac-support-bucket-filelist-test-copied/" -rF ./copied_blobs.tsv
+```
+NOTE: Using `AWS_CA_BUNDLE` may break HTTPS requests to the real AWS S3. May also need to use `-PathStyle` if not wildcard certificate.
+```
 # After reviewing ./copied_blobs.tsv, execute the undelter against another Nexus instance
 bash ./nrm3-undelete-3.83.sh -I -s "default" -b ./copied_blobs.tsv
 ```
-NOTE: Using `AWS_CA_BUNDLE` may break HTTPS requests to the real AWS S3. May also need to use `-PathStyle` if not wildcard certificate.
 
 ## Misc.
 

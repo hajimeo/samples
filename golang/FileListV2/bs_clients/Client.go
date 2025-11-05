@@ -31,6 +31,8 @@ type Client interface {
 	GetReader(string) (interface{}, error)
 	// GetWriter : Get the writer for the path. Used for io.Copy. Make sure this method creates subdirectories
 	GetWriter(string) (interface{}, error)
+	// SetClientNum : Set the current client number for -bTo (as Golang doesn't support field inheritance)
+	SetClientNum(int)
 }
 
 type BlobInfo struct {

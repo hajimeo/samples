@@ -40,18 +40,18 @@ HOW TO and USAGE EXAMPLES:
 func setGlobals() {
 	common.StartTimestamp = time.Now().Unix()
 
-	// TODO: 'b' should accept the comma separated values for supporting the group blob store
+	// TODO: (low) 'b' should accept the comma separated values for supporting the group blob store
 	flag.StringVar(&common.BaseDir, "b", "", "Blob store directory or URI (eg. 's3://s3-test-bucket/s3-test-prefix/'), which location contains 'content' directory (default: '.')")
 	flag.StringVar(&common.BaseDir2, "bTo", "", "*Experimental* Blob store directory or URI (eg. 's3://s3-test-bucket/s3-test-prefix_to_content/') for copying files from -b")
-	flag.BoolVar(&common.NoDateBsLayout, "NoDateBS", false, "Disable the date based blob store layout (YYYY/MM/DD/hh/mm/uuid) to force checking the old vol-XX/chap-XX/uuid layout")
+	flag.BoolVar(&common.NoDateBsLayout, "NoDateBS", false, "Declair the date based blob store layout (YYYY/MM/DD/hh/mm/uuid) is not used, so that force checking the old vol-XX/chap-XX/uuid layout")
 	flag.StringVar(&common.Filter4Path, "p", "", "Regular Expression for directory *path* (eg '/(vol-\\d\\d|20\\d\\d)/'), or S3 prefix.")
 	flag.StringVar(&common.Filter4FileName, "f", "", "Regular Expression for the file *name* (eg: '\\.properties' to include only this extension)")
 	flag.BoolVar(&common.WithProps, "P", false, "If true, the .properties file content is included in the output")
 	flag.StringVar(&common.Filter4PropsIncl, "pRx", "", "Regular Expression against the text of the .properties files (eg: 'deleted=true')")
 	flag.StringVar(&common.Filter4PropsExcl, "pRxNot", "", "Excluding Regular Expression for .properties files (eg: 'BlobStore.blob-name=.+/maven-metadata.xml.*')")
-	// TODO: not implemented yet
-	flag.StringVar(&common.Filter4BytesIncl, "bRx", "", "Regular Expression for .bytes files (max size 32KB)")
-	flag.StringVar(&common.Filter4BytesExcl, "bRxNot", "", "Excluding Regular Expression for .bytes files (max size 32KB)")
+	// TODO: (low) not implemented yet
+	//flag.StringVar(&common.Filter4BytesIncl, "bRx", "", "Regular Expression for .bytes files (max size 32KB)")
+	//flag.StringVar(&common.Filter4BytesExcl, "bRxNot", "", "Excluding Regular Expression for .bytes files (max size 32KB)")
 	flag.StringVar(&common.SaveToFile, "s", "", "Save the output (TSV text) into the specified path")
 	flag.BoolVar(&common.SavePerDir, "SavePerDir", false, "If true and -s is given, save the output per sub-directory")
 	flag.Int64Var(&common.TopN, "n", 0, "Return first N lines per *thread* (0 = no limit). Can't be less than '-c'")
@@ -61,9 +61,9 @@ func setGlobals() {
 	flag.BoolVar(&common.NoHeader, "H", false, "If true, no header line")
 
 	flag.StringVar(&common.BlobIDFIle, "rF", "", "Result File which contains the list of blob IDs")
-	flag.StringVar(&common.GetFile, "get", "", "TODO: Get a single file/blob from the blob store")
-	flag.StringVar(&common.GetTo, "getTo", "", "TODO: Get to the local path")
 	// TODO: GetXxxx not used yet
+	//flag.StringVar(&common.GetFile, "get", "", "TODO: Get a single file/blob from the blob store")
+	//flag.StringVar(&common.GetTo, "getTo", "", "TODO: Get (copy) to the local path")
 
 	// DB / SQL related
 	flag.StringVar(&common.DbConnStr, "db", "", "DB connection string or path to DB connection properties file")
@@ -72,15 +72,15 @@ func setGlobals() {
 
 	// Reconcile / orphaned blob finding related
 	flag.StringVar(&common.Truth, "src", "", "Using database or blobstore as source [BS|DB] for Dead or Orphaned blob finding")
+	// TODO: Not enough testing the `-RDel` with the new blob store layout and with S3 / Azure
 	flag.BoolVar(&common.RemoveDeleted, "RDel", false, "Remove 'deleted=true' from .properties. Requires -dF")
-	// TODO: Not tested `-RDel` with the new blob store layout and with S3 / Azure
 	flag.StringVar(&common.WriteIntoStr, "wStr", "", "For testing. Write the string into the file (eg. deleted=true)")
 	flag.StringVar(&common.DelDateFromStr, "dDF", "", "Deleted date YYYY-MM-DD (from). Used to search deletedDateTime")
 	flag.StringVar(&common.DelDateToStr, "dDT", "", "Deleted date YYYY-MM-DD (to). To exclude newly deleted assets")
 	flag.StringVar(&common.ModDateFromStr, "mDF", "", "File modification date YYYY-MM-DD (from)")
 	flag.StringVar(&common.ModDateToStr, "mDT", "", "File modification date YYYY-MM-DD (to)")
 	flag.BoolVar(&common.BytesChk, "BytesChk", false, "Check if .bytes file exists. Also the .bytes mod time is used for -mDF/-mDT")
-	flag.BoolVar(&common.NoSizeChk, "NoSizeChk", false, "Do not check the file size (for non S3 such as MinIO)")
+	flag.BoolVar(&common.NoExtraChk, "NoExChk", false, "Do not perform extra checks such as the file size to improve performance")
 
 	// Blob store specifics (AWS S3 / Azure related)
 	flag.IntVar(&common.MaxKeys, "m", 1000, "AWS S3: Integer value for Max Keys (<= 1000)")
@@ -114,7 +114,7 @@ func setGlobals() {
 		common.Container, common.Prefix = lib.GetContainerAndPrefix(common.BaseDir)
 		h.Log("DEBUG", "common.Container = "+common.Container)
 		h.Log("DEBUG", "common.Prefix = "+common.Prefix)
-		common.ContentPath = lib.GetContentPath(common.BaseDir)
+		common.ContentPath = lib.GetContentPath(common.BaseDir, common.Container)
 		h.Log("DEBUG", "common.ContentPath = "+common.ContentPath)
 	}
 
@@ -126,7 +126,7 @@ func setGlobals() {
 		common.Container2, common.Prefix2 = lib.GetContainerAndPrefix(common.BaseDir2)
 		h.Log("DEBUG", "common.Container2 = "+common.Container2)
 		h.Log("DEBUG", "common.Prefix2 = "+common.Prefix2)
-		common.ContentPath2 = lib.GetContentPath(common.BaseDir2)
+		common.ContentPath2 = lib.GetContentPath(common.BaseDir2, common.Container2)
 		h.Log("DEBUG", "common.ContentPath = "+common.ContentPath2)
 	}
 
@@ -229,11 +229,11 @@ func setGlobals() {
 	// If Truth is not set but BlobIDFIle is given, needs to set Truth
 	if len(common.Truth) == 0 && len(common.BlobIDFIle) > 0 {
 		if common.RemoveDeleted == false && len(common.BaseDir) > 0 {
-			h.Log("WARN", "BlobIDFIle and BaseDir are provided but '-src DB' is missing to find Dead blobs")
+			h.Log("INFO", "BlobIDFIle and BaseDir are provided but '-src DB' is missing, so that not Dead blobs finder mode")
 			//common.Truth = "DB"
 		} else if len(common.DbConnStr) > 0 && len(common.Query) == 0 {
 			// If BlobIDFIle is not empty, Query should be empty as Query usesBlobIDFIle to save the result.
-			h.Log("WARN", "BlobIDFIle and DbConnStr are provided but no BaseDir and no '-src BS' to find Orphaned blobs")
+			h.Log("INFO", "BlobIDFIle and DbConnStr are provided but no BaseDir and no '-src BS', so that not Orphaned blobs finder mode")
 			//common.Truth = "BS"
 		}
 	}
@@ -398,7 +398,9 @@ func genBlobPath(blobIdLikeString string, extension string) string {
 
 func genOutput(path string, bi bs_clients.BlobInfo, db *sql.DB) string {
 	if len(common.Filter4FileName) > 0 && !common.RxFilter4FileName.MatchString(path) {
-		h.Log("DEBUG", fmt.Sprintf("path:%s does not match with the filter %s", path, common.RxFilter4FileName.String()))
+		if common.Debug2 {
+			h.Log("DEBUG", fmt.Sprintf("Skipping  as path:%s does not match with the filter %s", path, common.RxFilter4FileName.String()))
+		}
 		return ""
 	}
 
@@ -407,7 +409,7 @@ func genOutput(path string, bi bs_clients.BlobInfo, db *sql.DB) string {
 	var bytesPath string
 	if strings.HasSuffix(path, common.PROP_EXT) {
 		// the properties file can not be empty (0 byte), but if already Error, no need another WARN
-		if !common.NoSizeChk && !bi.Error && bi.Size == 0 {
+		if !common.NoExtraChk && !bi.Error && bi.Size == 0 {
 			h.Log("WARN", fmt.Sprintf("path:%s has 0 byte size", path))
 			// No need to exit
 		}
@@ -471,7 +473,7 @@ func genOutput(path string, bi bs_clients.BlobInfo, db *sql.DB) string {
 						sizeInProps, err := strconv.ParseInt(matches[1], 10, 64)
 						if err != nil {
 							h.Log("WARN", fmt.Sprintf("path:%s has non numeric size %v", path, matches))
-						} else if !common.NoSizeChk && sizeInProps != bytesInfo.Size {
+						} else if !common.NoExtraChk && sizeInProps != bytesInfo.Size {
 							h.Log("WARN", fmt.Sprintf("path:%s has size mismatch between size=%s and .bytes (%d)", path, matches[1], bytesInfo.Size))
 						}
 					}
@@ -812,6 +814,15 @@ func writeFromCache(path string, client bs_clients.Client) (bool, error) {
 
 func copyToBaseDir2(path string) string {
 	writingPath := filepath.Join(common.ContentPath2, lib.GetAfterContent(path))
+	// TODO: Check if the writingPath already exists in BaseDir2 with GetFileInfo
+	if !common.NoExtraChk {
+		info, err := Client2.GetFileInfo(writingPath)
+		if err == nil {
+			h.Log("DEBUG", fmt.Sprintf("Path:%s already exists in %s (size:%d, modTime:%s). Skipping copy.", writingPath, common.BaseDir2, info.Size, info.ModTime))
+			return "ALREADY_EXISTS"
+		}
+	}
+
 	// If the path is .properties, first try to write by using the cache
 	if strings.HasSuffix(path, common.PROP_EXT) {
 		result, err := writeFromCache(writingPath, Client2)
@@ -855,7 +866,7 @@ func copyToBaseDir2(path string) string {
 		return "COPY_FAILED"
 	}
 
-	h.Log("DEBUG", fmt.Sprintf("Copied data from path:%s to BaseDir2:%s", path, writingPath))
+	h.Log("DEBUG", fmt.Sprintf("Copied :%s under %s", writingPath, common.BaseDir2))
 	return ""
 }
 
@@ -877,7 +888,7 @@ func listObjects(dir string, db *sql.DB) {
 	//h.Log("INFO", fmt.Sprintf("Listing objects from %s", dir))
 	subTtl := Client.ListObjects(dir, db, printLineFromPath)
 	// Always log this elapsed time by using 0 thresholdMs
-	h.Elapsed(startMs, fmt.Sprintf("Checked %s for %d files (current total: %d)", dir, subTtl, common.CheckedNum), 0)
+	h.Elapsed(startMs, fmt.Sprintf("Processed %d files from %s (current total: %d)", subTtl, dir, common.CheckedNum), 0)
 }
 
 func checkBlobIdDetailFromDB(maybeBlobId string) interface{} {
