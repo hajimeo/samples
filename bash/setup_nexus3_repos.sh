@@ -1382,7 +1382,7 @@ function f_setup_r() {
             echo "# install.packages('agricolae', repos='${_NEXUS_URL%/}/repository/r${_prefix}-proxy/', type='binary')"
     fi
     if [ ! -s "${_TMP%/}/myfunpackage_1.0.tar.gz" ]; then
-        curl -sf -o "${_TMP%/}/myfunpackage_1.0.tar.gz" -L https://github.com/sonatype-nexus-community/nexus-repository-r/raw/NEXUS-20439_r_format_support/nexus-repository-r-it/src/test/resources/r/myfunpackage_1.0.tar.gz
+        curl -sf -o "${_TMP%/}/myfunpackage_1.0.tar.gz" -L https://github.com/sonatype/nexus-repository-r/raw/NEXUS-20439_r_format_support/nexus-repository-r-it/src/test/resources/r/myfunpackage_1.0.tar.gz
     fi
     if [ -s "${_TMP%/}/myfunpackage_1.0.tar.gz" ]; then
         curl -sf -u "${r_ADMIN_USER:-"${_ADMIN_USER}"}:${r_ADMIN_PWD:-"${_ADMIN_PWD}"}" "${_NEXUS_URL%/}/repository/${_prefix}-hosted/src/contrib/myfunpackage_1.0.tar.gz" -T "${_TMP%/}/myfunpackage_1.0.tar.gz" && \
@@ -1669,7 +1669,7 @@ function f_branding() {
 function f_create_file_blobstore() {
     local __doc__="Create a File type blobstore"
     local _bs_name="${1:-"file_$(date +"%Y%m%d")"}"
-    _log "INFO" "Creating blobstore: ${_bs_name} ..."
+    _log "INFO" "Creating File blobstore: ${_bs_name} ..."
     if ! _apiS '{"action":"coreui_Blobstore","method":"create","data":[{"type":"File","name":"'${_bs_name}'","isQuotaEnabled":false,"attributes":{"file":{"path":"'${_bs_name}'"}}}],"type":"rpc"}' > ${_TMP%/}/f_apiS_last.out; then
         _log "ERROR" "Blobstore ${_bs_name} does not exist."
         _log "ERROR" "$(cat ${_TMP%/}/f_apiS_last.out)"
@@ -1678,25 +1678,66 @@ function f_create_file_blobstore() {
     _log "DEBUG" "$(cat ${_TMP%/}/f_apiS_last.out)"
 }
 
+function f_start_s3_compatible() {
+    local __doc__="Start a MinIO docker container for S3 compatible API testing"
+    # https://gist.github.com/ataylor284/7b15c276441906d16d43f58cf8e3ea94?permalink_comment_id=2986850
+    # https://dev.to/arifszn/minio-mock-s3-in-local-development-4ke6
+    # https://help.sonatype.com/en/configuring-blob-stores.html for policy
+    local _port="${1:-"19000"}" # Usually Idea uses 9000, so using 19000
+    local _data="${2:-"$HOME/minio_data"}"
+    local _tag="${3-"RELEASE.2024-08-03T04-33-23Z"}"    # TODO: Should use "latest"?
+    local _cn="${4:-"localhost"}"
+
+    if [ ! -d "${_data%/}/certs" ]; then
+        mkdir -v -p "${_data%/}/certs" || return $?
+    fi
+    if [ ! -s "${_data%/}/certs/private.key" ] || [ ! -s "${_data%/}/certs/public.crt" ]; then
+        if [ -s "${_SHARE_DIR%/}/cert/standalone.localdomain.key" ] && [ -s "${_SHARE_DIR%/}/cert/standalone.localdomain.crt" ]; then
+            _info "Using existing certificate from ${_SHARE_DIR%/}/cert/standalone.localdomain.*"
+            cp -v "${_SHARE_DIR%/}/cert/standalone.localdomain.key" "${_data%/}/certs/private.key" || return $?
+            cp -v "${_SHARE_DIR%/}/cert/standalone.localdomain.crt" "${_data%/}/certs/public.crt" || return $?
+        else
+            _warn "Generating *NEW* self-signed certificate for MinIO with CN=${_cn}..."; sleep 3
+            openssl genrsa -out "${_data%/}/certs/private.key" 4096 || return $?
+    	    openssl req -x509 -new -nodes -key ${_data%/}/certs/private.key -sha256 -days 3650 -out ${_data%/}/certs/public.crt -subj "/CN=${_cn}" -addext "basicConstraints=CA:TRUE" || return $?
+        fi
+    fi
+    local _web_port="$((${_port} + 90))"
+    docker run -t -d \
+     -p ${_port}:9000 \
+     -p ${_web_port}:${_web_port} \
+     --name minio \
+     -v ${_data}:/data:z \
+     -e "MINIO_ROOT_USER=admin" \
+     -e "MINIO_ROOT_PASSWORD=admin123" \
+     -e "MINIO_ACCESS_KEY=admin" \
+     -e "MINIO_SECRET_KEY=admin123" \
+     minio/minio:${_tag:-"latest"} server /data --certs-dir /data/certs --console-address ":${_web_port}" || return $?
+    _log "INFO" "API: https://127.0.0.1:${_port}/"
+    _log "INFO" "Web: https://127.0.0.1:${_web_port}/"
+    _log "INFO" "export AWS_ENDPOINT_URL=https://${_cn}:${_port}"
+    # Nexus may create bucket. User is already created (admin)."
+}
+
 # AWS_ACCESS_KEY_ID=xxx AWS_SECRET_ACCESS_KEY=yyy f_create_s3_blobstore
 # _NO_REPO_CREATE=Y f_create_s3_blobstore
-# MinIO: export AWS_ACCESS_KEY_ID="*********" AWS_SECRET_ACCESS_KEY="**********" AWS_REGION="" AWS_ENDPOINT_URL="http://127.0.0.1:9000"
+# MinIO: f_create_s3_blobstore "minio" "" "" "" "admin" "admin123" "http://127.0.0.1:19000"
 function f_create_s3_blobstore() {
     local __doc__="Create a S3 blobstore. AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY are required"
-    local _bs_name="${1-"s3"}"  # If "", use date-based name
+    local _bs_name="${1}"  # If "", use date-based name
     local _bucket="${2:-"apac-support-bucket"}"
     local _prefix="${3:-"$(hostname -s)_$(date +"%Y%m%d")"}"    # cat /etc/machine-id is not perfect if docker container
-    local _region="${4:-"${AWS_REGION-"ap-southeast-2"}"}"
+    local _region="${4-"${AWS_REGION-"ap-southeast-2"}"}"
     local _ak="${5:-"${AWS_ACCESS_KEY_ID}"}"
     local _sk="${6:-"${AWS_SECRET_ACCESS_KEY}"}"
     local _ep="${7:-"${AWS_ENDPOINT_URL}"}"
-    local _exp="${8:-"3"}"  # Not used since 3.80 (46435)
+    local _raw_hosted_repo_name="${8-"${_RAW_HOSTED_REPO_NAME:-"raw-s3-hosted"}"}"
     if [ -z "${_bs_name}" ]; then
         _bs_name="s3$(date +"%Y%m%d")"
         _log "INFO" "Using blobstore name: ${_bs_name} ..."; sleep 3
     fi
     if ! _is_blob_available "${_bs_name}"; then
-        _log "INFO" "Creating blobstore: ${_bs_name} ..."
+        _log "INFO" "Creating S3 blobstore: ${_bs_name} ..."
         if [ -n "${_prefix}" ]; then    # AWS S3 prefix shouldn't start with / (and may need to end with /?)
             _prefix="${_prefix#/}"
             #_prefix="${_prefix%/}/"    # Doesn't work with MinIO
@@ -1705,7 +1746,7 @@ function f_create_s3_blobstore() {
         if ! f_api "/service/rest/v1/blobstores/s3" '{"name":"'${_bs_name}'","bucketConfiguration":{"bucket":{"region":"'${_region}'","prefix":"'${_prefix}'","name":"'${_bucket}'","expiration":'${_exp}'},"bucketSecurity":{"secretAccessKey":"'${_sk}'","accessKeyId":"'${_ak}'"},"encryption":null,"advancedBucketConnection":{"endpoint":"'${_ep}'","forcePathStyle":false},"failoverBuckets":[],"activeRegion":null}}' > ${_TMP%/}/f_api_last.out; then
             # TODO (minor): endpoint for older version
             # NOTE: 3.27 has ',"state":""'
-            if ! _apiS '{"action":"coreui_Blobstore","method":"create","data":[{"type":"S3","name":"'${_bs_name}'","isQuotaEnabled":false,"property_region":"'${_region}'","property_bucket":"'${_bucket}'","property_prefix":"'${_prefix%/}'","property_expiration":1,"authEnabled":true,"property_accessKeyId":"'${_ak}'","property_secretAccessKey":"'${_sk}'","property_assumeRole":"","property_sessionToken":"","encryptionSettingsEnabled":false,"advancedConnectionSettingsEnabled":false,"attributes":{"s3":{"region":"'${_region}'","bucket":"'${_bucket}'","prefix":"'${_prefix%/}'","expiration":"'${_exp}'","accessKeyId":"'${_ak}'","secretAccessKey":"'${_sk}'","assumeRole":"","sessionToken":""}}}],"type":"rpc"}' > ${_TMP%/}/f_apiS_last.out; then
+            if ! _apiS '{"action":"coreui_Blobstore","method":"create","data":[{"type":"S3","name":"'${_bs_name}'","isQuotaEnabled":false,"property_region":"'${_region}'","property_bucket":"'${_bucket}'","property_prefix":"'${_prefix%/}'","property_expiration":1,"authEnabled":true,"property_accessKeyId":"'${_ak}'","property_secretAccessKey":"'${_sk}'","property_assumeRole":"","property_sessionToken":"","encryptionSettingsEnabled":false,"advancedConnectionSettingsEnabled":false,"attributes":{"s3":{"region":"'${_region}'","bucket":"'${_bucket}'","prefix":"'${_prefix%/}'","expiration":"3","accessKeyId":"'${_ak}'","secretAccessKey":"'${_sk}'","assumeRole":"","sessionToken":""}}}],"type":"rpc"}' > ${_TMP%/}/f_apiS_last.out; then
                 _log "ERROR" "Failed to create blobstore: ${_bs_name} ."
                 _log "ERROR" "$(cat ${_TMP%/}/f_api_last.out)"
                 _log "ERROR" "$(cat ${_TMP%/}/f_apiS_last.out)"
@@ -1718,13 +1759,17 @@ function f_create_s3_blobstore() {
     else
         _log "INFO" "Blobstore ${_bs_name} already exists."
     fi
-    if [[ ! "${_NO_REPO_CREATE}" =~ [yY] ]] && ! _is_repo_available "raw-${_bs_name}-hosted"; then
-        # Not sure why but the file created by `dd` doesn't work if strictContentTypeValidation is true
-        _apiS '{"action":"coreui_Repository","method":"create","data":[{"attributes":{"storage":{"blobStoreName":"'${_bs_name}'","writePolicy":"ALLOW","strictContentTypeValidation":false'$(_get_extra_sto_opt)'},"cleanup":{"policyName":[]}},"name":"raw-'${_bs_name}'-hosted","format":"","type":"","url":"","online":true,"recipe":"raw-hosted"}],"type":"rpc"}' || return $?
-        if ! _is_repo_available "raw-${_bs_name}-hosted"; then
-            _log "WARN" "Failed to create raw-${_bs_name}-hosted"
+    if [[ ! "${_NO_REPO_CREATE}" =~ [yY] ]] && [ -n "${_raw_hosted_repo_name}" ]; then
+        if _is_repo_available "${_raw_hosted_repo_name}"; then
+            _log "INFO" "Repository ${_raw_hosted_repo_name} already exists (please check which blob store is used)"
         else
-            _log "INFO" "Created raw-${_bs_name}-hosted"
+            _apiS '{"action":"coreui_Repository","method":"create","data":[{"attributes":{"storage":{"blobStoreName":"'${_bs_name}'","writePolicy":"ALLOW","strictContentTypeValidation":false'$(_get_extra_sto_opt)'},"cleanup":{"policyName":[]}},"name":"'${_raw_hosted_repo_name}'","format":"","type":"","url":"","online":true,"recipe":"raw-hosted"}],"type":"rpc"}' || return $?
+            sleep 1
+            if ! _is_repo_available "raw-${_bs_name}-hosted"; then
+                _log "WARN" "Creating raw-${_bs_name}-hosted might be failed"
+            else
+                _log "INFO" "Created raw-${_bs_name}-hosted"
+            fi
         fi
     fi
     _log "INFO" "AWS CLI command examples (not AWS_REGION may matter):
@@ -1739,6 +1784,32 @@ aws s3 cp s3://${_bucket}/${_prefix}content/vol-42/chap-31/f062f002-88f0-4b53-ae
 "
 }
 
+function f_start_az_emulator() {
+    local __doc__="Start https://github.com/Azure/Azurite Docker container"
+    # @see:https://learn.microsoft.com/en-us/azure/storage/blobs/use-azurite-to-run-automated-tests
+    local _port="${1:-"10000"}"
+    local _data="${2:-"$HOME/az_data"}"
+    local _tag="${3-"3.35.0"}"
+
+    if [ ! -d "${_data%/}" ]; then
+        mkdir -v -p "${_data%/}" || return $?
+    fi
+
+    docker run -t -d \
+        -p ${_port}:${_port} \
+        --name azurite \
+        -v ${_data}:/data:z \
+        -e AZURITE_ACCOUNTS="admin:YWRtaW4xMjM=" \
+        mcr.microsoft.com/azure-storage/azurite:${_tag:-"latest"} \
+        azurite-blob --disableTelemetry --blobHost 0.0.0.0 --blobPort ${_port} --location /data || return $?
+    sleep 3 && docker logs azurite
+    _log "INFO" "Add the following lines into the nexus.properties:"
+    echo "nexus.azure.scheme=http"
+    echo "nexus.azure.server=localhost:${_port}"
+    _log "INFO" "export AZURE_STORAGE_CONNECTION_STRING=\"DefaultEndpointsProtocol=http;AccountName=admin;AccountKey=YWRtaW4xMjM=;BlobEndpoint=http://localhost:${_port}/admin;\""
+}
+
+# azurite: f_create_azure_blobstore "azurite" "" "admin" "YWRtaW4xMjM="
 function f_create_azure_blobstore() {
     local __doc__="Create an Azure blobstore. AZURE_STORAGE_ACCOUNT_NAME and AZURE_STORAGE_ACCOUNT_KEY are required"
     #https://pkg.go.dev/github.com/Azure/azure-sdk-for-go/sdk/azidentity#readme-environment-variables
@@ -1746,7 +1817,13 @@ function f_create_azure_blobstore() {
     local _container_name="${2:-"$(hostname -s | tr '[:upper:]' '[:lower:]')-${_bs_name}"}"
     local _an="${3:-"${AZURE_STORAGE_ACCOUNT_NAME}"}"
     local _ak="${4:-"${AZURE_STORAGE_ACCOUNT_KEY}"}"
-    _log "INFO" "Creating blobstore: ${_bs_name} ..."
+    local _raw_hosted_repo_name="${5-"${_RAW_HOSTED_REPO_NAME:-"raw-az-hosted"}"}"
+    #local _conn_str="${5:-"${AZURE_STORAGE_CONNECTION_STRING}"}" # Not used currently
+    if [[ "${_container_name}" =~ _ ]]; then
+        _log "ERROR" "Container name cannot contain underscore (_) character."
+        return 1
+    fi
+    _log "INFO" "Creating Azure blobstore: ${_bs_name} ..."
     # NOTE: nexus.azure.server=<your.desired.blob.storage.server>
     # Container names can contain only lowercase letters, numbers, and the dash (-) character, and must be 3-63 characters long.
     if ! f_api "/service/rest/v1/blobstores/azure" '{"name":"'${_bs_name}'","bucketConfiguration":{"authentication":{"authenticationMethod":"ACCOUNTKEY","accountKey":"'${_ak}'"},"accountName":"'${_an}'","containerName":"'${_container_name}'"}}' > ${_TMP%/}/f_api_last.out; then
@@ -1755,11 +1832,17 @@ function f_create_azure_blobstore() {
         return 1
     fi
     _log "DEBUG" "$(cat ${_TMP%/}/f_api_last.out)"
-    if [[ ! "${_NO_REPO_CREATE}" =~ [yY] ]] && ! _is_repo_available "raw-az-hosted"; then
-        _apiS '{"action":"coreui_Repository","method":"create","data":[{"attributes":{"storage":{"blobStoreName":"'${_bs_name}'","writePolicy":"ALLOW","strictContentTypeValidation":false'$(_get_extra_sto_opt)'},"cleanup":{"policyName":[]}},"name":"raw-az-hosted","format":"","type":"","url":"","online":true,"recipe":"raw-hosted"}],"type":"rpc"}' || return $?
-        _log "INFO" "Created raw-az-hosted"
+    if [[ ! "${_NO_REPO_CREATE}" =~ [yY] ]] && ! _is_repo_available "${_raw_hosted_repo_name}"; then
+        _apiS '{"action":"coreui_Repository","method":"create","data":[{"attributes":{"storage":{"blobStoreName":"'${_bs_name}'","writePolicy":"ALLOW","strictContentTypeValidation":false'$(_get_extra_sto_opt)'},"cleanup":{"policyName":[]}},"name":"'${_raw_hosted_repo_name}'","format":"","type":"","url":"","online":true,"recipe":"raw-hosted"}],"type":"rpc"}' || return $?
+        _log "INFO" "Created ${_raw_hosted_repo_name}"
     fi
-    _log "TODO" "Azure CLI command examples"
+    # TODO: add more examples
+    _log "INFO" "Azure CLI command examples:
+    #export AZURE_STORAGE_CONNECTION_STRING=\"DefaultEndpointsProtocol=http;AccountName=${_an};AccountKey=********;\"
+    az storage container list #--output table
+    az storage blob list --container-name ${_container_name} --output table
+    az storage blob download --container-name ${_container_name} --name metadata.properties --file ./az_dl.tmp && echo '----' && cat ./az_dl.tmp
+    "
 }
 
 function f_create_google_blobstore() {
@@ -1771,7 +1854,7 @@ function f_create_google_blobstore() {
     local _region="${5:-"${GOOGLE_REGION:-"australia-southeast1"}"}"
     local _accountKeyFle_content="$(cat "${_accountKeyFle}" | JSON_ESCAPE=Y _sortjson)"
     local _project_id="$(cat "${_accountKeyFle}" | JSON_SEARCH_KEY="project_id" _sortjson)"
-    _log "INFO" "Creating blobstore: ${_bs_name} ..."
+    _log "INFO" "Creating Google blobstore: ${_bs_name} ..."
     echo '{"name":"'${_bs_name}'","bucketConfiguration":{"bucketSecurity":{"authenticationMethod":"accountKey","file":{"0":{}},"accountKey":"'${_accountKeyFle_content}'"},"bucket":{"projectId":"'${_project_id}'","name":"'${_bucket}'","prefix":"'${_prefix}'","region":"'${_region}'"}}}' > ${_TMP%/}/${FUNCNAME[0]}_$$.json
     if ! f_api "/service/rest/v1/blobstores/google" "@${_TMP%/}/${FUNCNAME[0]}_$$.json" > ${_TMP%/}/f_api_last.out; then
         _log "ERROR" "Failed to create blobstore: ${_bs_name} ."
@@ -1794,7 +1877,7 @@ function f_create_group_blobstore() {
     local _repo_name="${4-"raw-grpbs-hosted"}"
     f_create_file_blobstore "${_member_pfx}1"
     f_create_file_blobstore "${_member_pfx}2"
-    _log "INFO" "Creating blobstore: ${_bs_name} ..."
+    _log "INFO" "Creating group blobstore: ${_bs_name} ..."
     f_api '/service/rest/v1/blobstores/group' '{"name":"'${_bs_name}'","members":["'${_member_pfx}'1","'${_member_pfx}'2"],"fillPolicy":"'${_file_policy}'"}' || return $?
     if [ -n "${_repo_name}" ] && ! _is_repo_available "${_repo_name}"; then
         _apiS '{"action":"coreui_Repository","method":"create","data":[{"attributes":{"storage":{"blobStoreName":"'${_bs_name}'","writePolicy":"ALLOW","strictContentTypeValidation":true'$(_get_extra_sto_opt)'},"cleanup":{"policyName":[]}},"name":"'${_repo_name}'","format":"","type":"","url":"","online":true,"recipe":"raw-hosted"}],"type":"rpc"}' || return $?
@@ -4580,6 +4663,9 @@ function _is_repo_available() {
     local _nexus_url="${2:-"${r_NEXUS_URL:-"${_NEXUS_URL}"}"}"
     # At this moment, reusing the newer result. Somehow -delete or --exec rm do not work on Mac
     find -L ${_TMP%/} -type f -name '_does_repo_exist*.out' -mmin +1 2>/dev/null | xargs -r rm -f
+    if [ -s ${_TMP%/}/_does_repo_exist$$.out ] && [ -n "${_repo_name}" ] && ! grep -iq "\"${_repo_name}\"" ${_TMP%/}/_does_repo_exist$$.out; then
+        rm -f ${_TMP%/}/_does_repo_exist$$.out
+    fi
     if [ ! -s ${_TMP%/}/_does_repo_exist$$.out ]; then
         _NEXUS_URL="${_nexus_url}" f_api "/service/rest/v1/repositories" | grep '"name":' > ${_TMP%/}/_does_repo_exist$$.out
     fi

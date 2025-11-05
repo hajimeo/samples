@@ -14,6 +14,14 @@ _DL_URL="${_DL_URL:-"https://raw.githubusercontent.com/hajimeo/samples/master"}"
 type _import &>/dev/null || _import() { [ ! -s /tmp/${1}_$$ ] && curl -sf --compressed "${_DL_URL%/}/bash/$1" -o /tmp/${1}_$$; . /tmp/${1}_$$; }
 _import "utils.sh"
 
+if [ -z "${_SHARE_DIR}" ]; then
+    if [ "$(uname)" = "Darwin" ]; then
+        _SHARE_DIR="$HOME/share"
+    else
+        _SHARE_DIR="/var/tmp/share"
+    fi
+fi
+
 function f_host_misc() {
     local __doc__="Misc. changes for Ubuntu OS"
 
@@ -324,7 +332,7 @@ function f_nfs_server() {
     local __doc__="Install and setup NFS/NFSd on Ubuntu"
     # @see: https://www.digitalocean.com/community/tutorials/how-to-set-up-an-nfs-mount-on-ubuntu-18-04
     #       https://help.ubuntu.com/community/NFSv4Howto
-    local _dir="${1:-"/var/tmp/share"}"     # exposing this directory
+    local _dir="${1:-"${_SHARE_DIR%/}"}"     # exposing this directory
     local _network="${2:-"172.0.0.0/8"}"    # docker containers only
     local _options="${3:-"rw,sync,no_root_squash,no_subtree_check"}"
     apt-get install nfs-kernel-server nfs-common -y
@@ -1085,9 +1093,9 @@ function f_minikube() {
     else
       minikube config set driver docker
     fi
-    if [ -s /var/tmp/share/cert/rootCA_standalone.crt ]; then
+    if [ -s ${_SHARE_DIR%/}/cert/rootCA_standalone.crt ]; then
       # https://minikube.sigs.k8s.io/docs/handbook/untrusted_certs/
-      ${_sudo} bash -c 'mkdir -p ${HOME%/}/.minikube/certs; cp -v /var/tmp/share/cert/rootCA_standalone.crt ${HOME%/}/.minikube/certs/'
+      ${_sudo} bash -c 'mkdir -p ${HOME%/}/.minikube/certs; cp -v ${_SHARE_DIR%/}/cert/rootCA_standalone.crt ${HOME%/}/.minikube/certs/'
     fi
     #${_sudo} minikube addons enable ingress || return $?
     ${_sudo} minikube config set memory 8192
@@ -1163,9 +1171,9 @@ function f_microk8s() {
     if [ -n "${dashboard}" ]; then
         microk8s kubectl -n kube-system describe secret $(microk8s kubectl -n kube-system get secret | grep -oP '^default-token[^ ]+')
         # Replace the dashboard certificate
-        if [ -s /var/tmp/share/cert/standalone.localdomain.key ]; then
+        if [ -s ${_SHARE_DIR%/}/cert/standalone.localdomain.key ]; then
             microk8s kubectl -n kube-system delete secret kubernetes-dashboard-certs || return $?
-            cd /var/tmp/share/cert/ || return $?
+            cd ${_SHARE_DIR%/}/cert/ || return $?
             microk8s kubectl -n kube-system create secret generic kubernetes-dashboard-certs --from-file=standalone.localdomain.crt --from-file=standalone.localdomain.key
             cd -
             echo "microk8s kubectl -n kube-system edit deploy kubernetes-dashboard -o yaml
@@ -1174,10 +1182,10 @@ function f_microk8s() {
             - --tls-key-file=/standalone.localdomain.key"
 
             local _dboard_ip="$(microk8s kubectl -n kube-system get service kubernetes-dashboard -ojson | python -c "import sys,json;a=json.loads(sys.stdin.read());print(a['spec']['clusterIP'])")"
-            if [ -z "${_dboard_ip}" ] || [ ! -s /var/tmp/share/sonatype/utils.sh ]; then
+            if [ -z "${_dboard_ip}" ] || [ ! -s ${_SHARE_DIR%/}/sonatype/utils.sh ]; then
                 _info "Update /etc/hosts or equivalent file for ${_dboard_ip}"
             else
-                source /var/tmp/share/sonatype/utils.sh
+                source ${_SHARE_DIR%/}/sonatype/utils.sh
                 local _host_file=/etc/hosts
                 [ -f /etc/banner_add_hosts ] && _host_file=/etc/banner_add_hosts
                 _update_hosts_file k8sboard.standalone.localdomain ${_dboard_ip} ${_host_file}
@@ -1863,9 +1871,9 @@ function f_postfix() {
     postconf -e 'smtpd_tls_auth_only = no'
     postconf -e 'smtp_tls_note_starttls_offer = yes'
     # Ubuntu's postfix uses /etc/ssl/private/ssl-cert-snakeoil.key so actually don't need below
-    #if [ -s /var/tmp/share/cert/standalone.localdomain.key ]; then
-    #    postconf -e "smtpd_tls_cert_file = /var/tmp/share/cert/standalone.localdomain.crt"
-    #    postconf -e "smtpd_tls_key_file = /var/tmp/share/cert/standalone.localdomain.key"
+    #if [ -s ${_SHARE_DIR%/}/cert/standalone.localdomain.key ]; then
+    #    postconf -e "smtpd_tls_cert_file = ${_SHARE_DIR%/}/cert/standalone.localdomain.crt"
+    #    postconf -e "smtpd_tls_key_file = ${_SHARE_DIR%/}/cert/standalone.localdomain.key"
         #postconf -e 'smtpd_tls_CAfile = /etc/ssl/certs/cacert.pem'
     #fi
     postconf -e 'smtpd_tls_loglevel = 1'
@@ -2219,39 +2227,6 @@ function f_bitbucket() {
     _info "Access http://$(hostname -f):7990/
 For trial license: https://developer.atlassian.com/platform/marketplace/timebomb-licenses-for-testing-server-apps/
 Then, '3 hour expiration for all Atlassian host products'"
-}
-
-function f_s3compatible() {
-    # https://gist.github.com/ataylor284/7b15c276441906d16d43f58cf8e3ea94?permalink_comment_id=2986850
-    # https://dev.to/arifszn/minio-mock-s3-in-local-development-4ke6
-    # https://help.sonatype.com/en/configuring-blob-stores.html for policy
-    local _port="${1:-"9000"}"
-    local _data="${2:-"$HOME/minio_data"}"
-    local _tag="${3-"RELEASE.2024-08-03T04-33-23Z"}"
-    local _cn="${4:-"localhost"}"
-
-    if [ ! -d "${_data%/}/certs" ]; then
-        mkdir -v -p "${_data%/}/certs" || return $?
-    fi
-    if [ ! -s "${_data%/}/certs/private.key" ] || [ ! -s "${_data%/}/certs/public.crt" ]; then
-        _info "Generating self-signed certificate for MinIO ..."
-        openssl genrsa -out "${_data%/}/certs/private.key" 4096 || return $?
-    	openssl req -x509 -new -nodes -key ${_data%/}/certs/private.key -sha256 -days 3650 -out ${_data%/}/certs/public.crt -subj "/CN=${_cn}" -addext "basicConstraints=CA:TRUE" || return $?
-    fi
-    local _web_port="$((${_port} + 90))"
-    docker run -t -d \
-     -p ${_port}:9000 \
-     -p ${_web_port}:${_web_port} \
-     --name minio \
-     -v $HOME/minio_data:/data:z \
-     -e "MINIO_ROOT_USER=admin" \
-     -e "MINIO_ROOT_PASSWORD=admin123" \
-     -e "MINIO_ACCESS_KEY=admin" \
-     -e "MINIO_SECRET_KEY=admin123" \
-     minio/minio:${_tag} server /data --certs-dir /data/certs --console-address ":${_web_port}" || return $?
-    _info "API: https://127.0.0.1:${_port}/"
-    _info "Web: https://127.0.0.1:${_web_port}/"
-    #_info "Create bucket, create a user, create an access key, export AWS_ENDPOINT_URL=https://127.0.0.1:${_port}"
 }
 
 function f_tabby() {
