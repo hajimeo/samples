@@ -3804,7 +3804,12 @@ function f_upload_dummies_docker() {
     # docker login first
     _host_port="$(_docker_login "${_host_port}" "" "${_usr}" "${_pwd}" "${_cmd}")" || return $?
     _log "INFO" "docker login completed for ${_host_port}"
+    local _count=0
     for i in $(eval "${_seq}"); do
+        if [ $((_count + _parallel)) -gt ${_how_many} ]; then
+            _partial=$((_how_many - _count))
+            _log "INFO" "Changed parallel from ${_parallel} to ${_partial} to not exceed total of ${_how_many}"
+        fi
         for j in $(eval "seq 1 ${_parallel}"); do
             local _img="dummy${i}-${j}:${_tag_prefix}$(date +'%H%M%S')"
             if [ -n "${_image_name}" ]; then
@@ -3812,8 +3817,15 @@ function f_upload_dummies_docker() {
             fi
             _log "INFO" "Populating ${_host_port} with ${_img} / base image: ${_base_img} ..."
             (_DOCKER_NO_LOGIN="Y" _populate_docker_hosted "${_base_img}" "${_host_port}" "${_img}" &> ${_TMP%/}/${FUNCNAME[0]}_$$_${i}_${j}.out && echo "[$(date +'%H:%M:%S')] INFO Pushed dummy image '${_img}' (${_base_img}) to ${_host_port} completed" || echo "[$(date +'%H:%M:%S')] WARN Pushed dummy image '${_img}' (${_base_img}) to ${_host_port} failed") &
+            _count=$((_count + 1))
+            if [ ${_count} -ge ${_how_many} ]; then
+                break
+            fi
         done
         wait
+        if [ ${_count} -ge ${_how_many} ]; then
+            break
+        fi
     done 2>${_TMP%/}/${FUNCNAME[0]}_$$.err
     _log "INFO" "Completed. May want to run 'f_delete_dummy_docker_images_from_local \"${_host_port}\"' to remove dummy images."
 }
