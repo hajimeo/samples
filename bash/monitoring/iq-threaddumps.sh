@@ -150,6 +150,8 @@ function takeDumps() {
         _jstack="${JAVA_HOME%/}/bin/jstack"
     elif type jstack &>/dev/null; then
         _jstack="jstack"
+    elif [ -x /opt/sonatype/nexus-iq-server/bin/jstack ] &>/dev/null; then
+        _jstack="jstack"
     fi
     if [ -z "${_jstack}" ]; then
         if [ ! -f /proc/${_pid}/fd/1 ]; then
