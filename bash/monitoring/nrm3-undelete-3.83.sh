@@ -16,11 +16,11 @@ REQUIREMENTS:
 EXAMPLES:
     cd /some/workDir
     curl --compressed -o nrm3-undelete.sh -L https://raw.githubusercontent.com/sonatype/nexus-monitoring/main/scripts/nrm3-undelete-3.83.sh
-    export _ADMIN_USER="admin" _ADMIN_PWD="******" _NEXUS_URL="http://localhost:8081/" #_DRY_RUN="true" _IS_ORIENT="true"
+    export _ADMIN_USER="admin" _ADMIN_PWD="******" _NEXUS_URL="http://localhost:8081/" #_USE_SED="false" _DRY_RUN="true" _IS_ORIENT="true"
     bash ./nrm3-undelete.sh -I      # only once
     bash ./nrm3-undelete.sh -s default -b <blobIDs>
 
-To run concurrently:
+(Old way as now automatic) To run concurrently:
     split -l 200 ./blobIDs.out blobIDs_
     bash ./nrm3-undelete.sh -I    # To install the groovy script
     for f in $(ls -1 ./blobIDs_a*); do
@@ -42,7 +42,7 @@ EOF
 : "${_INSTALL:=""}"
 : "${_BATCH_SIZE:="10"}"   # for xargs -L
 : "${_PARALLEL:="2"}"   # for xargs -P
-: "${_USE_SED:=true}"
+: "${_USE_SED:="true"}"   # If the blobIds file contains extra strings, use sed to extract valid blob IDs
 : "${_TMP:="/tmp"}"
 _SCRIPT_NAME="undeleteBlobIDs"
 # Below is used in the POST json string
@@ -85,10 +85,16 @@ main() {
     fi
     # If _blobIDs is a file, read the file and convert to comma separated string
     if [ -s "${_blobIDs}" ]; then
-        if ${_USE_SED} && type sed >/dev/null 2>&1; then
+        # In case the line contains unnecessary strings, like file-list result
+        if [ "${_USE_SED}" == "true" ] && type sed >/dev/null 2>&1; then
             # As the order might matter, not using 'sort'... but running two sed for YYYY dir and vol-NN.
             sed -n -E 's/.*\/([0-9]{4}\/[0-9]{2}\/[0-9]{2}\/[0-9]{2}\/[0-9]{2}\/[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[xa-f0-9]{4}-[a-f0-9]{12})\.properties.*/\1/p' ${_blobIDs} > ${_TMP%/}/blobIDs_$$.tmp
             grep "content/vol-" "${_blobIDs}" | sed -n -E 's/.+([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})\.properties.*/\1/p' >> ${_TMP%/}/blobIDs_$$.tmp
+            if [ ! -s "${_TMP%/}/blobIDs_$$.tmp" ]; then
+                echo "No valid blobIDs found in file ${_blobIDs} (${_TMP%/}/blobIDs_$$.tmp)" >&2
+                echo "If ${_blobIDs} contains only blob IDs (no '.properties'), may want to use _USE_SED=\"false\"" >&2
+                return
+            fi
             _blobIDs="${_TMP%/}/blobIDs_$$.tmp"
         fi
         if type xargs >/dev/null 2>&1; then
@@ -98,7 +104,7 @@ _blobIDs="\$(echo "\$@" | tr " " ",")"
 curl -sSf -u '${_ADMIN_USER}:${_ADMIN_PWD}' -H 'Content-Type: application/json' "${_NEXUS_URL%/}/service/rest/v1/script/${_SCRIPT_NAME}/run" -d"{\"blobIDs\":\"\${_blobIDs%,}\",\"blobStore\":\"${_blobStore}\",\"isOrient\":${_IS_ORIENT:-"false"},\"dryRun\":${_DRY_RUN:-"false"},\"debug\":${_DEBUG:-"false"}}"
 echo ""
 EOF
-            if ${_DEBUG}; then
+            if [ "${_DEBUG}" == "true" ]; then
                 echo "Created ${_TMP%/}/${_SCRIPT_NAME}_batch.sh with content:"
                 cat "${_TMP%/}/${_SCRIPT_NAME}_batch.sh"
                 cat "${_blobIDs}" | xargs -P ${_PARALLEL:-1} -L ${_BATCH_SIZE:-1} -t bash -x ${_TMP%/}/${_SCRIPT_NAME}_batch.sh
