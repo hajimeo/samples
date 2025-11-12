@@ -86,6 +86,25 @@ function test_4_StartHttpProxyWithDelayWithRegex() {
     return 0
 }
 
+function test_5_StartHttpProxyWithBandwidthWithRegex() {
+    local _port=38005
+    _httpproxy "--port ${_port} --bandwidth 5 --urlregex osakos" || return $?
+
+	if curl -sSfv -o /dev/null -m 3 --proxy localhost:${_port} http://search.osakos.com/index.php 2>"${_TMP%/}/${FUNCNAME[0]}_last.err"; then
+        _result "ERROR" "http request via localhost:${_port} with -m3 should have failed but worked!"
+        echo "Check ${_TMP%/}/${FUNCNAME[0]}_last.err"
+        return 1
+    fi
+	if ! curl -sSfv -o /dev/null --proxy localhost:${_port} https://www.google.com/ 2>"${_TMP%/}/${FUNCNAME[0]}_last.err"; then
+        _result "ERROR" "http request via localhost:${_port} for non regex matched URL failed!"
+        echo "Check ${_TMP%/}/${FUNCNAME[0]}_last.err"
+        return 1
+    fi
+
+    _result "OK" "${FUNCNAME[0]}"
+    return 0
+}
+
 
 
 ### Utility functions
@@ -159,7 +178,7 @@ function main() {
     done
     ps aux | grep httpproxy | grep -v 'httpproxy_test.sh' | grep -v grep
     if ${_final_result}; then
-        _log "INFO" "All tests completed successfully."
+        _log "DONE" "All tests completed successfully!"
     else
         _log "ERROR" "Some tests failed. Check ${_TMP%/}/_httpproxy_last.out"
     fi

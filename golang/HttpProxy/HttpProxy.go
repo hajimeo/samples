@@ -8,7 +8,7 @@
 	openssl req -x509 -new -nodes -key "./proxy.key" -sha256 -days 3650 -out "./proxy.crt" -subj "/CN=My Proxy CA"
 
 # Normal HTTP proxy (it works with https:// as well):
-    httpproxy [--delay {sec} --debug --debug2]
+    httpproxy [--delay {sec} --bandwidth {Kbps} --debug --debug2]
 	# Test (should not need to use -k)
 	curl -v --proxy localhost:8080 http://search.osakos.com/index.php
 	curl -v --proxy localhost:8080 https://search.osakos.com/index.php
@@ -24,8 +24,6 @@
 	httpproxy --replCert --proto https --debug [--crt <path to pem certificate> --key <path to key>]
 	# Test (need --proxy-insecure and -k)
 	curl -v --proxy https://localhost:8080/ --proxy-insecure -k https://search.osakos.com/index.php
-
-	TODO: Write proper tests
 */
 
 package main
@@ -43,6 +41,7 @@ import (
 	"encoding/pem"
 	"flag"
 	"fmt"
+	"golang.org/x/time/rate"
 	"io"
 	"log"
 	"math/big"
@@ -58,6 +57,7 @@ import (
 )
 
 var DelaySec int64
+var BandwidthKb int64
 var UrlRegex string
 var UrlRegexP *regexp.Regexp
 var Timeout int64
@@ -69,6 +69,49 @@ var CertPath string
 var CachePath string
 var Debug bool
 var Debug2 bool
+var READ_CHUNK_SIZE = 1024 // 1KB
+var BURST_LIMIT = 1024
+var Limiter *rate.Limiter
+
+// throttledReadCloser is a wrapper struct that implements io.ReadCloser.
+// It wraps an existing io.ReadCloser (like a net.Conn or http.ResponseBody)
+// and uses a rate.Limiter to throttle the Read() calls.
+type throttledReadCloser struct {
+	r       io.ReadCloser
+	limiter *rate.Limiter
+}
+
+// Read throttles the underlying Read call.
+func (t *throttledReadCloser) Read(p []byte) (n int, err error) {
+	// Determine the maximum number of bytes to read in this call.
+	// We read the smaller of the buffer size (len(p)) or our defined chunk size.
+	// Probably this is not necessary,but if I didn't use it, somehow throttling didn't work.
+	bytesToRead := READ_CHUNK_SIZE
+	if len(p) < bytesToRead {
+		bytesToRead = len(p)
+	}
+
+	// Create a slice view of the buffer 'p' with the limited size.
+	// t.r.Read will read *up to* bytesToRead bytes into p.
+	n, err = t.r.Read(p[:bytesToRead])
+
+	if n > 0 {
+		// 1. Wait for the rate limiter. This blocks until
+		// we have "tokens" for the 'n' bytes we just read.
+		if errWait := t.limiter.WaitN(context.Background(), n); errWait != nil {
+			// If the wait fails (e.g., context canceled),
+			// return the wait error, overriding the original read error if any.
+			err = errWait
+			return n, err
+		}
+	}
+	return n, err
+}
+
+// Close closes the underlying reader.
+func (t *throttledReadCloser) Close() error {
+	return t.r.Close()
+}
 
 func out(format string, v ...any) {
 	// Make sure outputs newline
@@ -125,7 +168,7 @@ func handleDefault(w http.ResponseWriter, req *http.Request) {
 			}
 		}
 	}
-	io.Copy(w, resp.Body)
+	transfer(w, resp.Body, "")
 }
 
 func copyHeader(dst, src http.Header) {
@@ -192,6 +235,7 @@ func handleRequest(w http.ResponseWriter, r *http.Request) {
 
 	// To simulate slowness
 	if matched && DelaySec > 0 {
+		// For connection timeout simulation, delay before processing
 		debug("Delay %s for %d seconds", reqURLStr, DelaySec)
 		// sleep delay seconds
 		time.Sleep(time.Duration(DelaySec) * time.Second)
@@ -200,14 +244,14 @@ func handleRequest(w http.ResponseWriter, r *http.Request) {
 	if r.Method == http.MethodConnect {
 		debug("handleConnect: %s, %s (host: %s)", r.Method, reqURLStr, r.Host)
 		handleConnect(w, r)
+		elapsed := time.Since(start)
+		out("Connected %s (%.3f s)", reqURLStr, elapsed.Seconds())
 	} else {
 		debug("handleDefault: %s, %s (host: %s)", r.Method, reqURLStr, r.Host)
 		handleDefault(w, r)
+		elapsed := time.Since(start)
+		out("Completed %s (%.3f s)", reqURLStr, elapsed.Seconds())
 	}
-
-	elapsed := time.Since(start)
-	// Show the elapsed time in seconds with 3 decimal places
-	out("Completed %s (%.3f s)", reqURLStr, elapsed.Seconds())
 }
 
 func handleConnect(w http.ResponseWriter, req *http.Request) {
@@ -256,8 +300,8 @@ func handleConnect(w http.ResponseWriter, req *http.Request) {
 			return
 		}
 
-		go transfer(destConn, clientConn, hash+".req")
-		go transfer(clientConn, destConn, hash+".resp")
+		go transferClosable(destConn, clientConn, hash+".req")
+		go transferClosable(clientConn, destConn, hash+".resp")
 		return
 	}
 
@@ -322,7 +366,8 @@ func handleConnect(w http.ResponseWriter, req *http.Request) {
 				w.Header()[k] = v
 			}
 			w.WriteHeader(resp.StatusCode)
-			_, _ = io.Copy(w, resp.Body)
+			// Make w closeable
+			transfer(w, resp.Body, "")
 		}),
 	}
 
@@ -330,9 +375,14 @@ func handleConnect(w http.ResponseWriter, req *http.Request) {
 	_ = server.Serve(&singleUseListener{Conn: tlsConn})
 }
 
-func transfer(destination io.WriteCloser, source io.ReadCloser, filename string) {
+func transferClosable(destination io.WriteCloser, source io.ReadCloser, filename string) {
 	defer destination.Close()
+	transfer(destination, source, filename)
+}
+func transfer(destination io.Writer, source io.ReadCloser, filename string) {
 	defer source.Close()
+
+	var finalSource io.Reader
 	if Debug2 && filename != "" {
 		fullpath := filepath.Join(CachePath, filename)
 		// With io.TeeReader, instead of os.Stderr, write into a file
@@ -340,10 +390,16 @@ func transfer(destination io.WriteCloser, source io.ReadCloser, filename string)
 		w, _ := os.OpenFile(fullpath, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
 		tee := io.TeeReader(source, w)
 		debug("Saving body to %s\n", fullpath)
-		io.Copy(destination, tee)
+		finalSource = tee
+	} else if BandwidthKb > 0 {
+		finalSource = &throttledReadCloser{
+			r:       source,
+			limiter: Limiter,
+		}
 	} else {
-		io.Copy(destination, source)
+		finalSource = source
 	}
+	io.Copy(destination, finalSource)
 }
 
 var (
@@ -709,6 +765,7 @@ func main() {
 	flag.BoolVar(&GenCert, "GenCert", false, "(Re)Generate a self-signed CA certificate")
 	flag.StringVar(&CachePath, "cache", "", "Cache directory path (default: OS temp dir)")
 	flag.Int64Var(&DelaySec, "delay", -1, "Intentional delay in seconds for testing slowness")
+	flag.Int64Var(&BandwidthKb, "bandwidth", -1, "BandWidth Kbps for testing slowness (does not work with debug2)")
 	flag.StringVar(&UrlRegex, "urlregex", "", "Regex to match URLs to be delayed/throttled")
 	flag.Int64Var(&Timeout, "timeout", 20, "Timeout in seconds for upstream connections (default 20s)")
 	flag.BoolVar(&Debug, "debug", false, "Debug / verbose output (e.g. req/resp headers)")
@@ -728,8 +785,11 @@ func main() {
 	if len(UrlRegex) > 0 {
 		UrlRegexP = regexp.MustCompile(UrlRegex)
 	}
+	if BandwidthKb > 0 {
+		Limiter = rate.NewLimiter(rate.Limit(BandwidthKb*1024), BURST_LIMIT)
+	}
 
-	out("Listening on Proto: %s, port: %s (delay:%d)", Proto, port, DelaySec)
+	out("Listening on Proto: %s, port: %s (delay:%d sec, bandwidth:%d Kbps)", Proto, port, DelaySec, BandwidthKb)
 	server := &http.Server{
 		Addr:    ":" + port,
 		Handler: http.HandlerFunc(handleRequest),
