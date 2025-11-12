@@ -8,14 +8,14 @@
 	openssl req -x509 -new -nodes -key "./proxy.key" -sha256 -days 3650 -out "./proxy.crt" -subj "/CN=My Proxy CA"
 
 # Normal HTTP proxy (it works with https:// as well):
-    httpproxy [--delay {n} --debug --debug2]
-	# Test (no need to use -k)
+    httpproxy [--delay {sec} --debug --debug2]
+	# Test (should not need to use -k)
 	curl -v --proxy localhost:8080 http://search.osakos.com/index.php
 	curl -v --proxy localhost:8080 https://search.osakos.com/index.php
 
 # HTTP proxy but replacing certificate:
 	# NOTE: If no --key/--crt, automatically uses self-signed CA
-	httpproxy --replCert --debug --crt <path to pem certificate> --key <path to key>
+	httpproxy --replCert --debug [--crt <path to pem certificate> --key <path to key>]
 	# Test (need -k as cert is replaced)
 	curl -v --proxy localhost:8080 -k https://search.osakos.com/index.php
 
@@ -51,12 +51,16 @@ import (
 	"net/http/httputil"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"sync"
 	"time"
 )
 
 var DelaySec int64
+var UrlRegex string
+var UrlRegexP *regexp.Regexp
+var Timeout int64
 var Proto string
 var ReplCert bool
 var GenCert bool
@@ -105,11 +109,12 @@ func handleDefault(w http.ResponseWriter, req *http.Request) {
 		http.Error(w, err.Error(), http.StatusServiceUnavailable)
 		return
 	}
+
+	copyHeader(w.Header(), resp.Header)
+	w.WriteHeader(resp.StatusCode)
+	defer resp.Body.Close()
 	if Debug {
 		// If Debug, dump response (and may save body if Debug2)
-		copyHeader(w.Header(), resp.Header)
-		w.WriteHeader(resp.StatusCode)
-		defer resp.Body.Close()
 		respDump, err := httputil.DumpResponse(resp, false)
 		if err != nil {
 			debug("DumpResponse failed for %s failed. %v", req.RequestURI, err)
@@ -119,8 +124,8 @@ func handleDefault(w http.ResponseWriter, req *http.Request) {
 				resp.Body = saveBodyToFile(resp.Body, hash+".resp")
 			}
 		}
-		io.Copy(w, resp.Body)
 	}
+	io.Copy(w, resp.Body)
 }
 
 func copyHeader(dst, src http.Header) {
@@ -177,17 +182,26 @@ func handleRequest(w http.ResponseWriter, r *http.Request) {
 	// TODO: the URL.String should return the full URL, but doesn't work if HTTPS. Tried reqToUrlStr()
 	reqURLStr := r.URL.String()
 
+	matched := true
+	if len(UrlRegex) > 0 {
+		matched = UrlRegexP.MatchString(reqURLStr)
+		if matched {
+			debug("UrlRegex '%s' matched with '%s'", UrlRegex, reqURLStr)
+		}
+	}
+
 	// To simulate slowness
-	if DelaySec > 0 {
+	if matched && DelaySec > 0 {
 		debug("Delay %s for %d seconds", reqURLStr, DelaySec)
 		// sleep delay seconds
 		time.Sleep(time.Duration(DelaySec) * time.Second)
 	}
 
-	debug("%s: %s (host: %s)", r.Method, reqURLStr, r.Host)
 	if r.Method == http.MethodConnect {
+		debug("handleConnect: %s, %s (host: %s)", r.Method, reqURLStr, r.Host)
 		handleConnect(w, r)
 	} else {
+		debug("handleDefault: %s, %s (host: %s)", r.Method, reqURLStr, r.Host)
 		handleDefault(w, r)
 	}
 
@@ -212,6 +226,8 @@ func handleConnect(w http.ResponseWriter, req *http.Request) {
 		}
 	}
 
+	// writing before hijacking is not working
+	//w.WriteHeader(http.StatusOK)
 	hijacker, ok := w.(http.Hijacker)
 	if !ok {
 		out("ERROR: Hijacking not supported.")
@@ -226,7 +242,6 @@ func handleConnect(w http.ResponseWriter, req *http.Request) {
 	}
 
 	host := req.Host
-	//w.WriteHeader(http.StatusOK)	// TODO: not sure why this doesn't work
 	_, err = clientConn.Write([]byte("HTTP/1.1 200 Connection established\r\n\r\n"))
 	if err != nil {
 		out("ERROR: clientConn.Write %s failed: %v", host, err)
@@ -235,7 +250,7 @@ func handleConnect(w http.ResponseWriter, req *http.Request) {
 	}
 
 	if !ReplCert {
-		destConn, err := net.DialTimeout("tcp", req.Host, 20*time.Second)
+		destConn, err := net.DialTimeout("tcp", req.Host, time.Duration(Timeout)*time.Second)
 		if err != nil {
 			http.Error(w, err.Error(), http.StatusServiceUnavailable)
 			return
@@ -694,6 +709,8 @@ func main() {
 	flag.BoolVar(&GenCert, "GenCert", false, "(Re)Generate a self-signed CA certificate")
 	flag.StringVar(&CachePath, "cache", "", "Cache directory path (default: OS temp dir)")
 	flag.Int64Var(&DelaySec, "delay", -1, "Intentional delay in seconds for testing slowness")
+	flag.StringVar(&UrlRegex, "urlregex", "", "Regex to match URLs to be delayed/throttled")
+	flag.Int64Var(&Timeout, "timeout", 20, "Timeout in seconds for upstream connections (default 20s)")
 	flag.BoolVar(&Debug, "debug", false, "Debug / verbose output (e.g. req/resp headers)")
 	flag.BoolVar(&Debug2, "debug2", false, "More verbose output (e.g. dump req/resp body)")
 	flag.Parse()
@@ -708,8 +725,11 @@ func main() {
 	if CachePath == "" {
 		CachePath = os.TempDir()
 	}
+	if len(UrlRegex) > 0 {
+		UrlRegexP = regexp.MustCompile(UrlRegex)
+	}
 
-	out("Listening on Proto: %s, port: %s", Proto, port)
+	out("Listening on Proto: %s, port: %s (delay:%d)", Proto, port, DelaySec)
 	server := &http.Server{
 		Addr:    ":" + port,
 		Handler: http.HandlerFunc(handleRequest),
