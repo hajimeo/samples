@@ -44,7 +44,7 @@ func setGlobals() {
 	flag.StringVar(&common.BaseDir, "b", "", "Blob store directory or URI (eg. 's3://s3-test-bucket/s3-test-prefix/'), which location contains 'content' directory (default: '.')")
 	flag.StringVar(&common.BaseDir2, "bTo", "", "*Experimental* Blob store directory or URI (eg. 's3://s3-test-bucket/s3-test-prefix_to_content/') for copying files from -b")
 	flag.BoolVar(&common.NoDateBsLayout, "NoDateBS", false, "Declair the date based blob store layout (YYYY/MM/DD/hh/mm/uuid) is not used, so that force checking the old vol-XX/chap-XX/uuid layout")
-	flag.StringVar(&common.Filter4Path, "p", "", "Regular Expression for directory *path* (eg '/(vol-\\d\\d|20\\d\\d)/'), or S3 prefix.")
+	flag.StringVar(&common.Filter4Path, "p", "/(vol-\\d\\d|20\\d\\d)/", "Regular Expression for directory *path* (default: '/(vol-\\d\\d|20\\d\\d)/'), or S3 prefix.")
 	flag.StringVar(&common.Filter4FileName, "f", "", "Regular Expression for the file *name* (eg: '\\.properties' to include only this extension)")
 	flag.BoolVar(&common.WithProps, "P", false, "If true, the .properties file content is included in the output")
 	flag.StringVar(&common.Filter4PropsIncl, "pRx", "", "Regular Expression against the text of the .properties files (eg: 'deleted=true')")
@@ -57,6 +57,7 @@ func setGlobals() {
 	flag.Int64Var(&common.TopN, "n", 0, "Return first N lines per *thread* (0 = no limit). Can't be less than '-c'")
 	flag.IntVar(&common.Conc1, "c", 1, "Concurrent number for reading directories")
 	flag.IntVar(&common.Conc2, "c2", 8, "2nd Concurrent number. Currently used when retrieving object from AWS S3")
+	// TODO: probably not needed
 	flag.IntVar(&common.MaxDepth, "depth", 5, "Max Depth for finding sub-directories only for File type (default: 5 for YYYY/MM/DD/hh/mm/)")
 	flag.BoolVar(&common.NoHeader, "H", false, "If true, no header line")
 
@@ -67,7 +68,8 @@ func setGlobals() {
 
 	// DB / SQL related
 	flag.StringVar(&common.DbConnStr, "db", "", "DB connection string or path to DB connection properties file")
-	flag.StringVar(&common.BsName, "bsName", "", "eg. 'default'. If provided, the SQL query might become faster")
+	// This is now almost useless as used only for filtering repositories.
+	flag.StringVar(&common.BsName, "bsName", "", "eg. 'default'. If provided, the SQL query *may* become *slightly* faster")
 	flag.StringVar(&common.Query, "query", "", "SQL 'SELECT blob_id ...' or 'SELECT blob_ref as blob_id ...' to filter the data from the DB")
 
 	// Reconcile / orphaned blob finding related
@@ -242,7 +244,7 @@ func setGlobals() {
 		if len(common.BlobIDFIle) == 0 && len(common.Query) == 0 && (len(common.DbConnStr) == 0 || len(common.BaseDir) == 0) {
 			panic("-src without -rF requires -b and -db")
 		}
-		if common.Truth == "DB" {
+		if common.Truth == "DB" || common.Truth == "BS" {
 			// If Dead Blobs finder mode, always check .bytes file (removing this will output unnecessary lines)
 			common.BytesChk = true
 		}
@@ -416,16 +418,7 @@ func genOutput(path string, bi bs_clients.BlobInfo, db *sql.DB) string {
 
 		// Even there was error on the properties, check the .bytes file if BytesChk is true
 		if common.BytesChk {
-			// If the path ends with .properties, replace with .bytes
-			bytesPath = lib.GetPathWithoutExt(path) + common.BYTES_EXT
-			bytesInfo, bytesChkErr = Client.GetFileInfo(bytesPath)
-			if bytesChkErr != nil {
-				if common.Truth != "BS" {
-					h.Log("WARN", fmt.Sprintf("BYTES_MISSING for %s (error: %s)", bytesPath, bytesChkErr.Error()))
-				} else {
-					h.Log("DEBUG", fmt.Sprintf("BYTES_MISSING for %s (probably deletion marker?)", bytesPath))
-				}
-			}
+			bytesInfo, bytesChkErr = bytesFileCheck(path)
 		}
 	}
 
@@ -435,8 +428,9 @@ func genOutput(path string, bi bs_clients.BlobInfo, db *sql.DB) string {
 	var sortedOneLineProps string
 	var skipReason error
 	if bi.Error {
-		if common.Truth != "DB" {
-			h.Log("DEBUG", fmt.Sprintf("path:%s has error in getting BlobInfo. Skipping...", path))
+		if common.Truth == "BS" {
+			// When Orphaned blob finder mode, do not output unreadable files, and probably already DEBUG level logged?
+			h.Log("DEBUG", fmt.Sprintf("path:%s has error. Skipping as BS mode ...", path))
 			return ""
 		}
 		output = fmt.Sprintf("%s%s%s%s%d", path, common.SEP, bi.ModTime, common.SEP, bi.Size)
@@ -498,7 +492,7 @@ func genOutput(path string, bi bs_clients.BlobInfo, db *sql.DB) string {
 	}
 
 	// "Misc." column
-	if common.Truth == "BS" {
+	if common.Truth == "BS" { // Orphaned blob finder mode
 		// If DB connection is given and the truth is blob store, check if the blob ID in the path exists in the DB
 		// But if bytesChkErr is not nil, it's not considered as orphaned, rather missing blob.
 		if len(common.DbConnStr) > 0 && bytesChkErr == nil {
@@ -512,7 +506,7 @@ func genOutput(path string, bi bs_clients.BlobInfo, db *sql.DB) string {
 				output = ""
 			}
 		}
-	} else if common.Truth == "DB" {
+	} else if common.Truth == "DB" { // Dead blob finder mode
 		// NOTE: Expecting when Truth is "DB", the BytesChk is always true
 		if bi.Error && bytesChkErr != nil {
 			h.Log("DEBUG", fmt.Sprintf("path:%s has error (missing) and misisng bytes. Considering as DEAD blob.", path))
@@ -652,7 +646,21 @@ func shouldSkipThisContents(sortedContents string) error {
 	return nil
 }
 
-func shouldSkipBecauseOfBytes(bytesContents string) error {
+func bytesFileCheck(path string) (bytesInfo bs_clients.BlobInfo, bytesChkErr error) {
+	bytesPath := lib.GetPathWithoutExt(path) + common.BYTES_EXT
+	bytesInfo, bytesChkErr = Client.GetFileInfo(bytesPath)
+	if bytesChkErr != nil {
+		if common.Truth != "BS" {
+			h.Log("WARN", fmt.Sprintf("BYTES_MISSING for %s (error: %s)", bytesPath, bytesChkErr.Error()))
+		} else {
+			// If BS mode (orphaned blobs finder), probably missing .bytes is not so important
+			h.Log("DEBUG", fmt.Sprintf("BYTES_MISSING for %s (probably deletion marker?)", bytesPath))
+		}
+	}
+	return bytesInfo, bytesChkErr
+}
+
+/* func shouldSkipBecauseOfBytes(bytesContents string) error {
 	// TODO: not properly implemented and not tested
 	if common.RxExclBytes != nil {
 		if common.RxExclBytes.MatchString(bytesContents) {
@@ -670,7 +678,7 @@ func shouldSkipBecauseOfBytes(bytesContents string) error {
 		}
 	}
 	return nil
-}
+}*/
 
 func shouldBeUndeleted(contents string, path string) bool {
 	if len(contents) == 0 {
@@ -972,7 +980,8 @@ func getAssetWithBlobRefAsCsv(blobId string, reposPerFmt []string, format string
 	h.Log("DEBUG", fmt.Sprintf("repoNames: %v, format:%s", reposPerFmt, format))
 	var tableNames []string
 	blobIdTmp := blobId
-	// If needs to consider the new blob store layout and if the blobId does not contain @, adding % to the blobId
+	// This function expects the exact blobID, either UUID or UUID@timestamp
+	// NoDateBsLayout = false means the DB may contain both formats but if `@` is in the blobId, then new format, so not adding `%`
 	if !common.NoDateBsLayout && !strings.Contains(blobId, "@") {
 		blobIdTmp = blobId + "%"
 	}
@@ -1120,9 +1129,47 @@ func genAssetBlobUnionQuery(assetTableNames []string, columns string, afterWhere
 	return query
 }
 
+func mayNeedUpdateBaseDir(baseDir string, pathFilter string, client bs_clients.Client) (string, string) {
+	// If the pathFilter is not regex, and the exact path exists, using that as *baseDir*
+	if lib.IsExactPath(pathFilter) {
+		// Check if baseDir/pathFilter exists
+		path := filepath.Join(baseDir, pathFilter)
+		_, err := client.GetFileInfo(path)
+		if err != nil {
+			h.Log("DEBUG", fmt.Sprintf("pathFilter (-p) is not regex but the exact path does not exist: %s", path))
+		} else {
+			h.Log("INFO", fmt.Sprintf("pathFilter (-p) is not regex and exact path exist: %s. Using this as baseDir", pathFilter))
+			baseDir = strings.TrimSuffix(path, string(filepath.Separator))
+			pathFilter = ""
+		}
+	}
+	return baseDir, pathFilter
+}
+
+func genSubDirs(baseDir string, pathFilter string, client bs_clients.Client) (matchingDirs []string, err error) {
+	// TODO: get the subdirectories under baseDir only
+	dirs, err := client.GetDirs(baseDir, "", 1)
+	if err != nil {
+		h.Log("ERROR", fmt.Sprintf("GetDirs for %s failed with %s.", baseDir, err.Error()))
+		return matchingDirs, err
+	}
+
+	for _, dir := range dirs {
+		path := filepath.Join(baseDir, dir)
+		matchingDirs = lib.ComputeSubDirs(path, pathFilter)
+	}
+
+	if len(matchingDirs) > 0 {
+		h.Log("INFO", fmt.Sprintf("Computed %d directories under %s", len(matchingDirs), baseDir))
+	} else {
+		h.Log("WARN", fmt.Sprintf("No expected directories found under %s", baseDir))
+	}
+	return matchingDirs, err
+}
+
 func isOrphanedBlob(contents string, blobId string, db *sql.DB) string {
 	// Orphaned blob is the blob which is in the blob store but not in the DB
-	// UNION ALL query against many tables is slow. so if contents is given, using specific table
+	// UNION ALL query against many tables is slow. so if contents is given, using specific table of the repo-name.
 	repoName := getRepoName(contents)
 	format := getFmtFromRepName(repoName)
 	tableNames := getAssetTableNamesFromRepoNames(repoName)
@@ -1135,11 +1182,12 @@ func isOrphanedBlob(contents string, blobId string, db *sql.DB) string {
 		repoNames = []string{repoName}
 	}
 	// Generating query to search the blobId from the blob_ref, and returning only asset_id column
-	// Supporting only 3.47 and higher for performance (was adding ending %) (NEXUS-35934)
-	// Not using common.BsName as can't trust blob store name in blob_ref, and may not work with group blob stores
+	// Currently not utilising common.BsName as can't trust blob store name in blob_ref, and may not work with group blob stores
 	h.Log("DEBUG", fmt.Sprintf("repoNames: %v, format:%s", repoNames, format))
 	// If blobId does not contain `@`, append '%' to match the old style blob IDs
 	blobIdTmp := blobId
+	// This function expects the exact blobID, either UUID or UUID@timestamp
+	// NoDateBsLayout = false means the DB may contain both formats but if `@` is in the blobId, then new format, so not adding `%`
 	if !common.NoDateBsLayout && !strings.Contains(blobId, "@") {
 		blobIdTmp = blobId + "%"
 	}
@@ -1296,7 +1344,18 @@ func main() {
 		printHeader(common.SaveToPointer)
 		// If the Blob ID file is not provided, run per directory
 		h.Log("INFO", fmt.Sprintf("Finding sub directories under %s with filter:%s, depth:%d (may take while)...", common.ContentPath, common.Filter4Path, common.MaxDepth))
-		subDirs, err := Client.GetDirs(common.ContentPath, common.Filter4Path, common.MaxDepth)
+
+		var subDirs []string
+		var err error
+
+		baseDir, pathFilter := mayNeedUpdateBaseDir(common.BaseDir, common.Filter4Path, Client)
+		if !common.WalkSubDirs {
+			h.Log("INFO", fmt.Sprintf("Calculating the sub directories under %s ...", common.BaseDir))
+			subDirs, err = genSubDirs(baseDir, pathFilter, Client)
+		}
+		if len(subDirs) == 0 {
+			subDirs, err = Client.GetDirs(baseDir, pathFilter, common.MaxDepth)
+		}
 		if err != nil {
 			h.Log("ERROR", "Failed to list directories in "+common.ContentPath+" with filter: "+common.Filter4Path)
 			panic(err)
