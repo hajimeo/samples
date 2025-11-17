@@ -3,10 +3,14 @@ package lib
 
 import (
 	"FileListV2/common"
+	"fmt"
 	h "github.com/hajimeo/samples/golang/helpers"
 	"net/url"
+	"os"
 	"path/filepath"
+	"regexp"
 	"sort"
+	"strconv"
 	"strings"
 )
 
@@ -122,4 +126,69 @@ func IsTsMSecBetweenTs(tMsec int64, fromTs int64, toTs int64) bool {
 		return false
 	}
 	return true
+}
+
+func IsExactPath(pathFilter string) bool {
+	if common.RxVolDir.MatchString(pathFilter) ||
+		common.RxVolChapDir.MatchString(pathFilter) ||
+		common.RxYyyyDir.MatchString(pathFilter) ||
+		common.RxYyyyyMmDir.MatchString(pathFilter) ||
+		common.RxYyyyyMmDdDir.MatchString(pathFilter) ||
+		common.RxYyyyyMmDdHhDir.MatchString(pathFilter) ||
+		common.RxYyyyyMmDdHhMmDir.MatchString(pathFilter) {
+		return true
+	}
+	return false
+}
+
+func ComputeSubDirs(path string, pathFilter string) (matchingDirs []string) {
+	// Just in case, trim the trailing slash
+	path = strings.TrimSuffix(path, string(os.PathSeparator))
+	filterRegex := regexp.MustCompile(pathFilter)
+
+	if common.RxVolDir.MatchString(path) {
+		h.Log("DEBUG", fmt.Sprintf("'vol-{n}' directory found: %s", path))
+		// Generate /vol-NN/chap-MM (01 to 47)
+		for i := 1; i <= 47; i++ {
+			chapDir := fmt.Sprintf("chap-%02d", i)
+			chapPath := filepath.Join(path, chapDir)
+			if len(pathFilter) == 0 || filterRegex.MatchString(chapPath) {
+				matchingDirs = append(matchingDirs, chapPath)
+			}
+		}
+		return matchingDirs
+	}
+
+	if common.RxYyyyDir.MatchString(path) {
+		h.Log("DEBUG", fmt.Sprintf("'YYYY' directory found: %s", path))
+		// Generate /YYYY/MM (01 to 12)/DD (01 to 31)
+		year := filepath.Base(path)
+		for m := 1; m <= 12; m++ {
+			month_last_day := 31
+			if m == 4 || m == 6 || m == 9 || m == 11 {
+				month_last_day = 30
+			} else if m == 2 {
+				// Check leap year
+				yearInt, err := strconv.Atoi(year)
+				if err != nil {
+					panic(err)
+				}
+				if (yearInt%4 == 0 && yearInt%100 != 0) || (yearInt%400 == 0) {
+					month_last_day = 29
+				} else {
+					month_last_day = 28
+				}
+			}
+			for d := 1; d <= month_last_day; d++ {
+				dayPath := fmt.Sprintf("%s/%02d/%02d", path, m, d)
+				if len(pathFilter) == 0 || filterRegex.MatchString(dayPath) {
+					matchingDirs = append(matchingDirs, dayPath)
+				}
+			}
+		}
+		return matchingDirs
+	}
+
+	h.Log("INFO", fmt.Sprintf("No special sub-directories generated for: %s", path))
+	return matchingDirs
 }
