@@ -59,11 +59,11 @@ filelist2 -b "$BLOB_STORE" -P -pRx "@Bucket.repo-name=raw-hosted," -mDF "$(date 
 filelist2 -b "$BLOB_STORE" -P -pRx "@Bucket.repo-name=raw-hosted," -mDF "$(date -d "1 day ago" +%Y-%m-%d)" -BytesChk 2>/dev/null
 ```
 
-#### List files which path matches with `-p "path-filter"` with the concurrency N `-c N`, and save to a file with
+#### List files which path matches with the concurrency N `-c N`, and save to a file with
 `-s "save-to-file-path"`
 
 ```
-filelist2 -b "$BLOB_STORE" -p "/(vol-\d\d|20\d\d)/" -c 80 -s "/tmp/filelist_under-path.tsv"
+filelist2 -b "$BLOB_STORE" -c 80 -s "/tmp/filelist_under-path.tsv"
 ```
 
 NOTE: The recommended concurrency is less than (CPUs / 2) * 10, unless against some slow disk/network.  
@@ -73,15 +73,15 @@ Also, if the blob store type is S3, `-c 1 -c2 8` (changing 2nd concurrency highe
 `-f "file-filter"`, and including the Properties file content `-P` into the saving file
 
 ```
-filelist2 -b "$BLOB_STORE" -p "/(vol-\d\d|20\d\d)/" -f ".propperties" -P -c 80 -s "/tmp/filelist_under-path_props-only.tsv"
+filelist2 -b "$BLOB_STORE" -f ".propperties" -P -c 80 -s "/tmp/filelist_under-path_props-only.tsv"
 ```
 
 #### List .properties which matches with `-pRx "{regex}"`, also including the properties content `-P` in the saving file
 `-s`, but only the first N `-n N`
 
 ```
-filelist2 -b "$BLOB_STORE" -p '/(vol-\d\d|20\d\d)/' -pRx ",deleted=true" -P -n 10 -c 10 -s /tmp/filelist_top10_soft-deleted.tsv
-filelist2 -b "$BLOB_STORE" -p "/(vol-\d\d|20\d\d)/" -pRx "@Bucket\.repo-name=raw-hosted,.+deleted=true" -P -c 80 -s /tmp/filelist_raw-hosted_soft-deleted.tsv
+filelist2 -b "$BLOB_STORE" -pRx ",deleted=true" -P -n 10 -c 10 -s /tmp/filelist_top10_soft-deleted.tsv
+filelist2 -b "$BLOB_STORE" -pRx "@Bucket\.repo-name=raw-hosted,.+deleted=true" -P -c 80 -s /tmp/filelist_raw-hosted_soft-deleted.tsv
 ```
 
 NOTE: Using `-pRx` automatically does same as `-f ".propperties"`.  
@@ -93,14 +93,14 @@ NOTE: To make the regex simpler, in the internal memory, the content of .propert
 NOTE: `-pRxNot` is evaluated before `-pRx`
 
 ```
-filelist2 -b "$BLOB_STORE" -p "/(vol-\d\d|20\d\d)/" -pRxNot "BlobStore\.blob-name=.+/maven-metadata.xml.*" -pRx "@Bucket\.repo-name=maven-proxy," -P -c 80 -s /tmp/filelist_maven-proxy_excl_maven-metadata.tsv
+filelist2 -b "$BLOB_STORE" -pRxNot "BlobStore\.blob-name=.+/maven-metadata.xml.*" -pRx "@Bucket\.repo-name=maven-proxy," -P -c 80 -s /tmp/filelist_maven-proxy_excl_maven-metadata.tsv
 ```
 
 ### Read the result File `-rF "file-path"`, which each lne contains a blobId, and list the .properties files only
 `-f "file-name-filter"` with the content `-P`
 
 ```
-filelist2 -b "$BLOB_STORE" -p "/(vol-\d\d|20\d\d)/" -f ".properties" -P -s /tmp/filelist_reused_result.tsv -rF ./reuse_some_previous_result.tsv
+filelist2 -b "$BLOB_STORE" -f ".properties" -P -s /tmp/filelist_reused_result.tsv -rF ./reuse_some_previous_result.tsv
 ```
 
 NOTE: The above picks the blobID-like strings automatically, so no need to remove unnecessary strings. If no
@@ -109,7 +109,7 @@ NOTE: The above picks the blobID-like strings automatically, so no need to remov
 ### Use this tool to check the total count and size of all .bytes files
 
 ```
-filelist2 -b "$BLOB_STORE" -p '/(vol-\d\d|20\d\d)/' -f ".bytes" >/dev/null
+filelist2 -b "$BLOB_STORE" -f ".bytes" >/dev/null
 ... (in the end of the command it outputs the below) ...
 13:52:46.972949 INFO  Printed 136895 of 273790 files, size: 2423593014 bytes (elapsed:26s)
 ```
@@ -120,7 +120,7 @@ NOTE: the above means it checked 273790 and 136895 matched with ".bytes" and the
 #### Check the bytes size from the .properties file's `size={n}`
 
 ```
-filelist2 -b "$BLOB_STORE" -p '/(vol-\d\d|20\d\d)/' -pRx "@Bucket\.repo-name=raw-hosted" -P -s /tmp/filelist_raw-hosted_props.tsv
+filelist2 -b "$BLOB_STORE" -pRx "@Bucket\.repo-name=raw-hosted" -P -s /tmp/filelist_raw-hosted_props.tsv
 rg -o -r '$1' ',size=(\d+)' /tmp/filelist_raw-hosted_props.tsv | awk '{ c+=1;s+=$1 }; END { print "blobCount:"c", totalSize:"s" bytes" }'
 ```
 
@@ -129,23 +129,25 @@ rg -o -r '$1' ',size=(\d+)' /tmp/filelist_raw-hosted_props.tsv | awk '{ c+=1;s+=
 Like dry-run (`-H` to not output headers, `-BytesChk` is due to the bug)
 
 ```
-filelist2 -b "$BLOB_STORE" -p "/(vol-\d\d|20\d\d)/" -pRx "@Bucket\.repo-name=raw-hosted,.+deleted=true" -P -H -BytesChk -c 80 -s /tmp/filelist_raw-hosted_soft-deleted.tsv
+filelist2 -b "$BLOB_STORE" -pRx "@Bucket\.repo-name=raw-hosted,.+deleted=true" -P -H -BytesChk -c 80 -s /tmp/filelist_raw-hosted_soft-deleted.tsv
 ```
+NOTE: As the `-p` default is `/(vol-\d\d|20\d\d)/`, excluding tmp/direcct-path etc.
 
 After reviewing the tsv file (e.g. remove `BYTES_MISSING` lines)
 
 ```
 filelist2 -b "$BLOB_STORE" -rF /tmp/filelist_raw-hosted_soft-deleted.tsv -RDel -P -c 80 -s /tmp/filelist_raw-hosted_undeleted.tsv
 ```
+NOTE: -s
 
 ### Find blobs which exist in Blob store but not in database with `-src BS` (like Orphaned Blobs Finder)
 
-NOTE: Cleanup unused asset blob tasks should be run before this script. Also, `-c` shouldn't be too high with `-db`.
+NOTE: Cleanup unused asset blob tasks should be run before this script because asset_blob is INNER JOIN-ed with asset table. Also, `-c` shouldn't be too high with `-db`.
 
 ```
 # Accessing DB by using the connection string and check all formats for orphaned blobs (-src BS)
 # Also `-BytesChk` to exclude .properties files which do not have the .bytes file (deletion marker)
-filelist2 -b "$BLOB_STORE" -p '/(vol-\d\d|20\d\d)/' -c 10 -src BS -db ./sonatype-work/nexus3/etc/fabric/nexus-store.properties -P -pRxNot "deleted=true" -BytesChk -s /tmp/filelist_orphaned_blobs.tsv
+filelist2 -b "$BLOB_STORE" -c 10 -src BS -db ./sonatype-work/nexus3/etc/fabric/nexus-store.properties -P -pRxNot "deleted=true" -BytesChk -s /tmp/filelist_orphaned_blobs.tsv
 # NOTE: `-db` also accepts "host=localhost user=nexus dbname=nexus" (with export PGPASSWORD="*******")
 
 # Nexus 3.86 may be going to have the originalLocation line for deletion markers, so may not need to use -BytesChk (TODO: if upgraded, could be confusing)
@@ -157,6 +159,12 @@ Can use a text file which contains Blob IDs, so that no Blobstore access is need
 ```
 filelist2 -src BS -rF ./some_filelist_result.tsv -db ./sonatype-work/nexus3/etc/fabric/nexus-store.properties -bsName default -s /tmp/filelist_orphaned-blobs_no-BS-access.tsv
 ```
+TODO: If the tsv file contains only .properties file, to delete both .properties and .bytes files of the orphaned blobs:
+```
+cd /To/Blobstore/blobs   # As -C doesn't work with the wildcard
+cut -d '.' -f1 ./some_filelist_result.tsv | while read -r _l; do tar -rvf /tmp/test.tar --remove-files ${_l}.*; done
+```
+NOTE: `-z` tar option may fail if the system does not have the gzip/gunzip command.
 
 ### Find blobs which exist in Database but not in Blob store with `-src DB` (like Dead Blobs Finder)
 
@@ -170,7 +178,7 @@ filelist2 -b "$BLOB_STORE" -db ./sonatype-work/nexus3/etc/fabric/nexus-store.pro
 Can use a text file which contains Blob IDs, so that no DB access is needed:
 
 ```
-filelist2 -src BS -rF ./db_exported_blobids.txt -b "$BLOB_STORE" -p '/(vol-\d\d|20\d\d)/' -s /tmp/filelist_potentially_dead-blobs_no-DB-access.tsv
+filelist2 -src BS -rF ./db_exported_blobids.txt -b "$BLOB_STORE" -s /tmp/filelist_potentially_dead-blobs_no-DB-access.tsv
 ```
 
 ### With the undeleter script, like Point-In-Time-Recovery for blobs which exist in Blob store but not in DB
@@ -212,9 +220,8 @@ filelist2 -b "s3://apac-support-bucket/filelist-test/" -bTo "az://apac-support-b
 # To validate
 AZURE_STORAGE_CONNECTION_STRING="${AZURE_STORAGE_CONNECTION_STRING_2}" filelist2 -b "az://apac-support-bucket-filelist-test-copied/" -rF ./copied_blobs.tsv
 ```
-NOTE: Using `AWS_CA_BUNDLE` may break HTTPS requests to the real AWS S3. May also need to use `-PathStyle` if not wildcard certificate.
+After reviewing ./copied_blobs.tsv, execute the Undeleter against another Nexus instance
 ```
-# After reviewing ./copied_blobs.tsv, execute the undelter against another Nexus instance
 bash ./nrm3-undelete-3.83.sh -I -s "default" -b ./copied_blobs.tsv
 ```
 
