@@ -368,9 +368,6 @@ func (s *S3Client) RemoveDeleted(key string, contents string) error {
 }
 
 func (s *S3Client) GetDirs(baseDir string, pathFilter string, maxDepth int) ([]string, error) {
-	if s.ClientNum == 0 {
-
-	}
 	var dirs []string
 	if len(common.Container) == 0 {
 		common.Container, _ = lib.GetContainerAndPrefix(common.BaseDir)

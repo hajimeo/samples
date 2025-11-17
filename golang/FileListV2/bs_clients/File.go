@@ -129,11 +129,11 @@ func (c *FileClient) GetDirs(baseDir string, pathFilter string, maxDepth int) ([
 		defer h.Elapsed(time.Now().UnixMilli(), "Slow directory walk for "+baseDir, common.SlowMS)
 	}
 	var matchingDirs []string
-	filterRegex := regexp.MustCompile(pathFilter)
 	// Just in case, remove the ending slash
 	baseDir = strings.TrimSuffix(baseDir, string(filepath.Separator))
 	depth := strings.Count(baseDir, string(filepath.Separator))
 	realMaxDepth := maxDepth + depth
+	filterRegex := regexp.MustCompile(pathFilter)
 
 	// Walk through the directory structure
 	h.Log("DEBUG", fmt.Sprintf("Walking directory: %s with pathFilter: %s", baseDir, pathFilter))
