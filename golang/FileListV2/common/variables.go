@@ -36,8 +36,8 @@ var S3PathStyle bool // AWS S3: Use Path-Style access
 // Paths/Directories related. End with "/", so that no need to append  string(filepath.Separator)
 var BaseDir = ""
 var BaseDir2 = ""
-var BsType = ""     // 'file' for File, 's3' for AWS S3, (TODO) 'az' for Azure, 'g' for Google
-var BsType2 = ""    // 'file' for File, 's3' for AWS S3, (TODO) 'az' for Azure, 'g' for Google
+var BsType = ""     // 'file' for File, 's3' for AWS S3, 'az' for Azure, (TODO) 'gs' for Google
+var BsType2 = ""    // 'file' for File, 's3' for AWS S3, 'az' for Azure, (TODO) 'gs' for Google
 var Container = ""  // Azure: Container name, S3: Bucket name, Google: Bucket name
 var Container2 = "" // Azure: Container name, S3: Bucket name, Google: Bucket name
 var Prefix = ""

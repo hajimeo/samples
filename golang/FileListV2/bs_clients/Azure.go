@@ -36,7 +36,6 @@ func (a *AzClient) SetClientNum(num int) {
 
 func getAzApi(clientNum int) *azblob.Client {
 	initContainerValue(clientNum)
-	// TODO: Not nice way to support -bTo by using ClientNum to select different accounts
 	if clientNum < 2 && AzApi != nil {
 		method := reflect.ValueOf(AzApi).MethodByName("URL")
 		if method.IsValid() {
@@ -50,7 +49,7 @@ func getAzApi(clientNum int) *azblob.Client {
 		}
 	}
 
-	// TODO: https://pkg.go.dev/github.com/Azure/azure-sdk-for-go/sdk/azidentity#readme-environment-variables
+	// NOTE: https://pkg.go.dev/github.com/Azure/azure-sdk-for-go/sdk/azidentity#readme-environment-variables
 	var envSfx string
 	if clientNum == 2 {
 		envSfx = "_2"
@@ -90,7 +89,6 @@ func decideContainer(clientNum int) string {
 }
 
 func initContainerValue(clientNum int) {
-	// TODO: Not nice way to support -bTo by using ClientNum to select different containers
 	uri := common.BaseDir
 	if clientNum == 2 {
 		uri = common.BaseDir2

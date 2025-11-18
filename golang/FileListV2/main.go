@@ -57,7 +57,7 @@ func setGlobals() {
 	flag.Int64Var(&common.TopN, "n", 0, "Return first N lines per *thread* (0 = no limit). Can't be less than '-c'")
 	flag.IntVar(&common.Conc1, "c", 1, "Concurrent number for reading directories")
 	flag.IntVar(&common.Conc2, "c2", 8, "2nd Concurrent number. Currently used when retrieving object from AWS S3")
-	// TODO: probably not needed
+	// TODO: probably the depth is not needed?
 	flag.IntVar(&common.MaxDepth, "depth", 5, "Max Depth for finding sub-directories only for File type (default: 5 for YYYY/MM/DD/hh/mm/)")
 	flag.BoolVar(&common.NoHeader, "H", false, "If true, no header line")
 

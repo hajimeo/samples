@@ -39,7 +39,6 @@ func (s *S3Client) SetClientNum(num int) {
 }
 
 func getS3Api(clientNum int) *s3.Client {
-	// TODO: Not nice way to support -bTo by using ClientNum to select different accounts
 	if clientNum < 2 && S3Api != nil {
 		return S3Api
 	}
@@ -150,7 +149,6 @@ func getS3Config(clientNum int) (aws.Config, error) {
 }
 
 func getBucket(clientNum int) string {
-	// TODO: Not nice way but supporting multiple clients
 	if clientNum == 2 {
 		if len(common.Container2) == 0 {
 			common.Container2, common.Prefix2 = lib.GetContainerAndPrefix(common.BaseDir2)

@@ -28,7 +28,7 @@ func TestGetContentPath_NoType_ReturnsFullPath(t *testing.T) {
 func TestGetContentPath_S3_ReturnsPrefixPlusContent(t *testing.T) {
 	common.BsType = "s3"
 	common.Container = "s3-test-bucket"
-	// TODO: not sure if this is correct, but for now, returning relative path
+	// NOTE: not sure if this is correct, but for now, decided to return the relative path
 	result := GetContentPath("s3://s3-test-bucket/s3-test-prefix/", "s3-test-bucket")
 	assert.Equal(t, "s3-test-prefix/content", result)
 }
