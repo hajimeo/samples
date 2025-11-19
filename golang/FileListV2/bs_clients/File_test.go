@@ -109,7 +109,7 @@ func TestWriteToPath_WhitespaceContents_WritesTrimmedContents(t *testing.T) {
 }
 
 func TestGetDirs_ValidPattern_ReturnsMatchingDirs(t *testing.T) {
-	baseDir := TEST_DATA_DIR + "/vol-NN/char-MM"
+	baseDir := TEST_DATA_DIR + "/vol-99/char-99"
 	err := os.MkdirAll(baseDir, os.ModePerm)
 	if err != nil {
 		t.Log("Could not create test directory")
@@ -123,6 +123,9 @@ func TestGetDirs_ValidPattern_ReturnsMatchingDirs(t *testing.T) {
 	}
 	//t.Logf("%s\n", dirs[0])
 	assert.Contains(t, dirs, baseDir)
+	dirs, err = client.GetDirs(TEST_DATA_DIR, "", 1)
+	assert.Equal(t, 1, len(dirs))
+	assert.Contains(t, dirs, TEST_DATA_DIR+"/vol-99")
 }
 
 func TestGetDirs_NoMatchingDirs_ReturnsEmpty(t *testing.T) {
