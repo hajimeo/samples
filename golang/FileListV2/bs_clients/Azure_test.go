@@ -12,9 +12,11 @@ import (
 )
 
 func TestAzClient(t *testing.T) {
+	common.BaseDir = "az://mycontainer/myprefix"
 	AzApi = &azblob.Client{}
-	client := getAzApi()
+	client := getAzApi(1)
 	assert.Equal(t, AzApi, client)
+	common.BaseDir = ""
 }
 
 func TestGetAzApi_ValidCredentials_ReturnsClient(t *testing.T) {
@@ -26,7 +28,7 @@ func TestGetAzApi_ValidCredentials_ReturnsClient(t *testing.T) {
 	}
 	accountName = h.GetEnv("AZURE_STORAGE_ACCOUNT_NAME", "")
 	AzApi = nil
-	client := getAzApi()
+	client := getAzApi(1)
 
 	assert.NotNil(t, client)
 	//t.Logf("URL: %v", client.URL())
@@ -37,7 +39,7 @@ func TestGetAzApi_AlreadyInitialized_ReturnsExistingClient(t *testing.T) {
 	existingClient := &azblob.Client{}
 	AzApi = existingClient
 
-	client := getAzApi()
+	client := getAzApi(1)
 
 	assert.Equal(t, existingClient, client)
 }
