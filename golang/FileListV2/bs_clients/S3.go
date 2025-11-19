@@ -366,9 +366,18 @@ func (s *S3Client) RemoveDeleted(key string, contents string) error {
 }
 
 func (s *S3Client) GetDirs(baseDir string, pathFilter string, maxDepth int) ([]string, error) {
+	if common.Debug {
+		defer h.Elapsed(time.Now().UnixMilli(), "Walked "+baseDir, int64(0))
+	} else {
+		defer h.Elapsed(time.Now().UnixMilli(), "Slow directory walk for "+baseDir, common.SlowMS*2)
+	}
 	var dirs []string
 	if len(common.Container) == 0 {
 		common.Container, _ = lib.GetContainerAndPrefix(common.BaseDir)
+	}
+	if maxDepth == -1 {
+		maxDepth = 1
+		h.Log("DEBUG", fmt.Sprintf("maxDepth was -1 (auto), changing to %d for S3", maxDepth))
 	}
 	var bucket = common.Container
 	// baseDir is the path to 'content' directory.
@@ -405,7 +414,9 @@ func (s *S3Client) GetDirs(baseDir string, pathFilter string, maxDepth int) ([]s
 		}
 		// if maxDepth is greater than -1, then check the current path with the maxDepth (0 means current directory depth)
 		if maxDepth >= 0 && strings.Count(*item.Prefix, "/") > maxDepth {
-			h.Log("DEBUG", fmt.Sprintf("Skipping %s as it exceeds max depth %d", *item.Prefix, maxDepth))
+			if maxDepth > 1 {
+				h.Log("DEBUG", fmt.Sprintf("Skipping %s as it exceeds max depth %d", *item.Prefix, maxDepth))
+			}
 			continue
 		}
 		// TODO: Currently not checking the sub directories if current is directory
