@@ -13,7 +13,7 @@ import (
 type Client interface {
 	// GetDirs : Get the directories in the path
 	GetDirs(string, string, int) ([]string, error)
-	// ListObjects : List the objects in the path. DB is used in the func
+	// ListObjects : List the objects in the path. NOT recursive or check WalkRecursive. DB is used in the func
 	ListObjects(string, *sql.DB, func(PrintLineArgs) bool) int64
 	// ReadPath : Read the contents of the file path
 	ReadPath(string) (string, error)
