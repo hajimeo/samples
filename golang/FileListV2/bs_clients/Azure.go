@@ -258,7 +258,11 @@ func (a *AzClient) GetDirs(baseDir string, pathFilter string, maxDepth int) ([]s
 	if common.Debug {
 		defer h.Elapsed(time.Now().UnixMilli(), "Walked "+baseDir, int64(0))
 	} else {
-		defer h.Elapsed(time.Now().UnixMilli(), "Slow directory walk for "+baseDir, common.SlowMS)
+		defer h.Elapsed(time.Now().UnixMilli(), "Slow directory walk for "+baseDir, common.SlowMS*2)
+	}
+	if maxDepth == -1 {
+		maxDepth = 1
+		h.Log("DEBUG", fmt.Sprintf("maxDepth was -1 (auto), changing to %d for Azure", maxDepth))
 	}
 	var matchingDirs []string
 	filterRegex := regexp.MustCompile(pathFilter)
@@ -288,7 +292,9 @@ func (a *AzClient) GetDirs(baseDir string, pathFilter string, maxDepth int) ([]s
 			// Not sure if this is a good way to limit the depth
 			count := strings.Count(path, string(filepath.Separator))
 			if realMaxDepth > 0 && count > realMaxDepth {
-				h.Log("DEBUG", fmt.Sprintf("Reached to the real max depth %d / %d (path: %s)", count, realMaxDepth, *prefix.Name))
+				if common.Debug2 {
+					h.Log("DEBUG", fmt.Sprintf("Reached to the real max depth %d > %d (path: %s)", count, realMaxDepth, *prefix.Name))
+				}
 				// Assuming Azure SDK returns the directories in order
 				break
 			}
