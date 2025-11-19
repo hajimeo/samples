@@ -58,7 +58,9 @@ func setGlobals() {
 	flag.IntVar(&common.Conc1, "c", 1, "Concurrent number for reading directories")
 	flag.IntVar(&common.Conc2, "c2", 8, "2nd Concurrent number. Currently used when retrieving object from AWS S3")
 	// TODO: probably the depth is not needed?
-	flag.IntVar(&common.MaxDepth, "depth", 5, "Max Depth for finding sub-directories only for File type (default: 5 for YYYY/MM/DD/hh/mm/)")
+	flag.IntVar(&common.MaxDepth, "depth", -1, "Max Depth for finding sub-directories only for File type (default: -1 for auto)")
+	flag.BoolVar(&common.NotCompSubDirs, "NotCompSubDirs", false, "Disable automatic sub-directories computation")
+	//flag.BoolVar(&common.WalkRecursive, "WalkRecursive", true, "If true, recursively walk the directories under 'content'")
 	flag.BoolVar(&common.NoHeader, "H", false, "If true, no header line")
 
 	flag.StringVar(&common.BlobIDFIle, "rF", "", "Result File which contains the list of blob IDs")
@@ -1154,16 +1156,13 @@ func genSubDirs(baseDir string, pathFilter string, client bs_clients.Client) (ma
 		return matchingDirs, err
 	}
 
+	h.Log("DEBUG", fmt.Sprintf("From %s, got %v direcories.", baseDir, dirs))
 	for _, dir := range dirs {
-		path := filepath.Join(baseDir, dir)
-		matchingDirs = lib.ComputeSubDirs(path, pathFilter)
+		newMatchingDirs := lib.ComputeSubDirs(dir, pathFilter)
+		matchingDirs = append(matchingDirs, newMatchingDirs...)
 	}
 
-	if len(matchingDirs) > 0 {
-		h.Log("INFO", fmt.Sprintf("Computed %d directories under %s", len(matchingDirs), baseDir))
-	} else {
-		h.Log("WARN", fmt.Sprintf("No expected directories found under %s", baseDir))
-	}
+	h.Log("INFO", fmt.Sprintf("Computed %d directories under %s", len(matchingDirs), baseDir))
 	return matchingDirs, err
 }
 
@@ -1349,11 +1348,14 @@ func main() {
 		var err error
 
 		baseDir, pathFilter := mayNeedUpdateBaseDir(common.BaseDir, common.Filter4Path, Client)
-		if !common.WalkSubDirs {
-			h.Log("INFO", fmt.Sprintf("Calculating the sub directories under %s ...", common.BaseDir))
+		if !common.NotCompSubDirs {
+			h.Log("INFO", fmt.Sprintf("Computing the sub directories under %s ...", common.BaseDir))
 			subDirs, err = genSubDirs(baseDir, pathFilter, Client)
 		}
 		if len(subDirs) == 0 {
+			h.Log("INFO", fmt.Sprintf("Walking the directory: %s ...", common.BaseDir))
+			common.WalkRecursive = true
+			common.NotCompSubDirs = true
 			subDirs, err = Client.GetDirs(baseDir, pathFilter, common.MaxDepth)
 		}
 		if err != nil {
