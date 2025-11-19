@@ -8,6 +8,7 @@ import (
 	h "github.com/hajimeo/samples/golang/helpers"
 	"github.com/pkg/errors"
 	"io"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -128,40 +129,65 @@ func (c *FileClient) GetDirs(baseDir string, pathFilter string, maxDepth int) ([
 	} else {
 		defer h.Elapsed(time.Now().UnixMilli(), "Slow directory walk for "+baseDir, common.SlowMS)
 	}
+	if maxDepth == -1 {
+		maxDepth = 3
+		h.Log("DEBUG", fmt.Sprintf("maxDepth was -1 (auto), changing to %d for File blob store", maxDepth))
+	}
 	var matchingDirs []string
 	// Just in case, remove the ending slash
 	baseDir = strings.TrimSuffix(baseDir, string(filepath.Separator))
-	depth := strings.Count(baseDir, string(filepath.Separator))
-	realMaxDepth := maxDepth + depth
+	baseSepCount := strings.Count(baseDir, string(filepath.Separator))
+	realMaxDepth := maxDepth + baseSepCount
+	startingWithDot := false
+	// If baseDir starts with ".", decrease the realMaxDepth by 1 because WalkDir doesn't seem to include "./"
+	if strings.HasPrefix(baseDir, "."+string(filepath.Separator)) {
+		startingWithDot = true
+	}
 	filterRegex := regexp.MustCompile(pathFilter)
 
 	// Walk through the directory structure
-	h.Log("DEBUG", fmt.Sprintf("Walking directory: %s with pathFilter: %s", baseDir, pathFilter))
-	err := filepath.Walk(baseDir, func(path string, info os.FileInfo, err error) error {
+	h.Log("DEBUG", fmt.Sprintf("Walking directory: %s with pathFilter: %s, maxDepth: %d, realMaxDepth: %d", baseDir, pathFilter, maxDepth, realMaxDepth))
+	err := filepath.WalkDir(baseDir, func(dirPath string, d fs.DirEntry, err error) error {
 		if err != nil {
 			return err
 		}
-		if info.IsDir() {
-			// Not sure if this is a good way to limit the depth
-			count := strings.Count(path, string(filepath.Separator))
-			if realMaxDepth > 0 && count > realMaxDepth {
-				h.Log("DEBUG", fmt.Sprintf("Reached to the real max depth %d / %d (path: %s)", count, realMaxDepth, path))
+		if d.IsDir() {
+			// Not sure if this is a good way to limit the baseSepCount as dirPath may start or may not start with "./"
+			sepCount := strings.Count(dirPath, string(filepath.Separator))
+			if startingWithDot && !strings.HasPrefix(dirPath, "."+string(filepath.Separator)) {
+				sepCount++
+			}
+			if realMaxDepth > 0 && sepCount > realMaxDepth {
+				// If not walking recursively is set, ListObjects should check recursively.
+				if !common.WalkRecursive { // && !filterRegex.MatchString(dirPath)
+					h.Log("WARN", fmt.Sprintf("Sub-directory exists but won't be checked: %s", dirPath))
+				}
+				if common.Debug2 {
+					h.Log("DEBUG", fmt.Sprintf("Reached to the real max depth %d > %d (dirPath: %s)", sepCount, realMaxDepth, dirPath))
+				}
 				return filepath.SkipDir
 			}
 
-			if len(pathFilter) == 0 || filterRegex.MatchString(path) {
-				h.Log("DEBUG", fmt.Sprintf("Matching directory: %s (Depth: %d)", path, depth))
-				// NOTE: As ListObjects for File type is not checking the subdirectories, it's OK to contain the parent directories.
-				matchingDirs = append(matchingDirs, path)
+			if len(pathFilter) == 0 || filterRegex.MatchString(dirPath) {
+				// Providing the option to check if it's a leaf directory or not as it may contain some unexpected file.
+				// Currently relying on regex to determine if it's a leaf directory
+				// If not walking recursively, should not check if leaf or not.
+				if !common.WalkRecursive || lib.IsLeafDir(dirPath, maxDepth) {
+					h.Log("DEBUG", fmt.Sprintf("Matching directory: %s (Depth: %d)", dirPath, baseSepCount))
+					// NOTE: As ListObjects for File type is not checking the subdirectories, it's OK to contain the parent directories.
+					matchingDirs = append(matchingDirs, dirPath)
+				} else {
+					h.Log("DEBUG", fmt.Sprintf("Skipping non-leaf directory: %s (maxDepth: %d)", dirPath, maxDepth))
+				}
 			} else {
-				h.Log("DEBUG", fmt.Sprintf("Not matching directory: %s (Depth: %d)", path, depth))
+				h.Log("DEBUG", fmt.Sprintf("%s does not match with %s (Depth: %d)", dirPath, pathFilter, baseSepCount))
 			}
 		}
 		return nil
 	})
 
 	if err != nil {
-		h.Log("ERROR", fmt.Sprintf("%s (base dir: %s, depth: %d)", err, baseDir, depth))
+		h.Log("ERROR", fmt.Sprintf("%s (base dir: %s, baseSepCount: %d)", err, baseDir, baseSepCount))
 	}
 	if len(matchingDirs) < 10 {
 		h.Log("DEBUG", fmt.Sprintf("Matched directories: %v", matchingDirs))
@@ -221,16 +247,22 @@ func (c *FileClient) ListObjects(dir string, db *sql.DB, perLineFunc func(PrintL
 				return io.EOF
 			}
 		} else {
-			if common.MaxDepth > 0 && dir != path {
+			// If it's a directory, if walk recursively is not set and if the current path is not the base dir, skip.
+			if !common.WalkRecursive && dir != path {
 				// Because GetDirs for "File" type returns all directories, this should not check recursively unlike other blob stores
-				h.Log("DEBUG", fmt.Sprintf("Skipping this directory: %s", path))
+				h.Log("DEBUG", fmt.Sprintf("Skipping directory: %s (dir:%s)", path, dir))
 				return filepath.SkipDir
 			}
 		}
 		return nil
 	})
+
 	if err != nil && err != io.EOF {
-		h.Log("ERROR", "Got error: "+err.Error()+" from "+dir)
+		if common.NotCompSubDirs {
+			h.Log("ERROR", "Got error: "+err.Error()+" from "+dir)
+		} else if common.Debug2 {
+			h.Log("DEBUG", "Got error: "+err.Error()+" from "+dir)
+		}
 	}
 	return subTtl
 }
