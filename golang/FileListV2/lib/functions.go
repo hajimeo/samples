@@ -12,6 +12,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"time"
 )
 
 func GetSchema(uri string) string {
@@ -188,19 +189,25 @@ func ComputeSubDirs(path string, pathFilter string) (matchingDirs []string) {
 	}
 
 	if common.RxYyyyDir.MatchString(path) {
+		// Generate /YYYY/MM (01 to 12)/DD (01 to 31), but not exceed tomorrow's date
 		//h.Log("DEBUG", fmt.Sprintf("'YYYY' directory found: %s", path))
-		// Generate /YYYY/MM (01 to 12)/DD (01 to 31)
 		year := filepath.Base(path)
+		yearInt, err := strconv.Atoi(year)
+		if err != nil {
+			panic(err)
+		}
+
+		isFuture := false
+		today := time.Now()
+		loc := today.Location()
+		tObj := time.Date(today.Year(), today.Month(), today.Day(), 23, 59, 59, 0, loc)
+
 		for m := 1; m <= 12; m++ {
 			month_last_day := 31
 			if m == 4 || m == 6 || m == 9 || m == 11 {
 				month_last_day = 30
 			} else if m == 2 {
 				// Check leap year
-				yearInt, err := strconv.Atoi(year)
-				if err != nil {
-					panic(err)
-				}
 				if (yearInt%4 == 0 && yearInt%100 != 0) || (yearInt%400 == 0) {
 					month_last_day = 29
 				} else {
@@ -208,12 +215,24 @@ func ComputeSubDirs(path string, pathFilter string) (matchingDirs []string) {
 				}
 			}
 			for d := 1; d <= month_last_day; d++ {
+				// Check if year-m-d is future date
+				if tObj.Before(time.Date(yearInt, time.Month(m), d, 0, 0, 0, 0, loc)) {
+					// Future date, skip
+					//h.Log("INFO", fmt.Sprintf("Skipping future date: %04d-%02d-%02d", yearInt, m, d))
+					isFuture = true
+					break
+				}
+
 				dayPath := fmt.Sprintf("%s/%02d/%02d", path, m, d)
 				if len(pathFilter) == 0 || filterRegex.MatchString(dayPath) {
 					matchingDirs = append(matchingDirs, dayPath)
 				} else {
 					h.Log("DEBUG", fmt.Sprintf("No match for dayPath: %s with filter: %s", dayPath, pathFilter))
 				}
+			}
+			if isFuture {
+				//h.Log("INFO", fmt.Sprintf("Skipping future date: %04d-%02d-", yearInt, m))
+				break
 			}
 		}
 		h.Log("DEBUG", fmt.Sprintf("Computed %d sub-directories for: %s", len(matchingDirs), path))

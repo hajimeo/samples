@@ -283,6 +283,13 @@ func TestComputeSubDirs_YyyyDirWithInvalidFilter_ReturnsEmptyList(t *testing.T) 
 	})
 }
 
+func TestComputeSubDirs_FutureDate_ReturnsEmptyList(t *testing.T) {
+	path := "2099"
+	pathFilter := ""
+	result := ComputeSubDirs(path, pathFilter)
+	assert.Empty(t, result)
+}
+
 func TestIsLeafDir_ZeroDepth_ReturnsTrue(t *testing.T) {
 	result := IsLeafDir("any/path", 0)
 	assert.True(t, result)
