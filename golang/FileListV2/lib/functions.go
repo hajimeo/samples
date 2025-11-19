@@ -141,13 +141,40 @@ func IsExactPath(pathFilter string) bool {
 	return false
 }
 
+func IsLeafDir(dirPath string, depth int) bool {
+	// If depth is 0, no check at all
+	if depth == 0 {
+		return true
+	}
+	// If depth is more than 5, always return true as long as dirPath is not empty
+	if len(dirPath) > 0 && depth > 5 {
+		return true
+	}
+
+	switch depth {
+	case 1:
+		return common.RxVolDir.MatchString(dirPath) || common.RxYyyyDir.MatchString(dirPath)
+	case 2:
+		return common.RxVolChapDir.MatchString(dirPath) || common.RxYyyyyMmDir.MatchString(dirPath)
+	case 3:
+		return common.RxVolChapDir.MatchString(dirPath) || common.RxYyyyyMmDdDir.MatchString(dirPath)
+	case 4:
+		return common.RxVolChapDir.MatchString(dirPath) || common.RxYyyyyMmDdHhDir.MatchString(dirPath)
+	case 5:
+		return common.RxVolChapDir.MatchString(dirPath) || common.RxYyyyyMmDdHhMmDir.MatchString(dirPath)
+	default:
+		return false
+	}
+}
+
 func ComputeSubDirs(path string, pathFilter string) (matchingDirs []string) {
+	//h.Log("DEBUG", fmt.Sprintf("Computing sub-directories for %s ...", path))
 	// Just in case, trim the trailing slash
 	path = strings.TrimSuffix(path, string(os.PathSeparator))
 	filterRegex := regexp.MustCompile(pathFilter)
 
 	if common.RxVolDir.MatchString(path) {
-		h.Log("DEBUG", fmt.Sprintf("'vol-{n}' directory found: %s", path))
+		//h.Log("DEBUG", fmt.Sprintf("'vol-{n}' directory found: %s", path))
 		// Generate /vol-NN/chap-MM (01 to 47)
 		for i := 1; i <= 47; i++ {
 			chapDir := fmt.Sprintf("chap-%02d", i)
@@ -156,11 +183,12 @@ func ComputeSubDirs(path string, pathFilter string) (matchingDirs []string) {
 				matchingDirs = append(matchingDirs, chapPath)
 			}
 		}
+		h.Log("DEBUG", fmt.Sprintf("Computed %d sub-directories for: %s", len(matchingDirs), path))
 		return matchingDirs
 	}
 
 	if common.RxYyyyDir.MatchString(path) {
-		h.Log("DEBUG", fmt.Sprintf("'YYYY' directory found: %s", path))
+		//h.Log("DEBUG", fmt.Sprintf("'YYYY' directory found: %s", path))
 		// Generate /YYYY/MM (01 to 12)/DD (01 to 31)
 		year := filepath.Base(path)
 		for m := 1; m <= 12; m++ {
@@ -183,12 +211,15 @@ func ComputeSubDirs(path string, pathFilter string) (matchingDirs []string) {
 				dayPath := fmt.Sprintf("%s/%02d/%02d", path, m, d)
 				if len(pathFilter) == 0 || filterRegex.MatchString(dayPath) {
 					matchingDirs = append(matchingDirs, dayPath)
+				} else {
+					h.Log("DEBUG", fmt.Sprintf("No match for dayPath: %s with filter: %s", dayPath, pathFilter))
 				}
 			}
 		}
+		h.Log("DEBUG", fmt.Sprintf("Computed %d sub-directories for: %s", len(matchingDirs), path))
 		return matchingDirs
 	}
 
-	h.Log("INFO", fmt.Sprintf("No special sub-directories generated for: %s", path))
+	h.Log("DEBUG", fmt.Sprintf("No computed sub-directories for: %s", path))
 	return matchingDirs
 }
