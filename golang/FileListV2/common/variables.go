@@ -48,8 +48,9 @@ var Filter4Path = ""
 var SaveToFile = ""
 var SavePerDir = false
 var SaveToPointer *os.File
-var WalkSubDirs bool
-var MaxDepth = 5 // `vol-YY/chap-XX/` vs. `YYYY/MM/DD/hh/mm/`
+var NotCompSubDirs = false
+var WalkRecursive = true // Should not be exposed (testing purpose). Probably only for File type
+var MaxDepth int         // `vol-YY/chap-XX/` vs. `YYYY/MM/DD/`
 
 // Blob store related
 var BsName = ""
@@ -100,13 +101,13 @@ var RxRepoName = regexp.MustCompile(`[^#]?@Bucket\.repo-name=([^,$]+)`)
 var RxBlobId = regexp.MustCompile("[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}")
 var RxBlobIdNew = regexp.MustCompile(`.*([a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12})@(\d{4})-(\d{2})-(\d{2}).(\d{2}):(\d{2}).*`)
 var RxBlobIdNew2 = regexp.MustCompile(`/?([0-9]{4})/([0-9]{2})/([0-9]{2})/([0-9]{2})/([0-9]{2})/([a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}).*`)
-var RxVolDir = regexp.MustCompile(`^/?vol-[0-9][0-9]/?$`)
-var RxVolChapDir = regexp.MustCompile(`^/?vol-[0-9][0-9]/chap-[0-9]/?$`)
-var RxYyyyDir = regexp.MustCompile(`^/?[0-9][0-9][0-9][0-9]/?$`)
-var RxYyyyyMmDir = regexp.MustCompile(`^/?[0-9][0-9][0-9][0-9]/[0-9][0-9]/?$`)
-var RxYyyyyMmDdDir = regexp.MustCompile(`^/?[0-9][0-9][0-9][0-9]/[0-9][0-9]/[0-9][0-9]/?$`)
-var RxYyyyyMmDdHhDir = regexp.MustCompile(`^/?[0-9][0-9][0-9][0-9]/[0-9][0-9]/[0-9][0-9]/[0-9][0-9]/?$`)
-var RxYyyyyMmDdHhMmDir = regexp.MustCompile(`^/?[0-9][0-9][0-9][0-9]/[0-9][0-9]/[0-9][0-9]/[0-9][0-9]/[0-9][0-9]/?$`)
+var RxVolDir = regexp.MustCompile(`\b/?vol-[0-9][0-9]/?$`)
+var RxVolChapDir = regexp.MustCompile(`\b/?vol-[0-9][0-9]/chap-[0-9][0-9]/?$`)
+var RxYyyyDir = regexp.MustCompile(`\b/?[0-9][0-9][0-9][0-9]/?$`)
+var RxYyyyyMmDir = regexp.MustCompile(`\b/?[0-9][0-9][0-9][0-9]/[0-9][0-9]/?$`)
+var RxYyyyyMmDdDir = regexp.MustCompile(`\b/?[0-9][0-9][0-9][0-9]/[0-9][0-9]/[0-9][0-9]/?$`)
+var RxYyyyyMmDdHhDir = regexp.MustCompile(`\b/?[0-9][0-9][0-9][0-9]/[0-9][0-9]/[0-9][0-9]/[0-9][0-9]/?$`)
+var RxYyyyyMmDdHhMmDir = regexp.MustCompile(`\b/?[0-9][0-9][0-9][0-9]/[0-9][0-9]/[0-9][0-9]/[0-9][0-9]/[0-9][0-9]/?$`)
 
 // Counters and misc.
 var Conc1 int
