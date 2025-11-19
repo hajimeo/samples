@@ -14,13 +14,13 @@ import (
 
 func TestGetBsClient_InitializedClient_ReturnsExistingClient(t *testing.T) {
 	S3Api = &s3.Client{}
-	client := getS3Api()
+	client := getS3Api(1)
 	assert.Equal(t, S3Api, client)
 }
 
 func TestGetBsClient_UninitializedClient_ReturnsNewClient(t *testing.T) {
 	S3Api = nil
-	client := getS3Api()
+	client := getS3Api(1)
 	assert.NotNil(t, client)
 	assert.Equal(t, S3Api, client)
 }
