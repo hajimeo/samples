@@ -452,6 +452,7 @@ function setDbConn() {
 
     if [[ ! "${_isIQ}" =~ ^[yY] ]] && [ -d "${_work_dir%/}" ]; then
         mkdir -v -p "${_work_dir%/}/etc/fabric"
+        # TODO: how about maxConnectionLifetimeSeconds?
         cat << EOF > "${_work_dir%/}/etc/fabric/nexus-store.properties"
 jdbcUrl=jdbc\:postgresql\://$(hostname -f)\:5432/${_dbname}?targetServerType=primary
 username=${_dbusr}
