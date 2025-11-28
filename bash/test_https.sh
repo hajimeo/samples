@@ -21,6 +21,7 @@
 #   keytool -J-Djavax.net.debug=all -J-Dhttps.proxyHost=localhost -J-Dhttps.proxyPort=8080 -printcert -rfc -sslserver ${_host}:${_port}
 #   echo -n | openssl s_client -proxy "localhost:8080" -showcerts -connect ${_host}:${_port} | openssl x509 -outform PEM | tee ./certificates.pem
 #
+#   keytool -list -cacerts -storepass changeit > cacerts_sha256.out
 #   keytool -list -keystore $JAVA_HOME/lib/security/cacerts -storepass changeit > cacerts_sha256.out
 #   keytool -printcert -rfc -sslserver ${_host}:${_port} > server.pem
 #   keytool -printcert -file server.pem | grep -o -E 'SHA256:.+'

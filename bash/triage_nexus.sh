@@ -12,6 +12,9 @@ DOWNLOAD LATEST and SOURCE:
 EOS
 }
 
+# NOTE: Nexus 3 image has jcmd, but no jar and gunzip, so can't compress / decompress files
+#       IQ image has most of JDK commands in /opt/sonatype/nexus-iq-server/bin/ (NOT in PATH) even jshell, and also gunzip, but no jar
+
 # Overridable global variables
 : ${_WORK_DIR:="/var/tmp/share"}
 : ${_JAVA_DIR:="${_WORK_DIR%/}/java"}
@@ -261,6 +264,20 @@ function f_gen_replication_log_from_soft_deleted() {
     # To test without changing file timestamp: sed -n -e "s/^deleted=true//" (instead of -i)
     find ${_blobstore_dir%/}/content/vol-* -name '*.properties' -mtime ${_days} -print0 | xargs -P${_P} -I{} -0 sh -c 'grep -q "^deleted=true" {} && sed '${_sed_i}' -e "s/^deleted=true//" {} && echo "'${_output_date}' 00:00:01,$(basename {} .properties)" >> ./'${_output_date}';'
     ls -l ./${_output_date}
+}
+
+function f_find_0byte_files() {
+    # For java.lang.NumberFormatException: Cannot parse null string
+    local _blobstore_dir="${1}"
+    if [ ! -d "${_blobstore_dir%/}/content" ]; then
+        echo "${_blobstore_dir%/}/content does not exist." >&2
+        return 1
+    fi
+    find ${_blobstore_dir%/}/content -type f -name "????????-????-????-????-????????????.properties" -size 0 | while read -r_f; do
+        # Check if .bytes file exists (and also 0 byte)
+        ls -l "${_f%.*}.*"
+    done
+    # TODO: what about S3, Azure, GCS?
 }
 
 function f_missing_check_orientdb() {

@@ -114,9 +114,12 @@ _RESP_FILE=""
 
 ### Nexus installation functions ##############################################################################
 # To re-install: _RECREATE_ALL=Y f_install_nexus3 "<version>" "<dbname>"
-# To install HA instances (port is automatic): _NEXUS_ENABLE_HA=Y _NXRM3_INSTALL_DIR="./nxrm3hatest1st"  f_install_nexus3 "" "nxrmlatestha"
-#     2nd node: _NEXUS_ENABLE_HA=Y _NXRM3_INSTALL_DIR="./nxrm3hatest2nd" f_install_nexus3 "" "nxrmlatestha"
 # To upgrade (from ${_dirpath}/): tar -xvf $HOME/.nexus_executable_cache/nexus-3.79.1-04-
+# To install HA instances (port is automatic):
+#   _VER="3.85.0-03" _DB="nxrm3850ha"
+#   _NXRM3_INSTALL_DIR="./nxrm_${_VER}_${_DB}_1st" _NEXUS_ENABLE_HA=Y f_install_nexus3 "${_VER}" "${_DB}"
+#   _NXRM3_INSTALL_DIR="./nxrm_${_VER}_${_DB}_2nd" _NEXUS_ENABLE_HA=Y f_install_nexus3 "${_VER}" "${_DB}"
+#   # Need to think about the location of the shared blob store. e.g. create a symlink between blobs dir.
 function f_install_nexus3() {
     local __doc__="Install specific NXRM3 version (to recreate sonatype-work and DB, _RECREATE_ALL=Y)"
     local _ver="${1:-"${r_NEXUS_VERSION}"}"     # 'latest' or '3.71.0-03-java17'
@@ -245,6 +248,7 @@ function f_install_nexus3() {
                 fi
                 _dbhost="$(hostname -f):5432"
             fi
+            # TODO: how about maxConnectionLifetimeSeconds?
             cat << EOF > "${_dirpath%/}/sonatype-work/nexus3/etc/fabric/nexus-store.properties"
 jdbcUrl=jdbc\:postgresql\://${_dbhost//:/\\:}/${_dbname}?targetServerType=primary
 username=${_dbusr}
@@ -1512,12 +1516,12 @@ function f_setup_raw() {
     # add some data for xxxx-proxy
     #f_get_asset "${_prefix}-jenkins-proxy" "download/plugins/nexus-jenkins-plugin/3.9.20200722-164144.e3a1be0/nexus-jenkins-plugin.hpi"
 
-    # Quicker way: NOTE --limit-rate=4k can be a handy option to test:
-    # *NOTE*: The following test does not work with different extensions with the Strict Content Validation enabled.
-    #   time curl -D- -u 'admin:admin123' -T <(echo 'test') "${_NEXUS_URL%/}/repository/raw-hosted/test/test.txt"
-    #   (Not working on Mac) Create a dummy 1K file: dd if=/dev/zero of=${_TMP%/}/test_1k.data bs=1024 count=1 oflag=dsync
+    # Quicker way: NOTE --limit-rate=4k can be a handy option to test, also oflag=dsync does not work with Mac's dd
+    # *NOTE*: This file does not work with different extensions and with the Strict Content Validation enabled.
     dd if=/dev/zero of=${_TMP%/}/test_1k.data bs=1 count=0 seek=1024 && \
     _ASYNC_CURL="Y" f_upload_asset "${_prefix}-hosted" -F raw.directory=test -F raw.asset1=@${_TMP%/}/test_1k.data -F raw.asset1.filename=test_1k.data
+    # Alternative way to upload small file:
+    #   time curl -D- -u 'admin:admin123' -T <(echo 'test') "${_NEXUS_URL%/}/repository/raw-hosted/test/test.txt"
     # If real large size is required:
     #   dd if=/dev/zero of=./test_100m.data bs=1024 count=$((1024*100))
     # Test by uploading and downloading:
@@ -1566,7 +1570,7 @@ function _get_blobstore_name() {
         _BLOBTORE_NAME="${_bs_name}"
     elif [ "${_line_num}" == "0" ]; then
         _log "INFO" "No blobstore defined. Creating '${_bs_name}' file blobstore ..."; sleep 1
-        f_create_file_blobstore "${_bs_name}" || return $?
+        f_create_file_blobstore "${_bs_name}" "" || return $?
         _BLOBTORE_NAME="${_bs_name}"
     elif [ "${_line_num}" == "1" ]; then
         # If only one blobstore defined, use it, otherwise return false
@@ -1669,11 +1673,29 @@ function f_branding() {
 function f_create_file_blobstore() {
     local __doc__="Create a File type blobstore"
     local _bs_name="${1:-"file_$(date +"%Y%m%d")"}"
-    _log "INFO" "Creating File blobstore: ${_bs_name} ..."
-    if ! _apiS '{"action":"coreui_Blobstore","method":"create","data":[{"type":"File","name":"'${_bs_name}'","isQuotaEnabled":false,"attributes":{"file":{"path":"'${_bs_name}'"}}}],"type":"rpc"}' > ${_TMP%/}/f_apiS_last.out; then
-        _log "ERROR" "Blobstore ${_bs_name} does not exist."
-        _log "ERROR" "$(cat ${_TMP%/}/f_apiS_last.out)"
-        return 1
+    local _raw_hosted_repo_name="${2-"${_RAW_HOSTED_REPO_NAME:-"raw-file-hosted"}"}"
+    if ! _is_blob_available "${_bs_name}"; then
+        _log "INFO" "Creating File blobstore: ${_bs_name} ..."
+        if ! _apiS '{"action":"coreui_Blobstore","method":"create","data":[{"type":"File","name":"'${_bs_name}'","isQuotaEnabled":false,"attributes":{"file":{"path":"'${_bs_name}'"}}}],"type":"rpc"}' > ${_TMP%/}/f_apiS_last.out; then
+            _log "ERROR" "Blobstore ${_bs_name} does not exist."
+            _log "ERROR" "$(cat ${_TMP%/}/f_apiS_last.out)"
+            return 1
+        fi
+    else
+        _log "INFO" "Blobstore ${_bs_name} already exists."
+    fi
+    if [[ ! "${_NO_REPO_CREATE}" =~ [yY] ]] && [ -n "${_raw_hosted_repo_name}" ]; then
+        if _is_repo_available "${_raw_hosted_repo_name}"; then
+            _log "INFO" "Repository ${_raw_hosted_repo_name} already exists (please check which blob store is used)"
+        else
+            _apiS '{"action":"coreui_Repository","method":"create","data":[{"attributes":{"storage":{"blobStoreName":"'${_bs_name}'","writePolicy":"ALLOW","strictContentTypeValidation":false'$(_get_extra_sto_opt)'},"cleanup":{"policyName":[]}},"name":"'${_raw_hosted_repo_name}'","format":"","type":"","url":"","online":true,"recipe":"raw-hosted"}],"type":"rpc"}' || return $?
+            sleep 1
+            if ! _is_repo_available "${_raw_hosted_repo_name}"; then
+                _log "WARN" "Creating ${_raw_hosted_repo_name} might be failed"
+            else
+                _log "INFO" "Created ${_raw_hosted_repo_name}"
+            fi
+        fi
     fi
     _log "DEBUG" "$(cat ${_TMP%/}/f_apiS_last.out)"
 }
@@ -1765,10 +1787,10 @@ function f_create_s3_blobstore() {
         else
             _apiS '{"action":"coreui_Repository","method":"create","data":[{"attributes":{"storage":{"blobStoreName":"'${_bs_name}'","writePolicy":"ALLOW","strictContentTypeValidation":false'$(_get_extra_sto_opt)'},"cleanup":{"policyName":[]}},"name":"'${_raw_hosted_repo_name}'","format":"","type":"","url":"","online":true,"recipe":"raw-hosted"}],"type":"rpc"}' || return $?
             sleep 1
-            if ! _is_repo_available "raw-${_bs_name}-hosted"; then
-                _log "WARN" "Creating raw-${_bs_name}-hosted might be failed"
+            if ! _is_repo_available "${_raw_hosted_repo_name}"; then
+                _log "WARN" "Creating ${_raw_hosted_repo_name} might be failed"
             else
-                _log "INFO" "Created raw-${_bs_name}-hosted"
+                _log "INFO" "Created ${_raw_hosted_repo_name}"
             fi
         fi
     fi
@@ -1875,8 +1897,8 @@ function f_create_group_blobstore() {
     local _member_pfx="${2:-"member"}"
     local _file_policy="${3:-"writeToFirst"}"   # writeToFirst or roundRobin
     local _repo_name="${4-"raw-grpbs-hosted"}"
-    f_create_file_blobstore "${_member_pfx}1"
-    f_create_file_blobstore "${_member_pfx}2"
+    f_create_file_blobstore "${_member_pfx}1" ""
+    f_create_file_blobstore "${_member_pfx}2" ""
     _log "INFO" "Creating group blobstore: ${_bs_name} ..."
     f_api '/service/rest/v1/blobstores/group' '{"name":"'${_bs_name}'","members":["'${_member_pfx}'1","'${_member_pfx}'2"],"fillPolicy":"'${_file_policy}'"}' || return $?
     if [ -n "${_repo_name}" ] && ! _is_repo_available "${_repo_name}"; then
@@ -2702,7 +2724,7 @@ function f_create_csel() {
 function f_create_testuser() {
     local __doc__="Create/add a test user with a test role"
     local _userid="${1:-"testuser"}"
-    local _privs="${2-"\"nx-repository-view-*-*-add\",\"nx-repository-view-*-*-browse\",\"nx-repository-view-*-*-edit\",\"nx-repository-view-*-*-read\",\"nx-search-read\",\"nx-component-upload\",\"nx-usertoken-current\",\"nx-apikey-all\""}"
+    local _privs="${2-"\"nx-repository-view-*-*-add\",\"nx-repository-view-*-*-browse\",\"nx-repository-view-*-*-edit\",\"nx-repository-view-*-*-read\",\"nx-search-read\",\"nx-component-upload\",\"nx-usertoken-current\",\"nx-apikey-all\",\"nx-tags-all\""}"
     local _role="${3-"test-role"}"
     # NOTE: nx-usertoken-current does not work with OSS because no User Token.
     #       nx-apikey-all is needed for Nuget AP key.
@@ -2801,14 +2823,16 @@ Also update _NEXUS_URL. For example: export _NEXUS_URL=\"https://local.standalon
     _log "INFO" "To trust this certificate, _trust_ca \"\${_ca_pem}\""
 }
 
+#_URL_REGEX="sonatype.com" _REPL_CERT="Y" f_start_forward_proxy
 function f_start_forward_proxy() {
     local __doc__="Setup and start simple HTTP/HTTPS/forward proxy server"
     local _port="${1:-"8080"}"
     local _install_dir="${2:-"${_SHARE_DIR%/}/httpproxy"}"
     local _repl_cert="${3:-"${_REPL_CERT}"}"
-    local _debug="${4}"
-    local _key="${5}"
-    local _cert="${6}"
+    local _debug="${4-"${_repl_cert}"}"
+    local _url_regex="${5-"${_URL_REGEX}"}"
+    local _key="${6}"
+    local _cert="${7}"
 
     if [ ! -d "${_install_dir%/}" ]; then
         mkdir -v -p "${_install_dir%/}" || return $?
@@ -2837,6 +2861,11 @@ function f_start_forward_proxy() {
     if [[ "${_debug}" =~ ^(y|Y) ]]; then
         # Not exposing --debug2 at this moment
         _cmd="${_cmd} --debug"
+    fi
+
+    if [[ -n "${_url_regex}" ]]; then
+        # Not exposing --debug2 at this moment
+        _cmd="${_cmd} --urlregex \"${_url_regex}\""
     fi
 
     eval "${_cmd}" &> ${_TMP%/}/httpproxy_$$.log &
@@ -3784,7 +3813,7 @@ function f_upload_dummies_rubygem() {
 }
 
 #_IMAGE_NAME="hyphentest" _DOCKER_TAG_PFX="226944e1c-" f_upload_dummies_docker "" "1"
-#_IMAGE_NAME="retaintest" f_upload_dummies_docker "${_NEXUS_DOCKER_HOSTNAME}:18182" "2"
+#_ADMIN_USER="testuser" _ADMIN_PWD="testuser" _IMAGE_NAME="pws-blueprint-test-suite/manual-tests/oci-build-recipe-test" f_upload_dummies_docker "" "2"
 #_IMAGE_NAME="path-based-test" f_upload_dummies_docker "${_NEXUS_DOCKER_HOSTNAME}:8443/docker-hosted" "1"
 function f_upload_dummies_docker() {
     local __doc__="Upload dummy docker images into docker hosted repository (requires 'docker' command)"
@@ -4123,12 +4152,13 @@ function f_delete_all_assets() {
 #   f_setup_raw
 #   f_api "/service/rest/v1/repositories/raw/hosted" '{"name":"raw-test-hosted","online":true,"storage":{"blobStoreName":"default","strictContentTypeValidation":false,"writePolicy":"ALLOW"}}'
 # 2. curl -D- -u "admin:admin123" -T<(echo "test for f_staging_move") -L -k "${_NEXUS_URL%/}/repository/raw-hosted/test/nxrm3Staging.txt"
-# 3. f_associate_tag "repository=raw-hosted" "raw-test-tag"
+# 3. f_associate_tag "repository=raw-hosted" "raw-Test-tag"
 #    f_staging_move "raw-test-hosted" "raw-test-tag"
 #  Or without tag but search query:
 #    f_staging_move "raw-test-hosted" "raw-test-tag" "repository=raw-hosted&name=*test/nxrm3Staging*.txt"
-#    NOTE: Tag is optional. Using "*" in 'name=' as name|path in NewDB starts with "/"
-# 4. f_staging_move "raw-hosted" "raw-test-tag" "repository=raw-test-hosted&name=*test/nxrm3Staging*.txt"
+#    NOTE: Tag is optional. Using "*" in 'name=' as name|path in NewDB starts with "/", but this may not work with HA.
+# 4. Revert with search query, which associate automatically (NOTE: Leading wildcard may no work with HA)
+#    f_staging_move "raw-hosted" "raw-test-tag" "repository=raw-test-hosted&name=/test/nxrm3Staging.txt"
 # With maven2:
 #   f_upload_dummies_maven "maven-hosted" "" "" "com.example" "my-app-staging"
 #   f_staging_move "maven-releases" "maven-test-tag" "repository=maven-hosted&name=my-app-staging"
@@ -4169,7 +4199,7 @@ function f_staging_move() {
 
 # To prepare data: f_upload_dummies_maven "maven-releases"
 #   f_associate_tag "repository=maven-releases&maven.groupId=setup.nexus3.repos&maven.artifactId=dummy&maven.baseVersion=3"
-#   f_staging_move "maven-hosted" "tag-test"
+#   _ADMIN_USER=testuser _ADMIN_PWD=testuser f_associate_tag "repository=docker-test" "pws-blueprint-test-suite.manual-tests.oci-build-recipe-test.0.15.1.oci"
 function f_associate_tag() {
     local __doc__="Associate one tag to the search result"
     local _search="${1}"
@@ -4181,7 +4211,7 @@ function f_associate_tag() {
     # Ignoring if tag creation fails
     echo "# /service/rest/v1/tags -d '{\"name\":\"${_tag}\"}'"
     f_api "/service/rest/v1/tags" "{\"name\":\"${_tag}\"}"
-    echo "# /service/rest/v1/tags/associate/${_tag}?${_search}" # 'wait' (default is true) for Elasticsearch to wait for calm down
+    echo "# /service/rest/v1/tags/associate/${_tag}?${_search}" # 'wait' (default is true) for Elasticsearch to wait for calm down. SQL search supports this from 3.87.
     f_api "/service/rest/v1/tags/associate/${_tag}?${_search}" "" "POST" || return $?
     sleep 3 # Just in case waiting for elastic search
     echo "To confirm:"
@@ -4384,6 +4414,7 @@ function f_restore_postgresql_component() {
     grep -w ERROR ./psql_restore.log | grep -v "cannot drop constraint"
     _log "INFO" "To avoid 'Unable find secret for the specified token error'"
     echo "psql -d ${_DBNAME} -c \"UPDATE repository SET attributes = jsonb_set(attributes, '{httpclient,authentication,password}','\\\"\\\"'::jsonb) WHERE attributes->'httpclient'->'authentication'->>'password' is not null;\""
+    echo "psql -d ${_DBNAME} -c \"INSERT INTO nexus_key_value VALUES ('maven2.normalized.version.available', 'BOOLEAN', '{\\\"value\\\":true}'::JSON);\""
 }
 # To test MissingBlobException:
 #   f_backup_postgresql_component "" "pypi"
@@ -4447,7 +4478,7 @@ function f_h2_console() {
     local _port="${1:-"8282"}"
     local _baseDir="${2}"
     local _h2_jar="${3}"
-    local _h2_ver="${4:-"2.3.232"}"
+    local _h2_ver="${4:-"${_H2_VER:-"2.3.232"}"}"   #2.4.240
     # NXRM3
     #Save Settings: Generic H2 (Embedded)
     #Driver: org.h2.Driver
@@ -4811,7 +4842,7 @@ main() {
     f_nexus_change_pwd "admin" "${r_ADMIN_PWD:-"${_ADMIN_PWD}"}" "" "."
 
     if [ -n "${r_BLOBSTORE_NAME}" ] && ! _is_blob_available "${r_BLOBSTORE_NAME}"; then
-        f_create_file_blobstore "${r_BLOBSTORE_NAME}" || return $?
+        f_create_file_blobstore "${r_BLOBSTORE_NAME}" "" || return $?
     fi
 
     _log "INFO" "Resetting Realms to this script's default realms ..."

@@ -370,6 +370,7 @@ function _gen_comp_id() {
 
 #f_api_comp_details "pkg:maven/log4j/log4j@1.2.12?type=jar"
 #f_api_comp_details '{"packageUrl":"pkg:npm/@nx/devkit@20.9.0"}'
+#f_api_comp_details '{"packageUrl":"pkg:npm/@posthog/plugin-server@1.10.7"}'
 #f_api_comp_details '{"packageUrl":"pkg:npm/color@5.0.1"}'
 #f_api_comp_details 'b0e4da108211e81700433e167ced88e6296b1def'
 function f_api_comp_details() {
@@ -390,6 +391,15 @@ function f_api_comp_versions() {
     local _iq_url="$(_get_iq_url "${_IQ_URL%/}")" || return $?
     _log "INFO" "/api/v2/components/versions with '${_component_identifier_without_ver}' ..."
     _curl "${_iq_url%/}/api/v2/components/versions" -H "Content-Type: application/json" -d ${_component_identifier_without_ver}
+}
+
+function f_api_vul_details() {
+    local __doc__="Call Vulnerability Details API https://help.sonatype.com/en/vulnerability-details-rest-api.html"
+    local _vul_id="$1"
+    [ -z "${_vul_id}" ] && return 11
+    local _iq_url="$(_get_iq_url "${_IQ_URL%/}")" || return $?
+    _log "INFO" "/api/v2/vulnerabilities with '${_vul_id}' ..."
+    _curl "${_iq_url%/}/api/v2/vulnerabilities/${_vul_id}" -H "Content-Type: application/json"
 }
 
 function f_api_eval() {
@@ -643,8 +653,39 @@ function f_setup_forward_proxy() {
         _password="null"
     fi
     _curl "${_IQ_URL%/}/api/v2/config/httpProxyServer" -H "Content-Type: application/json" -X PUT -d '{"hostname":"'${_host}'","port":'${_port}',"username":'${_username}',"password":'${_password}',"passwordIsIncluded":true,"excludeHosts":'${_nonProxyHosts_json}'}' || return $?
-    _log "INFO" "May need to trust the proxy's CA certificate by adding into Java 17 truststore."
-    echo 'keytool -importcert -file ./proxy.crt -alias httpproxy -keystore ${JAVA_HOME}/lib/security/cacerts -storepass changeit'
+    local _pid="$(ps auxwww | grep -E 'java .+nexus-iq-server.+ server' | grep -vw grep | awk '{print $2}' | tail -n1)";
+    local _maybe_truststore=""
+    if [ -n "${_pid}" ] && type jcmd &>/dev/null; then
+        _maybe_truststore="$(jcmd "${_pid}" VM.system_properties | grep '^javax.net.ssl.trustStore' | cut -d'=' -f2)"
+        if [ -z "${_maybe_truststore}" ]; then
+            local _maybe_java_home="$(jcmd "${_pid}" VM.system_properties | grep '^java.home' | cut -d'=' -f2)"
+            if [ -n "${_maybe_java_home}" ]; then
+                _maybe_truststore="$(find "${_maybe_java_home%/}" -maxdepth 3 -type f -name 'cacerts' | head -n1)"
+                [ $? -eq 0 ] &&
+                _maybe_truststore="${_maybe_java_home}/lib/security/cacerts"
+            fi
+        fi
+    fi
+    local _is_trusted=false
+    if [ -n "${_maybe_truststore}" ]; then
+        if type keytool &>/dev/null; then
+            _log "INFO" "keytool -list -v -keystore \"${_maybe_truststore}\" -storepass changeit"
+            if keytool -list -v -keystore "${_maybe_truststore}" -storepass changeit | grep -q '8E:02:9E:BC:26:0E:56:24:BE:15:96:3C:D0:BE:AC:56:01:D9:9B:16:17:A3:B9:C1:FD:01:02:F5:E2:B4:7A:EE'; then
+                _log "INFO" "The proxy's CA certificate is already trusted in the ${_maybe_truststore}"
+                _is_trusted=true
+            fi
+        fi
+    fi
+    if ! ${_is_trusted}; then
+        _log "INFO" "Could not detect Java truststore."
+        _log "INFO" "May need to trust the proxy's CA certificate by adding into Java 17 truststore."
+        if [ -n "${_maybe_truststore}" ]; then
+            echo "keytool -importcert -file ./proxy.crt -alias httpproxy -keystore \"${_maybe_truststore}\" -storepass changeit"
+        else
+            echo "# Find the proxy.crt from the /tmp/httpproxy_\$\$.log, then"
+            echo 'keytool -importcert -file ./proxy.crt -alias httpproxy -keystore ${JAVA_HOME}/lib/security/cacerts -storepass changeit'
+        fi
+    fi
 }
 
 # after f_start_dummy_smtp
@@ -1319,7 +1360,7 @@ function f_setup_service() {
     fi
 
     local _env="#env="
-    #_env="Environment=\"INSTALL4J_ADD_VM_PARAMS=-agentlib:jdwp=transport=dt_socket,server=y,suspend=n,address=5005\""
+    #_env="Environment=\"JAVA_TOOL_OPTIONS=-agentlib:jdwp=transport=dt_socket,server=y,suspend=n,address=5005\""
     cat <<EOF >/tmp/nexusiq.service || return $?
 [Unit]
 Description=nexus iq service

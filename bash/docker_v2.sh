@@ -142,18 +142,6 @@ main() {
 function upload() {
     return  # TODO: Implement upload (PUT) test. not -d or --data (how about -T / --upload-file?)
     cat <<EOF
-curl -sf -u admin:admin123 -H 'Content-Type: application/vnd.docker.distribution.manifest.v2+json' -X PUT http://localhost:5001/v2/alpine/manifests/sha256:e2e16842c9b54d985bf1ef9242a313f36b856181f188de21313820e177002501 --data-binary @e2e16842c9b54d985bf1ef9242a313f36b856181f188de21313820e177002501.json
-
-for i in {1..50}; do
-  _digest="$(curl -s -D/dev/stdout -u 'admin:admin123' -H 'Accept:application/vnd.docker.distribution.manifest.v2+json' "http://utm-ubuntu:8081/repository/docker-hosted/v2/alpine_hosted/manifests/latest" -o./latest | sed -n -E '/^Docker-Content-Diges/ s/^Docker-Content-Digest: (.+)$/\1/p')"
-  curl -sf -D- -u admin:admin123 -X DELETE "http://utm-ubuntu:8081/repository/docker-hosted/v2/alpine_hosted/manifests/${_digest}";
-  curl -sf -D- -u admin:admin123 -H 'Content-Type: application/vnd.docker.distribution.manifest.v2+json' -T ./latest "http://utm-ubuntu:8081/repository/docker-hosted/v2/alpine_hosted/manifests/latest" -o/tmp/last.out || break;
-  _digest37="$(curl -s -D/dev/stdout -u 'admin:admin123' -H 'Accept:application/vnd.docker.distribution.manifest.v2+json' "http://utm-ubuntu:8081/repository/docker-hosted/v2/alpine_hosted_37/manifests/latest" -o./latest37 | sed -n -E '/^Docker-Content-Diges/ s/^Docker-Content-Digest: (.+)$/\1/p')"
-  curl -sf -D- -u admin:admin123 -X DELETE "http://utm-ubuntu:8081/repository/docker-hosted/v2/alpine_hosted_37/manifests/${_digest37}";
-  curl -sf -D- -u admin:admin123 -H 'Content-Type: application/vnd.docker.distribution.manifest.v2+json' -T ./latest37 "http://utm-ubuntu:8081/repository/docker-hosted/v2/alpine_hosted_37/manifests/latest" -o/tmp/last.out || break;
-  sleep 0.5
-done
-
 # example upload requests:
 DEBU[0000] Trying to reuse cached location sha256:d3470daaa19c14ddf4ec500a3bb4f073fa9827aa4f19145222d459016ee9193e compressed with gzip in node-nxrm-ha1.standalone.localdomain:18183/alpine
 DEBU[0000] HEAD https://node-nxrm-ha1.standalone.localdomain:18183/v2/alpine/blobs/sha256:6dbb9cc54074106d46d4ccb330f2a40a682d49dda5f4844962b7dce9fe44aaec

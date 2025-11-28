@@ -60,9 +60,8 @@ function _postgresql_configure() {
     # @see: https://wiki.postgresql.org/wiki/Tuning_Your_PostgreSQL_Server
     local __doc__="Update postgresql.conf. Need to run from the PostgreSQL server (localhost)"
     local _verbose_logging="${1}"   # If Y, adds more logging configs which would work with pgbadger.
-    local _wal_archive_dir="${2}"   # Automatically decided if empty
-    local _postgresql_conf="${3}"   # Automatically detected if empty. "/var/lib/pgsql/data" or "/etc/postgresql/10/main" or /var/lib/pgsql/12/data/
-    local _port="${4:-"5432"}"      # just for deciding the username. Optional.
+    local _postgresql_conf="${2}"   # Automatically detected if empty. "/var/lib/pgsql/data" or "/etc/postgresql/10/main" or /var/lib/pgsql/12/data/
+    local _port="${3:-"5432"}"      # just for deciding the username. Optional.
     local _restart=false
 
     if [ ! -f "${_postgresql_conf}" ]; then
@@ -105,8 +104,9 @@ function _postgresql_configure() {
     _psql_adm "ALTER SYSTEM SET max_stack_depth TO '6MB'"    # Default 2048kB. To avoid 'stack depth limit exceeded'
     ### End of tuning ###
     _psql_adm "ALTER SYSTEM SET listen_addresses TO ''*''"
+    # psql -c 'SELECT pg_current_logfile();;SHOW data_directory' # eg. "/opt/homebrew/var/postgresql@14"
     [ -d /var/log/postgresql ] || mkdir -p -m 777 /var/log/postgresql
-    [ -d /var/log/postgresql ] && _psql_adm "ALTER SYSTEM SET log_directory TO ''/var/log/postgresql' '"
+    [ -d /var/log/postgresql ] && _psql_adm "ALTER SYSTEM SET log_directory TO ''/var/log/postgresql' '"    # default is 'log'
 
     #_upsert ${_postgresql_conf} "log_destination" "stderr" "#log_destination"  # stderr
     #_upsert ${_postgresql_conf} "log_duration" "on" "#log_duration"    # This output many lines, so log_min_duration_statement would be better

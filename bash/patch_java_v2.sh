@@ -39,6 +39,21 @@ function f_javaenvs() {
     local _lib_dir="${1}"  # or directory path
     local _user="$USER"
 
+    # If java version is 8, set JAVA_HOME=$JAVA_HOME_17
+    if [ -n "${JAVA_HOME_17}" ]; then
+        if [ -z "${JAVA_HOME}" ]; then
+            if java -version 2>&1 | head -n1 | grep -q 'version "1.8'; then
+                echo "INFO: 'java' version is 8, so setting JAVA_HOME=${JAVA_HOME_17} ..."
+                export JAVA_HOME="${JAVA_HOME_17}"
+            fi
+        else
+            if ${JAVA_HOME}/bin/java -version 2>&1 | head -n1 | grep -q 'version "1.8'; then
+                echo "INFO: ${JAVA_HOME}/bin/java version is 8, so setting JAVA_HOME=${JAVA_HOME_17} ..."
+                export JAVA_HOME="${JAVA_HOME_17}"
+            fi
+        fi
+    fi
+
     if [ -n "$JAVA_HOME" ] && [ -n "$CLASSPATH" ]; then
         echo "INFO: JAVA_HOME and CLASSPATH are already set. Skipping f_javaenvs"
         return 0

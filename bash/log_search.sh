@@ -1138,16 +1138,28 @@ function f_splitScriptLog() {
             cat ./threads.raw | python3 -c "import sys,html,re;rx=re.compile(r\"<[^>]+>\");print(html.unescape(rx.sub(\"\",sys.stdin.read())))" > threads.txt && rm -f ./threads.raw
         fi
     fi
-    if [[ "${_full_split}" =~ [yY] ]] && [ -s ./tops_netstats.txt ]; then
-        f_splitTopNetstat ./tops_netstats.txt >/dev/null
+    if [ -s ./tops_netstats.txt ]; then
+        if [[ "${_full_split}" =~ [yY] ]]; then
+            f_splitTopNetstat ./tops_netstats.txt >/dev/null
+        else
+            echo "# Please run: f_splitTopNetstat ./tops_netstats.txt" >&2
+        fi
     fi
-    if [[ "${_full_split}" =~ [Y] ]]; then
-        if [ -d "./top_netstat" ]; then
+    if [ -d "./top_netstat" ]; then
+        if [[ "${_full_split}" =~ [Y] ]]; then
             f_check_topH "top_netstat/top_0*"
             f_check_netstat "top_netstat/netstat_0*"
             #find ./top_netstat -name "netstat_*.out" | while read _f; do f_check_netstat "${_f}"; done
+        else
+            echo "# Please run: f_check_topH \"top_netstat/top_0*\"; f_check_netstat \"top_netstat/netstat_0*\"" >&2
         fi
-        #[ -s ./threads.txt ] && f_threads ./threads.txt
+    fi
+    if [ -s ./threads.txt ]; then
+        #if [[ "${_full_split}" =~ [Yy] ]]; then
+        #    f_threads ./threads.txt
+        #else
+            echo "# Please run: f_threads ./threads.txt" >&2
+        #fi
     fi
 }
 
@@ -1374,9 +1386,21 @@ function f_analyse_multiple_dumps() {
     local _individual_thread_dir="${1:-"."}"
     local _running_thread_search_re="${2-".sonatype."}"
     local _times="${3:-"3"}"
+    # NOTE: This function should try using f_thread_*.out files
 
     echo "## Thread status counts from ./f_thread_*.out"
     rg -A10 '^### Counting thread states' --no-filename ./f_thread_*.out | rg -v '^#'
+    echo " "
+
+    echo "### BLOCKED methods top 5 from ${_individual_thread_dir}"
+    rg -s BLOCKED -m1 -A1 --no-filename ${_individual_thread_dir} | rg '^\s+at (\S+)' -o -r '$1' | sort | uniq -c | sort -nr | head -n5
+    echo " "
+
+    echo "### BLOCKED methods top 5 from ${_individual_thread_dir}/{sub_dirs}"
+    find ${_individual_thread_dir%/} -type d -mindepth 1 -maxdepth 1 | sort | while read -r _sub_dir; do
+        echo "#### From ${_sub_dir}"
+        rg -s BLOCKED -m1 -A1 --no-filename ${_sub_dir} | rg '^\s+at (\S+)' -o -r '$1' | sort | uniq -c | sort -nr | head -n5
+    done
     echo " "
 
     echo "## Long running threads and no-change (same hash) threads which contain '${_running_thread_search_re}' and +3k"
@@ -1576,21 +1600,21 @@ function f_request2csv() {
             local _tmp_tmp_first_line="$(rg --no-filename -m1 -z '\b20\d\d.\d\d.\d\d' ${_g_opt} "${_glob}")"
             local _tmp_first_line="$(echo "${_tmp_tmp_first_line}" | tr -d "'()\$")" # if the line contains single quote, the rg may not work
             #echo "# first line: ${_tmp_first_line}" >&2
-            if echo "${_tmp_first_line}"   | rg -q '^([^ ]+) ([^ ]+) ([^ ]+) \[([^\]]+)\] "([^"]+)" ([^ ]+) ([^ ]+) ([^ ]+) ([^ ]+) "([^"]*)" \[([^\]]+)\]$'; then
+            if echo "${_tmp_first_line}"   | rg -q '^([^ ]+) ([^ ]+) ([^ ]+) \[([^\]]+)\] "([^"]*)" ([^ ]+) ([^ ]+) ([^ ]+) ([^ ]+) "([^"]*)" \[([^\]]+)\]$'; then
                 _pattern_str='%clientHost %l %user [%date] "%requestURL" %statusCode %header{Content-Length} %bytesSent %elapsedTime "%header{User-Agent}" [%thread]'
-            elif echo "${_tmp_first_line}" | rg -q '^([^ ]+) ([^ ]+) ([^ ]+) \[([^\]]+)\] "([^"]+)" ([^ ]+) ([^ ]+) ([^ ]+) ([^ ]+) "([^"]*)" \[([^\]]+)\] (.+)$'; then
+            elif echo "${_tmp_first_line}" | rg -q '^([^ ]+) ([^ ]+) ([^ ]+) \[([^\]]+)\] "([^"]*)" ([^ ]+) ([^ ]+) ([^ ]+) ([^ ]+) "([^"]*)" \[([^\]]+)\] (.+)$'; then
                 _pattern_str='%clientHost %l %user [%date] "%requestURL" %statusCode %header{Content-Length} %bytesSent %elapsedTime "%header{User-Agent}" [%thread] %misc'
-            elif echo "${_tmp_first_line}" | rg -q '^([^ ]+) ([^ ]+) ([^ ]+) \[([^\]]+)\] "([^"]+)" ([^ ]+) ([^ ]+) ([^ ]+) ([^ ]+) "([^"]*)"$'; then
+            elif echo "${_tmp_first_line}" | rg -q '^([^ ]+) ([^ ]+) ([^ ]+) \[([^\]]+)\] "([^"]*)" ([^ ]+) ([^ ]+) ([^ ]+) ([^ ]+) "([^"]*)"$'; then
                 _pattern_str='%clientHost %l %user [%date] "%requestURL" %statusCode %header{Content-Length} %bytesSent %elapsedTime "%header{User-Agent}"'
-            elif echo "${_tmp_first_line}" | rg -q '^([^ ]+) ([^ ]+) ([^ ]+) \[([^\]]+)\] "([^"]+)" ([^ ]+) ([^ ]+) ([^ ]+) "([^"]*)" \[([^\]]+)\]$'; then
+            elif echo "${_tmp_first_line}" | rg -q '^([^ ]+) ([^ ]+) ([^ ]+) \[([^\]]+)\] "([^"]*)" ([^ ]+) ([^ ]+) ([^ ]+) "([^"]*)" \[([^\]]+)\]$'; then
                 _pattern_str='%clientHost %l %user [%date] "%requestURL" %statusCode %bytesSent %elapsedTime "%header{User-Agent}" [%thread]'
-            elif echo "${_tmp_first_line}" | rg -q '^([^ ]+) ([^ ]+) ([^ ]+) \[([^\]]+)\] "([^"]+)" ([^ ]+) ([^ ]+) ([^ ]+) "([^"]*)" \[([^\]]+)\] (.+)$'; then
+            elif echo "${_tmp_first_line}" | rg -q '^([^ ]+) ([^ ]+) ([^ ]+) \[([^\]]+)\] "([^"]*)" ([^ ]+) ([^ ]+) ([^ ]+) "([^"]*)" \[([^\]]+)\] (.+)$'; then
                 _pattern_str='%clientHost %l %user [%date] "%requestURL" %statusCode %bytesSent %elapsedTime "%header{User-Agent}" [%thread] %misc'
-            elif echo "${_tmp_first_line}" | rg -q '^([^ ]+) ([^ ]+) ([^ ]+) \[([^\]]+)\] "([^"]+)" ([^ ]+) ([^ ]+) ([^ ]+) "([^"]*)" (.+)$'; then
+            elif echo "${_tmp_first_line}" | rg -q '^([^ ]+) ([^ ]+) ([^ ]+) \[([^\]]+)\] "([^"]*)" ([^ ]+) ([^ ]+) ([^ ]+) "([^"]*)" (.+)$'; then
                 _pattern_str='%clientHost %l %user [%date] "%requestURL" %statusCode %bytesSent %elapsedTime "%header{User-Agent}" "%misc"'
-            elif echo "${_tmp_first_line}" | rg -q '^([^ ]+) ([^ ]+) ([^ ]+) \[([^\]]+)\] "([^"]+)" ([^ ]+) ([^ ]+) ([^ ]+) "([^"]*)"'; then
+            elif echo "${_tmp_first_line}" | rg -q '^([^ ]+) ([^ ]+) ([^ ]+) \[([^\]]+)\] "([^"]*)" ([^ ]+) ([^ ]+) ([^ ]+) "([^"]*)"'; then
                 _pattern_str='%clientHost %l %user [%date] "%requestURL" %statusCode %bytesSent %elapsedTime "%header{User-Agent}"'
-            elif echo "${_tmp_first_line}" | rg -q '^\[([^\]]+)\] ([^ ]+) "([^"]+)" ([^ ]+) ([^ ]+) ([^ ]+) "([^"]*)"'; then
+            elif echo "${_tmp_first_line}" | rg -q '^\[([^\]]+)\] ([^ ]+) "([^"]*)" ([^ ]+) ([^ ]+) ([^ ]+) "([^"]*)"'; then
                 # Nexus outbound-request.log
                 _pattern_str='[%date] %user "%requestURL" %statusCode %bytesSent %elapsedTime "%header{User-Agent}"'
             else
@@ -1681,9 +1705,9 @@ function _gen_pattern() {
         local _first_c="${_p:0:1}"
         local _last_c="${_p: -1}"
         if [ "${_last_c}" == "\"" ]; then
-            _pattern="${_pattern# } ${_first_c}([^\"]+)${_last_c}"
+            _pattern="${_pattern# } ${_first_c}([^\"]*)${_last_c}"
         elif [ "${_last_c}" == "]" ]; then
-            _pattern="${_pattern# } \\${_first_c}([^\]]+)\\${_last_c}"
+            _pattern="${_pattern# } \\${_first_c}([^\]]*)\\${_last_c}"
         else
             _pattern="${_pattern# } ([^ ]+)"
         fi
@@ -2254,13 +2278,9 @@ function _py3i_pipe() {
 function _actual_file_size() {
     local _log_path="$1"
     [ ! -f "${_log_path}" ] && return
-    if [[ "${_log_path}" != *.gz ]] && [[ "${_log_path}" != *.zip ]]; then
-        wc -c "${_log_path}" | awk '{print $1}'
-        return
-    fi
     local _file_cmd_out="$(file "${_log_path}")"
     if ! echo "${_file_cmd_out}" | grep -qi "compress"; then
-        wc -c "${_log_path}" | awk '{print $1}'
+        ls -l "${_log_path}" | awk '{print $5}'
     else
         # file ... original size modulo 2^32 2348225
         echo "${_file_cmd_out}" | rg " (\d+)$" -o -r '$1'
