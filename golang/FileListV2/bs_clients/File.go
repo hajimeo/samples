@@ -134,6 +134,8 @@ func (c *FileClient) GetDirs(baseDir string, pathFilter string, maxDepth int) ([
 		h.Log("DEBUG", fmt.Sprintf("maxDepth was -1 (auto), changing to %d for File blob store", maxDepth))
 	}
 	var matchingDirs []string
+	// Get up to content baseDir
+	baseDir = lib.GetUpToContent(baseDir)
 	// Just in case, remove the ending slash
 	baseDir = strings.TrimSuffix(baseDir, string(filepath.Separator))
 	baseSepCount := strings.Count(baseDir, string(filepath.Separator))

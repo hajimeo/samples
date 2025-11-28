@@ -380,9 +380,10 @@ func (s *S3Client) GetDirs(baseDir string, pathFilter string, maxDepth int) ([]s
 		h.Log("DEBUG", fmt.Sprintf("maxDepth was -1 (auto), changing to %d for S3", maxDepth))
 	}
 	var bucket = common.Container
-	// baseDir is the path to 'content' directory.
-	var prefix = baseDir
+	// if baseDir is missing 'content', appending
+	var prefix = lib.GetContentPath(baseDir, bucket)
 	var filterRegex = regexp.MustCompile(pathFilter)
+	baseDepth := strings.Count(prefix, "/") + 1 // +1 to count the trailing slash
 
 	h.Log("DEBUG", fmt.Sprintf("Retriving sub folders under %s %s", bucket, prefix))
 	// Not expecting more than 1000 sub folders, so no MaxKeys
@@ -404,7 +405,9 @@ func (s *S3Client) GetDirs(baseDir string, pathFilter string, maxDepth int) ([]s
 	}
 
 	for _, item := range resp.CommonPrefixes {
-		//h.Log("DEBUG", fmt.Sprintf("*item.Prefix %s", *item.Prefix))
+		if common.Debug2 {
+			h.Log("DEBUG", fmt.Sprintf("*item.Prefix %s", *item.Prefix))
+		}
 		if len(strings.TrimSpace(*item.Prefix)) == 0 {
 			continue
 		}
@@ -413,9 +416,10 @@ func (s *S3Client) GetDirs(baseDir string, pathFilter string, maxDepth int) ([]s
 			continue
 		}
 		// if maxDepth is greater than -1, then check the current path with the maxDepth (0 means current directory depth)
-		if maxDepth >= 0 && strings.Count(*item.Prefix, "/") > maxDepth {
+		currentDepth := strings.Count(*item.Prefix, "/") - baseDepth
+		if maxDepth >= 0 && currentDepth > maxDepth {
 			if maxDepth > 1 {
-				h.Log("DEBUG", fmt.Sprintf("Skipping %s as it exceeds max depth %d", *item.Prefix, maxDepth))
+				h.Log("DEBUG", fmt.Sprintf("Skipping %s as %d exceeds max depth %d", *item.Prefix, currentDepth, maxDepth))
 			}
 			continue
 		}

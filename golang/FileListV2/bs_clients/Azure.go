@@ -266,6 +266,8 @@ func (a *AzClient) GetDirs(baseDir string, pathFilter string, maxDepth int) ([]s
 	}
 	var matchingDirs []string
 	filterRegex := regexp.MustCompile(pathFilter)
+	// If baseDir doesn't contain content, get up to content
+	baseDir = lib.GetUpToContent(baseDir)
 	// Just in case, remove the ending slash
 	baseDir = strings.TrimSuffix(baseDir, "/")
 	depth := strings.Count(baseDir, "/")
