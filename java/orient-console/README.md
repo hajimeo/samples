@@ -3,7 +3,7 @@ Limitation: only standard and SELECT SQL statements. Most of OrientDB SQL comman
 
 ## Download the latest version:
 ```
-curl -O -L "https://github.com/sonatype-nexus-community/nexus-monitoring/raw/refs/heads/main/resources/orient-console.jar"
+curl -O -L "https://github.com/sonatype/nexus-monitoring/raw/refs/heads/main/resources/orient-console.jar"
 ```
 
 ## Usage Examples:
