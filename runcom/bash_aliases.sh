@@ -263,12 +263,13 @@ alias jkCli='java -jar $HOME/Apps/jenkins-cli.jar -s http://localhost:8080/ -aut
 [ -f $HOME/IdeaProjects/samples/misc/h2-console_v224.jar ] && alias h2-console_v224="\$JAVA_HOME_17/bin/java -jar $HOME/IdeaProjects/samples/misc/h2-console_v224.jar"
 # requires Java 11 or higher
 [ -f $HOME/IdeaProjects/samples/misc/h2-console_v232.jar ] && alias h2-console_v232="/opt/homebrew/opt/openjdk\@17/libexec/openjdk.jdk/Contents/Home/bin/java -jar $HOME/IdeaProjects/samples/misc/h2-console_v232.jar"
+[ -f $HOME/IdeaProjects/samples/misc/h2-console_v240.jar ] && alias h2-console_v240="/opt/homebrew/opt/openjdk\@17/libexec/openjdk.jdk/Contents/Home/bin/java -jar $HOME/IdeaProjects/samples/misc/h2-console_v240.jar"
 [ -f $HOME/IdeaProjects/samples/misc/pg-console.jar ] && alias pg-console="java -jar $HOME/IdeaProjects/samples/misc/pg-console.jar"
 #[ -f $HOME/IdeaProjects/samples/misc/blobpath.jar ] && alias blobpathJ="java -jar $HOME/IdeaProjects/samples/misc/blobpath.jar"
 # JAVA_HOME_11 is set in bash_profile.sh
 alias matJ11='/Applications/mat.app/Contents/MacOS/MemoryAnalyzer -vm ${JAVA_HOME_11%/}/bin'
-if [ -s $HOME/IdeaProjects/samples/bash/patch_java.sh ]; then
-    alias patchJava='$HOME/IdeaProjects/samples/bash/patch_java.sh'
+if [ -s $HOME/IdeaProjects/samples/bash/patch_java_v2.sh ]; then
+    alias patchJava='$HOME/IdeaProjects/samples/bash/patch_java_v2.sh'
 fi
 
 ## Chrome aliases for Mac (URL needs to be IP as hostname wouldn't be resolvable on remote)
@@ -802,7 +803,8 @@ function goBuild() {
             _name="$(basename "${_goFile}" ".go" | tr '[:upper:]' '[:lower:]')"
         fi
     fi
-    if [ -d /opt/homebrew/opt/go/libexec ]; then
+    # Use (probably) latest Go installed by Homebrew
+    if [ -d /opt/homebrew/opt/go/libexec ] && [ "$GOROOT" != "/opt/homebrew/opt/go/libexec" ]; then
         export GOROOT=/opt/homebrew/opt/go/libexec
     fi
     if [ -f ./go.mod ]; then
@@ -821,11 +823,13 @@ function goBuild() {
         echo "" >&2
     fi
     echo "# Compiling at $(date)" >&2
-    env GOOS=darwin GOARCH=arm64 go build -o "${_destDir%/}/${_name}_Darwin_arm64" ${_opts} ${_goFile} || return $?
-    env GOOS=linux GOARCH=amd64 go build -o "${_destDir%/}/${_name}_Linux_x86_64" ${_opts} ${_goFile} &&
-        env GOOS=linux GOARCH=arm64 go build -o "${_destDir%/}/${_name}_Linux_aarch64" ${_opts} ${_goFile} &&
-        env GOOS=darwin GOARCH=amd64 go build -o "${_destDir%/}/${_name}_Darwin_x86_64" ${_opts} ${_goFile} &&
-        env GOOS=windows GOARCH=amd64 go build -o "${_destDir%/}/${_name}_Windows_x86_64" ${_opts} ${_goFile}
+    # '-gcflags=-trimpath=$GOPATH' is for removing the local path in the Panic stack trace
+    env GOOS=darwin GOARCH=arm64 go build -trimpath -o "${_destDir%/}/${_name}_Darwin_arm64" ${_opts} ${_goFile} || return $?
+    env GOOS=linux GOARCH=amd64 go build -trimpath -o "${_destDir%/}/${_name}_Linux_x86_64" ${_opts} ${_goFile} &
+    env GOOS=linux GOARCH=arm64 go build -trimpath -o "${_destDir%/}/${_name}_Linux_aarch64" ${_opts} ${_goFile} &
+    env GOOS=darwin GOARCH=amd64 go build -trimpath -o "${_destDir%/}/${_name}_Darwin_x86_64" ${_opts} ${_goFile} &
+    env GOOS=windows GOARCH=amd64 go build -trimpath -o "${_destDir%/}/${_name}_Windows_x86_64" ${_opts} ${_goFile} &
+    wait
     echo "" >&2
     find "${_destDir%/}" -type f -name "${_name}_*" -mmin -1 >&2
     echo "# curl -o /usr/local/bin/${_name} -L \"https://github.com/hajimeo/samples/raw/master/misc/${_name}_\$(uname)_\$(uname -m)\"" >&2
@@ -1147,9 +1151,12 @@ if [ -s $HOME/IdeaProjects/work/bash/nexus_aliases.sh ]; then
 fi
 function pubS() {
     local _backup_server="${1:-"dh1"}"
+    # If /tmp/pubS.last is older than 1 day, delete it to force checking files
+    #find /tmp/pubS.last -mtime +1 -print -delete
     if ! ping -c1 -t1 ${_backup_server} >/dev/null; then
         echo "Can't reach ${_backup_server}" >&2
     else
+        echo "# Publishing updated scripts to ${_backup_server} at $(date)" >&2
         [ $HOME/IdeaProjects/work/bash/install_nexus.sh -nt /tmp/pubS.last ] && scp -C $HOME/IdeaProjects/work/bash/install_nexus.sh ${_backup_server}:/var/tmp/share/sonatype/ && cp -v -f $HOME/IdeaProjects/work/bash/install_nexus.sh $HOME/share/sonatype/
         [ $HOME/IdeaProjects/work/bash/install_sonatype.sh -nt /tmp/pubS.last ] && scp -C $HOME/IdeaProjects/work/bash/install_sonatype.sh ${_backup_server}:/var/tmp/share/sonatype/ && cp -v -f $HOME/IdeaProjects/work/bash/install_sonatype.sh $HOME/share/sonatype/
         [ $HOME/IdeaProjects/samples/bash/setup_standalone.sh -nt /tmp/pubS.last ] && scp -C $HOME/IdeaProjects/samples/bash/setup_standalone.sh ${_backup_server}:/usr/local/bin/
@@ -1163,13 +1170,20 @@ function pubS() {
         [ $HOME/IdeaProjects/samples/bash/patch_java.sh -nt /tmp/pubS.last ] && scp -C $HOME/IdeaProjects/samples/bash/patch_java.sh ${_backup_server}:/var/tmp/share/java/
         [ $HOME/IdeaProjects/samples/misc/orient-console.jar -nt /tmp/pubS.last ] && scp $HOME/IdeaProjects/samples/misc/orient-console.jar ${_backup_server}:/var/tmp/share/java/
         [ $HOME/IdeaProjects/samples/misc/h2-console.jar -nt /tmp/pubS.last ] && scp $HOME/IdeaProjects/samples/misc/h2-console.jar ${_backup_server}:/var/tmp/share/java/
-        [ $HOME/IdeaProjects/samples/misc/filelist_Linux_x86_64 -nt /tmp/pubS.last ] && scp $HOME/IdeaProjects/samples/misc/filelist_Linux_x86_64 ${_backup_server}:/var/tmp/share/bin/
+        #[ $HOME/IdeaProjects/samples/misc/filelist_Linux_x86_64 -nt /tmp/pubS.last ] && scp $HOME/IdeaProjects/samples/misc/filelist_Linux_x86_64 ${_backup_server}:/var/tmp/share/bin/
+        [ $HOME/IdeaProjects/samples/misc/filelistv2_Linux_x86_64 -nt /tmp/pubS.last ] && scp $HOME/IdeaProjects/samples/misc/filelistv2_Linux_x86_64 ${_backup_server}:/var/tmp/share/bin/
     fi
+    if ! type rsync >/dev/null; then
+        echo "rsync command not found. Skipping rsync part." >&2
+        date | tee /tmp/pubS.last
+        return 1
+    fi
+
     # If no directories, would like to see errors
-    [ $HOME/IdeaProjects/work/bash/log_tests_nxrm.sh -nt /tmp/pubS.last ] && cp -v -f $HOME/IdeaProjects/work/bash/log_tests_nxrm.sh $HOME/IdeaProjects/nexus-toolbox/scripts/log_check_scripts/
-    [ $HOME/IdeaProjects/samples/bash/monitoring/nrm3-threaddumps.sh -nt /tmp/pubS.last ] && cp -v -f $HOME/IdeaProjects/samples/bash/monitoring/*.sh $HOME/IdeaProjects/nexus-monitoring/scripts/
+    rsync -a $HOME/IdeaProjects/work/bash/log_tests_nxrm.sh $HOME/IdeaProjects/nexus-toolbox/scripts/log_check_scripts/
+    rsync -a $HOME/IdeaProjects/samples/bash/monitoring/*.sh $HOME/IdeaProjects/nexus-monitoring/scripts/
     #cp -v -f $HOME/IdeaProjects/work/nexus-groovy/src2/TrustStoreConverter.groovy $HOME/IdeaProjects/nexus-toolbox/scripts/
-    [ $HOME/IdeaProjects/samples/java/asset-dupe-checker/src/main/java/AssetDupeCheckV2.java -nt /tmp/pubS.last ] && cp -v -f $HOME/IdeaProjects/samples/java/asset-dupe-checker/src/main/java/AssetDupeCheckV2.java $HOME/IdeaProjects/nexus-toolbox/asset-dupe-checker/src/main/java/ && cp -v -f $HOME/IdeaProjects/samples/misc/asset-dupe-checker-v2.jar $HOME/IdeaProjects/nexus-toolbox/asset-dupe-checker/
+    rsync -a $HOME/IdeaProjects/samples/java/asset-dupe-checker/src/main/java/AssetDupeCheckV2.java $HOME/IdeaProjects/nexus-toolbox/asset-dupe-checker/src/main/java/ && rsync -a $HOME/IdeaProjects/samples/misc/asset-dupe-checker-v2.jar $HOME/IdeaProjects/nexus-toolbox/asset-dupe-checker/
 
     if [ -d "$HOME/IdeaProjects/nexus-toolbox/blob-lister/FileListV2" ]; then
         rsync -av $HOME/IdeaProjects/samples/golang/FileListV2/ $HOME/IdeaProjects/nexus-toolbox/blob-lister/FileListV2/
@@ -1179,6 +1193,9 @@ function pubS() {
         rsync -av $HOME/IdeaProjects/samples/misc/*-console*.jar $HOME/IdeaProjects/nexus-monitoring/resources/
         rsync -av $HOME/IdeaProjects/samples/misc/filelist_* $HOME/IdeaProjects/nexus-monitoring/resources/
         rsync -av $HOME/IdeaProjects/samples/misc/filelistv2_* $HOME/IdeaProjects/nexus-monitoring/resources/
+        cd  $HOME/IdeaProjects/samples/golang/FileListV2/ && \
+        tar -czvf ./filelistv2.src.tar.gz $(find . -type f -name '*.go' -not -name '*_test.go') && \
+        mv -v ./filelistv2.src.tar.gz $HOME/IdeaProjects/nexus-monitoring/resources/
     fi
 
     sync_nexus_binaries &>/dev/null &
@@ -1276,18 +1293,17 @@ function startCommonUtils() {
     #chrome-work
     #open -na "Google Chrome"
 
-    if type ollama &>/dev/null; then
+    if false && type ollama &>/dev/null; then
         ollama serve &>/tmp/ollama.log &
         sleep 3
         ollama list
+        # no webUI required for pandasai or jupyterlab-ai
+        #if  [ -s "$HOME/.vnevAi/bin/open-webui" ]; then
+        #    source $HOME/.vnevAi/bin/activate
+        #    open-webui serve --host 127.0.0.1 --port 48080 &>/tmp/open-webui.log &
+        #    if [ -s "/Users/hosako/IdeaProjects/work/demo-mcp/mcps.json" ]; then
+        #       mcpo --port 48000 --config /Users/hosako/IdeaProjects/work/demo-mcp/mcps.json &>/tmp/mcpo.log &
+        #    fi
+        #fi
     fi
-    return $?
-    # no webUI required for pandasai or jupyterlab-ai
-    #if  [ -s "$HOME/.vnevAi/bin/open-webui" ]; then
-    #    source $HOME/.vnevAi/bin/activate
-    #    open-webui serve --host 127.0.0.1 --port 48080 &>/tmp/open-webui.log &
-    #    if [ -s "/Users/hosako/IdeaProjects/work/demo-mcp/mcps.json" ]; then
-    #       mcpo --port 48000 --config /Users/hosako/IdeaProjects/work/demo-mcp/mcps.json &>/tmp/mcpo.log &
-    #    fi
-    #fi
 }
