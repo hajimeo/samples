@@ -33,7 +33,7 @@
 #   export _TEST_WORKDIR="./sonatype-work/nexus3"
 #
 # If File type blobstore:
-#   $HOME/IdeaProjects/samples/golang/FileListV2/filelistv2_test.sh "${_TEST_WORKDIR%/}/blobs/default"
+#   $HOME/IdeaProjects/samples/golang/FileListV2/filelistv2_test.sh #"${_TEST_WORKDIR%/}/blobs/default"
 # If S3 type blobstore:
 #   export AWS_ACCESS_KEY_ID="..." AWS_SECRET_ACCESS_KEY="..." AWS_REGION="ap-southeast-2"
 #   $HOME/IdeaProjects/samples/golang/FileListV2/filelistv2_test.sh "s3://apac-support-bucket/filelist-test"
@@ -42,8 +42,8 @@
 #   $HOME/IdeaProjects/samples/golang/FileListV2/filelistv2_test.sh "az://filelist-test/"
 #
 ### Global variables
-: ${_TEST_WORKDIR:=""}      #./sonatype-work/nexus3
-: ${_TEST_BLOBSTORE:=""}    #./sonatype-work/nexus3/blobs/default (no content/)
+: ${_TEST_WORKDIR:="./sonatype-work/nexus3"}      #./sonatype-work/nexus3
+: ${_TEST_BLOBSTORE:="${_TEST_WORKDIR%/}/blobs/default"}    #./sonatype-work/nexus3/blobs/default (no content/)
 : ${_TEST_FILTER_PATH:="/(vol-\d\d|20\d\d)/"}
 : ${_TEST_DB_CONN:=""}      #host=localhost user=nexus dbname=nxrm
 : ${_TEST_DB_CONN_PWD:="nexus123"}
@@ -223,7 +223,7 @@ function test_6_Orphaned() {
     #filelist2 -b "$BLOB_STORE" -p '/(vol-\d\d|20\d\d)/' -c 10 -src BS -db "host=localhost user=nexus dbname=nexus" -s ./orphaned_blobs_Src-BS.tsv
     local _nexus_store="$(find ${_work_dir%/} -maxdepth 3 -name 'nexus-store.properties' -path '*/etc/fabric/*' -print | head -n1)"
     if [ -z "${_nexus_store}" ]; then
-        echo "TEST=ERROR: Could not find nexus-store.properties in ${_work_dir}"
+        echo "TEST=ERROR: Could not find nexus-store.properties in workdir: ${_work_dir}"
         return 1
     fi
     [ -n "${_TEST_DB_CONN_PWD}" ] && export PGPASSWORD="${_TEST_DB_CONN_PWD}"
@@ -347,7 +347,7 @@ function test_9_TextFileToCheckDatabase() {
 
     local _nexus_store="$(find ${_work_dir%/} -maxdepth 3 -name 'nexus-store.properties' -path '*/etc/fabric/*' -print | head -n1)"
     if [ -z "${_nexus_store}" ]; then
-        echo "TEST=ERROR: Could not find nexus-store.properties in ${_work_dir}"
+        echo "TEST=ERROR: Could not find nexus-store.properties in workdir: ${_work_dir}"
         return 1
     fi
     [ -n "${_TEST_DB_CONN_PWD}" ] && export PGPASSWORD="${_TEST_DB_CONN_PWD}"
@@ -383,9 +383,14 @@ function test_10_GenerateBlobIDsFileFromDB() {
     local _p="${2:-"${_TEST_FILTER_PATH}"}"
     local _work_dir="${3:-"${_TEST_WORKDIR}"}"
 
+    if [[ "${_b}" =~ ^(s3|az):// ]]; then
+        echo "TEST=WARN Skipped as no need to test if S3/Az."
+        return 0
+    fi
+
     local _nexus_store="$(find ${_work_dir%/} -maxdepth 3 -name 'nexus-store.properties' -path '*/etc/fabric/*' -print | head -n1)"
     if [ -z "${_nexus_store}" ]; then
-        echo "TEST=ERROR: Could not find nexus-store.properties in ${_work_dir}"
+        echo "TEST=ERROR: Could not find nexus-store.properties in the workdir: ${_work_dir}"
         return 1
     fi
     [ -n "${_TEST_DB_CONN_PWD}" ] && export PGPASSWORD="${_TEST_DB_CONN_PWD}"
@@ -479,7 +484,7 @@ function _find_sample_repo_name() {
     # Finding _rn (repository name) which has at lest 10 .properties files. NOTE: ` -d 4` does not work with the new blob store layout
     local _rn="$(rg --no-filename -g '*.properties' "^@Bucket.repo-name=(\S+)$" -o -r '$1' ${_b%/} | head -n100 | sort | uniq -c | sort -nr | head -n1 | rg -o '^\s*\d+\s+(\S+)$' -r '$1')"
     if [ -z "${_rn}" ]; then
-        _log "WARN" "No repo-name found in ${_prop}"
+        _log "WARN" "No repo-name found in path: ${_b}"
         return 1
     fi
     _log "INFO" "Using repo-name ${_rn}"
