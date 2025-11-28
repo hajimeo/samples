@@ -134,15 +134,24 @@ func debug2(format string, v ...any) {
 
 func handleDefault(w http.ResponseWriter, req *http.Request) {
 	hash := ""
+	matched := true
 	if Debug {
-		reqDump, err := httputil.DumpRequest(req, false)
-		if err != nil {
-			debug("DumpRequest failed for %s: %v", req.RequestURI, err)
-		} else {
-			hash = fmt.Sprintf("%x", md5.Sum(reqDump))
-			debug("Request: %s\n%s", hash, reqDump)
-			if Debug2 {
-				req.Body = saveBodyToFile(req.Body, hash+".req")
+		if len(UrlRegex) > 0 {
+			matched = UrlRegexP.MatchString(req.URL.String())
+			if !matched {
+				debug("UrlRegex '%s' did not match with '%s'", UrlRegex, req.URL.String())
+			}
+		}
+		if matched {
+			reqDump, err := httputil.DumpRequest(req, false)
+			if err != nil {
+				debug("DumpRequest failed for %s: %v", req.RequestURI, err)
+			} else {
+				hash = fmt.Sprintf("%x", md5.Sum(reqDump))
+				debug("Request: %s\n%s", hash, reqDump)
+				if Debug2 {
+					req.Body = saveBodyToFile(req.Body, hash+".req")
+				}
 			}
 		}
 	}
@@ -157,14 +166,16 @@ func handleDefault(w http.ResponseWriter, req *http.Request) {
 	w.WriteHeader(resp.StatusCode)
 	defer resp.Body.Close()
 	if Debug {
-		// If Debug, dump response (and may save body if Debug2)
-		respDump, err := httputil.DumpResponse(resp, false)
-		if err != nil {
-			debug("DumpResponse failed for %s failed. %v", req.RequestURI, err)
-		} else {
-			debug("Response %s", respDump)
-			if Debug2 {
-				resp.Body = saveBodyToFile(resp.Body, hash+".resp")
+		if matched {
+			// If Debug, dump response (and may save body if Debug2)
+			respDump, err := httputil.DumpResponse(resp, false)
+			if err != nil {
+				debug("DumpResponse failed for %s failed. %v", req.RequestURI, err)
+			} else {
+				debug("Response %s", respDump)
+				if Debug2 {
+					resp.Body = saveBodyToFile(resp.Body, hash+".resp")
+				}
 			}
 		}
 	}
@@ -224,12 +235,11 @@ func handleRequest(w http.ResponseWriter, r *http.Request) {
 	start := time.Now()
 	// TODO: the URL.String should return the full URL, but doesn't work if HTTPS. Tried reqToUrlStr()
 	reqURLStr := r.URL.String()
-
 	matched := true
 	if len(UrlRegex) > 0 {
 		matched = UrlRegexP.MatchString(reqURLStr)
-		if matched {
-			debug("UrlRegex '%s' matched with '%s'", UrlRegex, reqURLStr)
+		if !matched {
+			debug("UrlRegex '%s' did not match with '%s'", UrlRegex, reqURLStr)
 		}
 	}
 
@@ -256,16 +266,25 @@ func handleRequest(w http.ResponseWriter, r *http.Request) {
 
 func handleConnect(w http.ResponseWriter, req *http.Request) {
 	hash := ""
+	matched := true
 	if Debug {
-		reqDump, err := httputil.DumpRequest(req, false)
-		if err != nil {
-			debug("DumpRequest failed for %s: %v", req.RequestURI, err)
-		} else {
-			// Use md5sum of reqDump as the hash because 'body' is false
-			hash = fmt.Sprintf("%x", md5.Sum(reqDump))
-			debug("Request: %s\n%s", hash, reqDump)
-			if Debug2 {
-				req.Body = saveBodyToFile(req.Body, hash+".req")
+		if len(UrlRegex) > 0 {
+			matched = UrlRegexP.MatchString(req.URL.String())
+			if !matched {
+				debug("UrlRegex '%s' did not match with '%s'", UrlRegex, req.URL.String())
+			}
+		}
+		if matched {
+			reqDump, err := httputil.DumpRequest(req, false)
+			if err != nil {
+				debug("DumpRequest failed for %s: %v", req.RequestURI, err)
+			} else {
+				// Use md5sum of reqDump as the hash because 'body' is false
+				hash = fmt.Sprintf("%x", md5.Sum(reqDump))
+				debug("Request: %s\n%s", hash, reqDump)
+				if Debug2 {
+					req.Body = saveBodyToFile(req.Body, hash+".req")
+				}
 			}
 		}
 	}
@@ -350,13 +369,15 @@ func handleConnect(w http.ResponseWriter, req *http.Request) {
 			defer resp.Body.Close()
 
 			if Debug {
-				respDump, err := httputil.DumpResponse(resp, false)
-				if err != nil {
-					debug("DumpResponse failed for %s failed. %v", req.RequestURI, err)
-				} else {
-					debug("Response: %s", respDump)
-					if Debug2 {
-						resp.Body = saveBodyToFile(resp.Body, hash+".resp")
+				if matched {
+					respDump, err := httputil.DumpResponse(resp, false)
+					if err != nil {
+						debug("DumpResponse failed for %s failed. %v", req.RequestURI, err)
+					} else {
+						debug("Response: %s", respDump)
+						if Debug2 {
+							resp.Body = saveBodyToFile(resp.Body, hash+".resp")
+						}
 					}
 				}
 			}
