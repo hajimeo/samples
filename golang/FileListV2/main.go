@@ -1133,15 +1133,16 @@ func genAssetBlobUnionQuery(assetTableNames []string, columns string, afterWhere
 
 func mayNeedUpdateBaseDir(baseDir string, pathFilter string, client bs_clients.Client) (string, string) {
 	// If the pathFilter is not regex, and the exact path exists, using that as *baseDir*
+	//baseDir = lib.GetUpToContent(baseDir)
 	if lib.IsExactPath(pathFilter) {
 		// Check if baseDir/pathFilter exists
-		path := filepath.Join(baseDir, pathFilter)
-		_, err := client.GetFileInfo(path)
+		maybeExactPath := filepath.Join(baseDir, pathFilter)
+		_, err := client.GetFileInfo(maybeExactPath)
 		if err != nil {
-			h.Log("DEBUG", fmt.Sprintf("pathFilter (-p) is not regex but the exact path does not exist: %s", path))
+			h.Log("DEBUG", fmt.Sprintf("pathFilter (-p) is not regex but the exact path does not exist: %s", maybeExactPath))
 		} else {
 			h.Log("INFO", fmt.Sprintf("pathFilter (-p) is not regex and exact path exist: %s. Using this as baseDir", pathFilter))
-			baseDir = strings.TrimSuffix(path, string(filepath.Separator))
+			baseDir = strings.TrimSuffix(maybeExactPath, string(filepath.Separator))
 			pathFilter = ""
 		}
 	}
@@ -1349,11 +1350,11 @@ func main() {
 
 		baseDir, pathFilter := mayNeedUpdateBaseDir(common.BaseDir, common.Filter4Path, Client)
 		if !common.NotCompSubDirs {
-			h.Log("INFO", fmt.Sprintf("Computing the sub directories under %s ...", common.BaseDir))
+			h.Log("INFO", fmt.Sprintf("Computing the sub directories under: %s ...", baseDir))
 			subDirs, err = genSubDirs(baseDir, pathFilter, Client)
 		}
 		if len(subDirs) == 0 {
-			h.Log("INFO", fmt.Sprintf("Walking the directory: %s ...", common.BaseDir))
+			h.Log("INFO", fmt.Sprintf("Walking the directory: %s ...", baseDir))
 			common.WalkRecursive = true
 			common.NotCompSubDirs = true
 			subDirs, err = Client.GetDirs(baseDir, pathFilter, common.MaxDepth)
