@@ -78,6 +78,11 @@ func TestGetContentPath_WithProtocol_FullPathContainingContent2(t *testing.T) {
 	assert.Equal(t, "/Users/hosako/Documents/tests/nxrm_3.73.0-12_nxrm3730/sonatype-work/nexus3/blobs/default/content", result)
 }
 
+func TestGetContentPath_S3Path_ReturnsLastContent(t *testing.T) {
+	result := GetContentPath("s3://apac-support-bucket/filelist-test/content", "apac-support-bucket")
+	assert.Equal(t, "filelist-test/content", result)
+}
+
 func TestGetUpToContent_PathWithContentSubdir_ReturnsUpToContent(t *testing.T) {
 	result := GetUpToContent("sonatype-work/nexus3/blobs/default/content/vol-NN")
 	assert.Equal(t, "sonatype-work/nexus3/blobs/default/content", result)
@@ -107,6 +112,12 @@ func TestGetUpToContent_PathWithMultipleContentSubdirs_ReturnsLastContent(t *tes
 	result := GetUpToContent("sonatype-work/nexus3/content/blobs/default/content/vol-NN")
 	assert.Equal(t, "sonatype-work/nexus3/content/blobs/default/content", result)
 }
+
+func TestGetUpToContent_S3Path_ReturnsLastContent(t *testing.T) {
+	result := GetUpToContent("s3://apac-support-bucket/filelist-test/content")
+	assert.Equal(t, "s3://apac-support-bucket/filelist-test/content", result)
+}
+
 func TestIsTsMSecBetweenTs_WithinRange_ReturnsTrue(t *testing.T) {
 	result := IsTsMSecBetweenTs(1609459200000, 1609455600, 1609462800)
 	assert.True(t, result)
