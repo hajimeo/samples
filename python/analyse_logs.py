@@ -21,52 +21,52 @@ def _gen_regex_for_request_logs(filepath="request.log"):
     # @see: samples/bash/log_search.sh:f_request2csv()
     columns = ["clientHost", "l", "user", "date", "requestURL", "statusCode", "headerContentLength", "bytesSent",
                "elapsedTime", "headerUserAgent", "thread"]
-    partern_str = '^([^ ]+) ([^ ]+) ([^ ]+) \[([^\]]+)\] "([^"]+)" ([^ ]+) ([^ ]+) ([^ ]+) ([^ ]+) "([^"]+)" \[([^\]]+)\]'
+    partern_str = '^([^ ]+) ([^ ]+) ([^ ]+) \[([^\]]+)\] "([^"]*)" ([^ ]+) ([^ ]+) ([^ ]+) ([^ ]+) "([^"]*)" \[([^\]]+)\]'
     if re.search(partern_str, checking_line):
         return (columns, partern_str)
 
     columns = ["clientHost", "l", "user", "date", "requestURL", "statusCode", "headerContentLength", "bytesSent",
                "elapsedTime", "headerUserAgent", "thread", "misc"]
-    partern_str = '^([^ ]+) ([^ ]+) ([^ ]+) \[([^\]]+)\] "([^"]+)" ([^ ]+) ([^ ]+) ([^ ]+) ([^ ]+) "([^"]+)" \[([^\]]+)\] (.+)'
+    partern_str = '^([^ ]+) ([^ ]+) ([^ ]+) \[([^\]]+)\] "([^"]*)" ([^ ]+) ([^ ]+) ([^ ]+) ([^ ]+) "([^"]*)" \[([^\]]+)\] (.+)'
     if re.search(partern_str, checking_line):
         return (columns, partern_str)
 
     columns = ["clientHost", "l", "user", "date", "requestURL", "statusCode", "bytesSent", "elapsedTime",
                "headerUserAgent", "thread"]
-    partern_str = '^([^ ]+) ([^ ]+) ([^ ]+) \[([^\]]+)\] "([^"]+)" ([^ ]+) ([^ ]+) ([^ ]+) "([^"]+)" \[([^\]]+)\]'
+    partern_str = '^([^ ]+) ([^ ]+) ([^ ]+) \[([^\]]+)\] "([^"]*)" ([^ ]+) ([^ ]+) ([^ ]+) "([^"]*)" \[([^\]]+)\]'
     if re.search(partern_str, checking_line):
         return (columns, partern_str)
 
     columns = ["clientHost", "l", "user", "date", "requestURL", "statusCode", "headerContentLength", "bytesSent",
                "elapsedTime", "headerUserAgent"]
-    partern_str = '^([^ ]+) ([^ ]+) ([^ ]+) \[([^\]]+)\] "([^"]+)" ([^ ]+) ([^ ]+) ([^ ]+) ([^ ]+) "([^"]+)"'
+    partern_str = '^([^ ]+) ([^ ]+) ([^ ]+) \[([^\]]+)\] "([^"]*)" ([^ ]+) ([^ ]+) ([^ ]+) ([^ ]+) "([^"]*)"'
     if re.search(partern_str, checking_line):
         return (columns, partern_str)
 
     columns = ["clientHost", "l", "user", "date", "requestURL", "statusCode", "bytesSent", "elapsedTime",
                "headerUserAgent"]
-    partern_str = '^([^ ]+) ([^ ]+) ([^ ]+) \[([^\]]+)\] "([^"]+)" ([^ ]+) ([^ ]+) ([^ ]+) "([^"]+)'
+    partern_str = '^([^ ]+) ([^ ]+) ([^ ]+) \[([^\]]+)\] "([^"]*)" ([^ ]+) ([^ ]+) ([^ ]+) "([^"]+)'
     if re.search(partern_str, checking_line):
         return (columns, partern_str)
 
     columns = ["clientHost", "l", "user", "date", "requestURL", "statusCode", "bytesSent", "elapsedTime"]
-    partern_str = '^([^ ]+) ([^ ]+) ([^ ]+) \[([^\]]+)\] "([^"]+)" ([^ ]+) ([^ ]+) ([0-9]+)'
+    partern_str = '^([^ ]+) ([^ ]+) ([^ ]+) \[([^\]]+)\] "([^"]*)" ([^ ]+) ([^ ]+) ([0-9]+)'
     if re.search(partern_str, checking_line):
         return (columns, partern_str)
 
     columns = ["clientHost", "l", "user", "date", "requestURL", "statusCode", "bytesSent", "elapsedTime", "misc"]
-    partern_str = '^([^ ]+) ([^ ]+) ([^ ]+) \[([^\]]+)\] "([^"]+)" ([^ ]+) ([^ ]+) ([^ ]+) ([^ ]+)'
+    partern_str = '^([^ ]+) ([^ ]+) ([^ ]+) \[([^\]]+)\] "([^"]*)" ([^ ]+) ([^ ]+) ([^ ]+) ([^ ]+)'
     if re.search(partern_str, checking_line):
         return (columns, partern_str)
 
     columns = ["clientHost", "l", "date", "requestURL", "statusCode", "bytesSent", "elapsedTime", "user", "misc"]
-    partern_str = '^([^ ]+) ([^ ]+) \[([^\]]+)\] "([^"]+)" http_status=([^ ]+) http_content_length=([^ ]+) latency=([^ ]+) user=([^ ]+) (.+)'
+    partern_str = '^([^ ]+) ([^ ]+) \[([^\]]+)\] "([^"]*)" http_status=([^ ]+) http_content_length=([^ ]+) latency=([^ ]+) user=([^ ]+) (.+)'
     if re.search(partern_str, checking_line):
         return (columns, partern_str)
 
     # Nexus outbound-request.log
     columns = ["date", "user", "requestURL", "statusCode", "bytesSent", "elapsedTime", "misc"]
-    partern_str = '^\[([^\]]+)\] [^ ]+) "([^"]+)" ([^ ]+) ([^ ]+) ([^ ]+) ([^ ]+)'
+    partern_str = '^\[([^\]]+)\] [^ ]+) "([^"]*)" ([^ ]+) ([^ ]+) ([^ ]+) ([^ ]+)'
     if re.search(partern_str, checking_line):
         return (columns, partern_str)
 
