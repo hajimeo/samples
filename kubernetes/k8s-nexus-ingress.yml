@@ -29,6 +29,7 @@ metadata:
     nginx.ingress.kubernetes.io/ssl-redirect: "false"
     nginx.ingress.kubernetes.io/force-ssl-redirect: "false"
     nginx.ingress.kubernetes.io/proxy-http-version: "1.1"
+    nginx.ingress.kubernetes.io/upstream-hash-by: "$remote_addr"    # not sure if this works
     #nginx.ingress.kubernetes.io/rewrite-target: /repository/docker-group/v$1
 spec:
   ingressClassName: nexus-ingresscontroller
