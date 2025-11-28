@@ -43,6 +43,10 @@ export public.* to ./export_dir;
 export insight_brain_ods.aggregate_file to ./aggregate_file.sql;
 export insight_brain_ods.*_ancestor to ./export_dir;
 ```
+Or normal H2 SCRIPT command (somehow "NO DATA" does not work):
+```
+echo "SCRIPT TO './nexus.sql'" | java -jar ./h2-console_v232.jar ./nexus.mv.db
+```
 NOTE: To compare with the PostgreSQL table dump, use `--column-inserts` in pg_dump, then `rg 'VALUES\s*\((.+)\);' -o -r '$1'`
 ```shell
 echo -e "export *.yum_* to .;\nexport *.repository to .;\nexport *.tag to ." | java -jar ./h2-console_v200.jar ./nexus.mv.db
@@ -85,6 +89,7 @@ export JAVA_HOME="${JAVA_HOME_17}"
 [ -s ./pom.xml.orig ] && cp -p -f -v ./pom.xml.orig ./pom.xml || cp -p -v ./pom.xml ./pom.xml.orig; mvn clean package && cp -v -p ./target/h2-console-1.0-SNAPSHOT.jar ../../misc/h2-console.jar && \
 sed -i .tmp 's/>1.4.196</>1.4.200</' ./pom.xml && mvn clean package && cp -v -p ./target/h2-console-1.0-SNAPSHOT.jar ../../misc/h2-console_v200.jar && \
 sed -i .tmp 's/>1.4.200</>2.2.224</' ./pom.xml && mvn clean package && cp -v -p ./target/h2-console-1.0-SNAPSHOT.jar ../../misc/h2-console_v224.jar && \
-sed -i .tmp 's/>2.2.224</>2.3.232</' ./pom.xml && mvn clean package && cp -v -p ./target/h2-console-1.0-SNAPSHOT.jar ../../misc/h2-console_v232.jar
+sed -i .tmp 's/>2.2.224</>2.3.232</' ./pom.xml && mvn clean package && cp -v -p ./target/h2-console-1.0-SNAPSHOT.jar ../../misc/h2-console_v232.jar && \
+sed -i .tmp 's/>2.3.232</>2.4.240</' ./pom.xml && mvn clean package && cp -v -p ./target/h2-console-1.0-SNAPSHOT.jar ../../misc/h2-console_v240.jar
 ```
 
