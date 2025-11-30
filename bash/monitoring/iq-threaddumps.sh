@@ -151,7 +151,7 @@ function takeDumps() {
     elif type jstack &>/dev/null; then
         _jstack="jstack"
     elif [ -x /opt/sonatype/nexus-iq-server/bin/jstack ] &>/dev/null; then
-        _jstack="jstack"
+        _jstack="/opt/sonatype/nexus-iq-server/bin/jstack"
     fi
     if [ -z "${_jstack}" ]; then
         if [ ! -f /proc/${_pid}/fd/1 ]; then
