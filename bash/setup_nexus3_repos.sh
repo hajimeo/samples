@@ -3059,6 +3059,57 @@ function f_setup_saml_simplesaml() {
     f_put_realms "SamlRealm"
 }
 
+function f_start_oidc_server() {
+    # Zitadel/oidc clone: https://github.com/hajimeo/oidc/tree/main/example/server
+    local __doc__="Install and start a dummy OIDC service"
+    local _redirect_urls="${1:-"${_NEXUS_URL%/}/oidc/callback?hash=#browse/welcome,http://localhost:9999/auth/callback"}"
+    local _install_dir="${2:-"${_SHARE_DIR%/}/oidcserver"}"
+    local _users_json="${3:-"${_install_dir%/}/oidcserver-users.json"}"
+
+    # Installing oidcserver
+    if [ ! -d "${_install_dir%/}" ]; then
+        mkdir -v -p "${_install_dir%/}" || return $?
+    fi
+    local _cmd="oidcserver"  # If not in the PATH, download it
+    if ! type ${_cmd} &>/dev/null; then
+        if [ ! -s "${_install_dir%/}/oidcserver" ]; then
+            curl -o "${_install_dir%/}/oidcserver" -L "https://github.com/hajimeo/samples/raw/master/misc/oidcserver_$(uname)_$(uname -m)" --compressed || return $?
+            chmod u+x "${_install_dir%/}/oidcserver" || return $?
+        fi
+        _cmd="${_install_dir%/}/oidcserver"
+    fi
+    # TODO: not implemented yet
+    #if [ ! -s "${_users_json}" ]; then
+    #    curl -sSf -o "${_users_json}" -L "https://raw.githubusercontent.com/hajimeo/samples/master/misc/oidcserver-users.json" --compressed  || return $?
+    #fi
+
+    export REDIRECT_URI=${_redirect_urls}
+    _log "INFO" "Starting OIDC service with REDIRECT_URI: ${REDIRECT_URI} ..."
+    eval "${_cmd}" &> ${_TMP%/}/oidcserver_$$.log &
+    local _pid="$!"
+    sleep 2
+    if ! jobs -l | grep -w "${_pid}" | grep -q -w Running; then
+        _log "ERROR" "oidcserver failed to start. Please check ${_TMP%/}/oidcserver_$$.log"
+        return 1
+    fi
+    echo "[INFO] Running oidcserver in background ..."
+    echo "       PID: ${_pid}  Log: ${_TMP%/}/oidcserver_$$.log"
+    echo "[INFO] Please execute 'f_setup_oauth2_oidcserver'."
+}
+function f_setup_oauth2_oidcserver() {
+    local __doc__="Setup OAuth2 for Nexus3 for oidcserver"
+    local _oidc_url="${1:-"http://localhost:9998/"}"
+    if ! f_api "/service/rest/internal/ui/oauth2" '{"idpJwksUrl":"'${_oidc_url%/}'/keys","idpJwsAlgorithm":"RS256","idpJwks":"","usernameClaim":"preferred_username","firstNameClaim":"given_name","lastNameClaim":"family_name","emailClaim":"email","groupsClaim":"groups","exactMatchClaims":{},"clientId":"web","clientSecret":"secret","idpAuthorizationUrl":"'${_oidc_url%/}'/auth","idpLogoutUrl":"'${_oidc_url%/}'/end_session","idpTokenUrl":"'${_oidc_url%/}'/oauth/token","authorizationCustomParams":{},"tokenRequestCustomParams":{}}' "PUT"; then
+        echo "If OAuth 2.0 is already configured, please check ${_NEXUS_URL%/}/#admin/security/oauth2"
+        return 1
+    fi
+    f_put_realms "OAuth2Realm"
+    echo "[INFO] Please make sure the following nexus.properties are set:"
+    echo '    nexus.security.oauth2.enabled=true
+    nexus.jwt.enabled=true
+    #nexus.session.secureCookie=false'
+}
+
 function f_start_dummy_smtp() {
     local __doc__="Install and start a dummy SMTP server with MailHog https://github.com/mailhog/MailHog/blob/master/docs/CONFIG.md"
     local _smtp_port="${1:-"1025"}"
