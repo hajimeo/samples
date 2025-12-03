@@ -6,7 +6,7 @@
 - Remove `deleted=true` lines from the specified files
 - Find missing blobs in blob store (similar to Orphaned Blobs Finder)
 - Find missing blobs in database (similar to Dead Blobs Finder)
-- TODO: Copy specific blobs to another Blob store (for slow Export/Import and Change Repository Blob Store, Docker GC
+- Copy specific blobs to another Blob store (for slow Export/Import and Change Repository Blob Store, Docker GC
   investigation, etc.)
 
 ## Download and Install:
@@ -126,8 +126,7 @@ rg -o -r '$1' ',size=(\d+)' /tmp/filelist_raw-hosted_props.tsv | awk '{ c+=1;s+=
 
 ### Remove `deleted=true` lines from the specified files in a text file or while listing
 
-Like dry-run (`-H` to not output headers, `-BytesChk` is due to the bug)
-
+Like dry-run (`-H` to not output headers, `-BytesChk` is to exclude deletion markers)
 ```
 filelist2 -b "$BLOB_STORE" -pRx "@Bucket\.repo-name=raw-hosted,.+deleted=true" -P -H -BytesChk -c 80 -s /tmp/filelist_raw-hosted_soft-deleted.tsv
 ```

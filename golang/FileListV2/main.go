@@ -403,14 +403,13 @@ func genBlobPath(blobIdLikeString string, extension string) string {
 func genOutput(path string, bi bs_clients.BlobInfo, db *sql.DB) string {
 	if len(common.Filter4FileName) > 0 && !common.RxFilter4FileName.MatchString(path) {
 		if common.Debug2 {
-			h.Log("DEBUG", fmt.Sprintf("Skipping  as path:%s does not match with the filter %s", path, common.RxFilter4FileName.String()))
+			h.Log("DEBUG", fmt.Sprintf("Skipping as path:%s does not match with the filter %s", path, common.RxFilter4FileName.String()))
 		}
 		return ""
 	}
 
 	var bytesChkErr error
 	var bytesInfo bs_clients.BlobInfo
-	var bytesPath string
 	if strings.HasSuffix(path, common.PROP_EXT) {
 		// the properties file can not be empty (0 byte), but if already Error, no need another WARN
 		if !common.NoExtraChk && !bi.Error && bi.Size == 0 {
@@ -421,6 +420,9 @@ func genOutput(path string, bi bs_clients.BlobInfo, db *sql.DB) string {
 		// Even there was error on the properties, check the .bytes file if BytesChk is true
 		if common.BytesChk {
 			bytesInfo, bytesChkErr = bytesFileCheck(path)
+			/* if bytesChkErr != nil {	// currently not doing this because sometimes want to output .properties which doesn't have the .bytes
+				bi.Error = true
+			} */
 		}
 	}
 
@@ -430,53 +432,51 @@ func genOutput(path string, bi bs_clients.BlobInfo, db *sql.DB) string {
 	var sortedOneLineProps string
 	var skipReason error
 	if bi.Error {
+		// When Orphaned blob finder mode, do not output unreadable (properties) files, and probably already DEBUG level logged?
 		if common.Truth == "BS" {
-			// When Orphaned blob finder mode, do not output unreadable files, and probably already DEBUG level logged?
-			h.Log("DEBUG", fmt.Sprintf("path:%s has error. Skipping as BS mode ...", path))
+			h.Log("DEBUG", fmt.Sprintf("path:%s has error. Skipping because of BS mode ...", path))
 			return ""
 		}
 		output = fmt.Sprintf("%s%s%s%s%d", path, common.SEP, bi.ModTime, common.SEP, bi.Size)
 	} else {
+		// Get the properties last modified to check if this time is between mDF and mDT
 		modTimestamp := bi.ModTime.Unix()
-		// If BytesChk is false, use the .bytes file's modTime for the filter as the .properties mod time can be unexpected value
-		if common.BytesChk && bytesChkErr == nil && !strings.HasSuffix(path, common.BYTES_EXT) {
-			bytesModTimestamp := bytesInfo.ModTime.Unix()
-			if !lib.IsTsMSecBetweenTs(bytesModTimestamp*1000, common.ModDateFromTS, common.ModDateToTS) {
-				h.Log("DEBUG", fmt.Sprintf("Bytes path:%s modTime %d is outside of the range %d to %d", bytesPath, bytesModTimestamp, common.ModDateFromTS, common.ModDateToTS))
+		// NOT using bytes modified time because it will be inconvenient for un-soft-deleting (deleted=true)
+		/* if common.BytesChk && bytesChkErr == nil && !strings.HasSuffix(path, common.BYTES_EXT) {
+			modTimestamp = bytesInfo.ModTime.Unix()
+		} */
+		if !lib.IsTsMSecBetweenTs(modTimestamp*1000, common.ModDateFromTS, common.ModDateToTS) {
+			h.Log("DEBUG", fmt.Sprintf("path:%s modTime %d is outside of the range %d to %d", path, modTimestamp, common.ModDateFromTS, common.ModDateToTS))
+			return ""
+		}
+
+		output = fmt.Sprintf("%s%s%s%s%d", path, common.SEP, bi.ModTime, common.SEP, bi.Size)
+
+		// If .properties file is checked, depending on other flags, need to generate extra output
+		if shouldReadProps(path, modTimestamp) {
+			//h.Log("DEBUG", fmt.Sprintf("Extra info from properties is needed for '%s'", path))
+			sortedOneLineProps, skipReason = extraInfo(path)
+			if skipReason != nil {
+				h.Log("DEBUG", fmt.Sprintf("Skipped %s due to %s", path, skipReason.Error()))
 				return ""
 			}
-		} else {
-			if !lib.IsTsMSecBetweenTs(modTimestamp*1000, common.ModDateFromTS, common.ModDateToTS) {
-				h.Log("DEBUG", fmt.Sprintf("path:%s modTime %d is outside of the range %d to %d", path, modTimestamp, common.ModDateFromTS, common.ModDateToTS))
-				return ""
-			}
-			output = fmt.Sprintf("%s%s%s%s%d", path, common.SEP, bi.ModTime, common.SEP, bi.Size)
-			// If .properties file is checked, depending on other flags, need to generate extra output
-			if shouldReadProps(path, modTimestamp) {
-				//h.Log("DEBUG", fmt.Sprintf("Extra info from properties is needed for '%s'", path))
-				sortedOneLineProps, skipReason = extraInfo(path)
-				if skipReason != nil {
-					h.Log("DEBUG", fmt.Sprintf("%s: %s", path, skipReason.Error()))
-					return ""
-				}
-				if common.BytesChk && bytesChkErr == nil && strings.HasSuffix(path, common.PROP_EXT) {
-					// If BytesChek is asked, compare the size with the size line in the .properties file (NOTE: 0 size is possible)
-					matches := common.RxSizeByte.FindStringSubmatch(sortedOneLineProps)
-					if matches == nil || len(matches) == 0 {
-						// For now, if no size line found, just log warning
-						h.Log("WARN", fmt.Sprintf("path:%s may not have the size", path))
-					} else {
-						sizeInProps, err := strconv.ParseInt(matches[1], 10, 64)
-						if err != nil {
-							h.Log("WARN", fmt.Sprintf("path:%s has non numeric size %v", path, matches))
-						} else if !common.NoExtraChk && sizeInProps != bytesInfo.Size {
-							h.Log("WARN", fmt.Sprintf("path:%s has size mismatch between size=%s and .bytes (%d)", path, matches[1], bytesInfo.Size))
-						}
+			if common.BytesChk && bytesChkErr == nil && strings.HasSuffix(path, common.PROP_EXT) {
+				// If BytesChek is asked, compare the size with the size line in the .properties file (NOTE: 0 size is possible)
+				matches := common.RxSizeByte.FindStringSubmatch(sortedOneLineProps)
+				if matches == nil || len(matches) == 0 {
+					// For now, if no size line found, just log warning
+					h.Log("WARN", fmt.Sprintf("path:%s may not have the size", path))
+				} else {
+					sizeInProps, err := strconv.ParseInt(matches[1], 10, 64)
+					if err != nil {
+						h.Log("WARN", fmt.Sprintf("path:%s has non numeric size %v", path, matches))
+					} else if !common.NoExtraChk && sizeInProps != bytesInfo.Size {
+						h.Log("WARN", fmt.Sprintf("path:%s has size mismatch between size=%s and .bytes (%d)", path, matches[1], bytesInfo.Size))
 					}
 				}
-				//} else {
-				//	h.Log("DEBUG", fmt.Sprintf("Extra info from properties is NOT needed for '%s'", path))
 			}
+			//} else {
+			//	h.Log("DEBUG", fmt.Sprintf("Extra info from properties is NOT needed for '%s'", path))
 		}
 	}
 
@@ -521,7 +521,10 @@ func genOutput(path string, bi bs_clients.BlobInfo, db *sql.DB) string {
 			output = fmt.Sprintf("%s%s%s", output, common.SEP, "DEAD_BLOB:missing bytes")
 		}
 	} else if bytesChkErr != nil {
+		//h.Log("DEBUG", fmt.Sprintf("path:%s has no .bytes file.", path))
 		output = fmt.Sprintf("%s%s%s", output, common.SEP, "BYTES_MISSING")
+	} else if common.BytesChk && bytesChkErr == nil && !strings.HasSuffix(path, common.BYTES_EXT) {
+		output = fmt.Sprintf("%s%sbytes-modified:%s|size:%d", output, common.SEP, bytesInfo.ModTime, bytesInfo.Size)
 	}
 
 	return output
@@ -648,15 +651,15 @@ func shouldSkipThisContents(sortedContents string) error {
 	return nil
 }
 
-func bytesFileCheck(path string) (bytesInfo bs_clients.BlobInfo, bytesChkErr error) {
-	bytesPath := lib.GetPathWithoutExt(path) + common.BYTES_EXT
+func bytesFileCheck(propPath string) (bytesInfo bs_clients.BlobInfo, bytesChkErr error) {
+	bytesPath := lib.GetPathWithoutExt(propPath) + common.BYTES_EXT
 	bytesInfo, bytesChkErr = Client.GetFileInfo(bytesPath)
 	if bytesChkErr != nil {
 		if common.Truth != "BS" {
 			h.Log("WARN", fmt.Sprintf("BYTES_MISSING for %s (error: %s)", bytesPath, bytesChkErr.Error()))
 		} else {
 			// If BS mode (orphaned blobs finder), probably missing .bytes is not so important
-			h.Log("DEBUG", fmt.Sprintf("BYTES_MISSING for %s (probably deletion marker?)", bytesPath))
+			h.Log("INFO", fmt.Sprintf("BYTES_MISSING for %s (e.g. deletion marker)", bytesPath))
 		}
 	}
 	return bytesInfo, bytesChkErr
@@ -774,8 +777,9 @@ func printLineFromPath(args bs_clients.PrintLineArgs) bool {
 	//h.Log("DEBUG", fmt.Sprintf("Generating the output for '%s'", path))
 	output := genOutput(path, blobInfo, db)
 
-	// Updating counters before (saving and) returning
+	// If not empty output, updating counters before saving and returning
 	if len(output) > 0 {
+		//h.Log("DEBUG", fmt.Sprintf("Current output: '%s' for %s", output, path))
 		atomic.AddInt64(&common.PrintedNum, 1)
 		atomic.AddInt64(&common.TotalSize, blobInfo.Size)
 
@@ -881,8 +885,8 @@ func copyToBaseDir2(path string) string {
 }
 
 func printOrSave(line string, saveToPointer *os.File) {
-	// At this moment, excluding empty line
-	if len(line) == 0 {
+	// At this moment, excluding empty line and tab only line
+	if len(line) == 0 || line == common.SEP {
 		return
 	}
 	if saveToPointer != nil {
