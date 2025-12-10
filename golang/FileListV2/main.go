@@ -901,8 +901,12 @@ func listObjects(dir string, db *sql.DB) {
 	startMs := time.Now().UnixMilli()
 	//h.Log("INFO", fmt.Sprintf("Listing objects from %s", dir))
 	subTtl := Client.ListObjects(dir, db, printLineFromPath)
-	// Always log this elapsed time by using 0 thresholdMs
-	h.Elapsed(startMs, fmt.Sprintf("Processed %d files from %s (current total: %d)", subTtl, dir, common.CheckedNum), 0)
+	// Always log this elapsed time by using 0 thresholdMs if subTtl > 0
+	thresholdMs := common.SlowMS
+	if subTtl > 0 {
+		thresholdMs = int64(0)
+	}
+	h.Elapsed(startMs, fmt.Sprintf("Processed %d files from %s (current total: %d)", subTtl, dir, common.CheckedNum), thresholdMs)
 }
 
 func checkBlobIdDetailFromDB(maybeBlobId string) interface{} {
