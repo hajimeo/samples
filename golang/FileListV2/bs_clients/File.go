@@ -131,7 +131,7 @@ func (c *FileClient) GetDirs(baseDir string, pathFilter string, maxDepth int) ([
 	}
 	if maxDepth == -1 {
 		maxDepth = 3
-		h.Log("DEBUG", fmt.Sprintf("maxDepth was -1 (auto), changing to %d for File blob store", maxDepth))
+		h.Log("DEBUG", fmt.Sprintf("Changing maxDepth: -1 (auto) to %d for File blob store", maxDepth))
 	}
 	var matchingDirs []string
 	// Get up to content baseDir
@@ -162,7 +162,7 @@ func (c *FileClient) GetDirs(baseDir string, pathFilter string, maxDepth int) ([
 			if realMaxDepth > 0 && sepCount > realMaxDepth {
 				// If not walking recursively is set, ListObjects should check recursively.
 				if !common.WalkRecursive { // && !filterRegex.MatchString(dirPath)
-					h.Log("WARN", fmt.Sprintf("Sub-directory exists but won't be checked: %s", dirPath))
+					h.Log("WARN", fmt.Sprintf("Sub-directories may still exist but won't be checked: %s", dirPath))
 				}
 				if common.Debug2 {
 					h.Log("DEBUG", fmt.Sprintf("Reached to the real max depth %d > %d (dirPath: %s)", sepCount, realMaxDepth, dirPath))
@@ -171,18 +171,16 @@ func (c *FileClient) GetDirs(baseDir string, pathFilter string, maxDepth int) ([
 			}
 
 			if len(pathFilter) == 0 || filterRegex.MatchString(dirPath) {
-				// Providing the option to check if it's a leaf directory or not as it may contain some unexpected file.
-				// Currently relying on regex to determine if it's a leaf directory
-				// If not walking recursively, should not check if leaf or not.
-				if !common.WalkRecursive || lib.IsLeafDir(dirPath, maxDepth) {
-					h.Log("DEBUG", fmt.Sprintf("Matching directory: %s (Depth: %d)", dirPath, baseSepCount))
+				// Currently, WalkRecursive is always true. But if non-recursive mode, the directory needs to be the leaf of the tree.
+				if !common.WalkRecursive || lib.IsLeafDir(dirPath, maxDepth) || sepCount == realMaxDepth {
+					h.Log("DEBUG", fmt.Sprintf("Matching directory: %s (depth: %d / maxDepth: %d)", dirPath, sepCount, maxDepth))
 					// NOTE: As ListObjects for File type is not checking the subdirectories, it's OK to contain the parent directories.
 					matchingDirs = append(matchingDirs, dirPath)
 				} else {
 					h.Log("DEBUG", fmt.Sprintf("Skipping non-leaf directory: %s (maxDepth: %d)", dirPath, maxDepth))
 				}
 			} else {
-				h.Log("DEBUG", fmt.Sprintf("%s does not match with %s (Depth: %d)", dirPath, pathFilter, baseSepCount))
+				h.Log("DEBUG", fmt.Sprintf("%s does not match with %s (Depth: %d)", dirPath, pathFilter, sepCount))
 			}
 		}
 		return nil

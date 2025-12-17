@@ -385,8 +385,8 @@ func (s *S3Client) GetDirs(baseDir string, pathFilter string, maxDepth int) ([]s
 	var filterRegex = regexp.MustCompile(pathFilter)
 	baseDepth := strings.Count(prefix, "/") + 1 // +1 to count the trailing slash
 
-	h.Log("DEBUG", fmt.Sprintf("Retriving sub folders under %s %s", bucket, prefix))
-	// Not expecting more than 1000 sub folders, so no MaxKeys
+	h.Log("DEBUG", fmt.Sprintf("Retrieving sub folders under %s %s", bucket, prefix))
+	// Not expecting more than 1000 subfolders, so no MaxKeys
 	input := &s3.ListObjectsV2Input{
 		Bucket:    &bucket,
 		Prefix:    aws.String(h.AppendSlash(prefix)),
