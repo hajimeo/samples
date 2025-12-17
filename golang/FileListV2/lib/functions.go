@@ -239,6 +239,11 @@ func ComputeSubDirs(path string, pathFilter string) (matchingDirs []string) {
 		return matchingDirs
 	}
 
-	h.Log("DEBUG", fmt.Sprintf("No computed sub-directories for: %s", path))
+	if len(pathFilter) == 0 || filterRegex.MatchString(path) {
+		h.Log("DEBUG", fmt.Sprintf("Appending %d sub-directories", path))
+		matchingDirs = append(matchingDirs, path)
+	} else {
+		h.Log("DEBUG", fmt.Sprintf("No computed sub-directories for: %s", path))
+	}
 	return matchingDirs
 }
