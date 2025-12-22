@@ -9,6 +9,7 @@ import org.sonatype.nexus.blobstore.api.BlobAttributes
 import org.sonatype.nexus.blobstore.api.BlobId
 import org.sonatype.nexus.blobstore.api.BlobStore
 import org.sonatype.nexus.blobstore.api.BlobStoreManager
+import org.sonatype.nexus.blobstore.api.softdeleted.SoftDeletedBlobsStore
 import static org.sonatype.nexus.blobstore.api.BlobAttributesConstants.HEADER_PREFIX
 import static org.sonatype.nexus.blobstore.api.BlobAttributesConstants.DELETED_DATETIME_ATTRIBUTE
 import static org.sonatype.nexus.blobstore.api.BlobStore.REPO_NAME_HEADER
@@ -84,6 +85,7 @@ def main(params) {
     // Blobs deleted after this time will be ignored
     def startedMsec = Instant.now().getEpochSecond() * 1000
     BlobStore store = container.lookup(BlobStoreManager.class.name).get(params.blobStore)
+    SoftDeletedBlobsStore softDeletedBlobsStore = container.lookup(SoftDeletedBlobsStore.class.name)
     if (!store) {
         def logMsg = "params.blobStore: ${params.blobStore} is invalid"
         log.error(logMsg)
@@ -174,6 +176,12 @@ def main(params) {
                     // For special blob stores such as S3.
                     store.doUndelete(blobIdObj, blobAttributes)
                     blobAttributes.store()
+                    try {
+                        softDeletedBlobsStore.deleteRecord(params.blobStore, blobIdObj);
+                    } catch (Exception e) {
+                        // If failed, need to manually clean up later
+                        log.warn("Failed to delete softDeletedBlobsStore for blobStore:{}, blobId:{} - {}", params.blobStore, blobIdStr, e.getMessage())
+                    }
                 }
                 log.info("Undeleted blobId:{} (DryRun:{})\n{}", blobIdStr, params.dryRun, blobAttributes)
             }
