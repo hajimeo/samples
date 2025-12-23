@@ -11,6 +11,7 @@ require (
 	github.com/aws/aws-sdk-go-v2/config v1.31.10
 	github.com/aws/aws-sdk-go-v2/credentials v1.18.14
 	github.com/aws/aws-sdk-go-v2/service/s3 v1.88.2
+	github.com/google/uuid v1.6.0
 	github.com/hajimeo/samples/golang/helpers v0.0.0-20250917090610-4ac66f5314f4
 	github.com/lib/pq v1.10.9
 	github.com/pkg/errors v0.9.1

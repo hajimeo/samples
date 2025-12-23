@@ -8,6 +8,7 @@ import (
 	"errors"
 	"flag"
 	"fmt"
+	"github.com/google/uuid"
 	h "github.com/hajimeo/samples/golang/helpers"
 	"io"
 	"log"
@@ -43,6 +44,8 @@ func setGlobals() {
 	// TODO: (low) 'b' should accept the comma separated values for supporting the group blob store
 	flag.StringVar(&common.BaseDir, "b", "", "Blob store directory or URI (eg. 's3://s3-test-bucket/s3-test-prefix/'), which location contains 'content' directory (default: '.')")
 	flag.StringVar(&common.BaseDir2, "bTo", "", "*Experimental* Blob store directory or URI (eg. 's3://s3-test-bucket/s3-test-prefix_to_content/') for copying files from -b")
+	flag.StringVar(&common.B2RepoName, "bToRepoName", "", "*Experimental* Replace the repository name (@Blobstore.blob-name) when copy")
+	flag.BoolVar(&common.B2NewBlobId, "GenNewBlobId", false, "*Experimental* Replace the filename without extension (blob ID) with newly generated UUID")
 	flag.BoolVar(&common.NoDateBsLayout, "NoDateBS", false, "Declair the date based blob store layout (YYYY/MM/DD/hh/mm/uuid) is not used, so that force checking the old vol-XX/chap-XX/uuid layout")
 	flag.StringVar(&common.Filter4Path, "p", "/(vol-\\d\\d|20\\d\\d)/", "Regular Expression for directory *path* (default: '/(vol-\\d\\d|20\\d\\d)/'), or S3 prefix.")
 	flag.StringVar(&common.Filter4FileName, "f", "", "Regular Expression for the file *name* (eg: '\\.properties' to include only this extension)")
@@ -82,7 +85,7 @@ func setGlobals() {
 	flag.StringVar(&common.DelDateFromStr, "dDF", "", "Deleted date YYYY-MM-DD (from). Used to search deletedDateTime")
 	flag.StringVar(&common.DelDateToStr, "dDT", "", "Deleted date YYYY-MM-DD (to). To exclude newly deleted assets")
 	flag.StringVar(&common.ModDateFromStr, "mDF", "", "File modification date YYYY-MM-DD (from)")
-	flag.StringVar(&common.ModDateToStr, "mDT", "", "File modification date YYYY-MM-DD (to)")
+	flag.StringVar(&common.ModDateToStr, "mDT", "", "File modification date YYYY-MM-DD up to (to)")
 	flag.BoolVar(&common.BytesChk, "BytesChk", false, "Check if .bytes file exists. Also the .bytes mod time is used for -mDF/-mDT")
 	flag.BoolVar(&common.NoExtraChk, "NoExChk", false, "Do not perform extra checks such as the file size to improve performance")
 
@@ -254,7 +257,8 @@ func setGlobals() {
 
 	// If BlobIDFIle is given, DB connection or BaseDir is required
 	if len(common.DbConnStr) == 0 && len(common.BaseDir) == 0 {
-		panic("-src with -rF requires -b or -db")
+		// TODO: support for BaseDir2
+		panic("Currently -b or -db is required with -rF")
 	}
 	if len(common.BlobIDFIle) > 0 && len(common.BlobIDFIleType) == 0 {
 		if len(common.DbConnStr) > 0 && len(common.BaseDir) > 0 {
@@ -494,31 +498,36 @@ func genOutput(path string, bi bs_clients.BlobInfo, db *sql.DB) string {
 	}
 
 	// "Misc." column
-	if common.Truth == "BS" { // Orphaned blob finder mode
-		// If DB connection is given and the truth is blob store, check if the blob ID in the path exists in the DB
-		// But if bytesChkErr is not nil, it's not considered as orphaned, rather missing blob.
-		if len(common.DbConnStr) > 0 && bytesChkErr == nil {
-			blobId := extractBlobIdFromString(path)
-			// If sortedOneLineProps is empty, the below may use expensive query
-			reason := isOrphanedBlob(sortedOneLineProps, blobId, db)
-			if len(reason) > 0 {
-				output = fmt.Sprintf("%s%s%s", output, common.SEP, reason)
-			} else {
-				h.Log("DEBUG", "Blob ID: "+blobId+" exists in the DB. Not including in the output.")
-				output = ""
+	if len(common.Truth) > 0 {
+		if common.Truth == "BS" { // Orphaned blob finder mode
+			// If DB connection is given and the truth is blob store, check if the blob ID in the path exists in the DB
+			// But if bytesChkErr is not nil, it's not considered as orphaned, rather missing blob.
+			if len(common.DbConnStr) > 0 && bytesChkErr == nil {
+				blobId := extractBlobIdFromString(path)
+				// If sortedOneLineProps is empty, the below may use expensive query
+				reason := isOrphanedBlob(sortedOneLineProps, blobId, db)
+				if len(reason) > 0 {
+					output = fmt.Sprintf("%s%s%s", output, common.SEP, reason)
+				} else {
+					h.Log("DEBUG", "Blob ID: "+blobId+" exists in the DB. Not including in the output.")
+					output = ""
+				}
 			}
-		}
-	} else if common.Truth == "DB" { // Dead blob finder mode
-		// NOTE: Expecting when Truth is "DB", the BytesChk is always true
-		if bi.Error && bytesChkErr != nil {
-			h.Log("DEBUG", fmt.Sprintf("path:%s has error (missing) and misisng bytes. Considering as DEAD blob.", path))
-			output = fmt.Sprintf("%s%s%s", output, common.SEP, "DEAD_BLOB:missing properties/bytes")
-		} else if bi.Error {
-			h.Log("DEBUG", fmt.Sprintf("path:%s has error (missing). Considering as DEAD blob.", path))
-			output = fmt.Sprintf("%s%s%s", output, common.SEP, "DEAD_BLOB:missing properties")
-		} else if bytesChkErr != nil {
-			h.Log("DEBUG", fmt.Sprintf("path:%s has no .bytes file. Considering as DEAD blob.", path))
-			output = fmt.Sprintf("%s%s%s", output, common.SEP, "DEAD_BLOB:missing bytes")
+		} else if common.Truth == "DB" { // Dead blob finder mode
+			// NOTE: Expecting when Truth is "DB", the BytesChk is always true
+			if bi.Error && bytesChkErr != nil {
+				h.Log("DEBUG", fmt.Sprintf("path:%s has error (missing) and missing bytes. Considering as DEAD blob.", path))
+				output = fmt.Sprintf("%s%s%s", output, common.SEP, "DEAD_BLOB:missing properties/bytes")
+			} else if bi.Error {
+				h.Log("DEBUG", fmt.Sprintf("path:%s has error (missing). Considering as DEAD blob.", path))
+				output = fmt.Sprintf("%s%s%s", output, common.SEP, "DEAD_BLOB:missing properties")
+			} else if bytesChkErr != nil {
+				h.Log("DEBUG", fmt.Sprintf("path:%s has no .bytes file. Considering as DEAD blob.", path))
+				output = fmt.Sprintf("%s%s%s", output, common.SEP, "DEAD_BLOB:missing bytes")
+				// TODO: check blob-name with DB {format}_asset.path
+				h.Log("DEBUG", fmt.Sprintf("Should check the name/path of %s", path))
+			}
+			// TODO: check blob-name with DB {format}_asset.path. Currently can't as DB result is not passed for "DB" mode
 		}
 	} else if bytesChkErr != nil {
 		//h.Log("DEBUG", fmt.Sprintf("path:%s has no .bytes file.", path))
@@ -784,22 +793,7 @@ func printLineFromPath(args bs_clients.PrintLineArgs) bool {
 		atomic.AddInt64(&common.TotalSize, blobInfo.Size)
 
 		if len(common.BaseDir2) > 0 && strings.HasSuffix(path, common.PROP_EXT) {
-			// if BaseDir2 (-bTo) is given, try to copy the .properties file and associated .bytes file to BaseDir2
-			errorCode := copyToBaseDir2(path)
-			// Regardless of the errorCode, try to copy the .bytes file as well
-			bytesPath := lib.GetPathWithoutExt(path) + common.BYTES_EXT
-			errorCode2 := copyToBaseDir2(bytesPath)
-			finalErrorCode := ""
-			if len(errorCode) > 0 {
-				finalErrorCode = errorCode
-			}
-			if len(errorCode2) > 0 {
-				if len(finalErrorCode) > 0 {
-					finalErrorCode = finalErrorCode + "|" + errorCode2
-				} else {
-					finalErrorCode = errorCode2
-				}
-			}
+			finalErrorCode := copyPropsBytesToBaseDir2(path)
 			if len(finalErrorCode) > 0 {
 				output = fmt.Sprintf("%s%s%s", output, common.SEP, finalErrorCode)
 			}
@@ -810,24 +804,74 @@ func printLineFromPath(args bs_clients.PrintLineArgs) bool {
 	return true
 }
 
-func writeFromCache(path string, client bs_clients.Client) (bool, error) {
+func getContentsFromCache(path string, client bs_clients.Client) (string, error) {
 	if common.CacheSize > 0 {
 		valueInCache := h.CacheGetObj(path)
 		if valueInCache != nil && len(valueInCache.(string)) > 0 {
 			contents := valueInCache.(string)
 			h.Log("DEBUG", fmt.Sprintf("Found %s in the cache (size:%d)", path, len(contents)))
-			err := client.WriteToPath(path, contents)
-			if err != nil {
-				return false, err
-			}
-			return true, nil
+			return contents, nil
 		}
 	}
-	return false, nil
+	return "", nil
 }
 
-func copyToBaseDir2(path string) string {
-	writingPath := filepath.Join(common.ContentPath2, lib.GetAfterContent(path))
+func writeFromCache(path string, contents string, client bs_clients.Client) (bool, error) {
+	if len(contents) == 0 { // Currently writing only when not empty
+		return false, nil
+	}
+	if len(common.B2RepoName) > 0 {
+		contents = common.RxBlobName.ReplaceAllString(contents, common.PrefixRxBlobName+common.B2RepoName)
+	}
+	err := Client2.WriteToPath(path, contents)
+	if err != nil {
+		return false, err
+	}
+	return true, nil
+}
+
+func genCopyToPath(path string) string {
+	copyToPath := path
+	// if B2NewBlobId is true, the filename in the path should use the new UUID
+	if len(path) > 0 && common.B2NewBlobId {
+		ext := filepath.Ext(path)
+		dir := filepath.Dir(path)
+		copyToPath = filepath.Join(dir, uuid.New().String()+ext)
+		h.Log("DEBUG", fmt.Sprintf("Changing path from %s to %s for BaseDir2 copy", path, copyToPath))
+	}
+	return copyToPath
+}
+
+func copyPropsBytesToBaseDir2(propPath string) string {
+	finalErrorCode := ""
+	if !strings.HasSuffix(propPath, common.PROP_EXT) {
+		return finalErrorCode
+	}
+	// if BaseDir2 (-bTo) is given, try to copy the .properties file and associated .bytes file to BaseDir2
+	copyToPath := genCopyToPath(propPath)
+	errorCode := copyToBaseDir2(propPath, copyToPath)
+	if len(errorCode) > 0 {
+		finalErrorCode = errorCode
+	}
+	// Regardless of the errorCode, try to copy the .bytes file as well
+	bytesPath := lib.GetPathWithoutExt(propPath) + common.BYTES_EXT
+	bytesCopyPath := genCopyToPath(propPath)
+	errorCode2 := copyToBaseDir2(bytesPath, bytesCopyPath)
+	if len(errorCode2) > 0 {
+		if len(finalErrorCode) > 0 {
+			finalErrorCode = finalErrorCode + "|" + errorCode2
+		} else {
+			finalErrorCode = errorCode2
+		}
+	}
+	return finalErrorCode
+}
+
+func copyToBaseDir2(path string, toPath string) string {
+	if len(toPath) == 0 {
+		toPath = path
+	}
+	writingPath := filepath.Join(common.ContentPath2, lib.GetAfterContent(toPath))
 	// TODO: Check if the writingPath already exists in BaseDir2 with GetFileInfo
 	if !common.NoExtraChk {
 		info, err := Client2.GetFileInfo(writingPath)
@@ -839,7 +883,12 @@ func copyToBaseDir2(path string) string {
 
 	// If the path is .properties, first try to write by using the cache
 	if strings.HasSuffix(path, common.PROP_EXT) {
-		result, err := writeFromCache(writingPath, Client2)
+		contents, err := getContentsFromCache(path, Client2)
+		if err != nil {
+			h.Log("ERROR", fmt.Sprintf("Getting cache for path:%s failed with %s", writingPath, err))
+			return "READ_CACHE_FAILED"
+		}
+		result, err := writeFromCache(writingPath, contents, Client2)
 		if err != nil {
 			h.Log("ERROR", fmt.Sprintf("Writing path:%s to BaseDir2:%s failed with %s", writingPath, common.BaseDir2, err))
 			return "FROM_CACHE_FAILED"
@@ -850,9 +899,8 @@ func copyToBaseDir2(path string) string {
 		}
 	}
 
-	// if no error but result is false, means no cache, so didn't write by using the cache, so copying by stream
 	if common.Debug2 {
-		h.Log("DEBUG", fmt.Sprintf("Preparing Writer for the desitination path:%s", writingPath))
+		h.Log("DEBUG", fmt.Sprintf("Preparing Writer for the destination path:%s as no cache", writingPath))
 	}
 	maybeWriter, errW := Client2.GetWriter(writingPath)
 	if errW != nil {
@@ -1092,6 +1140,18 @@ func getRepoName(contents string) string {
 	return ""
 }
 
+func getBlobName(contents string) string {
+	if len(contents) > 0 {
+		m := common.RxBlobName.FindStringSubmatch(contents)
+		if len(m) < 2 {
+			h.Log("WARN", "No blob-name in "+contents)
+			return ""
+		}
+		return m[1]
+	}
+	return ""
+}
+
 func genAssetBlobUnionQuery(assetTableNames []string, columns string, afterWhere string, reposPerFmt []string, format string) string {
 	cte := ""
 	cteJoin := ""
@@ -1179,6 +1239,7 @@ func isOrphanedBlob(contents string, blobId string, db *sql.DB) string {
 	// Orphaned blob is the blob which is in the blob store but not in the DB
 	// UNION ALL query against many tables is slow. so if contents is given, using specific table of the repo-name.
 	repoName := getRepoName(contents)
+	blobName := getBlobName(contents)
 	format := getFmtFromRepName(repoName)
 	tableNames := getAssetTableNamesFromRepoNames(repoName)
 	if len(repoName) > 0 && len(tableNames) == 0 {
@@ -1199,7 +1260,7 @@ func isOrphanedBlob(contents string, blobId string, db *sql.DB) string {
 	if !common.NoDateBsLayout && !strings.Contains(blobId, "@") {
 		blobIdTmp = blobId + "%"
 	}
-	query := genAssetBlobUnionQuery(tableNames, "asset_id", "blob_ref LIKE '%"+blobIdTmp+"' LIMIT 1", repoNames, format)
+	query := genAssetBlobUnionQuery(tableNames, "asset_id, path", "blob_ref LIKE '%"+blobIdTmp+"' LIMIT 1", repoNames, format)
 	if len(query) == 0 { // Mainly for unit test
 		h.Log("WARN", fmt.Sprintf("query is empty for blobId: %s and tableNames: %v", blobId, tableNames))
 		return "UNKNOWN1:" + repoName + "/" + format
@@ -1218,7 +1279,7 @@ func isOrphanedBlob(contents string, blobId string, db *sql.DB) string {
 	var cols []string
 	noRows := true
 	for rows.Next() {
-		if common.Debug {
+		if common.Debug || !common.NoExtraChk {
 			// Expecting a lot of blobs in DB, so showing the result only if DEBUG is set
 			if cols == nil || len(cols) == 0 {
 				cols, _ = rows.Columns()
@@ -1230,6 +1291,13 @@ func isOrphanedBlob(contents string, blobId string, db *sql.DB) string {
 			}
 			vals := lib.GetRow(rows, cols)
 			h.Log("DEBUG", fmt.Sprintf("blobId: %s row: %v", blobId, vals))
+			if !common.NoExtraChk {
+				// At this line, it's no longer orphan as the DB record exists, so it's ok to 'return'
+				blobNameDb := vals[1].(string)
+				if len(blobName) == 0 || blobName != blobNameDb {
+					return "MISMATCH_NAME:" + blobName + "/" + blobNameDb
+				}
+			}
 		}
 		noRows = false
 		break
@@ -1322,9 +1390,9 @@ func main() {
 
 	startMs := time.Now().UnixMilli()
 
-	// If the list of Blob IDs are provided, use it
+	// If the list of Blob IDs is provided, use it
 	if len(common.BlobIDFIle) > 0 {
-		// If Truth (src) is not set or Truth and BlobIDFile type are the same, reading this file as source
+		// If Truth (src) is not set or Truth and BlobIDFile type are the same, reading this file as a source
 		if len(common.Truth) == 0 || (len(common.Truth) > 0 && common.Truth == common.BlobIDFIleType) {
 			if common.BlobIDFIleType == "BS" && len(common.DbConnStr) > 0 {
 				printHeader(common.SaveToPointer)
@@ -1334,8 +1402,11 @@ func main() {
 				printHeader(common.SaveToPointer)
 				h.Log("INFO", fmt.Sprintf("checkBlobIdDetailFromBS: path=%s, conc=%d", common.BlobIDFIle, common.Conc1))
 				_ = h.StreamLines(common.BlobIDFIle, common.Conc1, checkBlobIdDetailFromBS)
+			} else if len(common.BaseDir2) > 0 {
+				h.Log("TODO", fmt.Sprintf("Copying from path=%s to %s, conc=%d", common.BlobIDFIle, common.BaseDir2, common.Conc1))
+				// TODO: _ = h.StreamLines(common.BlobIDFIle, common.Conc1, someFunctionToCopyBlobs)
 			} else {
-				h.Log("DEBUG", fmt.Sprintf("No action was taken for path=%s (type:%s) as DbConnStr or BaseDir is missing", common.BlobIDFIle, common.BlobIDFIleType))
+				h.Log("DEBUG", fmt.Sprintf("No action was taken for mode:%s path=%s (type:%s) as DbConnStr or BaseDir is missing", common.Truth, common.BlobIDFIle, common.BlobIDFIleType))
 			}
 			h.Elapsed(startMs, fmt.Sprintf("Completed. Listed: %d (checked: %d), Size: %d bytes", common.PrintedNum, common.CheckedNum, common.TotalSize), 0)
 			return

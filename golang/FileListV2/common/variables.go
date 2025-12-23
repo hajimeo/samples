@@ -36,6 +36,8 @@ var S3PathStyle bool // AWS S3: Use Path-Style access
 // Paths/Directories related. End with "/", so that no need to append  string(filepath.Separator)
 var BaseDir = ""
 var BaseDir2 = ""
+var B2RepoName = ""
+var B2NewBlobId = false
 var BsType = ""     // 'file' for File, 's3' for AWS S3, 'az' for Azure, (TODO) 'gs' for Google
 var BsType2 = ""    // 'file' for File, 's3' for AWS S3, 'az' for Azure, (TODO) 'gs' for Google
 var Container = ""  // Azure: Container name, S3: Bucket name, Google: Bucket name
@@ -98,6 +100,8 @@ var RxDeletedDT = regexp.MustCompile("[^#]?deletedDateTime=([0-9]+)") // When th
 var RxSizeByte = regexp.MustCompile(",size=([0-9]+)")                 // When this regex is used, against the sorted one line text
 var RxDeleted = regexp.MustCompile("deleted=true")                    // should not use ^ as replacing one-line text
 var RxRepoName = regexp.MustCompile(`[^#]?@Bucket\.repo-name=([^,$]+)`)
+var PrefixRxBlobName = "@BlobStore.blob-name="
+var RxBlobName = regexp.MustCompile(`[^#]?` + PrefixRxBlobName + `([^,$]+)`)
 var RxBlobId = regexp.MustCompile("[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}")
 var RxBlobIdNew = regexp.MustCompile(`.*([a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12})@(\d{4})-(\d{2})-(\d{2}).(\d{2}):(\d{2}).*`)
 var RxBlobIdNew2 = regexp.MustCompile(`/?([0-9]{4})/([0-9]{2})/([0-9]{2})/([0-9]{2})/([0-9]{2})/([a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}).*`)

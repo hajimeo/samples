@@ -133,3 +133,41 @@ func TestGenAssetBlobUnionQuery_MultipleTables_ReturnsUnionQuery(t *testing.T) {
 	result := genAssetBlobUnionQuery([]string{"table1", "table2"}, "", "", nil, "")
 	assert.Contains(t, result, "UNION ALL")
 }
+
+func TestRxBlobName(t *testing.T) {
+	newName := "aaa-new-name"
+	orig := "@BlobStore.blob-name=index.yaml,@BlobStore.content-type=text/x-yaml,@BlobStore.created-by-ip=system,@BlobStore.created-by=system,@Bucket.repo-name=nuget.org-proxy,#2021-06-02 22:56:12,617+0000,#Wed Jun 02 22:56:12 UTC 2021,creationTime=1622674572509,deleted=true,deletedDateTime=1622674572617,deletedReason=Updating asset...,size=63"
+	expected := "@BlobStore.blob-name=" + newName + ",@BlobStore.content-type=text/x-yaml,@BlobStore.created-by-ip=system,@BlobStore.created-by=system,@Bucket.repo-name=nuget.org-proxy,#2021-06-02 22:56:12,617+0000,#Wed Jun 02 22:56:12 UTC 2021,creationTime=1622674572509,deleted=true,deletedDateTime=1622674572617,deletedReason=Updating asset...,size=63"
+	contents := common.RxBlobName.ReplaceAllString(orig, common.PrefixRxBlobName+newName)
+	t.Log(contents)
+	assert.Equal(t, expected, contents)
+}
+
+func TestGenCopyToPath_B2NewBlobIdFalse_ReturnsOriginalPath(t *testing.T) {
+	common.B2NewBlobId = false
+	path := "dir/file.txt"
+	result := genCopyToPath(path)
+	assert.Equal(t, path, result)
+}
+
+func TestGenCopyToPath_B2NewBlobIdTrue_ReturnsPathWithNewUUID(t *testing.T) {
+	common.B2NewBlobId = true
+	path := "dir/file.txt"
+	result := genCopyToPath(path)
+	assert.NotEqual(t, path, result)
+	assert.Regexp(t, `^dir/[0-9a-fA-F-]{36}\.txt$`, result)
+}
+
+func TestGenCopyToPath_B2NewBlobIdTrue_HandlesEmptyPathGracefully(t *testing.T) {
+	common.B2NewBlobId = true
+	path := ""
+	result := genCopyToPath(path)
+	assert.Equal(t, path, result)
+}
+
+func TestGenCopyToPath_B2NewBlobIdTrue_HandlesPathWithoutExtension(t *testing.T) {
+	common.B2NewBlobId = true
+	path := "dir/file"
+	result := genCopyToPath(path)
+	assert.Regexp(t, `^dir/[0-9a-fA-F-]{36}$`, result)
+}

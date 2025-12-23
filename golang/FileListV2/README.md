@@ -146,19 +146,17 @@ NOTE: Cleanup unused asset blob tasks should be run before this script because a
 ```
 # Accessing DB by using the connection string and check all formats for orphaned blobs (-src BS)
 # Also `-BytesChk` to exclude .properties files which do not have the .bytes file (deletion marker)
-filelist2 -b "$BLOB_STORE" -c 10 -src BS -db ./sonatype-work/nexus3/etc/fabric/nexus-store.properties -P -pRxNot "deleted=true" -BytesChk -s /tmp/filelist_orphaned_blobs.tsv
+filelist2 -b "$BLOB_STORE" -c 10 -src BS -db ./sonatype-work/nexus3/etc/fabric/nexus-store.properties -mDT "$(date -d "1 day ago" +%Y-%m-%d)" -P -pRxNot "deleted=true" -BytesChk -s /tmp/filelist_orphaned_blobs.tsv
 # NOTE: `-db` also accepts "host=localhost user=nexus dbname=nexus" (with export PGPASSWORD="*******")
-
-# Nexus 3.86 may be going to have the originalLocation line for deletion markers, so may not need to use -BytesChk (TODO: if upgraded, could be confusing)
-filelist2 -b "$BLOB_STORE" -p '/(20\d\d)/' -c 10 -src BS -db ./sonatype-work/nexus3/etc/fabric/nexus-store.properties -P -pRxNot "(deleted=true|originalLocation)" -s /tmp/filelist_orphaned-blobs_without-byteschk.tsv
 ```
+NOTE: Nexus 3.86 may be going to have the originalLocation line for deletion markers, so may not need to use -BytesChk (TODO: if upgraded, could be confusing), so `-pRxNot "(deleted=true|originalLocation)"`  
 
 Can use a text file which contains Blob IDs, so that no Blobstore access is needed:
 
 ```
 filelist2 -src BS -rF ./some_filelist_result.tsv -db ./sonatype-work/nexus3/etc/fabric/nexus-store.properties -bsName default -s /tmp/filelist_orphaned-blobs_no-BS-access.tsv
 ```
-TODO: If the tsv file contains only .properties file, to delete both .properties and .bytes files of the orphaned blobs:
+
 ```
 cd /To/Blobstore/blobs   # As -C doesn't work with the wildcard
 cut -d '.' -f1 ./some_filelist_result.tsv | while read -r _l; do tar -rvf /tmp/test.tar --remove-files ${_l}.*; done
@@ -172,12 +170,6 @@ offset N)
 
 ```
 filelist2 -b "$BLOB_STORE" -db ./sonatype-work/nexus3/etc/fabric/nexus-store.properties -c 10 -query "select blob_ref as blob_id from raw_asset_blob ab join raw_asset a using (asset_blob_id) where repository_id IN (select cr.repository_id from raw_content_repository cr join repository r on r.id = cr.config_repository_id where r.name in ('raw-hosted'))" -src DB -s /tmp/filelist_potentially_dead-blobs.tsv
-```
-
-Can use a text file which contains Blob IDs, so that no DB access is needed:
-
-```
-filelist2 -src BS -rF ./db_exported_blobids.txt -b "$BLOB_STORE" -s /tmp/filelist_potentially_dead-blobs_no-DB-access.tsv
 ```
 
 ### With the undeleter script, like Point-In-Time-Recovery for blobs which exist in Blob store but not in DB
