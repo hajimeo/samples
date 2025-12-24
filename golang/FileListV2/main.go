@@ -848,15 +848,17 @@ func copyPropsBytesToBaseDir2(propPath string) string {
 		return finalErrorCode
 	}
 	// if BaseDir2 (-bTo) is given, try to copy the .properties file and associated .bytes file to BaseDir2
-	copyToPath := genCopyToPath(propPath)
-	errorCode := copyToBaseDir2(propPath, copyToPath)
+	maybeCustomizedPath := genCopyToPath(propPath)
+	errorCode := copyToBaseDir2(propPath, maybeCustomizedPath)
+	h.Log("DEBUG", fmt.Sprintf("copyToBaseDir2 completed for %s, errorCode:%s", propPath, errorCode))
 	if len(errorCode) > 0 {
 		finalErrorCode = errorCode
 	}
 	// Regardless of the errorCode, try to copy the .bytes file as well
 	bytesPath := lib.GetPathWithoutExt(propPath) + common.BYTES_EXT
-	bytesCopyPath := genCopyToPath(propPath)
+	bytesCopyPath := genCopyToPath(bytesPath)
 	errorCode2 := copyToBaseDir2(bytesPath, bytesCopyPath)
+	h.Log("DEBUG", fmt.Sprintf("copyToBaseDir2 completed for %s, errorCode2:%s", bytesPath, errorCode2))
 	if len(errorCode2) > 0 {
 		if len(finalErrorCode) > 0 {
 			finalErrorCode = finalErrorCode + "|" + errorCode2

@@ -48,6 +48,12 @@ func (c *FileClient) WriteToPath(path string, contents string) error {
 	} else {
 		defer h.Elapsed(time.Now().UnixMilli(), "Slow file write for path:"+path, common.SlowMS*2)
 	}
+	// OpenFile fails if the directory does not exist, so create it first
+	dir := filepath.Dir(path)
+	err := os.MkdirAll(dir, 0755)
+	if err != nil {
+		return err
+	}
 	f, err := os.OpenFile(path, os.O_RDWR|os.O_CREATE|os.O_TRUNC, 0644)
 	if err != nil {
 		return err
