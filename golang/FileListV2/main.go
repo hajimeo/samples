@@ -151,13 +151,6 @@ func setGlobals() {
 		if _, err := os.Stat(common.DbConnStr); err == nil {
 			common.DbConnStr = lib.GenDbConnStrFromFile(common.DbConnStr)
 		}
-		if len(common.Truth) > 0 && len(common.Filter4FileName) == 0 {
-			// If Truth is set and DB connection is provided, probably want to check only .properties files
-			h.Log("INFO", "Setting '-f "+common.PROPERTIES+"' as DB connection is provided.")
-			common.Filter4FileName = common.PROPERTIES
-			//common.WithProps = false	// but probably wouldn't need to automatically output the content of .properties
-		}
-
 		// Try connecting to the DB to get the repository name and format
 		common.DB = lib.OpenDb(common.DbConnStr)
 		if common.Conc1 > 0 {
@@ -196,8 +189,6 @@ func setGlobals() {
 	}
 
 	if common.RemoveDeleted {
-		// If RDel, probably want to check .properties files only
-		common.Filter4FileName = `\.` + common.PROPERTIES + `$`
 		if len(common.Filter4PropsIncl) == 0 {
 			common.Filter4PropsIncl = "deleted=true"
 		}
@@ -209,11 +200,6 @@ func setGlobals() {
 
 	// If _FILTER_P is given, automatically populate other related variables
 	if len(common.Filter4PropsIncl) > 0 || len(common.Filter4PropsExcl) > 0 {
-		if len(common.Filter4FileName) == 0 {
-			// TODO: currently this script can not include .bytes when the .properties is included or excluded
-			common.Filter4FileName = `\.` + common.PROPERTIES + `$`
-		}
-
 		if len(common.Filter4PropsIncl) > 0 {
 			common.RxIncl, _ = regexp.Compile(common.Filter4PropsIncl)
 		}
@@ -228,6 +214,14 @@ func setGlobals() {
 		common.RxExclBytes, _ = regexp.Compile(common.Filter4BytesExcl)
 	}
 
+	if len(common.Filter4FileName) == 0 {
+		if (len(common.Truth) > 0 && len(common.DbConnStr) > 0) || (len(common.Filter4PropsIncl) > 0 || len(common.Filter4PropsExcl) > 0) || common.RemoveDeleted || len(common.BaseDir2) > 0 {
+			// If Truth is set and a DB connection is provided, probably want to check only .properties files
+			h.Log("INFO", "Setting '-f "+common.PROPERTIES+"'.")
+			common.Filter4FileName = common.PROPERTIES
+			//common.WithProps = false	// but probably wouldn't need to automatically output the content of .properties
+		}
+	}
 	// This property is automatically changed in the above, so RxFilter4FileName needs to be set in the end
 	if len(common.Filter4FileName) > 0 {
 		common.RxFilter4FileName, _ = regexp.Compile(common.Filter4FileName)
@@ -1431,7 +1425,7 @@ func main() {
 
 		baseDir, pathFilter := mayNeedUpdateBaseDir(common.BaseDir, common.Filter4Path, Client)
 		if !common.NotCompSubDirs {
-			h.Log("INFO", fmt.Sprintf("Computing the sub directories under: %s ...", baseDir))
+			h.Log("DEBUG", fmt.Sprintf("Computing the sub directories under: %s ...", baseDir))
 			subDirs, err = genSubDirs(baseDir, pathFilter, Client)
 		}
 		if len(subDirs) == 0 {
