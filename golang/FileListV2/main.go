@@ -770,18 +770,18 @@ func printLineFromPath(args bs_clients.PrintLineArgs) bool {
 	//h.Log("DEBUG", fmt.Sprintf("Generating the output for '%s'", path))
 	output := genOutput(path, blobInfo, db)
 
+	if len(common.BaseDir2) > 0 && strings.HasSuffix(path, common.PROP_EXT) {
+		finalErrorCode := copyPropsBytesToBaseDir2(path)
+		if len(finalErrorCode) > 0 {
+			output = fmt.Sprintf("%s%s%s", output, common.SEP, finalErrorCode)
+		}
+	}
+
 	// If not empty output, updating counters before saving and returning
 	if len(output) > 0 {
 		//h.Log("DEBUG", fmt.Sprintf("Current output: '%s' for %s", output, path))
 		atomic.AddInt64(&common.PrintedNum, 1)
 		atomic.AddInt64(&common.TotalSize, blobInfo.Size)
-
-		if len(common.BaseDir2) > 0 && strings.HasSuffix(path, common.PROP_EXT) {
-			finalErrorCode := copyPropsBytesToBaseDir2(path)
-			if len(finalErrorCode) > 0 {
-				output = fmt.Sprintf("%s%s%s", output, common.SEP, finalErrorCode)
-			}
-		}
 
 		printOrSave(output, saveToPointer)
 	}
@@ -815,34 +815,38 @@ func writeFromCache(path string, contents string, client bs_clients.Client) (boo
 }
 
 func copyPropsBytesToBaseDir2(propPath string) string {
-	finalErrorCode := ""
-	if !strings.HasSuffix(propPath, common.PROP_EXT) {
-		return finalErrorCode
-	}
-	// if BaseDir2 (-bTo) is given, try to copy the .properties file and associated .bytes file to BaseDir2
-	maybeCustomizedPath := lib.GenCopyToPath(propPath)
-	errorCode := copyToBaseDir2(propPath, maybeCustomizedPath)
-	h.Log("DEBUG", fmt.Sprintf("copyToBaseDir2 completed for %s, errorCode:%s", propPath, errorCode))
-	if len(errorCode) > 0 {
-		finalErrorCode = errorCode
-	}
-	if common.B2PropsOnly {
-		return finalErrorCode
+	// Just in case, checking BaseDir2
+	if len(common.BaseDir2) == 0 {
+		panic("BaseDir2 is empty")
 	}
 
-	// Regardless of the errorCode, try to copy the .bytes file as well
-	bytesPath := lib.GetPathWithoutExt(propPath) + common.BYTES_EXT
-	bytesCopyPath := lib.GenCopyToPath(bytesPath)
-	errorCode2 := copyToBaseDir2(bytesPath, bytesCopyPath)
-	h.Log("DEBUG", fmt.Sprintf("copyToBaseDir2 completed for %s, errorCode2:%s", bytesPath, errorCode2))
-	if len(errorCode2) > 0 {
-		if len(finalErrorCode) > 0 {
-			finalErrorCode = finalErrorCode + "|" + errorCode2
-		} else {
-			finalErrorCode = errorCode2
+	// if BaseDir2 (-bTo) is given, try to copy the .properties file and associated .bytes file to BaseDir2
+	// Skip/ignore non properties files
+	if !strings.HasSuffix(propPath, common.PROP_EXT) {
+		return ""
+	}
+
+	maybeCustomizedPath := lib.GenCopyToPath(propPath)
+	if common.BaseDir == common.BaseDir2 && propPath == maybeCustomizedPath {
+		panic("Source path and destination path are same")
+	}
+
+	// Copying .bytes file first unless B2PropsOnly
+	if !common.B2PropsOnly {
+		// Regardless of the errorCode, try to copy the .bytes file as well
+		bytesPath := lib.GetPathWithoutExt(propPath) + common.BYTES_EXT
+		maybeCustomizedBytesPath := lib.GenCopyToPath(bytesPath)
+		errorCodeBytes := copyToBaseDir2(bytesPath, maybeCustomizedBytesPath)
+		if len(errorCodeBytes) > 0 {
+			h.Log("DEBUG", fmt.Sprintf("copyToBaseDir2 completed for %s, errorCodeBytes:%s", bytesPath, errorCodeBytes))
+			// If Bytes failed to copy, no point of copying properties.
+			return errorCodeBytes
 		}
 	}
-	return finalErrorCode
+
+	errorCode := copyToBaseDir2(propPath, maybeCustomizedPath)
+	h.Log("DEBUG", fmt.Sprintf("copyToBaseDir2 completed for %s, errorCode:%s", propPath, errorCode))
+	return errorCode
 }
 
 func copyToBaseDir2(path string, toPath string) string {
@@ -850,6 +854,7 @@ func copyToBaseDir2(path string, toPath string) string {
 		toPath = path
 	}
 	writingPath := filepath.Join(common.ContentPath2, lib.GetAfterContent(toPath))
+	h.Log("DEBUG", fmt.Sprintf("Copying into %s for %s", writingPath, common.BaseDir2))
 	// TODO: Check if the writingPath already exists in BaseDir2 with GetFileInfo
 	if !common.NoExtraChk {
 		info, err := Client2.GetFileInfo(writingPath)
@@ -890,11 +895,11 @@ func copyToBaseDir2(path string, toPath string) string {
 	defer writer.Close()
 
 	if common.Debug2 {
-		h.Log("DEBUG", fmt.Sprintf("Preparing Reader for the source (writing) path:%s", path))
+		h.Log("DEBUG", fmt.Sprintf("Preparing Reader for the source path:%s", path))
 	}
 	maybeReader, errR := Client.GetReader(path)
 	if errR != nil {
-		h.Log("ERROR", fmt.Sprintf("Getting reader for path:%s from BaseDir:%s failed with %s", path, common.BaseDir, errR))
+		h.Log("WARN", fmt.Sprintf("Reading path:%s from BaseDir:%s failed with %s", path, common.BaseDir, errR))
 		return "READ_FAILED"
 	}
 	reader := maybeReader.(io.ReadCloser)
@@ -1013,11 +1018,6 @@ func checkBlobIdDetailFromBS(maybeBlobId string) interface{} {
 }
 
 func copyToBaseDir2PerLine(maybeSrcBlobPath string) interface{} {
-	// Just in case, checking BaseDir2
-	if len(common.BaseDir2) == 0 {
-		h.Log("DEBUG", "BaseDir2 is not given, so skipping copyToBaseDir2PerLine")
-		return nil
-	}
 	blobId := lib.ExtractBlobIdFromString(maybeSrcBlobPath)
 	if len(blobId) == 0 {
 		h.Log("DEBUG", fmt.Sprintf("Empty blobId in '%s'", maybeSrcBlobPath))
