@@ -179,7 +179,7 @@ func (a *AzClient) WriteToPath(path string, contents string) error {
 func (a *AzClient) GetReader(path string) (interface{}, error) {
 	inFile, err := getAzObject(path, a.ClientNum)
 	if err != nil {
-		h.Log("ERROR", fmt.Sprintf("GetReader: %s failed with %s.", path, err.Error()))
+		h.Log("DEBUG", fmt.Sprintf("GetReader: %s failed with %s.", path, err.Error()))
 		return nil, err
 	}
 	return inFile.Body, nil

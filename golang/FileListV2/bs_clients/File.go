@@ -69,7 +69,7 @@ func (c *FileClient) WriteToPath(path string, contents string) error {
 func (c *FileClient) GetReader(path string) (interface{}, error) {
 	reader, err := os.Open(path)
 	if err != nil {
-		h.Log("ERROR", fmt.Sprintf("GetReader: %s failed with %s.", path, err.Error()))
+		h.Log("DEBUG", fmt.Sprintf("GetReader: %s failed with %s.", path, err.Error()))
 		return nil, err
 	}
 	return reader, nil

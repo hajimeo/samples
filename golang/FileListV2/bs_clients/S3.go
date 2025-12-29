@@ -235,7 +235,7 @@ func (s *S3Client) GetReader(key string) (interface{}, error) {
 	input := getS3ObjectInput(key, bucket)
 	obj, err := getS3Api(s.ClientNum).GetObject(context.TODO(), input)
 	if err != nil {
-		h.Log("ERROR", fmt.Sprintf("GetReader: %s failed with %s.", key, err.Error()))
+		h.Log("DEBUG", fmt.Sprintf("GetReader: %s failed with %s.", key, err.Error()))
 		return nil, err
 	}
 	return obj.Body, nil
