@@ -148,6 +148,7 @@ func getS3Config(clientNum int) (aws.Config, error) {
 	return config.LoadDefaultConfig(context.TODO())
 }
 
+// should use this method instead of common.Container
 func getBucket(clientNum int) string {
 	if clientNum == 2 {
 		if len(common.Container2) == 0 {
@@ -207,7 +208,7 @@ func (s *S3Client) WriteToPath(key string, contents string) error {
 	} else {
 		defer h.Elapsed(time.Now().UnixMilli(), "Slow file write for key:"+key, common.SlowMS*2)
 	}
-	bucket := common.Container
+	bucket := getBucket(s.ClientNum)
 	input := &s3.PutObjectInput{
 		Bucket: &bucket,
 		Key:    &key,
@@ -222,7 +223,7 @@ func (s *S3Client) WriteToPath(key string, contents string) error {
 	if common.RxDeleted.MatchString(contents) {
 		h.Log("DEBUG", fmt.Sprintf("Key: %s. Adding deletion marker tag", key))
 		// Currently do not care about the error. Also replaceTagInput() will log the warn.
-		_ = replaceTagInput(key, "deleted", "true")
+		_ = replaceTagInput(key, "deleted", "true", bucket)
 	}
 	return nil
 }
@@ -245,17 +246,19 @@ func (s *S3Client) GetReader(key string) (interface{}, error) {
 func (s *S3Client) GetWriter(key string) (interface{}, error) {
 	buf := new(bytes.Buffer)
 	writer := &s3BufferedWriter{
-		buf: buf,
-		key: key,
-		s3:  s,
+		buf:    buf,
+		key:    key,
+		s3:     s,
+		bucket: getBucket(s.ClientNum),
 	}
 	return writer, nil
 }
 
 type s3BufferedWriter struct {
-	buf *bytes.Buffer
-	key string
-	s3  *S3Client
+	buf    *bytes.Buffer
+	key    string
+	s3     *S3Client
+	bucket string
 }
 
 func (w *s3BufferedWriter) Write(p []byte) (int, error) {
@@ -263,7 +266,7 @@ func (w *s3BufferedWriter) Write(p []byte) (int, error) {
 }
 
 func (w *s3BufferedWriter) Close() error {
-	bucket := common.Container
+	bucket := w.bucket
 	input := &s3.PutObjectInput{
 		Bucket: &bucket,
 		Key:    &w.key,
@@ -291,7 +294,7 @@ func (s *S3Client) GetPath(key string, localPath string) error {
 	input := getS3ObjectInput(key, bucket)
 	inFile, err := getS3Api(s.ClientNum).GetObject(context.TODO(), input)
 	if err != nil {
-		err2 := fmt.Errorf("failed to get key: %s %s with error: %s", common.Container, key, err.Error())
+		err2 := fmt.Errorf("failed to get key: %s %s with error: %s", bucket, key, err.Error())
 		return err2
 	}
 	defer inFile.Body.Close()
@@ -305,7 +308,7 @@ func (s *S3Client) GetPath(key string, localPath string) error {
 	return err
 }
 
-func replaceTagInput(key string, tagKey string, tagVal string) *s3.PutObjectTaggingInput {
+func replaceTagInput(key string, tagKey string, tagVal string, bucket string) *s3.PutObjectTaggingInput {
 	// NOTE: currently not appending but replacing with just one tag
 	tagging := types.Tagging{
 		TagSet: []types.Tag{},
@@ -315,7 +318,6 @@ func replaceTagInput(key string, tagKey string, tagVal string) *s3.PutObjectTagg
 			TagSet: []types.Tag{{Key: aws.String(tagKey), Value: aws.String(tagVal)}},
 		}
 	}
-	bucket := common.Container
 	return &s3.PutObjectTaggingInput{
 		Bucket:  &bucket,
 		Key:     &key,
@@ -348,14 +350,15 @@ func (s *S3Client) RemoveDeleted(key string, contents string) error {
 		h.Log("DEBUG", fmt.Sprintf("WriteToPath for %s failed with %s", key, err.Error()))
 		return err
 	}
-	inputTag := replaceTagInput(key, "", "")
+	bucket := getBucket(s.ClientNum)
+	inputTag := replaceTagInput(key, "", "", bucket)
 	respTag, err := getS3Api(s.ClientNum).PutObjectTagging(context.TODO(), inputTag)
 	if err != nil {
 		h.Log("WARN", fmt.Sprintf("PutObjectTagging failed. Path: %s. Resp: %v, Error: %s", key, respTag, err.Error()))
 		return err
 	}
 	bKey := h.PathWithoutExt(key) + ".bytes"
-	inputTag = replaceTagInput(bKey, "", "")
+	inputTag = replaceTagInput(bKey, "", "", bucket)
 	respTag, err = getS3Api(s.ClientNum).PutObjectTagging(context.TODO(), inputTag)
 	if err != nil {
 		h.Log("WARN", fmt.Sprintf("PutObjectTagging failed. Path: %s. Resp: %v, Error: %s", key, respTag, err.Error()))
@@ -372,14 +375,11 @@ func (s *S3Client) GetDirs(baseDir string, pathFilter string, maxDepth int) ([]s
 		defer h.Elapsed(time.Now().UnixMilli(), "Slow directory walk for "+baseDir, common.SlowMS*2)
 	}
 	var dirs []string
-	if len(common.Container) == 0 {
-		common.Container, _ = lib.GetContainerAndPrefix(common.BaseDir)
-	}
 	if maxDepth == -1 {
 		maxDepth = 1
 		h.Log("DEBUG", fmt.Sprintf("maxDepth was -1 (auto), changing to %d for S3", maxDepth))
 	}
-	var bucket = common.Container
+	var bucket = getBucket(s.ClientNum)
 	// if baseDir is missing 'content', appending
 	var prefix = lib.GetContentPath(baseDir, bucket)
 	var filterRegex = regexp.MustCompile(pathFilter)
@@ -433,8 +433,7 @@ func (s *S3Client) GetDirs(baseDir string, pathFilter string, maxDepth int) ([]s
 
 func (s *S3Client) ListObjects(dir string, db *sql.DB, perLineFunc func(PrintLineArgs) bool) int64 {
 	var subTtl int64
-	//common.Container, common.Prefix = lib.GetContainerAndPrefix(common.BaseDir)
-	bucket := common.Container
+	bucket := getBucket(s.ClientNum)
 	input := &s3.ListObjectsV2Input{
 		Bucket:     &bucket,
 		MaxKeys:    aws.Int32(int32(common.MaxKeys)),
@@ -514,19 +513,19 @@ func (s *S3Client) ListObjects(dir string, db *sql.DB, perLineFunc func(PrintLin
 }
 
 func (s *S3Client) GetFileInfo(key string) (BlobInfo, error) {
-	if len(common.Container) == 0 {
-		common.Container, common.Prefix = lib.GetContainerAndPrefix(common.BaseDir)
-	}
+	bucket := getBucket(s.ClientNum)
 	owner := ""
 	tags := ""
 
 	input := &s3.HeadObjectInput{
-		Bucket: &common.Container,
+		Bucket: &bucket,
 		Key:    &key,
 	}
 	headObj, err := getS3Api(s.ClientNum).HeadObject(context.TODO(), input)
 	if err != nil {
-		h.Log("DEBUG", fmt.Sprintf("Retrieving %s/%s failed with %s. Ignoring...", common.Container, key, err.Error()))
+		if common.Debug2 {
+			h.Log("DEBUG", fmt.Sprintf("Retrieving %s/%s failed with %s. Ignoring...", bucket, key, err.Error()))
+		}
 		return BlobInfo{Error: true}, err
 	}
 
@@ -534,7 +533,7 @@ func (s *S3Client) GetFileInfo(key string) (BlobInfo, error) {
 	if common.WithOwner {
 		//h.Log("DEBUG", fmt.Sprintf("Retrieving Owner for %s ...", key))
 		input2 := &s3.GetObjectAclInput{
-			Bucket: &common.Container,
+			Bucket: &bucket,
 			Key:    &key,
 		}
 		ownerObj, err2 := getS3Api(s.ClientNum).GetObjectAcl(context.TODO(), input2)
@@ -584,9 +583,10 @@ func (s *S3Client) Convert2BlobInfo(f interface{}) BlobInfo {
 
 func getTags(key string, s *S3Client) string {
 	tags := ""
+	bucket := getBucket(s.ClientNum)
 	//h.Log("DEBUG", fmt.Sprintf("Retrieving tags from %s ...", key))
 	input3 := &s3.GetObjectTaggingInput{
-		Bucket: &common.Container,
+		Bucket: &bucket,
 		Key:    &key,
 	}
 	tagObj, err3 := getS3Api(s.ClientNum).GetObjectTagging(context.TODO(), input3)
