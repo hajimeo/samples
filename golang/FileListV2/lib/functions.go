@@ -4,6 +4,7 @@ package lib
 import (
 	"FileListV2/common"
 	"fmt"
+	"github.com/google/uuid"
 	h "github.com/hajimeo/samples/golang/helpers"
 	"net/url"
 	"os"
@@ -109,6 +110,10 @@ func SortToSingleLine(contents string) string {
 	sort.Strings(lines)
 	// Trimming unnecessary `,` (if "deleted=true" is removed, the properties file may have empty line)
 	return strings.Trim(strings.Join(lines, ","), ",")
+}
+
+func SingleLineToMultiLine(contents string) string {
+	return strings.ReplaceAll(contents, ",", "\n")
 }
 
 func HashCode(s string) int32 {
@@ -240,10 +245,44 @@ func ComputeSubDirs(path string, pathFilter string) (matchingDirs []string) {
 	}
 
 	if len(pathFilter) == 0 || filterRegex.MatchString(path) {
-		h.Log("DEBUG", fmt.Sprintf("Appending %d sub-directories", path))
+		h.Log("DEBUG", fmt.Sprintf("Appending %s sub-directories", path))
 		matchingDirs = append(matchingDirs, path)
 	} else {
 		h.Log("DEBUG", fmt.Sprintf("No computed sub-directories for: %s", path))
 	}
 	return matchingDirs
+}
+
+func GenCopyToPath(path string) string {
+	copyToPath := path
+	// if B2NewBlobId is true, the filename in the path should use the new UUID
+	if len(path) > 0 && common.B2NewBlobId {
+		ext := filepath.Ext(path)
+		dir := filepath.Dir(path)
+		copyToPath = filepath.Join(dir, uuid.New().String()+ext)
+		h.Log("DEBUG", fmt.Sprintf("Changing path from %s to %s for BaseDir2 copy", path, copyToPath))
+	}
+	return copyToPath
+}
+
+func ExtractBlobIdFromString(pathLikeLine string) string {
+	if len(pathLikeLine) == 0 {
+		return ""
+	}
+
+	if !common.NoDateBsLayout {
+		var matches []string
+		// Checking the path like blob ID regex first. /2025/08/14/02/44/6c1d3423-ecbc-4c52-a0fe-01a45a12883a
+		matches = common.RxBlobIdNew2.FindStringSubmatch(pathLikeLine)
+		if len(matches) > 6 {
+			return matches[6] + "@" + matches[1] + "-" + matches[2] + "-" + matches[3] + "T" + matches[4] + ":" + matches[5]
+		}
+		// Probably because the path like string is provide, no need to consider @2025-08-14T02:44 but just in case...
+		matches = common.RxBlobIdNew.FindStringSubmatch(pathLikeLine)
+		if len(matches) > 6 {
+			// 6c1d3423-ecbc-4c52-a0fe-01a45a12883a@2025-08-14T02:44
+			return matches[1] + "@" + matches[2] + "-" + matches[3] + "-" + matches[4] + "T" + matches[5] + ":" + matches[6]
+		}
+	}
+	return common.RxBlobId.FindString(pathLikeLine)
 }

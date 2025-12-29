@@ -375,3 +375,70 @@ func TestIsLeafDir_InvalidDepth_ReturnsTrue(t *testing.T) {
 func TestIsLeafDir_InvalidPathForDepth_ReturnsFalse(t *testing.T) {
 	assert.False(t, IsLeafDir("invalid/path", 3))
 }
+
+func TestGenCopyToPath_B2NewBlobIdFalse_ReturnsOriginalPath(t *testing.T) {
+	common.B2NewBlobId = false
+	path := "dir/file.txt"
+	result := GenCopyToPath(path)
+	assert.Equal(t, path, result)
+}
+
+func TestGenCopyToPath_B2NewBlobIdTrue_ReturnsPathWithNewUUID(t *testing.T) {
+	common.B2NewBlobId = true
+	path := "dir/file.txt"
+	result := GenCopyToPath(path)
+	assert.NotEqual(t, path, result)
+	assert.Regexp(t, `^dir/[0-9a-fA-F-]{36}\.txt$`, result)
+}
+
+func TestGenCopyToPath_B2NewBlobIdTrue_HandlesEmptyPathGracefully(t *testing.T) {
+	common.B2NewBlobId = true
+	path := ""
+	result := GenCopyToPath(path)
+	assert.Equal(t, path, result)
+}
+
+func TestGenCopyToPath_B2NewBlobIdTrue_HandlesPathWithoutExtension(t *testing.T) {
+	common.B2NewBlobId = true
+	path := "dir/file"
+	result := GenCopyToPath(path)
+	t.Log(result)
+	assert.Regexp(t, `^dir/[0-9a-fA-F-]{36}$`, result)
+}
+
+func TestExtractBlobId_ValidPath_ReturnsBlobId(t *testing.T) {
+	path := "vol-01/chap-01/f062f002-88f0-4b53-aeca-7324e9609329.properties"
+	result := ExtractBlobIdFromString(path)
+	assert.Equal(t, "f062f002-88f0-4b53-aeca-7324e9609329", result)
+}
+
+func TestExtractBlobId_InvalidPath_ReturnsEmptyString(t *testing.T) {
+	path := "invalid/path/noBlobId.txt"
+	result := ExtractBlobIdFromString(path)
+	assert.Equal(t, "", result)
+}
+
+func TestExtractBlobId_EmptyPath_ReturnsEmptyString(t *testing.T) {
+	path := ""
+	result := ExtractBlobIdFromString(path)
+	assert.Equal(t, "", result)
+}
+
+func TestExtractBlobId_PathWithMultipleMatches_ReturnsFirstMatch(t *testing.T) {
+	path := "vol-01/chap-01/f062f002-88f0-4b53-aeca-7324e9609329.properties/f062f002-88f0-4b53-aeca-7324e9609999.properties"
+	result := ExtractBlobIdFromString(path)
+	assert.Equal(t, "f062f002-88f0-4b53-aeca-7324e9609329", result)
+}
+
+func TestExtractBlobId_PathWithMultipleMatches_ReturnsFirstMatch_NewLayout(t *testing.T) {
+	path := "2022/10/20/12/33/f062f002-88f0-4b53-aeca-7324e9609329.properties"
+	result := ExtractBlobIdFromString(path)
+	assert.Equal(t, "f062f002-88f0-4b53-aeca-7324e9609329@2022-10-20T12:33", result)
+	path = "/2022/10/20/12/33/f062f002-88f0-4b53-aeca-7324e9609329.properties"
+	result = ExtractBlobIdFromString(path)
+	assert.Equal(t, "f062f002-88f0-4b53-aeca-7324e9609329@2022-10-20T12:33", result)
+	// Probably this is not necessary but just in case
+	path = "aaaa f062f002-88f0-4b53-aeca-7324e9609329@2022-10-20T12:33 bbbb"
+	result = ExtractBlobIdFromString(path)
+	assert.Equal(t, "f062f002-88f0-4b53-aeca-7324e9609329@2022-10-20T12:33", result)
+}
