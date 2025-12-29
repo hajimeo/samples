@@ -38,6 +38,7 @@ var BaseDir = ""
 var BaseDir2 = ""
 var B2RepoName = ""
 var B2NewBlobId = false
+var B2PropsOnly = false
 var BsType = ""     // 'file' for File, 's3' for AWS S3, 'az' for Azure, (TODO) 'gs' for Google
 var BsType2 = ""    // 'file' for File, 's3' for AWS S3, 'az' for Azure, (TODO) 'gs' for Google
 var Container = ""  // Azure: Container name, S3: Bucket name, Google: Bucket name

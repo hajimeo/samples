@@ -29,43 +29,6 @@ func TestPrintHeader_NoHeaderFlagSet_DoesNotPrintHeader(t *testing.T) {
 	assert.True(t, true) // Placeholder assertion
 }
 
-func TestExtractBlobId_ValidPath_ReturnsBlobId(t *testing.T) {
-	path := "vol-01/chap-01/f062f002-88f0-4b53-aeca-7324e9609329.properties"
-	result := extractBlobIdFromString(path)
-	assert.Equal(t, "f062f002-88f0-4b53-aeca-7324e9609329", result)
-}
-
-func TestExtractBlobId_InvalidPath_ReturnsEmptyString(t *testing.T) {
-	path := "invalid/path/noBlobId.txt"
-	result := extractBlobIdFromString(path)
-	assert.Equal(t, "", result)
-}
-
-func TestExtractBlobId_EmptyPath_ReturnsEmptyString(t *testing.T) {
-	path := ""
-	result := extractBlobIdFromString(path)
-	assert.Equal(t, "", result)
-}
-
-func TestExtractBlobId_PathWithMultipleMatches_ReturnsFirstMatch(t *testing.T) {
-	path := "vol-01/chap-01/f062f002-88f0-4b53-aeca-7324e9609329.properties/f062f002-88f0-4b53-aeca-7324e9609999.properties"
-	result := extractBlobIdFromString(path)
-	assert.Equal(t, "f062f002-88f0-4b53-aeca-7324e9609329", result)
-}
-
-func TestExtractBlobId_PathWithMultipleMatches_ReturnsFirstMatch_NewLayout(t *testing.T) {
-	path := "2022/10/20/12/33/f062f002-88f0-4b53-aeca-7324e9609329.properties"
-	result := extractBlobIdFromString(path)
-	assert.Equal(t, "f062f002-88f0-4b53-aeca-7324e9609329@2022-10-20T12:33", result)
-	path = "/2022/10/20/12/33/f062f002-88f0-4b53-aeca-7324e9609329.properties"
-	result = extractBlobIdFromString(path)
-	assert.Equal(t, "f062f002-88f0-4b53-aeca-7324e9609329@2022-10-20T12:33", result)
-	// Probably this is not necessary but just in case
-	path = "aaaa f062f002-88f0-4b53-aeca-7324e9609329@2022-10-20T12:33 bbbb"
-	result = extractBlobIdFromString(path)
-	assert.Equal(t, "f062f002-88f0-4b53-aeca-7324e9609329@2022-10-20T12:33", result)
-}
-
 func TestGenBlobPath_ValidBlobId_ReturnsCorrectPath(t *testing.T) {
 	result := genBlobPath("f062f002-88f0-4b53-aeca-7324e9609329", ".properties")
 	expected := "vol-42/chap-31/f062f002-88f0-4b53-aeca-7324e9609329.properties"
@@ -141,33 +104,4 @@ func TestRxBlobName(t *testing.T) {
 	contents := common.RxBlobName.ReplaceAllString(orig, common.PrefixRxBlobName+newName)
 	t.Log(contents)
 	assert.Equal(t, expected, contents)
-}
-
-func TestGenCopyToPath_B2NewBlobIdFalse_ReturnsOriginalPath(t *testing.T) {
-	common.B2NewBlobId = false
-	path := "dir/file.txt"
-	result := genCopyToPath(path)
-	assert.Equal(t, path, result)
-}
-
-func TestGenCopyToPath_B2NewBlobIdTrue_ReturnsPathWithNewUUID(t *testing.T) {
-	common.B2NewBlobId = true
-	path := "dir/file.txt"
-	result := genCopyToPath(path)
-	assert.NotEqual(t, path, result)
-	assert.Regexp(t, `^dir/[0-9a-fA-F-]{36}\.txt$`, result)
-}
-
-func TestGenCopyToPath_B2NewBlobIdTrue_HandlesEmptyPathGracefully(t *testing.T) {
-	common.B2NewBlobId = true
-	path := ""
-	result := genCopyToPath(path)
-	assert.Equal(t, path, result)
-}
-
-func TestGenCopyToPath_B2NewBlobIdTrue_HandlesPathWithoutExtension(t *testing.T) {
-	common.B2NewBlobId = true
-	path := "dir/file"
-	result := genCopyToPath(path)
-	assert.Regexp(t, `^dir/[0-9a-fA-F-]{36}$`, result)
 }
