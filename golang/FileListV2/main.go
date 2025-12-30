@@ -788,7 +788,7 @@ func printLineFromPath(args bs_clients.PrintLineArgs) bool {
 	return true
 }
 
-func getContentsFromCache(path string, client bs_clients.Client) (string, error) {
+func getContentsFromCache(path string) (string, error) {
 	if common.CacheSize > 0 {
 		valueInCache := h.CacheGetObj(path)
 		if valueInCache != nil && len(valueInCache.(string)) > 0 {
@@ -800,12 +800,9 @@ func getContentsFromCache(path string, client bs_clients.Client) (string, error)
 	return "", nil
 }
 
-func writeFromCache(path string, contents string, client bs_clients.Client) (bool, error) {
+func writeToPath(path string, contents string) (bool, error) {
 	if len(contents) == 0 { // Currently writing only when not empty
 		return false, nil
-	}
-	if len(common.B2RepoName) > 0 {
-		contents = common.RxBlobName.ReplaceAllString(contents, common.PrefixRxBlobName+common.B2RepoName)
 	}
 	err := Client2.WriteToPath(path, contents)
 	if err != nil {
@@ -837,8 +834,8 @@ func copyPropsBytesToBaseDir2(propPath string) string {
 		bytesPath := lib.GetPathWithoutExt(propPath) + common.BYTES_EXT
 		maybeCustomizedBytesPath := lib.GenCopyToPath(bytesPath)
 		errorCodeBytes := copyToBaseDir2(bytesPath, maybeCustomizedBytesPath)
-		if len(errorCodeBytes) > 0 {
-			h.Log("DEBUG", fmt.Sprintf("copyToBaseDir2 completed for %s, errorCodeBytes:%s", bytesPath, errorCodeBytes))
+		if len(errorCodeBytes) > 0 && errorCodeBytes != "ALREADY_EXISTS" {
+			h.Log("DEBUG", fmt.Sprintf("copyToBaseDir2 completed with error. path:%s, errorCodeBytes:%s", bytesPath, errorCodeBytes))
 			// If Bytes failed to copy, no point of copying properties.
 			return errorCodeBytes
 		}
@@ -866,19 +863,37 @@ func copyToBaseDir2(path string, toPath string) string {
 
 	// If the path is .properties, first try to write by using the cache
 	if strings.HasSuffix(path, common.PROP_EXT) {
-		contents, err := getContentsFromCache(path, Client2)
+		contents, err := getContentsFromCache(path)
 		if err != nil {
-			h.Log("ERROR", fmt.Sprintf("Getting cache for path:%s failed with %s", writingPath, err))
-			return "READ_CACHE_FAILED"
+			h.Log("DEBUG", fmt.Sprintf("Getting cache for path:%s failed with %s", writingPath, err))
 		}
-		result, err := writeFromCache(writingPath, contents, Client2)
-		if err != nil {
-			h.Log("ERROR", fmt.Sprintf("Writing path:%s to BaseDir2:%s failed with %s", writingPath, common.BaseDir2, err))
-			return "FROM_CACHE_FAILED"
+		if len(common.B2RepoName) > 0 && len(contents) == 0 {
+			// Read the contents from the path
+			contents, err = Client.ReadPath(path)
+			if err != nil || len(contents) == 0 {
+				h.Log("ERROR", fmt.Sprintf("Reading path:%s failed with %s (or empty)", writingPath, err))
+				// This (reading file error) is not the skip reason, so returning nil error.
+				return "READ_FAILED"
+			}
 		}
-		if result {
-			// nothing to append as it worked
-			return ""
+
+		if len(common.B2RepoName) > 0 && len(contents) > 0 {
+			contents = common.RxRepoName.ReplaceAllString(contents, "${1}"+common.B2RepoName)
+			//h.Log("DEBUG", fmt.Sprintf("Contents for %s changed to %s", path, contents))
+		}
+
+		if len(contents) > 0 {
+			h.Log("DEBUG", fmt.Sprintf("Contents replaced to %s", contents))
+			result, err := writeToPath(writingPath, contents)
+			if err != nil {
+				h.Log("ERROR", fmt.Sprintf("Writing path:%s to BaseDir2:%s failed with %s", writingPath, common.BaseDir2, err))
+				return "FROM_CACHE_FAILED"
+			}
+
+			if result {
+				// nothing to append as it worked
+				return ""
+			}
 		}
 	}
 
@@ -1135,30 +1150,6 @@ func getAssetTableNamesFromRepoNames(repoNames string) (result []string) {
 	return result
 }
 
-func getRepoName(contents string) string {
-	if len(contents) > 0 {
-		m := common.RxRepoName.FindStringSubmatch(contents)
-		if len(m) < 2 {
-			h.Log("WARN", "No repo-name in "+contents)
-			return ""
-		}
-		return m[1]
-	}
-	return ""
-}
-
-func getBlobName(contents string) string {
-	if len(contents) > 0 {
-		m := common.RxBlobName.FindStringSubmatch(contents)
-		if len(m) < 2 {
-			h.Log("WARN", "No blob-name in "+contents)
-			return ""
-		}
-		return m[1]
-	}
-	return ""
-}
-
 func genAssetBlobUnionQuery(assetTableNames []string, columns string, afterWhere string, reposPerFmt []string, format string) string {
 	cte := ""
 	cteJoin := ""
@@ -1245,8 +1236,8 @@ func genSubDirs(baseDir string, pathFilter string, client bs_clients.Client) (ma
 func isOrphanedBlob(contents string, blobId string, db *sql.DB) string {
 	// Orphaned blob is the blob which is in the blob store but not in the DB
 	// UNION ALL query against many tables is slow. so if contents is given, using specific table of the repo-name.
-	repoName := getRepoName(contents)
-	blobName := getBlobName(contents)
+	repoName := lib.GetRepoName(contents)
+	blobName := lib.GetBlobName(contents)
 	format := getFmtFromRepName(repoName)
 	tableNames := getAssetTableNamesFromRepoNames(repoName)
 	if len(repoName) > 0 && len(tableNames) == 0 {
