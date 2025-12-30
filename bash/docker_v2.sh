@@ -62,7 +62,7 @@ function get_token() {
     fi | sed -E 's/.+"token":"([^"]+)".+/\1/'
 }
 
-    # If 'jq': jq -R 'split(".") | .[1] | @base64d | fromjson' <<< "$1"
+# If 'jq': jq -R 'split(".") | .[1] | @base64d | fromjson' <<< "$1"
 function decode_jwt() {
     local _jwt="$1"
     local _payload="$(echo -n "${_jwt}" | cut -d "." -f 2)"
