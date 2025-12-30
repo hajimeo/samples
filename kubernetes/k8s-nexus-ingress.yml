@@ -35,13 +35,13 @@ spec:
   ingressClassName: nexus-ingresscontroller
   tls:
     - hosts:
-        - nxrm3pg-k8s.standalone.localdomain
+        - nxrm3helmha-k8s.standalone.localdomain
         - docker-k8s.standalone.localdomain
         - nxiq-k8s.standalone.localdomain
       secretName: nexus-tls
   rules:
     # NXRM3 + PostgreSQL standalone
-    - host: nxrm3pg-k8s.standalone.localdomain
+    - host: nxrm3helmha-k8s.standalone.localdomain
       http:
         paths:
           - path: /

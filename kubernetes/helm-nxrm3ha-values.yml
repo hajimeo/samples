@@ -6,7 +6,7 @@
 
 #$ export NAME_SPACE="nexusrepo" RELEASE_NAME="nxrm3ha" ADMIN_PWD="admin123" LICENSE_B64="$(base64 -i $HOME/share/sonatype/sonatype-license.lic)" DB_SERVER="192.168.4.31";export NFS_SERVER="192.168.4.31" SHARE_DIR="/var/tmp/share/sonatype/${RELEASE_NAME}-nfs"
 #$ export TAG="3.72.0"
-# NOTE: to decode: kubectl get secrets nexus-repo-license.lic -n nexusrepo -o jsonpath="{.data.nexus-repo-license\.lic}" | base64 -d >/tmp/my-test2.lic
+# NOTE: to decode: kubectl get secrets nexus-repo-license.lic -n $NAME_SPACE -o jsonpath="{.data.nexus-repo-license\.lic}" | base64 -d >/tmp/my-test2.lic
 
 ## Most likely only once
 #$ #kubectl create namespace ${NAME_SPACE}
