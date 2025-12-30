@@ -446,7 +446,7 @@ function f_jshell() {
     elif type jshell &>/dev/null; then
         jshell
     else
-        local _jshell="$(find ${_JAVA_DIR%/} -maxdepth 3 -name jshell | sort | tail -n1)" || return $?
+        local _jshell="$(find ${_JAVA_DIR%/} -maxdepth 3 -name jshell | sort -V | tail -n1)" || return $?
         [ -x "${_jshell}" ] && eval "${_jshell}"
     fi
 }
