@@ -39,28 +39,35 @@ _ORIG_JAVA_HOME=""
 function _java_home() {
     local _prod_ver="${1}"
     local _is_java17=false
-    if [[ "${_prod_ver}" =~ 3\.(7[1-9]\.|[89][0-9]\.|[1-9][0-9][0-9]).+ ]]; then
+    local _is_java21=false
+    if [[ "${_prod_ver}" =~ 3\.(8[6-9]\.|9[0-9]\.).+ ]]; then
+        _is_java21=true
+    elif [[ "${_prod_ver}" =~ 3\.(7[1-9]\.|8[0-6]\.).+ ]]; then
         _is_java17=true
-    elif [[ "${_prod_ver}" =~ 1\.1[89][0-9]\. ]]; then
+    elif [[ "${_prod_ver}" =~ 1\.1[89][0-9]\. ]]; then  # For IQ
         _is_java17=true
     fi
     if ${_is_java17}; then
         if [ -d "${JAVA_HOME_17}" ]; then
             _ORIG_JAVA_HOME="${JAVA_HOME}"
             export JAVA_HOME="${JAVA_HOME_17}" #NEXUSTOOLS_JAVA_HOME="${JAVA_HOME_17}"
-            export INSTALL4J_JAVA_HOME="${JAVA_HOME_17}" #NEXUSTOOLS_JAVA_HOME="${JAVA_HOME_17}"
-            export app_java_home="${JAVA_HOME_17}" #NEXUSTOOLS_JAVA_HOME="${JAVA_HOME_17}"
+            export INSTALL4J_JAVA_HOME="${JAVA_HOME_17}"
+            export INSTALL4J_JAVA_HOME_OVERRIDE="${JAVA_HOME_17}"
+            export APP_JAVA_HOME="${JAVA_HOME_17}"
             echo "# export JAVA_HOME=\"${JAVA_HOME_17}\""
         else
             echo "# Make sure JAVA_HOME is set to Java 17"; sleep 3
         fi
+    elif ${_is_java21}; then
+        echo "# Java 21 is required for Nexus 3.86+ (no need to set JAVA_HOME or any environment variable)"
     elif [ -n "${_ORIG_JAVA_HOME}" ]; then
         export JAVA_HOME="${_ORIG_JAVA_HOME}"
         #export INSTALL4J_JAVA_HOME="${_ORIG_JAVA_HOME}"
-        echo "# export JAVA_HOME=\"${_ORIG_JAVA_HOME}\""
+        echo "# export JAVA_HOME=\"${_ORIG_JAVA_HOME}\" (original)"
     elif [ -n "${JAVA_HOME_8}" ]; then
         export JAVA_HOME="${JAVA_HOME_8}"
         export INSTALL4J_JAVA_HOME="${JAVA_HOME_8}"
+        # Actually this should be APP_JAVA_HOME, but small letters work with older versions
         export app_java_home="${JAVA_HOME_8}"
         echo "# export JAVA_HOME=\"${JAVA_HOME_8}\""
     fi
@@ -68,7 +75,7 @@ function _java_home() {
 function _get_rm_url() {
     local _rm_url="${1:-${_NEXUS_URL}}"
     if [ -z "${_rm_url}" ]; then
-        for _url in "http://localhost:8081/" "https://nxrm3pg-k8s.standalone.localdomain/" "https://nxrm3helmha-k8s.standalone.localdomain/" "http://dh1:8081/"; do
+        for _url in "http://localhost:8081/" "https://nxrm3helmha-k8s.standalone.localdomain/" "https://nxrm3helmha-k8s.standalone.localdomain/" "http://dh1:8081/"; do
             if curl -m1 -f -s -I "${_url%/}/" &>/dev/null; then
                 echo "${_url%/}/"
                 _NEXUS_URL="${_url%/}/"
@@ -153,15 +160,15 @@ function nxrmStart() {
     fi
 
     local _nexus_file="${_base_dir%/}/nexus/bin/nexus"
-    [ -s "${_nexus_file}" ] || _nexus_file="$(find ${_base_dir%/} -maxdepth 4 -path '*/bin/*' -type f -name 'nexus' 2>/dev/null | sort | tail -n1)"
-    local _nexus_vmopt="$(find ${_base_dir%/} -maxdepth 4 -path '*/bin/*' -type f -name 'nexus.vmoptions' 2>/dev/null | sort | tail -n1)"
-    local _sonatype_work="$(find ${_base_dir%/} -maxdepth 4 -path '*/sonatype-work/*' -type d \( -name 'nexus3' -o -name 'nexus2' -o -name 'nexus' -o -name 'nexus' \) 2>/dev/null | grep -v -w elasticsearch | sort | tail -n1)"
+    [ -s "${_nexus_file}" ] || _nexus_file="$(find ${_base_dir%/} -maxdepth 4 -path '*/bin/*' -type f -name 'nexus' 2>/dev/null | sort -V | tail -n1)"
+    local _nexus_vmopt="$(find ${_base_dir%/} -maxdepth 4 -path '*/bin/*' -type f -name 'nexus.vmoptions' 2>/dev/null | sort -V | tail -n1)"
+    local _sonatype_work="$(find ${_base_dir%/} -maxdepth 4 -path '*/sonatype-work/*' -type d \( -name 'nexus3' -o -name 'nexus2' -o -name 'nexus' -o -name 'nexus' \) 2>/dev/null | grep -v -w elasticsearch | sort -V | tail -n1)"
     if [ -z "${_sonatype_work%/}" ]; then
         echo "This function requires sonatype-work/{nexus|nexus3}"
         return 1
     fi
     local _nexus_ver="$(basename "$(dirname "$(dirname "$(realpath "${_nexus_file}")")")")"
-    local _jetty_https="$(find ${_base_dir%/} -maxdepth 4 -path '*/etc/*' -type f -name 'jetty-https.xml' 2>/dev/null | sort | tail -n1)"
+    local _jetty_https="$(find ${_base_dir%/} -maxdepth 4 -path '*/etc/*' -type f -name 'jetty-https.xml' 2>/dev/null | sort -V | tail -n1)"
     local _karaf_conf="$(find . -maxdepth 4 -type f -name 'config.properties' -path '*/etc/karaf/*' | head -n1)"
     if [ -n "${_karaf_conf}" ] && ! grep -q 'org.openjdk.btrace' ${_karaf_conf}; then
         # TODO: not sure if "-i ''" or "-i''"
@@ -257,7 +264,8 @@ function nxrmStart() {
     fi
 
     # For java options, latter values are used, so appending
-    ulimit -n 65536
+    ulimit -n 65536 # To avoid 'Too many open files'
+    # If Nexus 2, may need to add 'wrapper.java.additional.4=-XX:-MaxFDLimit' in wrapper.conf
     local _cmd="INSTALL4J_ADD_VM_PARAMS=\"-XX:-MaxFDLimit ${INSTALL4J_ADD_VM_PARAMS} ${_java_opts}\" ${_nexus_file} ${_mode}"
     # TODO: should update the nexus.rc file with `app_java_home` for Java 17 or Java 11
     _java_home "${_nexus_ver}"
@@ -299,9 +307,9 @@ UPDATE security_user SET status = 'active' WHERE id='admin';
 DELETE FROM user_role_mapping WHERE user_id = 'admin';
 INSERT INTO user_role_mapping (user_id, source, roles) VALUES ('admin', 'default', '["nx-admin"]'::jsonb);
 DELETE FROM nuget_asset WHERE path = '/index.json'; -- NEXUS-36090
-UPDATE repository SET attributes = jsonb_set(attributes, '{httpclient,authentication,password}','\"\"'::jsonb) WHERE attributes->'httpclient'->'authentication'->>'password' is not null;
+UPDATE repository SET attributes = jsonb_set(attributes, '{httpclient,authentication,password}','""'::jsonb) WHERE attributes->'httpclient'->'authentication'->>'password' is not null;
 TRUNCATE TABLE http_client_configuration;
-INSERT INTO http_client_configuration (id, proxy) VALUES (1, '{"http": {"host": "localhost", "port": 28080, "enabled": true, "authentication": null}, "https": {"host": "localhost", "port": 28080, "enabled": true, "authentication": null}, "nonProxyHosts": ["*.sonatype.com"]}', NULL);
+INSERT INTO http_client_configuration (id, proxy) VALUES (1, '{"http": {"host": "localhost", "port": 28080, "enabled": true, "authentication": null}, "https": {"host": "localhost", "port": 28080, "enabled": true, "authentication": null}, "nonProxyHosts": ["*.sonatype.com"]}');
 EOF
 #UPDATE realm_configuration SET realm_names = '["NexusAuthenticatingRealm", "NexusAuthorizingRealm"]'::jsonb where id = 1;
 }
@@ -441,7 +449,7 @@ function setDbConn() {
         _RECREATE_DB=${_RECREATE_DB} _postgresql_create_dbuser "${_dbusr}" "${_dbpwd}" "${_dbname}" "${_dbschema}"
     fi
 
-    local _work_dir="$(find ${_baseDir%/} -mindepth 1 -maxdepth 2 -type d -path '*/sonatype-work/*' -name 'nexus3' | sort | tail -n1)"
+    local _work_dir="$(find ${_baseDir%/} -mindepth 1 -maxdepth 2 -type d -path '*/sonatype-work/*' -name 'nexus3' | sort -V | tail -n1)"
 
     if [ -z "${_dbname}" ]; then
         if echo "${JAVA_TOOL_OPTIONS}" | grep -q "nexus.datastore.nexus.schema="; then
@@ -466,7 +474,7 @@ EOF
             return 0
         fi
     elif [[ "${_isIQ}" =~ ^[yY] ]]; then
-        local _config_yml="$(find ${_baseDir%/} -mindepth 1 -maxdepth 2 -type f -name 'config.yml' | sort | head -n1)"
+        local _config_yml="$(find ${_baseDir%/} -mindepth 1 -maxdepth 2 -type f -name 'config.yml' | sort -V | head -n1)"
         if [ -s "${_config_yml}" ]; then
             cat <<EOF > ${_config_yml}
 $(sed -n '/^database:/q;p' ${_config_yml})
@@ -615,11 +623,11 @@ function iqStart() {
     local _loader_jar="${4:-"$HOME/IdeaProjects/product-support-nexus-tools/nexustools/src/nexustools/booter/support-zip-loader-v2.jar"}"
     #local _java_opts=${@:2}
 
-    local _jar_file="$(find -L "${_base_dir%/}" -maxdepth 2 -type f -name 'nexus-iq-server*.jar' 2>/dev/null | sort | tail -n1)"
+    local _jar_file="$(find -L "${_base_dir%/}" -maxdepth 2 -type f -name 'nexus-iq-server*.jar' 2>/dev/null | sort -V | tail -n1)"
     [ -z "${_jar_file}" ] && return 11
-    local _cfg_file="$(find -L "${_base_dir%/}" -maxdepth 2 -type f -name 'spt-boot.yml' 2>/dev/null | sort | tail -n1)"
+    local _cfg_file="$(find -L "${_base_dir%/}" -maxdepth 2 -type f -name 'spt-boot.yml' 2>/dev/null | sort -V | tail -n1)"
     if [ -z "${_cfg_file}" ]; then
-        _cfg_file="$(find -L "${_base_dir%/}" -maxdepth 2 -type f -name 'config.yml' 2>/dev/null | sort | tail -n1)"
+        _cfg_file="$(find -L "${_base_dir%/}" -maxdepth 2 -type f -name 'config.yml' 2>/dev/null | sort -V | tail -n1)"
         [ -z "${_cfg_file}" ] && return 12
         local _work_dir="$(sed -n -E 's/sonatypeWork[[:space:]]*:[[:space:]]*(.+)/\1/p' "${_cfg_file}")"
         local _license="$(ls -1t /var/tmp/share/sonatype/*.lic 2>/dev/null | head -n1)"
@@ -757,19 +765,22 @@ function iqDocker() {
     local _p=""
     local _p8070="8070"
     if [ -n "${_ports}" ]; then
-        local _first_one_checked=false
+        local _first_one_changed=false
         for _p_p in ${_ports}; do
             if [[ "${_p_p}" =~ ^([0-9]+):([0-9]+)$ ]]; then
                 local _host_port="${BASH_REMATCH[1]}"
                 local _container_port="${BASH_REMATCH[2]}"
+                local _new_port=$(( ${BASH_REMATCH[1]} + 10000 ))
                 #_wait_url "http://127.0.0.1:${BASH_REMATCH[1]}" "1" "0"
-                if ! ${_first_one_checked} && curl -m1 -sIf -k "http://127.0.0.1:${_host_port}" &>/dev/null; then
+                if ! ${_first_one_changed} && curl -m1 -sIf -k "http://127.0.0.1:${_host_port}" &>/dev/null; then
                     echo "WARN: Port ${_host_port} is already in use. Using ${_new_port}:${_container_port}"; sleep 2
+                    _p="-p ${_new_port}:${_container_port} ${_p% }"
+                    _first_one_changed=true
+                elif ${_first_one_changed}; then
                     _p="-p ${_new_port}:${_container_port} ${_p% }"
                 else
                     _p="-p ${_p_p} ${_p% }"
                 fi
-                _first_one_checked=true
                 if [ "${_container_port}" == "8070" ]; then
                     _p8070="${_host_port}"
                 fi
@@ -872,7 +883,7 @@ for v in {1..3}; do
   done || break
 done
 # Download test (need to use group repo):
-set -x;mvn-get "com.example1:my-app2:1.3-SNAPSHOT" "http://dh1:8081/repository/maven-public/";set +x
+set -x;mvn-get "com.example1:my-app2:1.3-SNAPSHOT" "http://dh1:8081/repository/maven-group/";set +x
 EOF
 # Example for testing version sort order
 : <<'EOF'
@@ -953,7 +964,7 @@ alias mvn-get='mvn-get-file'
 function mvn-get-file() {
     local __doc__="It says mvn- but curl to get a single file with GAV."
     local _gav="${1:-"junit:junit:4.12"}"   # or org.yaml:snakeyaml:jar:1.23
-    local _repo_url="${2:-"$(_get_rm_url)repository/maven-public/"}"
+    local _repo_url="${2:-"$(_get_rm_url)repository/maven-group/"}"
     local _user="${3:-"admin"}"
     local _pwd="${4:-"admin123"}"
     local _path=""
@@ -989,7 +1000,7 @@ function mvn-get-with-dep() {
 function mvn-get-then-deploy() {
     local __doc__="Get a file with curl/mvn-get-file, then mvn deploy:deploy-file"
     local _gav="${1:-"junit:junit:4.12"}"
-    local _get_repo="${2:-"$(_get_rm_url)repository/maven-public/"}"
+    local _get_repo="${2:-"$(_get_rm_url)repository/maven-group/"}"
     local _dep_repo="${3:-"$(_get_rm_url)repository/maven-snapshots/"}" # layout policy: strict may make request fail.
     local _is_snapshot="${4-"Y"}"
     local _file="$(mvn-get-file "${_gav}" "${_get_repo}")" || return $?
