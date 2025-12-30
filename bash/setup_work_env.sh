@@ -266,7 +266,7 @@ EOF
     fi
 }
 
-#f_setup_python "https://nxrm3pg-k8s.standalone.localdomain/repository/pypi-proxy/" "${HOME%/}/.pyvenv_new"
+#f_setup_python "https://nxrm3helmha-k8s.standalone.localdomain/repository/pypi-proxy/" "${HOME%/}/.pyvenv_new"
 function f_setup_python() {
     local _pypi_proxy_url="$1"
     local _venv_path="${2-"${HOME%/}/.pyvenv"}"
