@@ -728,8 +728,8 @@ function t_requests() {
     fi
 
     # NOTE: can't use headerContentLength as some request.log doesn't have it
-    f_reqsFromCSV "request.csv" 2>/dev/null >${_FILTERED_DATA_DIR%/}/agg_requests_top20_slow_GET.out
-    _test_template "$(_rg -q '\s+GET\s+' -m1 ${_FILTERED_DATA_DIR%/}/agg_requests_top20_slow_GET.out && cat ${_FILTERED_DATA_DIR%/}/agg_requests_top20_slow_GET.out)" "WARN" "Top 20 slow downloads (GET) from ${_FILTERED_DATA_DIR}/request.csv (Check 'POST /service/extdirect')"
+    f_reqsFromCSV "request.csv" 2>/dev/null >${_FILTERED_DATA_DIR%/}/agg_requests_top20_slow.out
+    _test_template "$(_rg -q '\s+GET\s+' -m1 ${_FILTERED_DATA_DIR%/}/agg_requests_top20_slow.out && cat ${_FILTERED_DATA_DIR%/}/agg_requests_top20_slow.out)" "WARN" "Top 20 slow downloads (GET) from ${_FILTERED_DATA_DIR}/request.csv (Check 'POST /service/extdirect')"
 }
 
 
