@@ -7,8 +7,21 @@ if [ -z "${_CONN_TO}" ]; then
 fi
 #sshfs -o uid=1000,gid=1000,umask=002,reconnect,follow_symlinks,transform_symlinks ${USER}@${_CONN_TO}:/Users/${USER}/share $HOME/share
 sshfs -o uid=1000,gid=1000,umask=002,reconnect,follow_symlinks,transform_symlinks ${USER}@${_CONN_TO}:/Users/${USER}/utm-share /var/tmp/utm-share
+sshfs -o uid=1000,gid=1000,umask=002,reconnect,follow_symlinks,transform_symlinks ${USER}@${_CONN_TO}:/Users/${USER}/Apps $HOME/Apps
 sshfs -o uid=1000,gid=1000,umask=002,reconnect,follow_symlinks,transform_symlinks ${USER}@${_CONN_TO}:/Users/${USER}/IdeaProjects $HOME/IdeaProjects
 sshfs -o uid=1000,gid=1000,umask=002,reconnect,follow_symlinks,transform_symlinks ${USER}@${_CONN_TO}:/Volumes/Samsung_T5/hajime/cases $HOME/Documents/cases
 sshfs -o uid=1000,gid=1000,umask=002,reconnect,follow_symlinks,transform_symlinks ${USER}@${_CONN_TO}:/Volumes/Samsung_T5/hajime/nexus_executable_cache $HOME/.nexus_executable_cache
 mount | grep "${USER}@${_CONN_TO}"
-exit 0
+if ! grep -E "#?${_CONN_TO}\s+m1mac\.standalone.localdomain" /etc/hosts; then
+    echo "Updating /etc/hosts to map m1mac.standalone.localdomain to ${_CONN_TO} ..."
+    if ! grep -E "#?.+\s+m1mac\.standalone.localdomain" /etc/hosts; then
+        echo "${_CONN_TO} m1mac.standalone.localdomain m1mac" | sudo tee -a /etc/hosts
+    else
+        sudo sed -i -E 's/^[0-9.]+[[:space:]]+m1mac/'${_CONN_TO}' m1mac/' /etc/hosts
+    fi
+fi
+
+echo "Use the following commands to create disk space:
+docker system prune -a #-f
+podman system prune -a
+sudo journalctl --vacuum-size=100M"
