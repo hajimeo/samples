@@ -286,3 +286,27 @@ func ExtractBlobIdFromString(pathLikeLine string) string {
 	}
 	return common.RxBlobId.FindString(pathLikeLine)
 }
+
+func GetRepoName(contents string) string {
+	if len(contents) > 0 {
+		m := common.RxRepoName.FindStringSubmatch(contents)
+		if len(m) < 3 {
+			h.Log("WARN", "No repo-name in "+contents)
+			return ""
+		}
+		return m[2]
+	}
+	return ""
+}
+
+func GetBlobName(contents string) string {
+	if len(contents) > 0 {
+		m := common.RxBlobName.FindStringSubmatch(contents)
+		if len(m) < 3 {
+			h.Log("WARN", "No blob-name in "+contents)
+			return ""
+		}
+		return m[2]
+	}
+	return ""
+}

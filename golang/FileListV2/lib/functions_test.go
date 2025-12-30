@@ -442,3 +442,74 @@ func TestExtractBlobId_PathWithMultipleMatches_ReturnsFirstMatch_NewLayout(t *te
 	result = ExtractBlobIdFromString(path)
 	assert.Equal(t, "f062f002-88f0-4b53-aeca-7324e9609329@2022-10-20T12:33", result)
 }
+
+func TestRxBlobName(t *testing.T) {
+	newName := "aaa-new-name"
+	orig := `#Tue Jan 21 12:20:40 AEST 2025
+@BlobStore.created-by=admin
+size=28
+@Bucket.repo-name=raw-s3-hosted
+creationTime=1737426040642
+@BlobStore.created-by-ip=127.0.0.1
+@BlobStore.content-type=text/plain
+@BlobStore.blob-name=/path/to/test`
+	expected := `#Tue Jan 21 12:20:40 AEST 2025
+@BlobStore.created-by=admin
+size=28
+@Bucket.repo-name=` + newName + `
+creationTime=1737426040642
+@BlobStore.created-by-ip=127.0.0.1
+@BlobStore.content-type=text/plain
+@BlobStore.blob-name=/path/to/test`
+	contents := common.RxRepoName.ReplaceAllString(orig, "${1}"+newName)
+	t.Log(contents)
+	assert.Equal(t, expected, contents)
+}
+
+func TestGetRepoName_ValidContent_ReturnsRepoName(t *testing.T) {
+	contents := "@Bucket.repo-name=example-repo"
+	result := GetRepoName(contents)
+	assert.Equal(t, "example-repo", result)
+}
+
+func TestGetRepoName_InvalidContent_ReturnsEmptyString(t *testing.T) {
+	contents := "@Bucket.repo-name="
+	result := GetRepoName(contents)
+	assert.Equal(t, "", result)
+}
+
+func TestGetRepoName_NoRepoNameInContent_ReturnsEmptyString(t *testing.T) {
+	contents := "@Bucket.some-other-key=value"
+	result := GetRepoName(contents)
+	assert.Equal(t, "", result)
+}
+
+func TestGetRepoName_EmptyContent_ReturnsEmptyString(t *testing.T) {
+	contents := ""
+	result := GetRepoName(contents)
+	assert.Equal(t, "", result)
+}
+
+func TestGetBlobName_ValidContent_ReturnsBlobName(t *testing.T) {
+	contents := "@BlobStore.blob-name=example-blob"
+	result := GetBlobName(contents)
+	assert.Equal(t, "example-blob", result)
+}
+
+func TestGetBlobName_InvalidContent_ReturnsEmptyString(t *testing.T) {
+	contents := "@BlobStore.blob-name="
+	result := GetBlobName(contents)
+	assert.Equal(t, "", result)
+}
+
+func TestGetBlobName_NoBlobNameInContent_ReturnsEmptyString(t *testing.T) {
+	contents := "@BlobStore.some-other-key=value"
+	result := GetBlobName(contents)
+	assert.Equal(t, "", result)
+}
+
+func TestGetBlobName_EmptyContent_ReturnsEmptyString(t *testing.T) {
+	contents := ""
+	result := GetBlobName(contents)
+	assert.Equal(t, "", result)
+}
