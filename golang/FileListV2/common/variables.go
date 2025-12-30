@@ -100,9 +100,8 @@ var ModDateToTS int64
 var RxDeletedDT = regexp.MustCompile("[^#]?deletedDateTime=([0-9]+)") // When this regex is used, *not* against the sorted one line text
 var RxSizeByte = regexp.MustCompile(",size=([0-9]+)")                 // When this regex is used, against the sorted one line text
 var RxDeleted = regexp.MustCompile("deleted=true")                    // should not use ^ as replacing one-line text
-var RxRepoName = regexp.MustCompile(`[^#]?@Bucket\.repo-name=([^,$]+)`)
-var PrefixRxBlobName = "@BlobStore.blob-name="
-var RxBlobName = regexp.MustCompile(`[^#]?` + PrefixRxBlobName + `([^,$]+)`)
+var RxRepoName = regexp.MustCompile(`(@Bucket\.repo-name=)([^\s\n\r,$]+)`)
+var RxBlobName = regexp.MustCompile(`(@BlobStore\.blob-name=)([^\s\n\r,$]+)`)
 var RxBlobId = regexp.MustCompile("[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}")
 var RxBlobIdNew = regexp.MustCompile(`.*([a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12})@(\d{4})-(\d{2})-(\d{2}).(\d{2}):(\d{2}).*`)
 var RxBlobIdNew2 = regexp.MustCompile(`/?([0-9]{4})/([0-9]{2})/([0-9]{2})/([0-9]{2})/([0-9]{2})/([a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}).*`)
