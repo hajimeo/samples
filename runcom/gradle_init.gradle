@@ -2,7 +2,7 @@ allprojects {
   repositories {
     mavenLocal()
     maven {
-      url "http://dh1.standalone.localdomain:8081/repository/maven-public/"
+      url "https://nxrm3helmha-k8s.standalone.localdomain/repository/maven-group/"
     }
   }
 }
