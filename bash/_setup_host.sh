@@ -997,6 +997,7 @@ function f_virtualbox() {
 function f_docker_setup() {
     local __doc__="Install docker (if not yet) and customise for HDP test environment (TODO: Ubuntu only)"
     # https://docs.docker.com/install/linux/docker-ce/ubuntu/
+    # TODO: if non root user, need to execute `usermod -a -G docker ${_user}`
 
     if ! which apt-get &>/dev/null; then
         _warn "No apt-get"
