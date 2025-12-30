@@ -478,7 +478,8 @@ public class H2Console {
                     query = "SELECT SQL FROM INFORMATION_SCHEMA.CONSTRAINTS";
                     execute(query + where);
                 } catch (RuntimeException e2) {
-                    // H2 V2 doesn't have 'SQL' column, so if RuntimeException in here, try again with different query
+                    //query = "SCRIPT nodata TABLE " + names[0];
+                    // H2 V2 doesn't have 'SQL' column, so if RuntimeException in here, try again with a different query
                     query = "SELECT COLUMN_NAME, DATA_TYPE, IS_IDENTITY, IDENTITY_GENERATION, DEFAULT_ON_NULL, IS_GENERATED, GENERATION_EXPRESSION FROM INFORMATION_SCHEMA.COLUMNS";
                     where = " WHERE LOWER(TABLE_NAME) = '" + names[0] + "'";
                     if (names.length > 1) {
