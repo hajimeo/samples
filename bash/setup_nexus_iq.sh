@@ -79,11 +79,12 @@ Using previously saved response file and NO interviews:
 : ${_ADMIN_PWD:="admin123"}
 : ${_IQ_URL:="http://localhost:8070/"}
 : ${_IQ_TEST_URLS:="http://localhost:8070/ http://utm-ubuntu:8070/ https://nxiqha-k8s.${_DOMAIN#.}/"}
-: ${_CLM_STAGING:="Y"}
+: ${_CLM_STAGING:=""}
 _TMP="/tmp" # for downloading/uploading assets
 _DEBUG=false
 
-# To upgrade (from ${_dirname}/): mv -f -v ./config.yml{,.tmp} && tar -xvf $HOME/.nexus_executable_cache/nexus-iq-server-1.183.0-01-bundle.tar.gz && cp -p -v ./config.yml{.tmp,}
+# To upgrade (from ${_dirname}/):
+#mv -f -v ./config.yml{,.tmp} && tar -xvf $HOME/.nexus_executable_cache/nexus-iq-server-1.195.0-01-bundle.tar.gz && cp -p -v ./config.yml{.tmp,}
 function f_install_iq() {
     local __doc__="Install specific IQ version (to recreate sonatype-work and DB, _RECREATE_ALL=Y)"
     local _ver="${1}" # 'latest'
@@ -134,9 +135,9 @@ function f_install_iq() {
     _prepare_install "${_dirpath}" "https://download.sonatype.com/clm/server/nexus-iq-server-${_tgz_ver}-bundle.tar.gz" || return $?
     local _license_path="${_LICENSE_PATH}"
 
-    local _jar_file="$(find ${_dirpath%/} -maxdepth 2 -type f -name 'nexus-iq-server*.jar' 2>/dev/null | sort | tail -n1)"
+    local _jar_file="$(find ${_dirpath%/} -maxdepth 2 -type f -name 'nexus-iq-server*.jar' 2>/dev/null | sort -V | tail -n1)"
     [ -z "${_jar_file}" ] && return 11
-    local _cfg_file="$(find ${_dirpath%/} -maxdepth 2 -type f -name 'config.yml' 2>/dev/null | sort | tail -n1)"
+    local _cfg_file="$(find ${_dirpath%/} -maxdepth 2 -type f -name 'config.yml' 2>/dev/null | sort -V | tail -n1)"
     [ -z "${_cfg_file}" ] && return 12
 
     if [ ! -f "${_cfg_file}.orig" ]; then
@@ -198,7 +199,7 @@ function _update_db_config() {
     local _dbpwd="${4:-"${_dbusr}123"}"
     local _dpport="${5:-"5432"}"
     local _dirpath="${6:-"."}"
-    [ -z "${_cfg_file}" ] && _cfg_file="$(find ${_dirpath%/} -maxdepth 2 -type f -name 'config.yml' 2>/dev/null | sort | tail -n1)"
+    [ -z "${_cfg_file}" ] && _cfg_file="$(find ${_dirpath%/} -maxdepth 2 -type f -name 'config.yml' 2>/dev/null | sort -V | tail -n1)"
     [ -z "${_cfg_file}" ] && return 12
 
     cat << EOF >"${_cfg_file}"
@@ -214,6 +215,20 @@ EOF
 }
 
 ### API related
+function _api_out() {
+    local _rc="$1"
+    local _stdout_file="${2}"
+    if [ ! -s "${_stdout_file}" ]; then
+        return ${_rc}
+    fi
+    if [ ${_rc} -eq 0 ]; then
+        cat "${_stdout_file}" | _sortjson
+    else
+        cat "${_stdout_file}"
+    fi
+    return ${_rc}
+}
+
 function f_api_config() {
     local __doc__="/api/v2/config"
     local _d="$1"
@@ -335,6 +350,7 @@ for r in a['memberMappings']:
 function _gen_comp_id() {
     local __doc__="https://help.sonatype.com/iqserver/automating/rest-apis/using-other-supported-formats-with-the-rest-api"
     local _component_identifier="$1"
+    local _no_version="$2"
     local _comp_id=""
     local _purl=""
     if [[ "${_component_identifier}" =~ ^pkg ]]; then
@@ -344,21 +360,28 @@ function _gen_comp_id() {
         _comp_id="{\"hash\":\"${_component_identifier}\"}"
     elif [[ "${_component_identifier}" =~ packageUrl ]]; then
         _comp_id="$(echo "${_component_identifier}" | tr -d ' ')"
-    elif [[ "${_component_identifier}" =~ ^" "*([^: ]+)" "*:" "*([^: ]+)" "*:" "*([^: ]+)" "*$ ]]; then
+    elif [[ "${_component_identifier}" =~ ^" "*([^:\{ ]+)" "*:" "*([^: ]+)" "*:" "*([^: ]+)" "*$ ]]; then
         # NOTE: Assuming 'maven'. Do not need to do ${BASH_REMATCH[1]//.//}
         _purl="pkg:maven/${BASH_REMATCH[1]}/${BASH_REMATCH[2]}@${BASH_REMATCH[3]}?type=jar"
         _comp_id="{\"packageUrl\":\"${_purl}\"}"
         #_comp_id="{\"componentIdentifier\":{\"format\":\"maven\",\"coordinates\":{\"groupId\":\"${BASH_REMATCH[1]}\",\"artifactId\":\"${BASH_REMATCH[2]}\",\"version\":\"${BASH_REMATCH[3]}\",\"extension\":\"jar\"}}}"
-    elif [[ "${_component_identifier}" =~ ^" "*([^: ]+)" "*:" "*([^: ]+)" "*:" "*([^: ]+)" "*:" "*([^: ]+)" "*$ ]]; then
+    elif [[ "${_component_identifier}" =~ ^" "*([^:\{ ]+)" "*:" "*([^: ]+)" "*:" "*([^: ]+)" "*:" "*([^: ]+)" "*$ ]]; then
         _purl="pkg:maven/${BASH_REMATCH[1]}/${BASH_REMATCH[2]}@${BASH_REMATCH[4]}?type=${BASH_REMATCH[3]}"
         _comp_id="{\"packageUrl\":\"${_purl}\"}"
-    elif [[ "${_component_identifier}" =~ ^" "*([^: ]+)" "*:" "*([^: ]+)" "*:" "*([^: ]+)" "*:" "*([^: ]+)" "*:" "*([^: ]+)" "*$ ]]; then
+    elif [[ "${_component_identifier}" =~ ^" "*([^:\{ ]+)" "*:" "*([^: ]+)" "*:" "*([^: ]+)" "*:" "*([^: ]+)" "*:" "*([^: ]+)" "*$ ]]; then
         _purl="pkg:maven/${BASH_REMATCH[1]}/${BASH_REMATCH[2]}@${BASH_REMATCH[5]}?classifier=${BASH_REMATCH[4]}&type=${BASH_REMATCH[3]}"
         _comp_id="{\"packageUrl\":\"${_purl}\"}"
-    elif [[ "${_component_identifier}" =~ ^" "*([^: ]+)" "*:" "*([^: ]+)" "*$ ]]; then
-        # NOTE: Assuming 'npm'
-        _purl="pkg:npm/${BASH_REMATCH[1]}@${BASH_REMATCH[2]}"
-        _comp_id="{\"packageUrl\":\"${_purl}\"}"
+    elif [[ "${_component_identifier}" =~ ^" "*([^:\{ ]+)" "*:" "*([^: ]+)" "*$ ]]; then
+        local _groupId="${BASH_REMATCH[1]}"
+        local _artifactId="${BASH_REMATCH[2]}"
+        if [[ "${_no_version}" =~ ^[yY] ]]; then
+            # TODO: Assuming 'maven' without version
+            _comp_id="{\"format\":\"maven\",\"coordinates\":{\"groupId\":\"${_groupId}\",\"artifactId\":\"${_artifactId}\"}}"
+        else
+            # NOTE: Assuming 'npm'
+            _purl="pkg:npm/${_groupId}@${_artifactId}"
+            _comp_id="{\"packageUrl\":\"${_purl}\"}"
+        fi
     elif [[ "${_component_identifier}" =~ coordinates ]]; then
         _comp_id="{\"componentIdentifier\":${_component_identifier}}"   # NOTE: don't need "hash":null, ?
     else
@@ -373,6 +396,7 @@ function _gen_comp_id() {
 #f_api_comp_details '{"packageUrl":"pkg:npm/@posthog/plugin-server@1.10.7"}'
 #f_api_comp_details '{"packageUrl":"pkg:npm/color@5.0.1"}'
 #f_api_comp_details 'b0e4da108211e81700433e167ced88e6296b1def'
+#f_api_comp_details 'ipaddr.js : 2.3.0' # assuming npm
 function f_api_comp_details() {
     local __doc__="Call Component Details API https://help.sonatype.com/iqserver/automating/rest-apis/component-details-rest-api---v2"
     local _component_identifier="$1"
@@ -380,7 +404,7 @@ function f_api_comp_details() {
     [ -z "${_comp_id}" ] && return 11
     local _iq_url="$(_get_iq_url "${_IQ_URL%/}")" || return $?
     _log "INFO" "/api/v2/components/details with '{\"components\":[${_comp_id}]}' ..."
-    _curl "${_iq_url%/}/api/v2/components/details" -H "Content-Type: application/json" -d '{"components":['${_comp_id}']}'
+    _curl "${_iq_url%/}/api/v2/components/details" -H "Content-Type: application/json" -d '{"components":['${_comp_id}']}' | _sortjson
 }
 
 #f_api_comp_versions '{"format":"maven","coordinates":{"artifactId":"tomcat-util","groupId":"tomcat"}}'
@@ -389,8 +413,9 @@ function f_api_comp_versions() {
     local __doc__="Call Component Versions API https://help.sonatype.com/iqserver/automating/rest-apis/component-versions-rest-api---v2"
     local _component_identifier_without_ver="$1"
     local _iq_url="$(_get_iq_url "${_IQ_URL%/}")" || return $?
-    _log "INFO" "/api/v2/components/versions with '${_component_identifier_without_ver}' ..."
-    _curl "${_iq_url%/}/api/v2/components/versions" -H "Content-Type: application/json" -d ${_component_identifier_without_ver}
+    local _comp_id="$(_gen_comp_id "${_component_identifier_without_ver}")" || return $?
+    _log "INFO" "/api/v2/components/versions with '${_comp_id}' ..."
+    _curl "${_iq_url%/}/api/v2/components/versions" -H "Content-Type: application/json" -d ${_comp_id} | _sortjson
 }
 
 function f_api_vul_details() {
@@ -399,7 +424,7 @@ function f_api_vul_details() {
     [ -z "${_vul_id}" ] && return 11
     local _iq_url="$(_get_iq_url "${_IQ_URL%/}")" || return $?
     _log "INFO" "/api/v2/vulnerabilities with '${_vul_id}' ..."
-    _curl "${_iq_url%/}/api/v2/vulnerabilities/${_vul_id}" -H "Content-Type: application/json"
+    _curl "${_iq_url%/}/api/v2/vulnerabilities/${_vul_id}" -H "Content-Type: application/json" | _sortjson
 }
 
 function f_api_eval() {
@@ -459,7 +484,37 @@ function f_api_report_success() {
     _curl "${_iq_url%/}/api/v2/reports/metrics" -d "{\"timePeriod\":\"WEEK\",\"firstTimePeriod\":\"${_firstTimePeriod}\",\"lastTimePeriod\":\"${_lastTimePeriod}\",\"applicationIds\":[],\"organizationIds\":[]}"
 }
 
+function f_api_repositories_config() {
+    local __doc__="API: GET /api/v2/firewall/repositories/configuration/{repositoryManagerId}"
+    local _repo_id="${1}"
+    local _iq_url="$(_get_iq_url "${_IQ_URL%/}")" || return $?
+    if [ -z "${_repo_id}" ]; then
+        _curl "${_iq_url%/}/api/v2/firewall/repositoryManagers" | _sortjson
+        return $?
+    fi
+    _curl "${_iq_url%/}/api/v2/firewall/repositories/configuration/${_repo_id}" -o "${_TMP%/}/${FUNCNAME[0]}_$$.json"
+    _api_out "$?" "${_TMP%/}/${FUNCNAME[0]}_$$.json"
+    return $?
+}
+
+function f_api_repository_results() {
+    local __doc__="Experimental API: POST /api/experimental/repositories/{ownerType: repository_container|repository_manager|repository}/{ownerId}/results/details"
+    local _owner_id="${1}"
+    local _owner_type="${2:-"repository"}"
+    local _search_param_json="${3}"
+    local _iq_url="$(_get_iq_url "${_IQ_URL%/}")" || return $?
+    if [ -z "${_search_param_json}" ]; then
+        _log "ERROR" "Search parameter JSON is required."
+        return 1
+    fi
+    echo ${_search_param_json} > ${_TMP%/}/${FUNCNAME[0]}_search_param_$$.json
+    _curl "${_iq_url%/}/api/experimental/repositories/${_owner_type}/${_owner_id}/results/details" -H "Content-Type: application/json" -d@"${_TMP%/}/${FUNCNAME[0]}_search_param_$$.json" -o "${_TMP%/}/${FUNCNAME[0]}_$$.json"
+    _api_out "$?" "${_TMP%/}/${FUNCNAME[0]}_$$.json"
+    return $?
+}
+
 ### Misc. setup functions
+#_CLM_STAGING="Y" f_config_update
 function f_config_update() {
     local _baseUrl="${1:-"${_IQ_URL}"}"
     local _no_wait="${2}"
@@ -469,9 +524,11 @@ function f_config_update() {
         fi
         f_api_config '{"baseUrl":"'${_baseUrl%/}'/","forceBaseUrl":false}' || return $?
     fi
-    #f_api_config '{"hdsUrl":"https://clm.sonatype.com/"}'
+    #f_api_config 'property=hdsUrl'
     if [[ "${_CLM_STAGING}" =~ ^[yY] ]]; then
         f_api_config '{"hdsUrl":"https://clm-staging.sonatype.com/"}'
+    else
+        f_api_config '{"hdsUrl":"https://clm.sonatype.com/"}'
     fi
     f_api_config '{"enableDefaultPasswordWarning":false}'
     f_api_config '{"sessionTimeout":120}' # between 3 and 120
@@ -517,9 +574,9 @@ function f_setup_https() {
     local _fqdn="$(hostname -f)"
     [[ "${_IQ_URL}" =~ https?://([^:/]+) ]] && _fqdn="${BASH_REMATCH[1]}"
 
-    local _jar_file="$(find "${_base_dir%/}" -maxdepth 2 -type f -name 'nexus-iq-server*.jar' 2>/dev/null | sort | tail -n1)"
+    local _jar_file="$(find "${_base_dir%/}" -maxdepth 2 -type f -name 'nexus-iq-server*.jar' 2>/dev/null | sort -V | tail -n1)"
     [ -z "${_jar_file}" ] && return 11
-    local _cfg_file="$(find "${_base_dir%/}" -maxdepth 2 -type f -name 'config.yml' 2>/dev/null | sort | tail -n1)"
+    local _cfg_file="$(find "${_base_dir%/}" -maxdepth 2 -type f -name 'config.yml' 2>/dev/null | sort -V | tail -n1)"
     [ -z "${_cfg_file}" ] && return 12
 
     # If never started no "sonatype-work/clm-server"
@@ -1164,6 +1221,32 @@ function f_prep_scan_target_for_proprietary_component() {
     cd "${_cwd}" || return $?
 }
 
+function f_prep_project_for_reachability_npm() {
+    local __doc__="https://help.sonatype.com/en/reachability-analysis.html Reachability analysis for NPM/Node.js/Javascript project"
+    local _path="${1}"
+    local _cwd="$(pwd)"
+    if [ -z "${_path}" ]; then
+        _path="$(mktemp -d)/npm-reachability-demo"
+    fi
+    local _dir="$(dirname "${_path}")"
+    local _basename="$(basename "${_path}")"
+    mkdir -p "${_path}" && cd "${_path}" || return $?
+    cd "${_dir}" || return $?
+    npm init -y
+    npm install follow-redirects@1.14.6 || return $?
+    cat <<'EOF' >./app.js
+const { http } = require('follow-redirects');
+http.get('http://example.com', (res) => {
+  console.log('Got response: ' + res.statusCode);
+});
+EOF
+    #cd "${_cwd}" || return $?
+    #cd .. && zip -r ${_basename}.zip ${_basename}
+    #echo "f_cli -rajs -rjs ** ./"   <<< doesn't work
+    # TODO: scanning zip file is not working?
+    #java -jar $HOME/.nexus_executable_cache/nexus-iq-cli-2.8.0-01.jar -i sandbox-application -s http://localhost:8070/ -a admin:admin123 -t build -rajs -rjs "packages/**" . -X
+}
+
 function f_import_sbom() {
     local __doc__="https://help.sonatype.com/en/sbom-manager-api.html SBOM examples: https://help.sonatype.com/en/cyclonedx-rest-api.html#response-162417"
     local _sbom_file="${1}"
@@ -1303,12 +1386,58 @@ function _dummy_orgs_apps_with_scans_inner() {
 
 
 ### Misc.
+function f_h2_console() {
+    local __doc__="Start H2 Web Console. http://www.h2database.com/javadoc/org/h2/tools/Server.html"
+    local _port="${1:-"8282"}"
+    local _baseDir="${2}"
+    local _h2_jar="${3}"
+    local _h2_ver="${4:-"${_IQ_H2_VER:-"1.4.196"}"}"
+    # NXRM3
+    #Save Settings: Generic H2 (Embedded)
+    #Driver: org.h2.Driver
+    #JDBC URL: jdbc:h2:file:nexus
+    #username: <LEAVE BLANK>
+    #password: <LEAVE BLANK>
+    if [ -z "${_baseDir}" ]; then
+        if [ -d ./sonatype-work/clm-server/data ]; then
+            _baseDir="./sonatype-work/clm-server/data"
+        else
+            local _ods_h2_db="$(find . -maxdepth 3 -type d -name "ods.h2.db" | head -n1)"
+            if [ -n "${_ods_h2_db}" ]; then
+                _baseDir="$(dirname ${_ods_h2_db})"
+            else
+                _baseDir="."
+            fi
+        fi
+        _log "INFO" "Using ${_baseDir} as baseDir"
+    fi
+    if [ -z "${_h2_jar}" ]; then
+        # Seems IQ jar doesn't have Server (ClassNotFoundException: org.h2.tools.Backup)
+        #local _iq_jar="$(find . -maxdepth 1 -type f -name "nexus-iq-server-*.jar" | sort -V | tail -n1)"
+        #if [ -s "${_iq_jar}" ]; then
+        #    _h2_jar="${_iq_jar}"
+        #else
+            if [ ! -s "${_TMP%/}/h2-${_h2_ver}.jar" ]; then
+                _log "INFO" "Downloading H2 ${_h2_ver} jar ..."
+                curl -f -o ${_TMP%/}/h2-${_h2_ver}.jar "https://repo1.maven.org/maven2/com/h2database/h2/${_h2_ver}/h2-${_h2_ver}.jar" || return $?
+            fi
+            _h2_jar="${_TMP%/}/h2-${_h2_ver}.jar"
+        #fi
+        _log "INFO" "Using ${_h2_jar} ..."
+    fi
+    local _java="java"  # In case needs to change to java 8 / java 17
+    [ -n "${JAVA_HOME}" ] && _java="${JAVA_HOME%/}/bin/java"
+    _log "INFO" "Starting H2 Console from \"${_baseDir}\" on http://localhost:${_webPort}/ ..."
+    _log "INFO" "JDBC URL: jdbc:h2:./ods;DATABASE_TO_UPPER=FALSE;DB_CLOSE_DELAY=-1;LOCK_TIMEOUT=60000;MV_STORE=FALSE;DEFAULT_LOCK_TIMEOUT=600000;MV_STORE=FALSE;SCHEMA=insight_brain_ods (sa)"
+    ${_java} -cp ${_h2_jar} org.h2.tools.Server -webPort ${_port} -baseDir "${_baseDir}" -webAllowOthers -tcpAllowOthers -pgAllowOthers
+}
+
 function f_psql() {
     local __doc__="Query against all assets or components by using nexus-store.properties"
     local _query="${1}" # Use '%FMT%'
     local _workingDirectory="${2:-"."}"
     local _psql_opts="${3-"${_PSQL_OPTS}"}" # -tAF,
-    local _cfg_file="$(find ${_workingDirectory%/} -maxdepth 2 -type f -name 'config.yml' 2>/dev/null | sort | tail -n1)"
+    local _cfg_file="$(find ${_workingDirectory%/} -maxdepth 2 -type f -name 'config.yml' 2>/dev/null | sort -V | tail -n1)"
     _export_postgres_config "${_cfg_file}" || return $?
     local _cmd="psql -h ${_DBHOST} -p ${_DBPORT:-"5432"} -U ${_DBUSER} -d ${_DBNAME}"
     if [ -z "${_query}" ]; then
@@ -1321,6 +1450,16 @@ function f_psql() {
     return $?
 }
 
+function f_backup_postgresql() {
+    local __doc__="Export the database from PostgreSQL (for testing upgrade)"
+    local _exportTo="${1:-"./fullbackup_db_$(date +"%Y%m%d%H%M%S").sql.gz"}"
+    local _workingDirectory="${2:-"."}"
+    local _cfg_file="$(find ${_workingDirectory%/} -maxdepth 2 -type f -name 'config.yml' 2>/dev/null | sort -V | tail -n1)"
+    _export_postgres_config "${_cfg_file}" || return $?
+    PGGSSENCMODE=disable pg_dump -h ${_DBHOST} -p ${_DBPORT:-"5432"} -U ${_DBUSER} -d ${_DBNAME} -c -O -Z 6 -f "${_exportTo}" || return $?
+    ls -l "${_exportTo}"
+    echo "# gunzip -c ${_exportTo} | psql -h ${_DBHOST} -p ${_DBPORT:-"5432"} -U ${_DBUSER} -d ${_DBNAME}"
+}
 
 #f_set_log_level "org.apache.http.headers"
 function f_set_log_level() {
@@ -1389,7 +1528,7 @@ EOF
 }
 
 #JAVA_TOOL_OPTIONS="-agentlib:jdwp=transport=dt_socket,server=y,suspend=y,address=5007" f_cli
-#iqCli "container:amazonlinux:2023"
+#_IQ_CLI_OPT="-D containerScannerMode=sonatype" _IQ_CLI_VER="2.7.0-01" f_cli "container:sonatype/nexus-iq-server:1.198.0-alpine"
 function f_cli() {
     local __doc__="Start IQ CLI https://help.sonatype.com/integrations/nexus-iq-cli#NexusIQCLI-Parameters"
     local _path="${1:-"./"}"
@@ -1398,7 +1537,7 @@ function f_cli() {
     local _iq_stage="${3:-${_IQ_STAGE:-"build"}}" #develop|build|stage-release|release|operate
     local _iq_url="${4:-${_IQ_URL}}"
     local _iq_cli_ver="${5:-${_IQ_CLI_VER}}"
-    local _iq_cli_opt="${6:-${_IQ_CLI_OPT}}" # -D fileIncludes="**/package-lock.json"
+    local _iq_cli_opt="${6:-${_IQ_CLI_OPT}}" # -D containerScannerMode=sonatype -D fileIncludes="**/package-lock.json"
     local _iq_cred="${7:-${_IQ_CRED:-"${_ADMIN_USER}:${_ADMIN_PWD}"}}"
     local _simple_scan="${8:-"${_SIMPLE_SCAN:-"N"}"}" # Y: simple, N: full
     local _use_docker="${9:-"${_USE_DOCKER}"}"

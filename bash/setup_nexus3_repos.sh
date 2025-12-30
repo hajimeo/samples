@@ -87,7 +87,7 @@ Just get the repositories setting:
 : ${_ADMIN_PWD:="admin123"}
 : ${_DOMAIN:="standalone.localdomain"}
 : ${_NEXUS_URL:="http://localhost:8081/"}   # or https://local.standalone.localdomain:8443/ for docker
-: ${_NEXUS_DOCKER_HOSTNAME:="local.${_DOMAIN#.}"}
+: ${_NEXUS_DOCKER_HOSTNAME:=""}             # decided by _get_docker_hostname
 : ${_IQ_URL:="http://localhost:8070/"}
 : ${_IQ_CLI_VER-"latest"}                   # If "" (empty), not download CLI jar
 : ${_DOCKER_NETWORK_NAME:="nexus"}
@@ -114,9 +114,9 @@ _RESP_FILE=""
 
 ### Nexus installation functions ##############################################################################
 # To re-install: _RECREATE_ALL=Y f_install_nexus3 "<version>" "<dbname>"
-# To upgrade (from ${_dirpath}/): tar -xvf $HOME/.nexus_executable_cache/nexus-3.79.1-04-
+# To upgrade (from ${_dirpath}/): tar -xvf $HOME/.nexus_executable_cache/nexus-3.
 # To install HA instances (port is automatic):
-#   _VER="3.85.0-03" _DB="nxrm3850ha"
+#   _VER="3.87.1-01" _DB="nxrm3871ha"
 #   _NXRM3_INSTALL_DIR="./nxrm_${_VER}_${_DB}_1st" _NEXUS_ENABLE_HA=Y f_install_nexus3 "${_VER}" "${_DB}"
 #   _NXRM3_INSTALL_DIR="./nxrm_${_VER}_${_DB}_2nd" _NEXUS_ENABLE_HA=Y f_install_nexus3 "${_VER}" "${_DB}"
 #   # Need to think about the location of the shared blob store. e.g. create a symlink between blobs dir.
@@ -195,6 +195,7 @@ function f_install_nexus3() {
         [ "$(uname -s)" == "Linux" ] && _os="linux"
         [ "${_arch}" = "x86_64" ] && _arch="x86_64"
         [ "${_arch}" = "arm64" ] && _arch="aarch_64"
+        [ "${_arch}" = "aarch64" ] && _arch="aarch_64"
         _tgz_name="nexus-${_tgz_ver}-${_os}-${_arch}.${_ext}"
     elif [[ "${_ver}" =~ ^3\.(78|79\.0).* ]]; then
         # From version 3.78 and until 3.79.0, nexus-unix-x86-64-3.78.0-14.tar.gz
@@ -533,6 +534,8 @@ function f_setup_nuget() {
     # add some data for xxxx-hosted
     if [ -s "${_TMP%/}/test.2.0.1.1.nupkg" ]; then
         _ASYNC_CURL="Y" f_upload_asset "${_prefix}-hosted" -F "nuget.asset=@${_TMP%/}/test.2.0.1.1.nupkg"
+        _log "INFO" "To check/test: ${_NEXUS_URL%/}/repository/${_prefix}-hosted/v3/registration/test/index.json"
+        echo '# nuget install test -source "'${_NEXUS_URL%/}'/repository/'${_prefix}'-hosted/index.json" -outputdirectory ./package -noCache -verbosity Detailed'
     fi
 
     # If no xxxx-group, create it
@@ -661,15 +664,16 @@ function f_setup_docker() {
     if type helm &>/dev/null; then
         if [ -s "${_TMP%/}/helm-oci-demo-0.1.0.tgz" ] || curl -sf -o ${_TMP%/}/helm-oci-demo-0.1.0.tgz -L "https://github.com/hajimeo/samples/raw/refs/heads/master/misc/helm-oci-demo-0.1.0.tgz"; then
             #_log "INFO" "Populating ${_prefix}-hosted repository with demo helm chart (OCI) ..."
-            if ! helm registry login ${_NEXUS_DOCKER_HOSTNAME}:18182 -u "${_ADMIN_USER}" -p "${_ADMIN_PWD}"; then
-                _log "WARN" "helm registry login ${_NEXUS_DOCKER_HOSTNAME}:18182 failed."
+            local _docker_hostname="$(_get_docker_hostname)"
+            if ! helm registry login ${_docker_hostname}:18182 -u "${_ADMIN_USER}" -p "${_ADMIN_PWD}"; then
+                _log "WARN" "helm registry login ${_docker_hostname}:18182 failed."
             else
-                if ! helm push ${_TMP%/}/helm-oci-demo-0.1.0.tgz oci://${_NEXUS_DOCKER_HOSTNAME}:18182/oci-demo; then #--debug
+                if ! helm push ${_TMP%/}/helm-oci-demo-0.1.0.tgz oci://${_docker_hostname}:18182/oci-demo; then #--debug
                     _log "WARN" "Populating ${_prefix}-hosted repository with demo helm chart (OCI) failed."
                 else
                     # The 'title' or 'name' is 'demo' in Chart.yaml, not "helm-oci-demo"
-                    _log "TODO" "helm show all oci://${_NEXUS_DOCKER_HOSTNAME}:18182/oci-demo/demo --version 0.1.0"
-                    _log "TODO" "helm pull oci://${_NEXUS_DOCKER_HOSTNAME}:18182/oci-demo/demo --version 0.1.0"
+                    _log "TODO" "helm show all oci://${_docker_hostname}:18182/oci-demo/demo --version 0.1.0"
+                    _log "TODO" "helm pull oci://${_docker_hostname}:18182/oci-demo/demo --version 0.1.0"
                 fi
             fi
         fi
@@ -683,12 +687,13 @@ function f_setup_docker() {
 #_populate_docker_proxy "" "m1mac.standalone.localdomain:15000"
 function _populate_docker_proxy() {
     local _img_name="${1:-"alpine:3.7"}"    # To test OCI image: jenkins/jenkins:lts
-    local _host_port="${2:-"${r_DOCKER_PROXY:-"${r_DOCKER_GROUP:-"${r_NEXUS_URL:-"${_NEXUS_DOCKER_HOSTNAME:-"${_NEXUS_URL}"}"}"}"}"}"
+    local _host_port="${2:-"${r_DOCKER_PROXY:-"${r_DOCKER_GROUP:-"${r_NEXUS_URL}"}"}"}"
     local _backup_ports="${3-"18179 18178 15000 443"}"
     local _cmd="${4-"${r_DOCKER_CMD}"}"
     # TODO: change this to use 'crane'
     [ -z "${_cmd}" ] && _cmd="$(_docker_cmd)"
     [ -z "${_cmd}" ] && return 0    # If no docker command, just exist
+    [ -z "${_host_port}" ] && _host_port="$(_get_docker_hostname)"
     _host_port="$(_docker_login "${_host_port}" "${_backup_ports}" "${r_ADMIN_USER:-"${_ADMIN_USER}"}" "${r_ADMIN_PWD:-"${_ADMIN_PWD}"}" "${_cmd}")" || return $?
 
     for _imn in $(${_cmd} images --format "{{.Repository}}" | grep -w "${_img_name}"); do
@@ -711,7 +716,7 @@ function _populate_docker_proxy() {
 #   _TAG_TO="thrivent-web/doi-invite:latest" _populate_docker_hosted "local.standalone.localdomain:15000/alpine:latest" "local.standalone.localdomain:15000"
 function _populate_docker_hosted() {
     local _base_img="${1:-"alpine:latest"}"    # dh1.standalone.localdomain:15000/alpine:3.7
-    local _host_port="${2:-"${r_DOCKER_PROXY:-"${r_DOCKER_GROUP:-"${r_NEXUS_URL:-"${_NEXUS_DOCKER_HOSTNAME:-"${_NEXUS_URL}"}"}"}"}"}"
+    local _host_port="${2:-"${r_DOCKER_PROXY:-"${r_DOCKER_GROUP:-"${r_NEXUS_URL}"}"}"}"
     local _tag_to="${3:-"${_TAG_TO}"}"
     local _num_layers="${4:-"${_NUM_LAYERS:-"1"}"}" # Can be used to test overwriting image
     local _backup_ports="${5-"18182 18181 15000 443"}"
@@ -721,7 +726,7 @@ function _populate_docker_hosted() {
     # TODO: change this to use 'crane'
     [ -z "${_cmd}" ] && _cmd="$(_docker_cmd)"
     [ -z "${_cmd}" ] && return 0    # If no docker command, just exist
-
+    [ -z "${_host_port}" ] && _host_port="$(_get_docker_hostname)"
     if [[ ! "${_DOCKER_NO_LOGIN}" =~ [yY] ]]; then
         _log "INFO" "docker login ${_host_port}"
         _host_port="$(_docker_login "${_host_port}" "${_backup_ports}" "${_usr}" "${_pwd}" "${_cmd}")" || return $?
@@ -1539,7 +1544,7 @@ function f_setup_raw() {
 ### Nexus related Misc. functions #################################################################
 function _get_inst_dir() {
     local _install_dir="$(ps auxwww | sed -n -E '/org.sonatype.nexus.karaf.NexusMain/ s/.+-Dexe4j.moduleName=([\S]+)\/bin\/nexus .+/\1/p' | head -1)"
-    [ -z "${_install_dir}" ] && _install_dir="$(find . -mindepth 1 -maxdepth 1 -type d -name 'nexus*' 2>/dev/null | sort | tail -n1)"
+    [ -z "${_install_dir}" ] && _install_dir="$(find . -mindepth 1 -maxdepth 1 -type d -name 'nexus*' 2>/dev/null | sort -V | tail -n1)"
     readlink -f "${_install_dir%/}"
 }
 function _get_work_dir() {
@@ -1548,7 +1553,7 @@ function _get_work_dir() {
         local _install_dir="$(_get_inst_dir)"
         _work_dir="${_install_dir%/}/${_work_dir%/}"
     else
-        _work_dir="$(find . -mindepth 1 -maxdepth 2 -type d -path '*/sonatype-work/*' -name 'nexus3' | sort | tail -n1)"
+        _work_dir="$(find . -mindepth 1 -maxdepth 2 -type d -path '*/sonatype-work/*' -name 'nexus3' | sort -V | tail -n1)"
     fi
     readlink -f "${_work_dir}"
 }
@@ -1600,6 +1605,24 @@ function _get_datastore_name() {
         return
     fi
     return 1
+}
+
+function _get_docker_hostname() {
+    local _docker_hostname="local.standalone.localdomain"
+    if [ -n "${_NEXUS_DOCKER_HOSTNAME}" ]; then
+        echo "${_NEXUS_DOCKER_HOSTNAME}"
+        return
+    fi
+    if [[ "${_NEXUS_URL}" =~ https?://([^:/]+) ]]; then
+        local _hostname="${BASH_REMATCH[1]}"
+        if [ ${_hostname} != "localhost" ]; then
+            _NEXUS_DOCKER_HOSTNAME="${_hostname}"
+        fi
+    fi
+    if [ -z "${_NEXUS_DOCKER_HOSTNAME}" ]; then
+        _NEXUS_DOCKER_HOSTNAME="${_docker_hostname}"
+    fi
+    echo "${_NEXUS_DOCKER_HOSTNAME}"
 }
 
 function _get_extra_sto_opt() {
@@ -1765,18 +1788,21 @@ function f_create_s3_blobstore() {
             #_prefix="${_prefix%/}/"    # Doesn't work with MinIO
         fi
         # From 3.78 'coreui_Blobstore' may not work, so trying the API first
-        if ! f_api "/service/rest/v1/blobstores/s3" '{"name":"'${_bs_name}'","bucketConfiguration":{"bucket":{"region":"'${_region}'","prefix":"'${_prefix}'","name":"'${_bucket}'","expiration":'${_exp}'},"bucketSecurity":{"secretAccessKey":"'${_sk}'","accessKeyId":"'${_ak}'"},"encryption":null,"advancedBucketConnection":{"endpoint":"'${_ep}'","forcePathStyle":false},"failoverBuckets":[],"activeRegion":null}}' > ${_TMP%/}/f_api_last.out; then
+        if ! f_api "/service/rest/v1/blobstores/s3" '{"name":"'${_bs_name}'","bucketConfiguration":{"bucket":{"region":"'${_region}'","prefix":"'${_prefix}'","name":"'${_bucket}'","expiration":'${_exp}'},"bucketSecurity":{"secretAccessKey":"'${_sk}'","accessKeyId":"'${_ak}'"},"encryption":null,"advancedBucketConnection":{"endpoint":"'${_ep}'","forcePathStyle":false},"failoverBuckets":[],"activeRegion":null}}' &> ${_TMP%/}/f_api_last.out; then
+            _log "WARN" "Creating S3 blobstore via /service/rest/v1/blobstores/s3 might be failed. Trying coreui_Blobstore (Check ${_TMP%/}/f_api_last.out) ..."
             # TODO (minor): endpoint for older version
             # NOTE: 3.27 has ',"state":""'
             if ! _apiS '{"action":"coreui_Blobstore","method":"create","data":[{"type":"S3","name":"'${_bs_name}'","isQuotaEnabled":false,"property_region":"'${_region}'","property_bucket":"'${_bucket}'","property_prefix":"'${_prefix%/}'","property_expiration":1,"authEnabled":true,"property_accessKeyId":"'${_ak}'","property_secretAccessKey":"'${_sk}'","property_assumeRole":"","property_sessionToken":"","encryptionSettingsEnabled":false,"advancedConnectionSettingsEnabled":false,"attributes":{"s3":{"region":"'${_region}'","bucket":"'${_bucket}'","prefix":"'${_prefix%/}'","expiration":"3","accessKeyId":"'${_ak}'","secretAccessKey":"'${_sk}'","assumeRole":"","sessionToken":""}}}],"type":"rpc"}' > ${_TMP%/}/f_apiS_last.out; then
                 _log "ERROR" "Failed to create blobstore: ${_bs_name} ."
-                _log "ERROR" "$(cat ${_TMP%/}/f_api_last.out)"
                 _log "ERROR" "$(cat ${_TMP%/}/f_apiS_last.out)"
                 return 1
             fi
+            if [ -s "${_TMP%/}/f_apiS_last.out" ]; then
+                _log "DEBUG" "$(cat ${_TMP%/}/f_apiS_last.out)"
+            fi
         fi
-        if [ -f "${_TMP%/}/f_apiS_last.out" ]; then
-            _log "DEBUG" "$(cat ${_TMP%/}/f_apiS_last.out)"
+        if [ -s "${_TMP%/}/f_api_last.out" ]; then
+            _log "DEBUG" "$(cat ${_TMP%/}/f_api_last.out)"
         fi
     else
         _log "INFO" "Blobstore ${_bs_name} already exists."
@@ -2626,12 +2652,17 @@ function f_nexus_change_pwd() {
 
 function f_put_realms() {
     local __doc__="PUT some security realms"
-    local _append_realm="$1"    #SamlRealm
-    local _realms="\"NexusAuthenticatingRealm\",\"User-Token-Realm\",\"rutauth-realm\",\"DockerToken\",\"ConanToken\",\"NpmToken\",\"NuGetApiKey\",\"LdapRealm\""
+    local _append_realm="$1"    #SamlRealm or LdapRealm
+    local _force="$2"    #SamlRealm or LdapRealm
+    local _realms="\"NexusAuthenticatingRealm\",\"User-Token-Realm\",\"rutauth-realm\",\"DockerToken\",\"ConanToken\",\"NpmToken\",\"NuGetApiKey\""
     # NOTE: ,\"NexusAuthorizingRealm\" was removed from 3.61
-    f_api "/service/rest/v1/security/realms/available" | grep -q '"NexusAuthorizingRealm"' && _realms="\"NexusAuthenticatingRealm\",\"NexusAuthorizingRealm\",\"User-Token-Realm\",\"rutauth-realm\",\"DockerToken\",\"ConanToken\",\"NpmToken\",\"NuGetApiKey\",\"LdapRealm\""
+    f_api "/service/rest/v1/security/realms/available" | grep -q '"NexusAuthorizingRealm"' && _realms="\"NexusAuthenticatingRealm\",\"NexusAuthorizingRealm\",\"User-Token-Realm\",\"rutauth-realm\",\"DockerToken\",\"ConanToken\",\"NpmToken\",\"NuGetApiKey\""
     # Keep using SAML Realm only if it is already active (otherwise, "Sign in" always shows the SSO popup)
-    f_api "/service/rest/v1/security/realms/active" | grep -q '"SamlRealm"' && _realms="${_realms},\"SamlRealm\""
+    if [[ ! "${_force}" =~ [yY] ]]; then
+        f_api "/service/rest/v1/security/realms/active" > ${_TMP%/}/active_realms.json
+        grep -q '"LdapRealm"' ${_TMP%/}/active_realms.json && _realms="${_realms},\"LdapRealm\""
+        grep -q '"SamlRealm"' ${_TMP%/}/active_realms.json && _realms="${_realms},\"SamlRealm\""
+    fi
     if [ -n "${_append_realm}" ] && ! echo "${_realms}" | grep -q "${_append_realm}"; then
         _realms="${_realms},\"${_append_realm}\""
     fi
@@ -2810,14 +2841,10 @@ function f_setup_https() {
     fi
     _log "INFO" "Please restart service.
 Also update _NEXUS_URL. For example: export _NEXUS_URL=\"https://local.standalone.localdomain:${_port}/\""
-    if [[ "${_NEXUS_URL}" =~ https?://([^:/]+) ]]; then
-        local _hostname="${BASH_REMATCH[1]}"
-        if [ ${_hostname} == "localhost" ]; then
-            _hostname="${_NEXUS_DOCKER_HOSTNAME:-"$(hostname -f)"}"
-        fi
-        echo "To check the SSL connection:
+
+    local _hostname="$(_get_docker_hostname)"
+    echo "To check the SSL connection:
     curl -svf -k \"https://${_hostname}:${_port}/\" -o/dev/null 2>&1 | grep 'Server certificate:' -A 5"
-    fi
     # TODO: generate pem file and trust
     #_trust_ca "${_ca_pem}" || return $?
     _log "INFO" "To trust this certificate, _trust_ca \"\${_ca_pem}\""
@@ -2830,9 +2857,10 @@ function f_start_forward_proxy() {
     local _install_dir="${2:-"${_SHARE_DIR%/}/httpproxy"}"
     local _repl_cert="${3:-"${_REPL_CERT}"}"
     local _debug="${4-"${_repl_cert}"}"
-    local _url_regex="${5-"${_URL_REGEX}"}"
+    local _url_regex="${5-"${_PROXY_INCLDE_REGEX}"}"
     local _key="${6}"
     local _cert="${7}"
+    local _debug2="${8-"${_DEBUG2}"}"
 
     if [ ! -d "${_install_dir%/}" ]; then
         mkdir -v -p "${_install_dir%/}" || return $?
@@ -2858,8 +2886,9 @@ function f_start_forward_proxy() {
         fi
     fi
 
-    if [[ "${_debug}" =~ ^(y|Y) ]]; then
-        # Not exposing --debug2 at this moment
+    if [[ "${_debug2}" =~ ^(y|Y) ]]; then
+        _cmd="${_cmd} --debug2"
+    elif [[ "${_debug}" =~ ^(y|Y) ]]; then
         _cmd="${_cmd} --debug"
     fi
 
@@ -2981,7 +3010,7 @@ function f_start_saml_server() {
     local _cmd="simplesamlidp"  # If not in the PATH, download it
     if ! type ${_cmd} &>/dev/null; then
         if [ ! -s "${_install_dir%/}/simplesamlidp" ]; then
-            curl -o "${_install_dir%/}/simplesamlidp" -L "https://github.com/hajimeo/samples/raw/master/misc/simplesamlidp_$(uname)_$(uname -m)" --compressed || return $?
+            curl -f -o "${_install_dir%/}/simplesamlidp" -L "https://github.com/hajimeo/samples/raw/master/misc/simplesamlidp_$(uname)_$(uname -m)" --compressed || return $?
             chmod u+x "${_install_dir%/}/simplesamlidp" || return $?
         fi
         _cmd="${_install_dir%/}/simplesamlidp"
@@ -3073,7 +3102,7 @@ function f_start_oidc_server() {
     local _cmd="oidcserver"  # If not in the PATH, download it
     if ! type ${_cmd} &>/dev/null; then
         if [ ! -s "${_install_dir%/}/oidcserver" ]; then
-            curl -o "${_install_dir%/}/oidcserver" -L "https://github.com/hajimeo/samples/raw/master/misc/oidcserver_$(uname)_$(uname -m)" --compressed || return $?
+            curl -f -o "${_install_dir%/}/oidcserver" -L "https://github.com/hajimeo/samples/raw/refs/heads/master/misc/oidcserver_$(uname)_$(uname -m)" --compressed || return $?
             chmod u+x "${_install_dir%/}/oidcserver" || return $?
         fi
         _cmd="${_install_dir%/}/oidcserver"
@@ -3333,13 +3362,37 @@ sources:
 EOF
 }
 
+function f_upload_dummy_raw() {
+    local _repo_name="${1:-"raw-hosted"}"
+    local _repo_path="${2}" # To
+    local _file_path="${3}" # From
+    local _usr="${4:-"${_ADMIN_USER}"}"
+    local _pwd="${5:-"${_ADMIN_PWD}"}"
+    if [ -z "${_file_path}" ] && [ -z "${_repo_path}" ]; then
+        _log "ERROR" "Please specify existing _file_path or _repo_path" ; return 1
+    fi
+    if [ -z "${_file_path}" ]; then
+        echo "test at $(date +'%Y-%m-%d %H:%M:%S')" > ${_TMP%/}/${FUNCNAME[0]}_$$.txt || return $?
+        _file_path="${_TMP%/}/${FUNCNAME[0]}_$$.txt"
+    elif [ ! -s "${_file_path}" ]; then
+        echo "${_file_path}" > ${_TMP%/}/${FUNCNAME[0]}_$$.txt || return $?
+        _file_path="${_TMP%/}/${FUNCNAME[0]}_$$.txt"
+    fi
+    if [ -z "${_repo_path}" ]; then
+        local _file_name="${_file_path##*/}"
+        _repo_path="/repository/raw-hosted/dummies/${_file_name}"
+    fi
+    _log "INFO" "curl -u \"${_usr}\" -T ${_file_path} -L -k \"${_NEXUS_URL%/}/repository/${_repo_name}/${_repo_path#/}\""
+    curl -sf -u "${_usr}:${_pwd}" -w '%{http_code} '${_file_path}' (%{time_total}s)\n' -T ${_file_path} -L -k "${_NEXUS_URL%/}/repository/${_repo_name}/${_repo_path#/}"
+}
+
 function f_upload_dummies_raw() {
     local __doc__="Upload text files into raw hosted repository by using f_upload_dummies"
     local _repo_name="${1:-"raw-hosted"}"
     local _how_many="${2:-"10"}"
     local _parallel="${3:-"5"}"
-    local _path="${4:-"dummies"}"
-    local _file_prefix="${5}"
+    local _path="${4:-"${_PATH:-"dummies"}"}"
+    local _file_prefix="${5:-"${_FILE_PREFIX}"}"   # If empty, random subdirs will be created
     local _file_suffix="${6:-".txt"}"
     local _sub_dir_depth="${7:-"${_SUB_DIR_DEPTH:-3}"}"
     local _usr="${8:-"${_ADMIN_USER}"}"
@@ -3809,6 +3862,8 @@ function f_upload_dummies_nuget() {
     cp -v -f "${_TMP%/}/${_pkg_name}.latest.nupkg" "${_tmpdir%/}/${_pkg_name}.${_base_ver}.${_seq_start}.nupkg" || return $?
     for i in $(eval "${_seq}"); do
         sed -i.tmp -E 's@<version>.+</version>@<version>'${_base_ver}'.'$i'</version>@' "${_tmpdir%/}/${_nuspec}"
+        # For testing metadata elements
+        sed -i.tmp -E 's@<tags>.+</tags>@<tags>dummy-upload-at-'$(date +"%Y%m%d%H%M%S")'</tags>@' "${_tmpdir%/}/${_nuspec}"
         sed -i.tmp -E 's@<version>.+</version>@<version>'${_base_ver}'.'$i'</version>@' "${_tmpdir%/}/${_psmdcp}"
         cd "${_tmpdir%/}" || return $?
         zip -q "./${_pkg_name}.${_base_ver}.${_seq_start}.nupkg" "${_nuspec}" "${_psmdcp}"
@@ -3868,7 +3923,7 @@ function f_upload_dummies_rubygem() {
 #_IMAGE_NAME="path-based-test" f_upload_dummies_docker "${_NEXUS_DOCKER_HOSTNAME}:8443/docker-hosted" "1"
 function f_upload_dummies_docker() {
     local __doc__="Upload dummy docker images into docker hosted repository (requires 'docker' command)"
-    local _host_port="${1:-"${_NEXUS_DOCKER_HOSTNAME}:18182"}"
+    local _host_port="${1}"
     local _how_many="${2:-"10"}"    # this number * _parallel is the actual number of images
     local _parallel="${3:-"1"}"
     local _image_name="${4:-"${_IMAGE_NAME}"}"  # To create multiple tags under *one* image. If empty, dummy${i}-${j}
@@ -3877,6 +3932,7 @@ function f_upload_dummies_docker() {
     local _usr="${7:-"${_ADMIN_USER}"}"
     local _pwd="${8:-"${_ADMIN_PWD}"}"
 
+    [ -z "${_host_port}" ] && _host_port="$(_get_docker_hostname):18182"
     local _cmd="$(_docker_cmd)"
     local _seq_start="${_SEQ_START:-1}"
     local _seq_end="$((${_seq_start} + ${_how_many} - 1))"
@@ -3960,12 +4016,13 @@ function f_upload_dummies_helm() {
 
 function f_upload_dummies_helm_push() {
     local __doc__="To test OCI with docker repository"
-    local _host_port="${1:-"${_NEXUS_DOCKER_HOSTNAME}:18182"}"
+    local _host_port="${1}"
     local _how_many="${2:-"10"}"
     local _pkg_name="${3:-"demo"}"
     local _usr="${4:-"${_ADMIN_USER}"}"
     local _pwd="${5:-"${_ADMIN_PWD}"}"
 
+    [ -z "${_host_port}" ] && _host_port="$(_get_docker_hostname):18182"
     local _seq_start="${_SEQ_START:-1}"
     local _seq_end="$((${_seq_start} + ${_how_many} - 1))"
     local _seq="seq ${_seq_start} ${_seq_end}"
@@ -4010,7 +4067,7 @@ function f_upload_dummy_yum_build() {
     local _yum_upload_path="${_YUM_UPLOAD_PATH:-"Packages"}"
     local _upload_file="$(_rpm_build "${_pkg_name}" "${_ver}" "${_release}" 2>/dev/null)"
     [ -s "${_upload_file}" ] || return 102
-    f_upload_asset "${_repo_name}" -F yum.asset=@${_upload_file} -F yum.asset.filename=${_pkg_name}-${_ver}-${_release}.noarch.rpm -F yum.directory=${_yum_upload_path%/}/Packages
+    _ASYNC_CURL="N" f_upload_asset "${_repo_name}" -F yum.asset=@${_upload_file} -F yum.asset.filename=${_pkg_name}-${_ver}-${_release}.noarch.rpm -F yum.directory=${_yum_upload_path%/}/Packages
 }
 
 # This can be used for populating not only local hosted and a yum-proxy with 'vault' and _YUM_REMOTE_URL
@@ -4019,11 +4076,12 @@ function f_upload_dummies_yum() {
     local _repo_name="${1:-"yum-hosted"}"
     local _how_many="${2:-"10"}"
     local _pkg_name="${3}"      # used with grep -E "\b${_pkg_name}\b"
-    local _upload_method="${4-"${_YUM_DUMMY_UPLOAD_METHOD:-"path"}"}"  # "vault" or "build" or "path"
+    local _parallel="${4:-"5"}" # Only for "build" and "path" methods
+    local _upload_method="${5-"${_YUM_DUMMY_UPLOAD_METHOD:-"path"}"}"  # "vault" or "build" or "path"
 
     local _seq_start="${_SEQ_START:-1}"
     local _seq_end="$((${_seq_start} + ${_how_many} - 1))"
-    local _seq="seq ${_seq_start} ${_seq_end}"
+    local _seq="seq 1 ${_parallel}"
 
     local _repo_url="${_NEXUS_URL%/}/repository/${_repo_name}/"
     local _yum_remote_url="${_YUM_REMOTE_URL:-"https://vault.centos.org/7.9.2009/os/x86_64/Packages/"}"
@@ -4056,8 +4114,20 @@ function f_upload_dummies_yum() {
             #curl -sSf -w "Download: %{http_code} ${_YUM_GROUP_REPO} repomd.xml (%{time_total} secs, %{size_download} bytes)\n" -o/dev/null "${_NEXUS_URL%/}/repository/${_YUM_GROUP_REPO}/${_yum_upload_path%/}/repodata/repomd.xml"
         done
     elif [[ "${_upload_method}" =~ ^[bB] ]]; then
-        for i in $(eval "${_seq}"); do
-            f_upload_dummy_yum_build "${_repo_name}" "${_pkg_name:-"test-rpm"}" "0.0.0" "${i}" || return $?
+        local _current_num=${_seq_start}
+        while true; do
+            for i in $(eval "${_seq}"); do
+                _current_num=$(( _current_num + i - 1 ))
+                if [ "${_current_num}" -gt "${_seq_end}" ]; then
+                    break
+                fi
+                f_upload_dummy_yum_build "${_repo_name}" "${_pkg_name:-"test-rpm"}" "0.0.0" "${_current_num}" &    # &> ${_TMP%/}/${FUNCNAME[0]}_$$_${i}.out
+            done
+            sleep 1
+            wait
+            if [ "${_current_num}" -gt "${_seq_end}" ]; then
+                break
+            fi
         done
     elif [[ "${_upload_method}" =~ ^[pP] ]]; then
         # Fastest but using a bug in Nexus3. Also can't change the name or version.
@@ -4065,8 +4135,20 @@ function f_upload_dummies_yum() {
         if [ ! -s "${_upload_file}" ] && ! curl -sSf -L -o ${_upload_file} "https://github.com/hajimeo/samples/raw/master/misc/test-rpm-9.9.9-1.noarch.rpm"; then
             return 103
         fi
-        for i in $(eval "${_seq}"); do
-            f_upload_asset "${_repo_name}" -F yum.asset=@${_upload_file} -F yum.asset.filename=test-rpm-9.9.9-1.noarch.rpm -F yum.directory=dummy/os/path${i}/Packages || return $?
+        local _current_num=${_seq_start}
+        while true; do
+            for i in $(eval "${_seq}"); do
+                _current_num=$(( _current_num + i - 1 ))
+                if [ "${_current_num}" -gt "${_seq_end}" ]; then
+                    break
+                fi
+                _ASYNC_CURL="N" f_upload_asset "${_repo_name}" -F yum.asset=@${_upload_file} -F yum.asset.filename=${_pkg_name:-"test-rpm"}-9.9.9-1.noarch.rpm -F yum.directory=dummy/os/path${_current_num}/Packages &
+            done
+            sleep 1
+            wait
+            if [ "${_current_num}" -gt "${_seq_end}" ]; then
+                break
+            fi
         done
     else
         return 111
@@ -4203,7 +4285,7 @@ function f_delete_all_assets() {
 #   f_setup_raw
 #   f_api "/service/rest/v1/repositories/raw/hosted" '{"name":"raw-test-hosted","online":true,"storage":{"blobStoreName":"default","strictContentTypeValidation":false,"writePolicy":"ALLOW"}}'
 # 2. curl -D- -u "admin:admin123" -T<(echo "test for f_staging_move") -L -k "${_NEXUS_URL%/}/repository/raw-hosted/test/nxrm3Staging.txt"
-# 3. f_associate_tag "repository=raw-hosted" "raw-Test-tag"
+# 3. f_associate_tag "repository=raw-hosted" "Raw-Test-Tag"
 #    f_staging_move "raw-test-hosted" "raw-test-tag"
 #  Or without tag but search query:
 #    f_staging_move "raw-test-hosted" "raw-test-tag" "repository=raw-hosted&name=*test/nxrm3Staging*.txt"
@@ -4267,7 +4349,7 @@ function f_associate_tag() {
     sleep 3 # Just in case waiting for elastic search
     echo "To confirm:"
     echo "    f_api \"/service/rest/v1/search?${_search}\" | grep '\"${_tag}\"' -c"
-    echo "    f_api \"/service/rest/v1/search?tag=${_tag}\""
+    echo "    f_api \"/service/rest/v1/search?tag=${_tag}\"  # better add repository="
 }
 # TODO: add `/service/rest/v1/staging/delete`
 
@@ -4558,7 +4640,7 @@ function f_h2_console() {
     fi
     local _java="java"  # In case needs to change to java 8 / java 17
     [ -n "${JAVA_HOME}" ] && _java="${JAVA_HOME%/}/bin/java"
-    _log "INFO" "Starting H2 Console from \"${_baseDir}\" on http://localhost:${_webPort}/ ..." >&2
+    _log "INFO" "Starting H2 Console from \"${_baseDir}\" on http://localhost:${_webPort}/ ..."
     ${_java} -cp ${_h2_jar} org.h2.tools.Server -webPort ${_port} -baseDir "${_baseDir}" -webAllowOthers -tcpAllowOthers -pgAllowOthers
 }
 
