@@ -96,6 +96,7 @@ if [ "$(uname)" = "Darwin" ]; then
         [ -z "${JAVA_HOME_11}" ] && export JAVA_HOME_11="$HOME/Apps/jdk11"
     fi
     if [ -d "/opt/homebrew/opt/openjdk@17/libexec/openjdk.jdk/Contents/Home" ]; then
+        [ -z "${NEXUSTOOLS_JAVA17_HOME}" ] && export NEXUSTOOLS_JAVA17_HOME="/opt/homebrew/opt/openjdk@17/libexec/openjdk.jdk/Contents/Home"
         [ -z "${JAVA_HOME_17}" ] && export JAVA_HOME_17="/opt/homebrew/opt/openjdk@17/libexec/openjdk.jdk/Contents/Home"
         [ -z "${JAVA_HOME}" ] && export JAVA_HOME="/opt/homebrew/opt/openjdk@17/libexec/openjdk.jdk/Contents/Home"
     fi
