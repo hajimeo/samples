@@ -26,7 +26,7 @@ if type tree &>/dev/null; then
     }
 fi
 # Debug network performance with curl
-alias curld='curl -w "\ntime_namelookup:\t%{time_namelookup}\ntime_connect:\t%{time_connect}\ntime_appconnect:\t%{time_appconnect}\ntime_pretransfer:\t%{time_pretransfer}\ntime_redirect:\t%{time_redirect}\ntime_starttransfer:\t%{time_starttransfer}\n----\ntime_total:\t%{time_total}\nhttp_code:\t%{http_code}\nspeed_download:\t%{speed_download}\nspeed_upload:\t%{speed_upload}\n"'
+alias curld='curl -w "\ntime_namelookup:\t%{time_namelookup}\ntime_connect:\t%{time_connect}\ntime_appconnect:\t%{time_appconnect}\ntime_pretransfer:\t%{time_pretransfer}\ntime_redirect:\t%{time_redirect}\ntime_starttransfer:\t%{time_starttransfer}\n----\ntime_total:\t%{time_total}\nhttp_code:\t%{http_code}\nsize_download:\t%{size_download}\nspeed_download:\t%{speed_download}\nspeed_upload:\t%{speed_upload}\n"'
 # output the longest line *number* as wc|gwc -L does not show the line number
 alias longest_line_no="awk 'length > max_length { max_length = length; longest_line_num = NR } END { print longest_line_num }'"
 # count a specific character from each line with the line number. eg. gunzip -c large.sql.gz |
@@ -1194,8 +1194,9 @@ function pubS() {
         rsync -av $HOME/IdeaProjects/samples/misc/filelist_* $HOME/IdeaProjects/nexus-monitoring/resources/
         rsync -av $HOME/IdeaProjects/samples/misc/filelistv2_* $HOME/IdeaProjects/nexus-monitoring/resources/
         cd  $HOME/IdeaProjects/samples/golang/FileListV2/ && \
-        tar -czvf ./filelistv2.src.tar.gz $(find . -type f -name '*.go' -not -name '*_test.go') && \
-        mv -v ./filelistv2.src.tar.gz $HOME/IdeaProjects/nexus-monitoring/resources/
+            tar -czvf ./filelistv2.src.tar.gz $(find . -type f -name '*.go' -not -name '*_test.go') && \
+            mv -v ./filelistv2.src.tar.gz $HOME/IdeaProjects/nexus-monitoring/resources/
+        cd -
     fi
 
     sync_nexus_binaries &>/dev/null &
@@ -1206,6 +1207,7 @@ function sync_nexus_binaries() {
     echo "Synchronising IQ binaries from/to ${_host} ..." >&2
     rsync -Prc ${_host}:/var/tmp/share/sonatype/nexus-iq-server-*-bundle.tar.gz $HOME/.nexus_executable_cache/
     rsync -Prc $HOME/.nexus_executable_cache/nexus-iq-server-*-bundle.tar.gz ${_host}:/var/tmp/share/sonatype/
+    rsync -Prc $HOME/.nexus_executable_cache/nexus-iq-cli-*.jar ${_host}:/var/tmp/share/sonatype/
 }
 
 function set_classpath() {
@@ -1220,10 +1222,29 @@ function set_classpath() {
     fi
 }
 
+#update_cacerts_from_host "nxrm3helmha-k8s.standalone.localdomain:443" $JAVA_HOME_21/zulu-21.jdk/Contents/Home/lib/security/cacerts
 function update_cacerts_from_host() {
     local _host_port="$1" # local.standalone.localdomain:8479
-    local _alias="$2"
-    local _truststore="${3}"
+    local _truststore="$2"
+    local _alias="$3"
+    if [ -z "${_host_port}" ]; then
+        echo "Usage: ${FUNCNAME[0]} <host:port> [truststore_path] [alias_name]" >&2
+        return 1
+    fi
+    if [ -z "${_truststore}" ]; then
+        if [ -z "${JAVA_HOME}" ]; then
+            echo "Either truststore_path or JAVA_HOME environment variable must be set." >&2
+            return 2
+        fi
+        _truststore="$(find ${JAVA_HOME%/} -maxdepth 4 -name cacerts | head -n1)"
+    fi
+    if [ ! -f "${_truststore}" ]; then
+        echo "Truststore file ${_truststore} not found." >&2
+        return 3
+    fi
+    if [ -z "${_alias}" ]; then
+        _alias="$(echo ${_host_port} | sed -E 's/[:\/]/_/g')"
+    fi
     # -J-Dhttps.proxyHost={PROXY_HOSTNAME} -J-Dhttps.proxyPort={PROXY_PORT}
     keytool -printcert -rfc -sslserver ${_host_port} > /tmp/server.pem || return $?
     tac /tmp/server.pem | sed '/-----BEGIN CERTIFICATE-----/q' | tac > /tmp/server_last.pem || return $?
