@@ -2850,7 +2850,7 @@ Also update _NEXUS_URL. For example: export _NEXUS_URL=\"https://local.standalon
     _log "INFO" "To trust this certificate, _trust_ca \"\${_ca_pem}\""
 }
 
-#_URL_REGEX="sonatype.com" _REPL_CERT="Y" f_start_forward_proxy
+#_URL_REGEX="sonatype.com" _DEBUG2="Y" _REPL_CERT="Y" f_start_forward_proxy
 function f_start_forward_proxy() {
     local __doc__="Setup and start simple HTTP/HTTPS/forward proxy server"
     local _port="${1:-"8080"}"
@@ -2946,8 +2946,9 @@ function f_start_reverse_proxy() {
     local __doc__="Install and start a reverse proxy server with caddy @see https://caddyserver.com/docs/quick-starts/reverse-proxy"
     local _host_port_to="${1:-"127.0.0.1:8081"}"    # can be https://{1st_node}:{port},https://{2nd_node}:{port}
     local _host_port_from="${2}" # If empty, the default is using https://localhost:443/
-    local _rut_as="${3-"admin"}"
-    local _install_dir="${4:-"${_SHARE_DIR%/}/caddy"}"
+    local _certificates"${3}" # If empty, the default is using https://localhost:443/
+    local _rut_as="${4-"${_NEXUS_RUT_AS}"}"
+    local _install_dir="${5:-"${_SHARE_DIR%/}/caddy"}"
     local _ver="${5}"
     local _caddy="caddy"
     if type caddy &>/dev/null; then
@@ -2962,10 +2963,11 @@ function f_start_reverse_proxy() {
     if [[ "${_host_port_to}" =~ ^([0-9]+)$ ]]; then
         _host_port_to="127.0.0.1:${BASH_REMATCH[1]}"
     fi
-    local _cmd="caddy reverse-proxy --from ${_host_port_from} --to ${_host_port_to} --change-host-header"
-    if [ -z "${_host_port_from}" ]; then
+    local _cmd="caddy reverse-proxy --insecure --to ${_host_port_to} --change-host-header --debug"
+    if [ -n "${_host_port_from}" ]; then
+        _cmd="${_cmd} --from ${_host_port_from}"
+    else
         _log "INFO" "Using default https://localhost:443/ for 'from' ..."; sleep 3
-        _cmd="caddy reverse-proxy --to ${_host_port_to} --change-host-header --debug"
     fi
     if [ -n "${_rut_as}" ]; then
         _cmd="${_cmd} --header-up \"REMOTE_USER: admin\""
@@ -2973,7 +2975,7 @@ function f_start_reverse_proxy() {
     eval "${_cmd}" &> ${_TMP%/}/caddy_$$.log &
     local _pid="$!"
     sleep 2
-    echo "[INFO] Running '${_cmd}' in background"
+    echo "[INFO] Running '${_cmd}' in background (may need to use '-Djavax.net.ssl.trustStoreType=KeychainStore')"
     echo "       PID: ${_pid}  Log: ${_TMP%/}/caddy_$$.log"
 }
 
