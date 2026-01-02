@@ -81,12 +81,13 @@ def main(params) {
                 }
                 def repositoryId = org.sonatype.nexus.repository.content.store.InternalIds.contentRepositoryId(it).get()
                 def content = it.facet(org.sonatype.nexus.repository.content.facet.ContentFacet)
-                def asset = ((org.sonatype.nexus.repository.content.facet.ContentFacetSupport) content).stores().assetStore.findByBlobRef(repositoryId, org.sonatype.nexus.blobstore.api.BlobRef.parse(blobRefStr))
-                if (asset.isPresent()) {
+                def maybeAsset = ((org.sonatype.nexus.repository.content.facet.ContentFacetSupport) content).stores().assetStore.findByBlobRef(repositoryId, org.sonatype.nexus.blobstore.api.BlobRef.parse(blobRefStr))
+                if (maybeAsset.isPresent()) {
+                    def asset = maybeAsset.get()
                     if (!params.dryRun) {
-                        it.facet(org.sonatype.nexus.repository.content.maintenance.ContentMaintenanceFacet).deleteAsset(asset.get())
+                        it.facet(org.sonatype.nexus.repository.content.maintenance.ContentMaintenanceFacet).deleteAsset(asset)
                     }
-                    log.info("Deleted asset:{}, blobRef:{} from repository {} (DryRun:{})", asset, blobRefStr, it.name, params.dryRun)
+                    log.info("Deleted path:{}, blobRef:{} from repository {} (DryRun:{})", asset.path(), blobRefStr, it.name, params.dryRun)
                     deletedNum++
                     isDeleted = true
                     return  // break out of repo loop for performance
