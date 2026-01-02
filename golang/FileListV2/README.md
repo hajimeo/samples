@@ -200,7 +200,7 @@ Excluding the soft-deleted blobs and including only specific repo. For bTo uses 
 ```
 # NOTE: MinIO example. HTTPS is required.
 export AWS_ACCESS_KEY_ID_2="admin" AWS_SECRET_ACCESS_KEY_2="admin123" AWS_REGION_2="" AWS_ENDPOINT_URL_2="https://local.standalone.localdomain:19000" AWS_CA_BUNDLE_2="$HOME/minio_data/certs/public.crt"
-filelist2 -b "s3://apac-support-bucket/filelist-test/" -bTo "s3://apac-support-bucket/filelist-test_copied/" -PathStyle -P -pRx "@Bucket.repo-name=raw-s3-hosted," -pRxNot "deleted=true" -H -s ./copied_blobs.tsv
+filelist2 -b "s3://apac-support-bucket/filelist-test/" -bTo "s3://test-bucket/filelist-test_copied/" -PathStyle -P -pRx "@Bucket.repo-name=raw-s3-hosted," -pRxNot "deleted=true" -H -s ./copied_blobs.tsv
 ```
 NOTE: Using `AWS_CA_BUNDLE` may break HTTPS requests to the real AWS S3. May also need to use `-PathStyle` if not wildcard certificate.
 ```
@@ -214,6 +214,10 @@ AZURE_STORAGE_CONNECTION_STRING="${AZURE_STORAGE_CONNECTION_STRING_2}" filelist2
 After reviewing ./copied_blobs.tsv, execute the Undeleter against another Nexus instance
 ```
 bash ./nrm3-undelete-3.83.sh -I -s "default" -b ./copied_blobs.tsv
+```
+SQL query can be used to generate the blobId list for specific repository
+```
+filelist2 -b ./sonatype-work/nexus3/blobs/default -db ./sonatype-work/nexus3/etc/fabric/nexus-store.properties -query "select blob_ref as blob_id from raw_asset_blob ab join raw_asset a using (asset_blob_id) where repository_id IN (select cr.repository_id from raw_content_repository cr join repository r on r.id = cr.config_repository_id where r.name in ('raw-hosted')) LIMIT 1" -c 100 -bTo "s3://apac-support-bucket/filelist-test_copied/" -P -s copied_from_local_blobs.tsv
 ```
 
 ## Misc.
