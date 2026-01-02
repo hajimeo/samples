@@ -30,7 +30,7 @@ DOWNLOAD and INSTALL:
     
 USAGE EXAMPLE:
     reverseproxy <listening address:port> <listening pattern> <remote-URL> [certFile] [keyFile] 
-    reverseproxy $(hostname -f):28443 / http://search.osakos.com/ /var/tmp/share/cert/standalone.localdomain.crt /var/tmp/share/cert/standalone.localdomain.key
+    sudo reverseproxy local.standalone.localdomain:443 / http://search.osakos.com/ $HOME/IdeaProjects/samples/misc/standalone.localdomain.crt $HOME/IdeaProjects/samples/misc/standalone.localdomain.key
 
 Use as a web server (receiver) with netcat command:
     while true; do nc -nlp 2222 &>/dev/null; done
