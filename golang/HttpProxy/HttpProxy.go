@@ -31,7 +31,6 @@ package main
 import (
 	"bytes"
 	"context"
-	"crypto/md5"
 	"crypto/rand"
 	"crypto/rsa"
 	"crypto/tls"
@@ -51,6 +50,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -133,31 +133,31 @@ func debug2(format string, v ...any) {
 }
 
 func handleDefault(w http.ResponseWriter, req *http.Request) {
-	hash := ""
+	reqTime := strconv.FormatInt(time.Now().UnixMicro(), 10)
+	url := req.URL.String()
 	matched := true
 	if Debug {
 		if len(UrlRegex) > 0 {
-			matched = UrlRegexP.MatchString(req.URL.String())
+			matched = UrlRegexP.MatchString(url)
 			if !matched {
-				debug("UrlRegex '%s' did not match with '%s'", UrlRegex, req.URL.String())
+				debug("UrlRegex '%s' did not match with '%s'", UrlRegex, url)
 			}
 		}
 		if matched {
-			reqDump, err := httputil.DumpRequest(req, false)
+			reqDump, err := httputil.DumpRequest(req, Debug2)
 			if err != nil {
-				debug("DumpRequest failed for %s: %v", req.RequestURI, err)
+				debug("DumpRequest failed for %s: %v", url, err)
 			} else {
-				hash = fmt.Sprintf("%x", md5.Sum(reqDump))
-				debug("Request: %s\n%s", hash, reqDump)
+				debug("Request: %s (%s)\n%s", url, reqTime, reqDump)
 				if Debug2 {
-					req.Body = saveBodyToFile(req.Body, hash+".req")
+					req.Body = saveBodyToFile(req.Body, reqTime+".req")
 				}
 			}
 		}
 	}
 	resp, err := http.DefaultTransport.RoundTrip(req)
 	if err != nil {
-		out("RoundTrip for %s failed with %v", req.RequestURI, err)
+		out("RoundTrip for %s failed with %v", url, err)
 		http.Error(w, err.Error(), http.StatusServiceUnavailable)
 		return
 	}
@@ -167,14 +167,14 @@ func handleDefault(w http.ResponseWriter, req *http.Request) {
 	defer resp.Body.Close()
 	if Debug {
 		if matched {
-			// If Debug, dump response (and may save body if Debug2)
+			// If Debug, dump response (and may save body separately if Debug2)
 			respDump, err := httputil.DumpResponse(resp, false)
 			if err != nil {
-				debug("DumpResponse failed for %s failed. %v", req.RequestURI, err)
+				debug("DumpResponse failed for %s failed. %v", url, err)
 			} else {
 				debug("Response %s", respDump)
 				if Debug2 {
-					resp.Body = saveBodyToFile(resp.Body, hash+".resp")
+					resp.Body = saveBodyToFile(resp.Body, reqTime+".resp")
 				}
 			}
 		}
@@ -265,25 +265,24 @@ func handleRequest(w http.ResponseWriter, r *http.Request) {
 }
 
 func handleConnect(w http.ResponseWriter, req *http.Request) {
-	hash := ""
+	reqTime := strconv.FormatInt(time.Now().UnixMicro(), 10)
+	url := req.URL.String()
 	matched := true
 	if Debug {
 		if len(UrlRegex) > 0 {
-			matched = UrlRegexP.MatchString(req.URL.String())
+			matched = UrlRegexP.MatchString(url)
 			if !matched {
-				debug("UrlRegex '%s' did not match with '%s'", UrlRegex, req.URL.String())
+				debug("UrlRegex '%s' did not match with '%s'", UrlRegex, url)
 			}
 		}
 		if matched {
-			reqDump, err := httputil.DumpRequest(req, false)
+			reqDump, err := httputil.DumpRequest(req, Debug2)
 			if err != nil {
-				debug("DumpRequest failed for %s: %v", req.RequestURI, err)
+				debug("DumpRequest failed for %s: %v", url, err)
 			} else {
-				// Use md5sum of reqDump as the hash because 'body' is false
-				hash = fmt.Sprintf("%x", md5.Sum(reqDump))
-				debug("Request: %s\n%s", hash, reqDump)
+				debug("Request: %s (%s)\n%s", url, reqTime, reqDump)
 				if Debug2 {
-					req.Body = saveBodyToFile(req.Body, hash+".req")
+					req.Body = saveBodyToFile(req.Body, reqTime+".req")
 				}
 			}
 		}
@@ -319,8 +318,8 @@ func handleConnect(w http.ResponseWriter, req *http.Request) {
 			return
 		}
 
-		go transferClosable(destConn, clientConn, hash+".req")
-		go transferClosable(clientConn, destConn, hash+".resp")
+		go transferClosable(destConn, clientConn, "")
+		go transferClosable(clientConn, destConn, reqTime+".resp")
 		return
 	}
 
@@ -358,6 +357,7 @@ func handleConnect(w http.ResponseWriter, req *http.Request) {
 			r.URL.Host = host
 
 			out("→ %s %s (host: %s)", r.Method, r.URL.String(), host)
+			reqTime2 := strconv.FormatInt(time.Now().UnixMicro(), 10)
 
 			// Use fresh transport for the outgoing connection
 			resp, err := roundTripWithTLSFallback(r, host)
@@ -370,13 +370,15 @@ func handleConnect(w http.ResponseWriter, req *http.Request) {
 
 			if Debug {
 				if matched {
+					reqDump, _ := httputil.DumpRequest(r, false)
+					debug("Request2: %s (%s)\n%s", url, reqTime2, reqDump)
 					respDump, err := httputil.DumpResponse(resp, false)
 					if err != nil {
-						debug("DumpResponse failed for %s failed. %v", req.RequestURI, err)
+						debug("DumpResponse failed for %s failed. %v", r.URL.String(), err)
 					} else {
-						debug("Response: %s", respDump)
+						debug("Response2: %s\n%s", reqTime2, respDump)
 						if Debug2 {
-							resp.Body = saveBodyToFile(resp.Body, hash+".resp")
+							resp.Body = saveBodyToFile(resp.Body, reqTime2+".resp")
 						}
 					}
 				}
@@ -801,7 +803,18 @@ func main() {
 	}
 	// Save the respDump into a file under the CachePath if specified, if not specified, use OS's temp dir
 	if CachePath == "" {
-		CachePath = os.TempDir()
+		CachePath = filepath.Join(os.TempDir(), "HttpProxyCache")
+		// Create the directory if not exists
+	}
+	if len(CachePath) > 0 {
+		err := os.MkdirAll(CachePath, 0755)
+		if err != nil {
+			if Debug2 || ReplCert {
+				panic(err)
+			} else {
+				out("ERROR: Failed to create %s. error: %v", CachePath, err)
+			}
+		}
 	}
 	if len(UrlRegex) > 0 {
 		UrlRegexP = regexp.MustCompile(UrlRegex)
