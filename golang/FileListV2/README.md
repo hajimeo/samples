@@ -200,14 +200,14 @@ Excluding the soft-deleted blobs and including only specific repo. For bTo uses 
 ```
 # NOTE: MinIO example. HTTPS is required.
 export AWS_ACCESS_KEY_ID_2="admin" AWS_SECRET_ACCESS_KEY_2="admin123" AWS_REGION_2="" AWS_ENDPOINT_URL_2="https://local.standalone.localdomain:19000" AWS_CA_BUNDLE_2="$HOME/minio_data/certs/public.crt"
-filelist2 -b "s3://apac-support-bucket/filelist-test/" -bTo "s3://test-bucket/filelist-test_copied/" -PathStyle -P -pRx "@Bucket.repo-name=raw-s3-hosted," -pRxNot "deleted=true" -H -s ./copied_blobs.tsv
+filelist2 -b "s3://apac-support-bucket/filelist-test/" -bTo "s3://test-bucket/filelist-test_copied/" -PathStyle -P -pRx "@Bucket.repo-name=raw-s3-hosted," -pRxNot ",(deleted=true|originalLocation=)" -H -s ./copied_blobs.tsv
 ```
 NOTE: Using `AWS_CA_BUNDLE` may break HTTPS requests to the real AWS S3. May also need to use `-PathStyle` if not wildcard certificate.
 ```
 # NOTE: Azurite example. Need to create a Container. Can not use '_' in the container name.
 export AZURE_STORAGE_CONNECTION_STRING_2="DefaultEndpointsProtocol=http;AccountName=admin;AccountKey=YWRtaW4xMjM=;BlobEndpoint=http://localhost:10000/admin;"
 az storage container create --name "apac-support-bucket-filelist-test-copied" --connection-string "${AZURE_STORAGE_CONNECTION_STRING_2}"
-filelist2 -b "s3://apac-support-bucket/filelist-test/" -bTo "az://apac-support-bucket-filelist-test-copied/" -P -pRx "@Bucket.repo-name=raw-s3-hosted," -pRxNot "deleted=true" -H -s ./copied_blobs.tsv
+filelist2 -b "s3://apac-support-bucket/filelist-test/" -bTo "az://apac-support-bucket-filelist-test-copied/" -P -pRx "@Bucket.repo-name=raw-s3-hosted," -pRxNot ",(deleted=true|originalLocation=)" -H -s ./copied_blobs.tsv
 # To validate
 AZURE_STORAGE_CONNECTION_STRING="${AZURE_STORAGE_CONNECTION_STRING_2}" filelist2 -b "az://apac-support-bucket-filelist-test-copied/" -rF ./copied_blobs.tsv
 ```

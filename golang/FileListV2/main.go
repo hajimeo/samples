@@ -199,13 +199,11 @@ func setGlobals() {
 	}
 
 	// If _FILTER_P is given, automatically populate other related variables
-	if len(common.Filter4PropsIncl) > 0 || len(common.Filter4PropsExcl) > 0 {
-		if len(common.Filter4PropsIncl) > 0 {
-			common.RxIncl, _ = regexp.Compile(common.Filter4PropsIncl)
-		}
-		if len(common.Filter4PropsExcl) > 0 {
-			common.RxExcl, _ = regexp.Compile(common.Filter4PropsExcl)
-		}
+	if len(common.Filter4PropsIncl) > 0 {
+		common.RxIncl, _ = regexp.Compile(common.Filter4PropsIncl)
+	}
+	if len(common.Filter4PropsExcl) > 0 {
+		common.RxExcl, _ = regexp.Compile(common.Filter4PropsExcl)
 	}
 	if len(common.Filter4BytesIncl) > 0 {
 		common.RxInclBytes, _ = regexp.Compile(common.Filter4BytesIncl)
@@ -387,12 +385,12 @@ func genBlobPath(blobIdLikeString string, extension string) string {
 	return filepath.Join(fmt.Sprintf("vol-%02d", int(vol)), fmt.Sprintf("chap-%02d", int(chap)), blobId) + extension
 }
 
-func genOutput(path string, bi bs_clients.BlobInfo, db *sql.DB) string {
+func genOutput(path string, bi bs_clients.BlobInfo, db *sql.DB) (string, error) {
 	if len(common.Filter4FileName) > 0 && !common.RxFilter4FileName.MatchString(path) {
 		if common.Debug2 {
 			h.Log("DEBUG", fmt.Sprintf("Skipping as path:%s does not match with the filter %s", path, common.RxFilter4FileName.String()))
 		}
-		return ""
+		return "", nil
 	}
 
 	var bytesChkErr error
@@ -421,8 +419,8 @@ func genOutput(path string, bi bs_clients.BlobInfo, db *sql.DB) string {
 	if bi.Error {
 		// When Orphaned blob finder mode, do not output unreadable (properties) files, and probably already DEBUG level logged?
 		if common.Truth == "BS" {
-			h.Log("DEBUG", fmt.Sprintf("path:%s has error. Skipping because of BS mode ...", path))
-			return ""
+			skipMsg := fmt.Sprintf("path:%s has error. Skipping because of BS mode ...", path)
+			return "", errors.New(skipMsg)
 		}
 		output = fmt.Sprintf("%s%s%s%s%d", path, common.SEP, bi.ModTime, common.SEP, bi.Size)
 	} else {
@@ -433,8 +431,8 @@ func genOutput(path string, bi bs_clients.BlobInfo, db *sql.DB) string {
 			modTimestamp = bytesInfo.ModTime.Unix()
 		} */
 		if !lib.IsTsMSecBetweenTs(modTimestamp*1000, common.ModDateFromTS, common.ModDateToTS) {
-			h.Log("DEBUG", fmt.Sprintf("path:%s modTime %d is outside of the range %d to %d", path, modTimestamp, common.ModDateFromTS, common.ModDateToTS))
-			return ""
+			skipMsg := fmt.Sprintf("path:%s modTime %d is outside of the range %d to %d", path, modTimestamp, common.ModDateFromTS, common.ModDateToTS)
+			return "", errors.New(skipMsg)
 		}
 
 		output = fmt.Sprintf("%s%s%s%s%d", path, common.SEP, bi.ModTime, common.SEP, bi.Size)
@@ -444,8 +442,7 @@ func genOutput(path string, bi bs_clients.BlobInfo, db *sql.DB) string {
 			//h.Log("DEBUG", fmt.Sprintf("Extra info from properties is needed for '%s'", path))
 			sortedOneLineProps, skipReason = extraInfo(path)
 			if skipReason != nil {
-				h.Log("DEBUG", fmt.Sprintf("Skipped %s due to %s", path, skipReason.Error()))
-				return ""
+				return "", skipReason
 			}
 			if common.BytesChk && bytesChkErr == nil && strings.HasSuffix(path, common.PROP_EXT) {
 				// If BytesChek is asked, compare the size with the size line in the .properties file (NOTE: 0 size is possible)
@@ -519,7 +516,7 @@ func genOutput(path string, bi bs_clients.BlobInfo, db *sql.DB) string {
 		output = fmt.Sprintf("%s%sbytes-modified:%s|size:%d", output, common.SEP, bytesInfo.ModTime, bytesInfo.Size)
 	}
 
-	return output
+	return output, skipReason
 }
 
 func shouldReadProps(path string, modTimestamp int64) bool {
@@ -616,6 +613,8 @@ func shouldSkipThisContents(sortedContents string) error {
 	// Exclude check first
 	if common.RxExcl != nil && common.RxExcl.MatchString(sortedContents) {
 		return errors.New(fmt.Sprintf("Matched with the exclude regex: %s. Skipping.", common.RxExcl.String()))
+		//} else if common.RxExcl != nil {
+		//	h.Log("DEBUG", fmt.Sprintf("common.RxExcl did not match with %s", sortedContents))
 	}
 	if common.RxIncl != nil && len(common.RxIncl.String()) > 0 {
 		if common.RxIncl.MatchString(sortedContents) {
@@ -768,13 +767,19 @@ func printLineFromPath(args bs_clients.PrintLineArgs) bool {
 	atomic.AddInt64(&common.CheckedNum, 1)
 
 	//h.Log("DEBUG", fmt.Sprintf("Generating the output for '%s'", path))
-	output := genOutput(path, blobInfo, db)
-
+	output, skipReason := genOutput(path, blobInfo, db)
+	// if output is empty, that means skipped, so not copying to BaseDir2
 	if len(common.BaseDir2) > 0 && strings.HasSuffix(path, common.PROP_EXT) {
-		finalErrorCode := copyPropsBytesToBaseDir2(path)
-		if len(finalErrorCode) > 0 {
-			output = fmt.Sprintf("%s%s%s", output, common.SEP, finalErrorCode)
+		if len(output) > 0 {
+			finalErrorCode := copyPropsBytesToBaseDir2(path)
+			if len(finalErrorCode) > 0 {
+				output = fmt.Sprintf("%s%s%s", output, common.SEP, finalErrorCode)
+			}
+		} else if skipReason != nil {
+			h.Log("INFO", fmt.Sprintf("Not copying %s to %s as skipped due to %s", path, common.BaseDir2, skipReason.Error()))
 		}
+	} else if skipReason != nil {
+		h.Log("DEBUG", fmt.Sprintf("Skipped %s due to %s", path, skipReason.Error()))
 	}
 
 	// If not empty output, updating counters before saving and returning
@@ -833,21 +838,21 @@ func copyPropsBytesToBaseDir2(propPath string) string {
 		// Regardless of the errorCode, try to copy the .bytes file as well
 		bytesPath := lib.GetPathWithoutExt(propPath) + common.BYTES_EXT
 		maybeCustomizedBytesPath := lib.GenCopyToPath(bytesPath)
-		errorCodeBytes := copyToBaseDir2(bytesPath, maybeCustomizedBytesPath)
+		errorCodeBytes := copyPathToBaseDir2(bytesPath, maybeCustomizedBytesPath)
 		if len(errorCodeBytes) > 0 && errorCodeBytes != "ALREADY_EXISTS" {
 			// write error should be already reported, so DEBUG
-			h.Log("DEBUG", fmt.Sprintf("copyToBaseDir2 completed with error. path:%s, errorCodeBytes:%s", bytesPath, errorCodeBytes))
+			h.Log("DEBUG", fmt.Sprintf("copyPathToBaseDir2 completed with error. path:%s, errorCodeBytes:%s", bytesPath, errorCodeBytes))
 			// If Bytes failed to copy, no point of copying properties.
 			return errorCodeBytes
 		}
 	}
 
-	errorCode := copyToBaseDir2(propPath, maybeCustomizedPath)
-	h.Log("DEBUG", fmt.Sprintf("copyToBaseDir2 completed for %s, errorCode:%s", propPath, errorCode))
+	errorCode := copyPathToBaseDir2(propPath, maybeCustomizedPath)
+	h.Log("DEBUG", fmt.Sprintf("copyPathToBaseDir2 completed for %s, errorCode:%s", propPath, errorCode))
 	return errorCode
 }
 
-func copyToBaseDir2(path string, toPath string) string {
+func copyPathToBaseDir2(path string, toPath string) string {
 	if len(toPath) == 0 {
 		toPath = path
 	}
@@ -862,8 +867,10 @@ func copyToBaseDir2(path string, toPath string) string {
 		}
 	}
 
+	errSfx := ""
 	// If the path is .properties, first try to write by using the cache
 	if strings.HasSuffix(path, common.PROP_EXT) {
+		errSfx = "_PROPS"
 		contents, err := getContentsFromCache(path)
 		if err != nil {
 			h.Log("DEBUG", fmt.Sprintf("Getting cache for path:%s failed with %s", writingPath, err))
@@ -874,7 +881,7 @@ func copyToBaseDir2(path string, toPath string) string {
 			if err != nil || len(contents) == 0 {
 				h.Log("ERROR", fmt.Sprintf("Reading path:%s failed with %s (or empty)", writingPath, err))
 				// This (reading file error) is not the skip reason, so returning nil error.
-				return "READ_FAILED"
+				return "ERROR_READ" + errSfx
 			}
 		}
 
@@ -888,7 +895,7 @@ func copyToBaseDir2(path string, toPath string) string {
 			result, err := writeToPath(writingPath, contents)
 			if err != nil {
 				h.Log("ERROR", fmt.Sprintf("Writing path:%s to BaseDir2:%s failed with %s", writingPath, common.BaseDir2, err))
-				return "FROM_CACHE_FAILED"
+				return "ERROR_CACHE_READ"
 			}
 
 			if result {
@@ -896,6 +903,8 @@ func copyToBaseDir2(path string, toPath string) string {
 				return ""
 			}
 		}
+	} else if strings.HasSuffix(path, common.BYTES_EXT) {
+		errSfx = "_BYTES"
 	}
 
 	if common.Debug2 {
@@ -904,7 +913,7 @@ func copyToBaseDir2(path string, toPath string) string {
 	maybeWriter, errW := Client2.GetWriter(writingPath)
 	if errW != nil {
 		h.Log("ERROR", fmt.Sprintf("Getting writer for path:%s to BaseDir2:%s failed with %s", writingPath, common.BaseDir2, errW))
-		return "WRITE_FAILED"
+		return "ERROR_WRITE" + errSfx
 	}
 
 	writer := maybeWriter.(io.WriteCloser)
@@ -916,7 +925,7 @@ func copyToBaseDir2(path string, toPath string) string {
 	maybeReader, errR := Client.GetReader(path)
 	if errR != nil {
 		h.Log("WARN", fmt.Sprintf("Reading path:%s from BaseDir:%s failed with %s", path, common.BaseDir, errR))
-		return "READ_FAILED"
+		return "ERROR_READ" + errSfx
 	}
 	reader := maybeReader.(io.ReadCloser)
 	defer reader.Close()
@@ -924,7 +933,7 @@ func copyToBaseDir2(path string, toPath string) string {
 	_, errC := io.Copy(writer, reader)
 	if errC != nil {
 		h.Log("ERROR", fmt.Sprintf("Copying data from path:%s to BaseDir2:%s failed with %s", path, common.BaseDir2, errC))
-		return "COPY_FAILED"
+		return "ERROR_COPY" + errSfx
 	}
 
 	h.Log("INFO", fmt.Sprintf("Copied :%s under %s", writingPath, common.BaseDir2))
@@ -1033,7 +1042,7 @@ func checkBlobIdDetailFromBS(maybeBlobId string) interface{} {
 	return nil
 }
 
-func copyToBaseDir2PerLine(maybeSrcBlobPath string) interface{} {
+func maybeCopyPathToBaseDir2(maybeSrcBlobPath string) interface{} {
 	blobId := lib.ExtractBlobIdFromString(maybeSrcBlobPath)
 	if len(blobId) == 0 {
 		h.Log("DEBUG", fmt.Sprintf("Empty blobId in '%s'", maybeSrcBlobPath))
@@ -1293,9 +1302,9 @@ func isOrphanedBlob(contents string, blobId string, db *sql.DB) string {
 			h.Log("DEBUG", fmt.Sprintf("blobId: %s row: %v", blobId, vals))
 			if !common.NoExtraChk {
 				// At this line, it's no longer orphan as the DB record exists, so it's ok to 'return'
-				blobNameDb := vals[1].(string)
-				if len(blobName) == 0 || blobName != blobNameDb {
-					return "MISMATCH_NAME:" + blobName + "/" + blobNameDb
+				pathInDb := vals[2].(string)
+				if len(blobName) == 0 || blobName != pathInDb {
+					return "MISMATCH_NAME:" + blobName + "/" + pathInDb
 				}
 			}
 		}
@@ -1404,7 +1413,7 @@ func main() {
 				_ = h.StreamLines(common.BlobIDFIle, common.Conc1, checkBlobIdDetailFromBS)
 			} else if common.BlobIDFIleType == "DB" && len(common.BaseDir2) > 0 {
 				h.Log("INFO", fmt.Sprintf("Copying files from list=%s to %s, conc=%d", common.BlobIDFIle, common.BaseDir2, common.Conc1))
-				_ = h.StreamLines(common.BlobIDFIle, common.Conc1, copyToBaseDir2PerLine)
+				_ = h.StreamLines(common.BlobIDFIle, common.Conc1, maybeCopyPathToBaseDir2)
 			} else {
 				h.Log("DEBUG", fmt.Sprintf("No action was taken for mode:%s path=%s (type:%s) as DbConnStr or BaseDir is missing", common.Truth, common.BlobIDFIle, common.BlobIDFIleType))
 			}
