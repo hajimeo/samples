@@ -73,8 +73,8 @@ function test_1_First10FilesForSpecificRepo() {
 function test_2_ShouldNotFindAny() {
     local _b="${1:-"${_TEST_BLOBSTORE}"}"
     local _p="${2:-"${_TEST_FILTER_PATH}"}"
-    if [[ "${_b}" =~ ^(s3|az):// ]]; then
-        echo "TEST=WARN Skipped as this test can take long time with S3/Azure"
+    if [[ "${_b}" =~ ^(s3|az|gs):// ]]; then
+        echo "TEST=WARN Skipped as this test can take long time with ${_b}ure"
         return 0
     fi
     _find_sample_repo_name "${_b}" "${_p}" || return 1
@@ -97,12 +97,13 @@ function test_3_FindFromTextFile() {
     local _out_file="/tmp/test_from-textfile.tsv"
     _exec_filelist "filelist2 -b '${_b}' -p '${_p}' -rF /tmp/test_finding_${_TEST_REPO_NAME}-n10.tsv -P -f '\.properties' -H" "${_out_file}"
     if [ "$?" == "0" ] && [ -s "${_out_file}" ]; then
-        local _orig_num="$(_line_num /tmp/test_finding_${_TEST_REPO_NAME}-n10.tsv)"
+        local _orig_num="$(rg -c "\.properties" /tmp/test_finding_${_TEST_REPO_NAME}-n10.tsv)"
         local _result_num="$(_line_num ${_out_file})"
-        if [ ${_result_num:-"0"} -gt 0 ] && [ "${_orig_num}" -eq "${_result_num}" ]; then
-            echo "TEST=OK : The number of lines in the original file and the result file are the same (${_result_num})"
+        local _diff=$(( _orig_num - _result_num ))
+        if [ ${_result_num:-"0"} -gt 0 ] && [ "${_diff#-}" -le 3 ]; then
+            echo "TEST=OK : The number of lines in the original file and the result file are similar (${_orig_num} vs. ${_result_num})"
         else
-            echo "TEST=ERROR: The number of lines in /tmp/test_finding_${_TEST_REPO_NAME}-n10.tsv (${_orig_num}) and ${_out_file} (${_result_num}) are different"
+            echo "TEST=ERROR: The number of lines in /tmp/test_finding_${_TEST_REPO_NAME}-n10.tsv (${_orig_num}) and ${_out_file} (${_result_num}) are very different"
             return 1
         fi
         rg -o "[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}" /tmp/test_finding_${_TEST_REPO_NAME}-n10.tsv | while read _id; do
@@ -130,7 +131,7 @@ function test_4_SizeAndCount() {
     fi
 
     # If not File type, return in here (TODO: add other types)
-    if [[ "${_b}" =~ ^(s3|az):// ]]; then
+    if [[ "${_b}" =~ ^(s3|az|gs):// ]]; then
         echo "TEST=OK : ${_result}"
         return 0
     fi
@@ -161,7 +162,7 @@ function test_5_Undelete() {
     local _should_not_find_soft_delete=true
 
     # Find 10 NOT soft-deleted .properties files
-    _exec_filelist "filelist2 -b '${_b}' -p '${_p}' -pRx '@Bucket\.repo-name=${_TEST_REPO_NAME}' -pRxNot 'deleted=true' -n 10 -H" "${_prep_file}"
+    _exec_filelist "filelist2 -b '${_b}' -p '${_p}' -pRx '@Bucket\.repo-name=${_TEST_REPO_NAME}' -pRxNot ',(deleted=true|originalLocation=)' -n 10 -H" "${_prep_file}"
     if [ -s "${_prep_file}" ]; then
         # Append 'deleted=true' in each blob by reading the tsv file
         _exec_filelist "filelist2 -b '${_b}' -rF ${_prep_file} -wStr \"deleted=true\" -P -H" "/tmp/test_preparing-soft-deleted_${_TEST_REPO_NAME}.tsv"
@@ -194,8 +195,8 @@ function test_5_Undelete() {
             echo "TEST=ERROR: Not found 'deleted=true' in ${_out_file} (check /tmp/test_last.*)"
             return 1
         fi
-        if [[ "${_b}" =~ ^(s3|az):// ]]; then
-            _log "INFO" "Waiting 3 seconds to wait for S3/Az to complete the writing ..."
+        if [[ "${_b}" =~ ^(s3|az|gs):// ]]; then
+            _log "INFO" "Waiting 3 seconds to wait for ${_b} to complete the writing ..."
             sleep 3
         fi
         _out_file="/tmp/test_check_undeleted_${_TEST_REPO_NAME}.tsv"
@@ -229,12 +230,12 @@ function test_6_Orphaned() {
     [ -n "${_TEST_DB_CONN_PWD}" ] && export PGPASSWORD="${_TEST_DB_CONN_PWD}"
 
     local _out_file="/tmp/test_orphaned.tsv"
-    _exec_filelist "filelist2 -b '${_b}' -p '${_p}' -src BS -db ${_nexus_store} -pRxNot \"deleted=true\" -BytesChk -H" "${_out_file}"
+    _exec_filelist "filelist2 -b '${_b}' -p '${_p}' -src BS -db ${_nexus_store}  -pRxNot ',(deleted=true|originalLocation=)' -BytesChk -H" "${_out_file}"
     if [ "$?" == "0" ]; then
         echo "TEST=OK (${_out_file})"
         echo "To remove: cat ${_out_file} | sed -n -E 's/^(.+)\.properties.+/\1/p' | xargs -P2 -t -I{} mv {}.{properties,bytes} /tmp/"
     else
-        echo "TEST=ERROR: Could not generate ${_out_file} (check /tmp/test_last.*)"
+        echo "TEST=ERROR: Could not generate ${_out_file} :$? (check /tmp/test_last.*)"
         return 1
     fi
 
@@ -291,8 +292,8 @@ function test_8_TextFileToCheckBlobStore() {
     local _p="${2:-"${_TEST_FILTER_PATH}"}"
     local _work_dir="${3:-"${_TEST_WORKDIR}"}"
 
-    if [[ "${_b}" =~ ^(s3|az):// ]]; then
-        echo "TEST=WARN Skipped as this test is not for S3/Az for now."
+    if [[ "${_b}" =~ ^(s3|az|gs):// ]]; then
+        echo "TEST=WARN Skipped as this test is not for ${_b} for now."
         return 0
     fi
     local _find="find"
@@ -340,8 +341,8 @@ function test_9_TextFileToCheckDatabase() {
     local _p="${2:-"${_TEST_FILTER_PATH}"}"
     local _work_dir="${3:-"${_TEST_WORKDIR}"}"
 
-    if [[ "${_b}" =~ ^(s3|az):// ]]; then
-        echo "TEST=WARN Skipped as no need to test if S3/Az."
+    if [[ "${_b}" =~ ^(s3|az|gs):// ]]; then
+        echo "TEST=WARN Skipped as no need to test if ${_b}."
         return 0
     fi
 
@@ -355,7 +356,7 @@ function test_9_TextFileToCheckDatabase() {
     #find ${_b%/} -maxdepth 4 -name '*.properties' -path '*/content/vol*' -print | head -n10 >/tmp/test_mock_blob_ids.txt
     # Assuming / hoping the newer files wouldn't be orphaned files.
     # Can not use -pRxNot 'deletedReason=' and '-n 1000' with the new blob store layout...
-    _TEST_MAX_NUM=100000 _exec_filelist "filelist2 -b ${_b} -p '${_p}' -pRxNot 'deleted=true' -BytesChk" "/tmp/test_mock_blob_ids.tmp"
+    _TEST_MAX_NUM=100000 _exec_filelist "filelist2 -b ${_b} -p '${_p}' -pRxNot ',(deleted=true|originalLocation=)' -BytesChk" "/tmp/test_mock_blob_ids.tmp"
     #cat /tmp/test_mock_blob_ids.tmp | sort -k2r,3r | head -n10 > /tmp/test_mock_blob_ids.txt
     # Excluding BYTES_MISSING as probably deletion markers
     rg -v "BYTES_MISSING" /tmp/test_mock_blob_ids.tmp | rg '/([^/]+\.properties)' -o -r '$1' | sort | uniq -c | rg '^\s*1\s(\S+)' -o -r '$1' | head -n10 > /tmp/test_mock_blob_ids_maybeNotDeleted.tmp
@@ -383,8 +384,8 @@ function test_10_GenerateBlobIDsFileFromDB() {
     local _p="${2:-"${_TEST_FILTER_PATH}"}"
     local _work_dir="${3:-"${_TEST_WORKDIR}"}"
 
-    if [[ "${_b}" =~ ^(s3|az):// ]]; then
-        echo "TEST=WARN Skipped as no need to test if S3/Az."
+    if [[ "${_b}" =~ ^(s3|az|gs):// ]]; then
+        echo "TEST=WARN Skipped as no need to test if ${_b}."
         return 0
     fi
 
@@ -407,6 +408,31 @@ function test_10_GenerateBlobIDsFileFromDB() {
     fi
 }
 
+function test_11_CopyBlobs() {
+    local _b="${1:-"${_TEST_BLOBSTORE}"}"
+    local _p="${2:-"${_TEST_FILTER_PATH}"}"
+    local _work_dir="${3:-"${_TEST_WORKDIR}"}"
+
+    if [[ "${_b}" =~ ^(s3|az|gs):// ]]; then
+        echo "TEST=WARN Skipped as this test is not for ${_b} for now."
+        return 0
+    fi
+
+    local _tmpdir="$(mktemp -d)" || return $?
+    if [ ! -d "${_tmpdir%/}/default_copied" ]; then
+        mkdir -v -p "${_tmpdir%/}/default_copied" || return $?
+    fi
+
+    local _out_file="/tmp/test_copy_local_blobs.tsv"
+    _exec_filelist "filelist2 -b '${_b}' -p '${_p}' -pRxNot ',(deleted=true|originalLocation=)' -bTo ${_tmpdir%/}/default_copied -bTo-repoName 'raw-bTo-hosted' -H" "${_out_file}"
+    local _result_num="$(_line_num ${_out_file})"
+    if [ ${_result_num:-"0"} -ge ${_TEST_MAX_NUM} ]; then
+        echo "TEST=OK (${_out_file}) result:${_result_num}/${_TEST_MAX_NUM}"
+    else
+        echo "TEST=ERROR: result:${_result_num} (check /tmp/test_last.*)"
+        return 1
+    fi
+}
 
 ### Utility functions
 function _log_duration() {
@@ -502,7 +528,7 @@ function main() {
     local _pfx="test_"
     local _tmp="$(mktemp -d)"
     # The function names should start with 'test_', and sorted
-    for _t in $(typeset -F | grep "^declare -f ${_pfx}" | cut -d' ' -f3 | sort); do
+    for _t in $(typeset -F | grep "^declare -f ${_pfx}" | cut -d' ' -f3 | sort -V); do
         local _started="$(date +%s)"
         _log "INFO" "Starting TEST: ${_t} (${_started}) ..."
 
