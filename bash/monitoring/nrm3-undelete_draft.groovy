@@ -67,8 +67,8 @@ def main(params) {
     def restoredNum = 0
     // Blobs deleted after this time will be ignored
     def startedMsec = Instant.now().getEpochSecond() * 1000
-    BlobStore store = container.lookup(BlobStoreManager.class.name).get(params.blobStore)
     SoftDeletedBlobsStore softDeletedBlobsStore = container.lookup(SoftDeletedBlobsStore.class.name)
+    BlobStore store = container.lookup(BlobStoreManager.class.name).get(params.blobStore)
     if (!store) {
         def logMsg = "params.blobStore: ${params.blobStore} is invalid"
         log.error(logMsg)
