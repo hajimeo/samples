@@ -19,38 +19,25 @@ class RBSs {
             "com.sonatype.nexus.blobstore.restore.conan.ConanRestoreBlobStrategy",
             "com.sonatype.nexus.blobstore.restore.datastore.RubygemsRestoreBlobStrategy",
             "com.sonatype.nexus.blobstore.restore.helm.internal.HelmRestoreBlobStrategy",
-            "com.sonatype.nexus.blobstore.restore.helm.internal.orient.OrientHelmRestoreBlobStrategy",
             "com.sonatype.nexus.blobstore.restore.internal.datastore.DockerRestoreBlobStrategy",
             "com.sonatype.nexus.blobstore.restore.internal.datastore.NpmRestoreBlobStrategy",
             "com.sonatype.nexus.blobstore.restore.internal.datastore.YumRestoreBlobStrategy",
-            "com.sonatype.nexus.blobstore.restore.internal.orient.OrientDockerRestoreBlobStrategy",
-            "com.sonatype.nexus.blobstore.restore.internal.orient.OrientNpmRestoreBlobStrategy",
-            "com.sonatype.nexus.blobstore.restore.internal.orient.OrientYumRestoreBlobStrategy",
             "com.sonatype.nexus.blobstore.restore.nuget.internal.NugetRestoreBlobStrategy",
-            "com.sonatype.nexus.blobstore.restore.nuget.internal.orient.OrientNugetRestoreBlobStrategy",
-            "com.sonatype.nexus.blobstore.restore.orient.OrientRubygemsRestoreBlobStrategy",
             "com.sonatype.nexus.blobstore.restore.p2.internal.datastore.P2RestoreBlobStrategy",
-            "com.sonatype.nexus.blobstore.restore.p2.internal.orient.OrientP2RestoreBlobStrategy",
             "com.sonatype.nexus.blobstore.restore.pypi.internal.PyPiRestoreBlobStrategy",
-            "com.sonatype.nexus.blobstore.restore.pypi.internal.orient.OrientPyPiRestoreBlobStrategy",
             "com.sonatype.nexus.blobstore.restore.r.internal.datastore.RRestoreBlobStrategy",
-            "com.sonatype.nexus.blobstore.restore.r.internal.orient.OrientRRestoreBlobStrategy",
             "org.sonatype.nexus.blobstore.restore.RestoreBlobStrategy",
             "org.sonatype.nexus.blobstore.restore.apt.internal.AptRestoreBlobStrategy",
-            "org.sonatype.nexus.blobstore.restore.apt.internal.orient.OrientAptRestoreBlobStrategy",
             "org.sonatype.nexus.blobstore.restore.datastore.BaseRestoreBlobStrategy",
             "org.sonatype.nexus.blobstore.restore.maven.internal.MavenRestoreBlobStrategy",
-            "org.sonatype.nexus.blobstore.restore.maven.internal.orient.OrientMavenRestoreBlobStrategy",
-            "org.sonatype.nexus.blobstore.restore.orient.OrientBaseRestoreBlobStrategy",
             "org.sonatype.nexus.blobstore.restore.raw.internal.RawRestoreBlobStrategy",
-            "org.sonatype.nexus.blobstore.restore.raw.internal.orient.OrientRawRestoreBlobStrategy",
             "com.sonatype.nexus.repository.cargo.internal.restore.CargoRestoreBlobStrategy",
             "com.sonatype.nexus.repository.composer.internal.restore.ComposerRestoreBlobStrategy",
             "com.sonatype.nexus.repository.golang.datastore.internal.restore.GoRestoreBlobStrategy",
             "com.sonatype.nexus.repository.huggingface.restore.HuggingFaceRestoreBlobStrategy",
     ]
 
-    static String lookupRestoreBlobStrategy(formatName, isOrient) {
+    static String lookupRestoreBlobStrategy(formatName) {
         def className = ""
         if (formatName.equalsIgnoreCase("maven2")) {
             className = "MavenRestoreBlobStrategy"
@@ -58,11 +45,7 @@ class RBSs {
             className = "PyPiRestoreBlobStrategy"
         } else {
             className = fmt(formatName) + "RestoreBlobStrategy"
-        }
-        if (isOrient) {
-            className = "Orient${className}"
-        }
-        // .every { it.contains("name") }
+        }        // .every { it.contains("name") }
         return restoreBlobStrategyClassNames.find { it.endsWith(".${className}") }
     }
 
@@ -97,8 +80,8 @@ def main(params) {
         log.error(logMsg)
         return ['error': logMsg]
     }
-    // 'params' should contain 'blobIDs', 'blobStore', 'isOrient', 'dryRun', and 'debug'
-    log.info("Checking ${blobIDs.length} blobIds with blobStore: ${params.blobStore}, isOrient: ${params.isOrient}, dryRun: ${params.dryRun}, debug: ${params.debug}")
+    // 'params' should contain 'blobIDs', 'blobStore', 'dryRun', and 'debug'
+    log.info("Checking ${blobIDs.length} blobIds with blobStore: ${params.blobStore}, dryRun: ${params.dryRun}, debug: ${params.debug}")
     for (line in blobIDs) {
         log.debug("line = ${line}")
         lineCounter++
@@ -195,16 +178,16 @@ def main(params) {
                 log.info("Deleted softDeletedLocation:{} (DryRun:{})", softDeletedLocation.get(), params.dryRun)
             }
 
-            def className = RBSs.lookupRestoreBlobStrategy(formatName, params.isOrient)
+            def className = RBSs.lookupRestoreBlobStrategy(formatName)
             if (!className) {
                 // TODO: may not work with some minor formats such as bower, cocoapods, conda
-                log.warn("Using 'Base' as didn't find restore blob strategy className for format:{}, isOrient:{}", formatName, params.isOrient)
-                className = RBSs.lookupRestoreBlobStrategy("base", params.isOrient)
+                log.warn("Using 'Base' as didn't find restore blob strategy className for format:{}", formatName)
+                className = RBSs.lookupRestoreBlobStrategy("base")
             }
-            log.debug("Restoring with className:{} for blobId:{}, format:{}, isOrient:{}", className, blobIdStr, formatName, params.isOrient)
+            log.debug("Restoring with className:{} for blobId:{}, format:{}", className, blobIdStr, formatName)
             def restoreBlobStrategy = container.lookup(className) as RestoreBlobStrategy
             if (restoreBlobStrategy == null) {
-                log.error("Didn't find restore blob strategy for format:{}, isOrient:{}", formatName, params.isOrient)
+                log.error("Didn't find restore blob strategy for format:{}", formatName)
                 continue
             }
             restoreBlobStrategy.restore(properties, blob, store, params.dryRun)
