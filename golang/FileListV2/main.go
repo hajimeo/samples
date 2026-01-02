@@ -78,7 +78,7 @@ func setGlobals() {
 	flag.StringVar(&common.Query, "query", "", "SQL 'SELECT blob_id ...' or 'SELECT blob_ref as blob_id ...' to filter the data from the DB")
 
 	// Reconcile / orphaned blob finding related
-	flag.StringVar(&common.Truth, "src", "", "Using database or blobstore as source [BS|DB] for Dead or Orphaned blob finding")
+	flag.StringVar(&common.Truth, "src", "", "Source of the Truth. If 'BS' (blobstore), it works similar to Orphaned blobs finder. If 'DB', similar to Dead blobs finder.")
 	// TODO: Not enough testing the `-RDel` with the new blob store layout and with S3 / Azure
 	flag.BoolVar(&common.RemoveDeleted, "RDel", false, "Remove 'deleted=true' from .properties. Requires -dF")
 	flag.StringVar(&common.WriteIntoStr, "wStr", "", "For testing. Write the string into the file (eg. deleted=true)")

@@ -52,7 +52,7 @@ JAVA_OPTIONS="${JAVA_OPTIONS} -XX:MaxDirectMemorySize=1g -Djdk.nio.maxCachedBuff
 #JAVA_OPTIONS="${JAVA_OPTIONS} -XX:OnOutOfMemoryError='kill -3 %p'"  # TODO: May not work with IQ
 #JAVA_OPTIONS="${JAVA_OPTIONS} -XX:+CrashOnOutOfMemoryError -XX:ErrorFile=${NEXUS_IQ_SERVER_HOME}/log"  # TODO: May not work with IQ
 #JAVA_OPTIONS="${JAVA_OPTIONS} -XX:+HeapDumpOnOutOfMemoryError -XX:HeapDumpPath=${NEXUS_IQ_SERVER_HOME}/log"    # or 'user.dir' (cwd) if not specified
-#JAVA_OPTIONS="${JAVA_OPTIONS} -Xdump:system:label=${NEXUS_IQ_SERVER_HOME}/log/core.%Y%m%d.%H%M%S.%pid.dmp"     # or 'user.dir' (cwd) if not specified
+## May not work: JAVA_OPTIONS="${JAVA_OPTIONS} -Xdump:system:label=${NEXUS_IQ_SERVER_HOME}/log/core.%Y%m%d.%H%M%S.%pid.dmp"
 #JAVA_OPTIONS="${JAVA_OPTIONS} -Dcom.sun.management.jmxremote -Dcom.sun.management.jmxremote.port=6786 -Dcom.sun.management.jmxremote.local.only=false -Dcom.sun.management.jmxremote.authenticate=false -Dcom.sun.management.jmxremote.ssl=false"
 # for testing
 #JAVA_OPTIONS="${JAVA_OPTIONS} -Dinsight.threads.monitor=3"
