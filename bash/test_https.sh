@@ -6,6 +6,7 @@
 #
 #   -Dcom.sun.jndi.ldap.object.disableEndpointIdentification=true   # for LDAPS
 #   -Djavax.net.ssl.trustStoreType=WINDOWS-ROOT                     # to use Windows OS truststore
+#   -Djavax.net.ssl.trustStoreType=KeychainStore                    # to use Mac OS truststore
 #   -Djavax.net.ssl.trustStore=/path/to/truststore.jks -Djavax.net.ssl.trustStorePassword=changeit -Djavax.net.ssl.keyStoreType=jks
 #   ‑Djdk.tls.client.protocols="TLSv1,TLSv1.1,TLSv1.2"              # to specify client protocol
 #
