@@ -835,6 +835,7 @@ func copyPropsBytesToBaseDir2(propPath string) string {
 		maybeCustomizedBytesPath := lib.GenCopyToPath(bytesPath)
 		errorCodeBytes := copyToBaseDir2(bytesPath, maybeCustomizedBytesPath)
 		if len(errorCodeBytes) > 0 && errorCodeBytes != "ALREADY_EXISTS" {
+			// write error should be already reported, so DEBUG
 			h.Log("DEBUG", fmt.Sprintf("copyToBaseDir2 completed with error. path:%s, errorCodeBytes:%s", bytesPath, errorCodeBytes))
 			// If Bytes failed to copy, no point of copying properties.
 			return errorCodeBytes
@@ -856,7 +857,7 @@ func copyToBaseDir2(path string, toPath string) string {
 	if !common.NoExtraChk {
 		info, err := Client2.GetFileInfo(writingPath)
 		if err == nil {
-			h.Log("DEBUG", fmt.Sprintf("Path:%s already exists in %s (size:%d, modTime:%s). Skipping copy.", writingPath, common.BaseDir2, info.Size, info.ModTime))
+			h.Log("INFO", fmt.Sprintf("Path:%s already exists in %s (size:%d, modTime:%s). Skipping copy.", writingPath, common.BaseDir2, info.Size, info.ModTime))
 			return "ALREADY_EXISTS"
 		}
 	}
@@ -926,7 +927,7 @@ func copyToBaseDir2(path string, toPath string) string {
 		return "COPY_FAILED"
 	}
 
-	h.Log("DEBUG", fmt.Sprintf("Copied :%s under %s", writingPath, common.BaseDir2))
+	h.Log("INFO", fmt.Sprintf("Copied :%s under %s", writingPath, common.BaseDir2))
 	return ""
 }
 
@@ -1038,7 +1039,8 @@ func copyToBaseDir2PerLine(maybeSrcBlobPath string) interface{} {
 		h.Log("DEBUG", fmt.Sprintf("Empty blobId in '%s'", maybeSrcBlobPath))
 		return nil
 	}
-	if !strings.Contains(maybeSrcBlobPath, common.PROP_EXT) {
+	// If reading file was from DB, most likely no .properties string
+	if common.BlobIDFIleType != "DB" && !strings.Contains(maybeSrcBlobPath, common.PROP_EXT) {
 		h.Log("DEBUG", fmt.Sprintf("The line '%s' does not include .properties", maybeSrcBlobPath))
 		return nil
 	}
