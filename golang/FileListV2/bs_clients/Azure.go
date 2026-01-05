@@ -51,17 +51,23 @@ func getAzApi(clientNum int) *azblob.Client {
 
 	// NOTE: https://pkg.go.dev/github.com/Azure/azure-sdk-for-go/sdk/azidentity#readme-environment-variables
 	var envSfx string
-	if clientNum == 2 {
-		envSfx = "_2"
+	if clientNum > 1 {
+		envSfx = "_" + fmt.Sprintf("%d", clientNum)
 	}
 	accountName := h.GetEnv("AZURE_STORAGE_ACCOUNT_NAME"+envSfx, "")
 	accountKey := h.GetEnv("AZURE_STORAGE_ACCOUNT_KEY"+envSfx, "")
 	connStr := h.GetEnv("AZURE_STORAGE_CONNECTION_STRING"+envSfx, "")
 	if accountName == "" || accountKey == "" {
-		if len(connStr) == 0 {
-			panic("Missing AZURE_STORAGE_ACCOUNT_NAME" + envSfx + " or AZURE_STORAGE_ACCOUNT_KEY" + envSfx)
-		} else {
-			h.Log("INFO", "Account or Key is missing. Using AZURE_STORAGE_CONNECTION_STRING"+envSfx)
+		if clientNum > 1 {
+			h.Log("INFO", "Account or Key is missing for "+envSfx+" (and no connStr). Trying with default.")
+			accountName = h.GetEnv("AZURE_STORAGE_ACCOUNT_NAME", "")
+			accountKey = h.GetEnv("AZURE_STORAGE_ACCOUNT_KEY", "")
+			if len(connStr) == 0 {
+				connStr = h.GetEnv("AZURE_STORAGE_CONNECTION_STRING", "")
+			}
+		}
+		if accountName == "" || accountKey == "" {
+			panic("Missing AZURE_STORAGE_ACCOUNT_NAME" + envSfx + " or AZURE_STORAGE_ACCOUNT_KEY" + envSfx + " for " + connStr)
 		}
 	}
 	if len(connStr) == 0 {
@@ -69,6 +75,7 @@ func getAzApi(clientNum int) *azblob.Client {
 	}
 	var err error
 	var maybeAzApi *azblob.Client
+	//h.Log("DEBUG", "connectionString: "+connStr)	// Should not expose the connection string with key
 	maybeAzApi, err = azblob.NewClientFromConnectionString(connStr, nil)
 	if err != nil {
 		panic("configuration error, " + err.Error())
@@ -187,6 +194,7 @@ func (a *AzClient) GetReader(path string) (interface{}, error) {
 
 func (a *AzClient) GetWriter(path string) (interface{}, error) {
 	// For Azure blob store, we can use a pipe to write to the blob
+	// TODO: error handling. If copy filed, it doesn't return any error
 	pr, pw := io.Pipe()
 	go func() {
 		_, err := getAzApi(a.ClientNum).UploadStream(context.TODO(), decideContainer(a.ClientNum), path, pr, nil)
