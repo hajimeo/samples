@@ -57,6 +57,7 @@ func getS3Api(clientNum int) *s3.Client {
 	var specificCAPath string
 	var orginalCAPath string
 	if clientNum > 1 {
+		h.Log("DEBUG", fmt.Sprintf("Setting up S3 clientNum:%d", clientNum))
 		specificEndpointUrl = h.GetEnv("AWS_ENDPOINT_URL_"+strconv.Itoa(clientNum), "")
 		specificRegion = h.GetEnv("AWS_REGION_"+strconv.Itoa(clientNum), "")
 		specificCAPath = h.GetEnv("AWS_CA_BUNDLE_"+strconv.Itoa(clientNum), "")
@@ -66,6 +67,7 @@ func getS3Api(clientNum int) *s3.Client {
 			h.SetEnv("AWS_CA_BUNDLE", specificCAPath)
 			orginalCAPath = h.GetEnv("AWS_CA_BUNDLE", "")
 		}
+		h.Log("DEBUG", fmt.Sprintf("specificEndpointUrl: %s, specificRegion: %s for clientNum:%d", specificEndpointUrl, specificRegion, clientNum))
 	}
 
 	cfg, err := getS3Config(clientNum)
@@ -125,7 +127,7 @@ func getS3Config(clientNum int) (aws.Config, error) {
 		specificAccessKeyID = h.GetEnv("AWS_ACCESS_KEY_ID_"+strconv.Itoa(clientNum), "")
 		specificSecretAccessKey = h.GetEnv("AWS_SECRET_ACCESS_KEY_"+strconv.Itoa(clientNum), "")
 	}
-
+	// Override with specific credentials if provided, otherwise, use default credentials
 	if len(specificAccessKeyID) > 0 {
 		h.Log("INFO", fmt.Sprintf("Creating S3 credential for clientNum:%d", clientNum))
 		creds := credentials.NewStaticCredentialsProvider(specificAccessKeyID, specificSecretAccessKey, "")
