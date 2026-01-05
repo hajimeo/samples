@@ -936,7 +936,32 @@ func copyPathToBaseDir2(path string, toPath string) string {
 		return "ERROR_COPY" + errSfx
 	}
 
-	h.Log("INFO", fmt.Sprintf("Copied :%s under %s", writingPath, common.BaseDir2))
+	if !common.NoExtraChk {
+		toInfo, errD := Client.GetFileInfo(toPath)
+		if errD != nil {
+			h.Log("ERROR", fmt.Sprintf("Getting destination file info for path:%s failed with %s", toPath, errD))
+			return "ERROR_NO_DEST_INFO" + errSfx
+		}
+		if toInfo.Size == 0 {
+			h.Log("WARN", fmt.Sprintf("Size 0 after copying to %s to BaseDir2:%s", toPath, common.BaseDir2))
+			return "WARN_ZERO_SIZE" + errSfx
+		}
+		// Currently not doing the below.
+		// Verifying the copied file size
+		/*
+			srcInfo, errS := Client.GetFileInfo(path)
+			if errS != nil {
+				h.Log("WARN", fmt.Sprintf("Getting source file info for path:%s failed with %s", path, errS))
+				return "WARN_NO_SRC_INFO" + errSfx
+			}
+			if srcInfo.Size != toInfo.Size {
+				h.Log("ERROR", fmt.Sprintf("Size mismatch after copying path:%s to BaseDir2:%s (srcSize:%d vs destSize:%d)", path, common.BaseDir2, srcInfo.Size, destInfo.Size))
+				return "ERROR_SIZE_MISMATCH" + errSfx
+			}
+		*/
+	}
+
+	h.Log("INFO", fmt.Sprintf("Copied %s under %s", writingPath, common.BaseDir2))
 	return ""
 }
 
