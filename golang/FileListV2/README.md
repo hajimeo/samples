@@ -49,6 +49,7 @@ filelist2 -b "az://${AZURE_STORAGE_CONTAINER_NAME}/content" -n 5
 
 TODO: filelist2 -b "gs://google-test-storage/google-test-prefix/content" -n 5
 ```
+For extra logging for Azure, `export AZURE_SDK_GO_LOGGING="all"`
 
 #### List files which matches with specific repo and modified from yesterday
 
@@ -204,7 +205,7 @@ filelist2 -b "s3://apac-support-bucket/filelist-test/" -bTo "s3://test-bucket/fi
 ```
 NOTE: Using `AWS_CA_BUNDLE` may break HTTPS requests to the real AWS S3. May also need to use `-PathStyle` if not wildcard certificate.
 ```
-# NOTE: Azurite example. Need to create a Container. Can not use '_' in the container name.
+# NOTE: Azurite example for Demo Azure (so that `http`). Need to create a Container. Can not use '_' in the container name.
 export AZURE_STORAGE_CONNECTION_STRING_2="DefaultEndpointsProtocol=http;AccountName=admin;AccountKey=YWRtaW4xMjM=;BlobEndpoint=http://localhost:10000/admin;"
 az storage container create --name "apac-support-bucket-filelist-test-copied" --connection-string "${AZURE_STORAGE_CONNECTION_STRING_2}"
 filelist2 -b "s3://apac-support-bucket/filelist-test/" -bTo "az://apac-support-bucket-filelist-test-copied/" -P -pRx "@Bucket.repo-name=raw-s3-hosted," -pRxNot ",(deleted=true|originalLocation=)" -H -s ./copied_blobs.tsv
