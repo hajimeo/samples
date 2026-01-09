@@ -492,6 +492,9 @@ func genOutput(path string, bi bs_clients.BlobInfo, db *sql.DB) (string, error) 
 					h.Log("DEBUG", "Blob ID: "+blobId+" exists in the DB. Not including in the output.")
 					output = ""
 				}
+			} else if bytesChkErr != nil {
+				//h.Log("DEBUG", fmt.Sprintf("path:%s has no .bytes file.", path))
+				output = fmt.Sprintf("%s%s%s", output, common.SEP, "BYTES_MISSING")
 			}
 		} else if common.Truth == "DB" { // Dead blob finder mode
 			// NOTE: Expecting when Truth is "DB", the BytesChk is always true
