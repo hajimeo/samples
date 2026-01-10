@@ -8,6 +8,7 @@ PURPOSE:
 
 NOTE:
     As the name/path of RestoreBlobStrategy can be different by Nexus version, this script is not guaranteed to work for all Nexus versions. Please test it first.
+    Nexus may cache .properties file in memory, so that the safest way is running this script after restarting Nexus.
 
 REQUIREMENTS:
     'curl' for uploading the script and initiating the script
@@ -29,7 +30,7 @@ EXAMPLES:
 
 OPTIONS:
     -I  Installing the groovy script for undeleting (only once per Nexus)
-    -s  blob store name (if group blob store, use the group member name)
+    -s  blob store name. If group blob store, use the group *member* name
     -b  blob IDs (comma separated), or a file contains lines of blobIDs
 EOF
 }
