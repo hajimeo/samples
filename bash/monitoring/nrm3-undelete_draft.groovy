@@ -190,6 +190,7 @@ def main(params) {
                 log.error("Didn't find restore blob strategy for format:{}", formatName)
                 continue
             }
+            // TODO: Nexus can return incorrect path from org.sonatype.nexus.blobstore.file.FileBlobStore#attributePath (suspecting cache)
             restoreBlobStrategy.restore(properties, blob, store, params.dryRun)
             log.info("Restored blobId:{} (DryRun:{})", blobIdStr, params.dryRun)
             restoredNum++
