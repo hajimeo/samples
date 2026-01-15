@@ -102,21 +102,21 @@ func PathWithoutExt(path string) string {
 	return path[:len(path)-len(filepath.Ext(path))]
 }
 
-func DatetimeStrToInt(datetimeStr string) int64 {
-	if len(datetimeStr) == 0 {
-		panic("datetimeStr is empty")
+func DatetimeStrToInt(utcStr string) int64 {
+	if len(utcStr) == 0 {
+		panic("utcStr is empty")
 	}
-	if IsNumeric(datetimeStr) {
-		i64, err := strconv.ParseInt(datetimeStr, 10, 64)
+	if IsNumeric(utcStr) {
+		i64, err := strconv.ParseInt(utcStr, 10, 64)
 		if err != nil {
 			panic(err)
 		}
 		return i64
 	}
-	if len(datetimeStr) <= 10 {
-		datetimeStr = datetimeStr + " 00:00:00"
+	if len(utcStr) <= 10 {
+		utcStr = utcStr + " 00:00:00"
 	}
-	tmpTimeFrom, err := time.Parse("2006-01-02 15:04:03", datetimeStr)
+	tmpTimeFrom, err := time.Parse("2006-01-02 15:04:05", utcStr)
 	if err != nil {
 		panic(err)
 	}
