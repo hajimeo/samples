@@ -1020,7 +1020,7 @@ func listObjects(dir string, db *sql.DB) {
 	if subTtl > 0 {
 		thresholdMs = int64(0)
 	}
-	h.Elapsed(startMs, fmt.Sprintf("Processed %d files from %s (current total: %d)", subTtl, dir, common.CheckedNum), thresholdMs)
+	h.Elapsed(startMs, fmt.Sprintf("Processed %d blobs from %s (current total: %d)", subTtl, dir, common.CheckedNum), thresholdMs)
 }
 
 func checkBlobIdDetailFromDB(maybeBlobId string) interface{} {
@@ -1510,13 +1510,15 @@ func main() {
 			h.Log("ERROR", "Failed to list directories in "+common.ContentPath+" with filter: "+common.Filter4Path)
 			panic(err)
 		}
-		chunks := h.Chunk(subDirs, 1) // 1 is for spawning the Go routine per subDir.
-		h.Elapsed(startMs, fmt.Sprintf("GetDirs got %d directories", len(subDirs)), 200)
+		if common.NotCompSubDirs {
+			h.Elapsed(startMs, fmt.Sprintf("GetDirs got %d directories", len(subDirs)), 200)
+		}
 		if common.Debug2 {
 			h.Log("DEBUG", fmt.Sprintf("Matched sub directories: %v", subDirs))
 		}
 		// Reset the start time for listing
 		startMs = time.Now().UnixMilli()
+		chunks := h.Chunk(subDirs, 1) // 1 is for spawning the Go routine per subDir.
 		runParallel(chunks, listObjects, common.Conc1)
 		// Always log this elapsed time by using 0 thresholdMs
 		h.Elapsed(startMs, fmt.Sprintf("Completed. Listed: %d (checked: %d), Size: %d bytes", common.PrintedNum, common.CheckedNum, common.TotalSize), 0)
