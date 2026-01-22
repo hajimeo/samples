@@ -71,11 +71,12 @@ func getAzApi(clientNum int) *azblob.Client {
 		}
 	}
 	if len(connStr) == 0 {
-		connStr = "DefaultEndpointsProtocol=https;AccountName=" + accountName + ";AccountKey=" + accountKey + ";EndpointSuffix=core.windows.net"
+		connStrWOPwd := "DefaultEndpointsProtocol=https;AccountName=" + accountName + ";EndpointSuffix=core.windows.net"
+		h.Log("DEBUG", "connectionString: "+connStrWOPwd+";AccountKey=*********")
+		connStr = connStrWOPwd + ";AccountKey=" + accountKey
 	}
 	var err error
 	var maybeAzApi *azblob.Client
-	//h.Log("DEBUG", "connectionString: "+connStr)	// Should not expose the connection string with key
 	maybeAzApi, err = azblob.NewClientFromConnectionString(connStr, nil)
 	if err != nil {
 		panic("configuration error, " + err.Error())
@@ -280,14 +281,15 @@ func (a *AzClient) GetDirs(baseDir string, pathFilter string, maxDepth int) ([]s
 	baseDir = strings.TrimSuffix(baseDir, "/")
 	depth := strings.Count(baseDir, "/")
 	realMaxDepth := maxDepth + depth
+	prefix := lib.GetContentPath(baseDir, common.Container)
 
 	// Walk through the directory structure
-	h.Log("DEBUG", fmt.Sprintf("Walking directory: %s with pathFilter: %s", baseDir, pathFilter))
+	h.Log("DEBUG", fmt.Sprintf("Walking directory: %s with pathFilter: %s", prefix, pathFilter))
 	opts := container.ListBlobsHierarchyOptions{
 		//Include:    container.ListBlobsInclude{Versions: true},
 		//Marker:     nil,
 		MaxResults: to.Ptr(int32(common.MaxKeys)),
-		Prefix:     to.Ptr(baseDir + "/"),
+		Prefix:     to.Ptr(prefix + "/"),
 	}
 	pager := getAzContainer(a.ClientNum).NewListBlobsHierarchyPager("/", &opts)
 	for pager.More() {
