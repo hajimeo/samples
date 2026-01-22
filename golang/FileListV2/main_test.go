@@ -96,3 +96,51 @@ func TestGenAssetBlobUnionQuery_MultipleTables_ReturnsUnionQuery(t *testing.T) {
 	result := genAssetBlobUnionQuery([]string{"table1", "table2"}, "", "", nil, "")
 	assert.Contains(t, result, "UNION ALL")
 }
+
+func TestGetBlobRef_ValidNewBlobRefLine_ReturnsFullMatch(t *testing.T) {
+	blobRef := "aaaa blobStore@6c1d3423-ecbc-4c52-a0fe-01a45a12883a@2025-08-14T02:44 bbbb"
+
+	result := getBlobRef(blobRef)
+
+	assert.Equal(t, "blobStore@6c1d3423-ecbc-4c52-a0fe-01a45a12883a@2025-08-14T02:44", result)
+}
+
+func TestGetBlobRef_ValidNewBlobRefLine2_ReturnsFullMatch(t *testing.T) {
+	blobRef := "aaaa,blobStore@6c1d3423-ecbc-4c52-a0fe-01a45a12883a@2025-08-14T02:44,bbbb"
+
+	result := getBlobRef(blobRef)
+
+	assert.Equal(t, "blobStore@6c1d3423-ecbc-4c52-a0fe-01a45a12883a@2025-08-14T02:44", result)
+}
+
+func TestGetBlobRef_ValidNewBlobRef_ReturnsFullMatch(t *testing.T) {
+	blobRef := "blobStore@6c1d3423-ecbc-4c52-a0fe-01a45a12883a@2025-08-14T02:44"
+
+	result := getBlobRef(blobRef)
+
+	assert.Equal(t, blobRef, result)
+}
+
+func TestGetBlobRef_ValidOldBlobRef_ReturnsFullMatch(t *testing.T) {
+	blobRef := "blobStore@6c1d3423-ecbc-4c52-a0fe-01a45a12883a"
+
+	result := getBlobRef(blobRef)
+
+	assert.Equal(t, blobRef, result)
+}
+
+func TestGetBlobRef_InvalidBlobRef_ReturnsEmptyString(t *testing.T) {
+	blobRef := "invalidBlobRef"
+
+	result := getBlobRef(blobRef)
+
+	assert.Equal(t, "", result)
+}
+
+func TestGetBlobRef_EmptyBlobRef_ReturnsEmptyString(t *testing.T) {
+	blobRef := ""
+
+	result := getBlobRef(blobRef)
+
+	assert.Equal(t, "", result)
+}

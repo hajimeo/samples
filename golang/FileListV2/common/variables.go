@@ -102,6 +102,10 @@ var RxSizeByte = regexp.MustCompile(",size=([0-9]+)")                 // When th
 var RxDeleted = regexp.MustCompile("deleted=true")                    // should not use ^ as replacing one-line text
 var RxRepoName = regexp.MustCompile(`(@Bucket\.repo-name=)([^\s\n\r,$]+)`)
 var RxBlobName = regexp.MustCompile(`(@BlobStore\.blob-name=)([^\s\n\r,$]+)`)
+
+// RxBlobRef : Not considering "space" in blobRef (TODO: may need to add more characters)
+var RxBlobRef = regexp.MustCompile("[^ ,'\"]+@[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}") // Not considering very old blobRef (using `:` or including nodeId)
+var RxBlobRefNew = regexp.MustCompile(`[^ ,'"]+@[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}@\d{4}-\d{2}-\d{2}.\d{2}:\d{2}`)
 var RxBlobId = regexp.MustCompile("[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}")
 var RxBlobIdNew = regexp.MustCompile(`.*([a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12})@(\d{4})-(\d{2})-(\d{2}).(\d{2}):(\d{2}).*`)
 var RxBlobIdNew2 = regexp.MustCompile(`/?([0-9]{4})/([0-9]{2})/([0-9]{2})/([0-9]{2})/([0-9]{2})/([a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}).*`)

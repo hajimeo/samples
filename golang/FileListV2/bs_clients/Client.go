@@ -41,6 +41,7 @@ type BlobInfo struct {
 	Size    int64
 	Owner   string
 	Tags    string // JSON string
+	BlobRef string
 	Error   bool
 }
 

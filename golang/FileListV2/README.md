@@ -148,9 +148,9 @@ NOTE: Cleanup unused asset blob tasks should be run before this script because a
 # Accessing DB by using the connection string and check all formats for orphaned blobs (-src BS)
 # Also `-BytesChk` to exclude .properties files which do not have the .bytes file (deletion marker)
 filelist2 -b "$BLOB_STORE" -c 10 -src BS -db ./sonatype-work/nexus3/etc/fabric/nexus-store.properties -mDT "$(date -d "1 day ago" +%Y-%m-%d)" -P -pRxNot "deleted=true" -BytesChk -s /tmp/filelist_orphaned_blobs.tsv
-# NOTE: `-db` also accepts "host=localhost user=nexus dbname=nexus" (with export PGPASSWORD="*******")
 ```
-NOTE: Nexus 3.86 may be going to have the originalLocation line for deletion markers, so may not need to use -BytesChk (TODO: if upgraded, could be confusing), so `-pRxNot "(deleted=true|originalLocation)"`  
+NOTE: `-db` also accepts "host=localhost user=nexus dbname=nexus" (with export PGPASSWORD="*******") https://pkg.go.dev/github.com/lib/pq#hdr-Connection_String_Parameters    
+NOTE: Nexus 3.86 may be going to have the originalLocation line for deletion markers, so may not need to use -BytesChk (TODO: if upgraded, could be confusing), so `-pRxNot "(deleted=true|originalLocation)"` or just `-pRxNot "originalLocation"`  
 
 Can use a text file which contains Blob IDs, so that no Blobstore access is needed:
 
