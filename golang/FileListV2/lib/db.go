@@ -31,13 +31,20 @@ func GenDbConnStrFromFile(filePath string) string {
 	}
 	params := ""
 	if len(matches) > 3 {
-		// TODO: database/sql does not support 'targetServerType', so hard-coding this extra logic...
+		// TODO: database/sql does not support 'targetServerType' and 'gssEncMode', so hard-coding this extra logic...
 		//       Not sure why replacing withtarget_session_attrs doesn't work.
 		//       https://www.postgresql.org/docs/current/libpq-connect.html#LIBPQ-PARAMKEYWORDS
-		ptn := regexp.MustCompile(`&?targetServerType=[^&]*`)
+		ptn := regexp.MustCompile(`&?(gssEncMode|targetServerType)=[^&]*`)
 		extraparams := ptn.ReplaceAllString(matches[4], "")
 		// NOTE: probably need to escape the 'params'?
 		params = " " + strings.ReplaceAll(extraparams, "&", " ")
+		// If params does not contain "optons=", add "options=-c%20default_transaction_read_only=on"
+		if !strings.Contains(params, "options=") {
+			if len(params) > 0 && !strings.HasSuffix(params, " ") {
+				params = params + " "
+			}
+			params = params + "options='-c default_transaction_read_only=on'"
+		}
 	}
 	// Check if props has password
 	if len(props["password"]) == 0 {

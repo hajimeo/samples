@@ -337,7 +337,6 @@ func (a *AzClient) ListObjects(dir string, db *sql.DB, perLineFunc func(PrintLin
 	prefix := h.AppendSlash(dir)
 
 	// Walk through the directory structure
-	h.Log("DEBUG", fmt.Sprintf("Walking directory: %s", dir))
 	opts := container.ListBlobsFlatOptions{
 		//Include:    container.ListBlobsInclude{Versions: true},
 		//Marker:     nil,
