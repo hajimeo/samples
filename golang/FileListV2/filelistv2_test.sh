@@ -10,7 +10,8 @@
 #   uuidgen
 #
 # HOW TO RUN EXAMPLE:
-#   ./filelistv2_test.sh <blobstore> <path/prefix>
+#   cd ./NexusInstalledDir
+#   $HOME/IdeaProjects/samples/golang/FileListV2/filelistv2_test.sh [blobstore] [path/prefix]
 #
 # Prepare the test data using setup_nexus3_repos.sh:
 #   f_install_nexus3 3.77.1-01 filelistv2test
@@ -95,7 +96,8 @@ function test_3_FindFromTextFile() {
     _find_sample_repo_name "${_b}" "${_p}" || return 1
 
     local _out_file="/tmp/test_from-textfile.tsv"
-    _exec_filelist "filelist2 -b '${_b}' -p '${_p}' -rF /tmp/test_finding_${_TEST_REPO_NAME}-n10.tsv -P -f '\.properties' -H" "${_out_file}"
+    # As -n 100 does not guarantee to have 100 .properties files (usually more), setting _TEST_MAX_NUM=""
+    _TEST_MAX_NUM="" _exec_filelist "filelist2 -b '${_b}' -p '${_p}' -rF /tmp/test_finding_${_TEST_REPO_NAME}-n10.tsv -P -f '\.properties' -H" "${_out_file}"
     if [ "$?" == "0" ] && [ -s "${_out_file}" ]; then
         local _orig_num="$(rg -c "\.properties" /tmp/test_finding_${_TEST_REPO_NAME}-n10.tsv)"
         local _result_num="$(_line_num ${_out_file})"
