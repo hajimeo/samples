@@ -57,7 +57,7 @@ func setGlobals() {
 	//flag.StringVar(&common.Filter4BytesExcl, "bRxNot", "", "Excluding Regular Expression for .bytes files (max size 32KB)")
 	flag.StringVar(&common.SaveToFile, "s", "", "Save the output (TSV text) into the specified path")
 	flag.BoolVar(&common.SavePerDir, "SavePerDir", false, "If true and -s is given, save the output per sub-directory")
-	flag.Int64Var(&common.TopN, "n", 0, "Return first N lines per *thread* (0 = no limit). Can't be less than '-c'")
+	flag.Int64Var(&common.TopN, "n", 0, "Return first N lines (0 = no limit). If -c is greater than 1, it could return more than N lines.")
 	flag.IntVar(&common.Conc1, "c", 1, "Concurrent number for reading directories")
 	flag.IntVar(&common.Conc2, "c2", 8, "2nd Concurrent number. Currently used when retrieving object from AWS S3")
 	// TODO: probably the depth is not needed?
@@ -74,7 +74,8 @@ func setGlobals() {
 	// DB / SQL related
 	flag.StringVar(&common.DbConnStr, "db", "", "DB connection string or path to DB connection properties file")
 	// This is now almost useless as used only for filtering repositories.
-	flag.StringVar(&common.BsName, "bsName", "", "eg. 'default'. If provided, the SQL query *may* become *slightly* faster")
+	flag.StringVar(&common.BsName, "bsName", "", "Experimental: eg. 'default'. If provided, the SQL query *may* become *slightly* faster")
+	flag.StringVar(&common.QRepoNames, "qRepos", "", "Experimental: Comma separated repository names used to generate SQL query")
 	flag.StringVar(&common.Query, "query", "", "SQL 'SELECT blob_id ...' or 'SELECT blob_ref as blob_id ...' to filter the data from the DB")
 
 	// Reconcile / orphaned blob finding related
@@ -163,13 +164,25 @@ func setGlobals() {
 		initRepoFmtMap(common.DB)
 	}
 
+	skipRxSelect := false
+	if len(common.QRepoNames) > 0 {
+		if len(common.Query) > 0 {
+			panic("Currently -qRepos can't be used with -query")
+		}
+		common.QRepoNameList = strings.Split(common.QRepoNames, ",")
+		common.Query = genAssetBlobUnionQuery("path, blob_ref as blob_id", "", common.QRepoNameList, "")
+		h.Log("DEBUG", fmt.Sprintf("Generated Query for -qRepos: %s = %s", common.QRepoNames, common.Query))
+		skipRxSelect = true
+	}
+
 	if len(common.Query) > 0 {
-		if !common.RxSelect.MatchString(common.Query) {
+		if !skipRxSelect && !common.RxSelect.MatchString(common.Query) {
 			panic("Query should start with 'SELECT' and contain 'blob_id': " + common.Query)
 		}
 		if len(common.DbConnStr) == 0 {
 			panic("Query requires DB connection string")
 		}
+		// Can't check this in the setGlobals(), as theBlobIDFIle will be used to save the result of the Query
 		//if len(common.BlobIDFIle) > 0 {
 		//	panic("Currently -rF and -query can't be used together")
 		//}
@@ -393,11 +406,11 @@ func getBlobRef(blobRefLikeString string) string {
 	matches := common.RxBlobRefNew.FindStringSubmatch(blobRefLikeString)
 	if len(matches) > 0 {
 		// {blobStore}@{blobId}@{timestamp}
-		return matches[0]
+		return matches[1]
 	}
 	matches = common.RxBlobRef.FindStringSubmatch(blobRefLikeString)
 	if len(matches) > 0 {
-		return matches[0]
+		return matches[1]
 	}
 	h.Log("DEBUT", "getBlobRef got empty blobRef for "+blobRefLikeString)
 	return ""
@@ -513,29 +526,37 @@ func genOutput(path string, bi bs_clients.BlobInfo, db *sql.DB) (string, error) 
 				if len(reason) > 0 {
 					output = fmt.Sprintf("%s%s%s", output, common.SEP, reason)
 				} else {
-					h.Log("DEBUG", "Blob ID: "+blobId+" exists in the DB. Not including in the output.")
-					output = ""
+					return "", errors.New("Blob ID: " + blobId + " exists in the DB")
 				}
 			} else if bytesChkErr != nil {
 				//h.Log("DEBUG", fmt.Sprintf("path:%s has no .bytes file.", path))
 				output = fmt.Sprintf("%s%s%s", output, common.SEP, "BYTES_MISSING")
 			}
 		} else if common.Truth == "DB" { // Dead blob finder mode
-			deadErrCode := fmt.Sprintf("DEAD_BLOB:%s:", bi.BlobRef)
 			// NOTE: Expecting when Truth is "DB", the BytesChk is always true
-			if bi.Error && bytesChkErr != nil {
-				h.Log("DEBUG", fmt.Sprintf("path:%s has error (missing) and missing bytes as well. Considering as DEAD blob.", path))
-				output = fmt.Sprintf("%s%s%s", output, common.SEP, deadErrCode+"missing properties/bytes")
-			} else if bi.Error {
-				h.Log("DEBUG", fmt.Sprintf("path:%s has error (missing). Considering as DEAD blob.", path))
-				output = fmt.Sprintf("%s%s%s", output, common.SEP, deadErrCode+"missing properties")
-			} else if bytesChkErr != nil {
-				h.Log("DEBUG", fmt.Sprintf("path:%s has no .bytes file. Considering as DEAD blob.", path))
-				output = fmt.Sprintf("%s%s%s", output, common.SEP, deadErrCode+"missing bytes")
-				// TODO: check blob-name with DB {format}_asset.path
-				h.Log("DEBUG", fmt.Sprintf("Should check the name/path of %s", path))
+			if bi.Error || bytesChkErr != nil {
+				deadExtraInfo := bi.BlobRef
+				// if bi.Note contains more information, use that instead of BlobRef
+				if len(bi.BlobRef) == 0 || strings.Contains(bi.Note, bi.BlobRef) {
+					deadExtraInfo = bi.Note
+				}
+				deadErrMsg := ""
+				if bi.Error && bytesChkErr != nil {
+					h.Log("DEBUG", fmt.Sprintf("path:%s has error (missing) and missing bytes as well. Considering as DEAD blob.", path))
+					deadErrMsg = "DEAD_BLOB:missing properties/bytes"
+				} else if bi.Error {
+					h.Log("DEBUG", fmt.Sprintf("path:%s has error (missing). Considering as DEAD blob.", path))
+					deadErrMsg = "DEAD_BLOB:missing properties"
+				} else if bytesChkErr != nil {
+					h.Log("DEBUG", fmt.Sprintf("path:%s has no .bytes file. Considering as DEAD blob.", path))
+					deadErrMsg = "DEAD_BLOB:missing bytes"
+					// TODO: check blob-name (path) in .properties file with DB {format}_asset.path. Currently can't as DB result is not passed for "DB" mode
+					h.Log("DEBUG", fmt.Sprintf("Should check the name/path in %s", path))
+				}
+				output = fmt.Sprintf("%s%s%s|%s", output, common.SEP, deadErrMsg, deadExtraInfo)
+			} else {
+				return "", errors.New("Path: " + path + " exists in the BS")
 			}
-			// TODO: check blob-name (path) in .properties file with DB {format}_asset.path. Currently can't as DB result is not passed for "DB" mode
 		}
 	} else if bytesChkErr != nil {
 		//h.Log("DEBUG", fmt.Sprintf("path:%s has no .bytes file.", path))
@@ -809,6 +830,7 @@ func printLineFromPath(args bs_clients.PrintLineArgs) bool {
 	}
 	if skipReason != nil {
 		if len(output) == 0 {
+			// If not DEBUG, it will be too noisy for src=BS|DB modes
 			h.Log("DEBUG", fmt.Sprintf("Skipped %s due to %s", path, skipReason.Error()))
 		} else {
 			h.Log("WARN", fmt.Sprintf("Might be skipped %s due to %s\n%s", path, skipReason.Error(), output))
@@ -1031,7 +1053,7 @@ func checkBlobIdDetailFromDB(maybeBlobId string) interface{} {
 	}
 
 	// empty format returns all repository names in common.Repo2Fmt. The common.Repo2Fmt has all the repository names for the blob store.
-	formatRepoNames := getFormats(getRepNames(""))
+	formatRepoNames := getFormatsWithRepos(getReposByFormat(""))
 	foundInDB := false
 	for format, repoNames := range formatRepoNames {
 		output := getAssetWithBlobRefAsCsv(blobId, repoNames, format, common.DB)
@@ -1082,6 +1104,7 @@ func checkBlobIdDetailFromBS(maybeBlobId string) interface{} {
 	// NOTE: this may not be accurate as it should be checking the base file name, not the path
 	if common.RxFilter4FileName == nil || common.RxFilter4FileName.MatchString(propsPath) {
 		blobInfo, err := Client.GetFileInfo(propsPath)
+		blobInfo.Note = maybeBlobId
 		blobInfo.BlobRef = getBlobRef(maybeBlobId)
 		args := bs_clients.PrintLineArgs{
 			Path:  propsPath,
@@ -1128,14 +1151,13 @@ func maybeCopyPathToBaseDir2(maybeSrcBlobPath string) interface{} {
 
 func getAssetWithBlobRefAsCsv(blobId string, reposPerFmt []string, format string, db *sql.DB) string {
 	h.Log("DEBUG", fmt.Sprintf("repoNames: %v, format:%s", reposPerFmt, format))
-	var tableNames []string
 	blobIdTmp := blobId
 	// This function expects the exact blobID, either UUID or UUID@timestamp
 	// NoDateBsLayout = false means the DB may contain both formats but if `@` is in the blobId, then new format, so not adding `%`
 	if !common.NoDateBsLayout && !strings.Contains(blobId, "@") {
 		blobIdTmp = blobId + "%"
 	}
-	query := genAssetBlobUnionQuery(tableNames, "", "blob_ref LIKE '%"+blobIdTmp+"' LIMIT 1", reposPerFmt, format)
+	query := genAssetBlobUnionQuery("", "blob_ref LIKE '%"+blobIdTmp+"' LIMIT 1", reposPerFmt, format)
 	slowMs := int64(1000)
 	if len(reposPerFmt) > 0 {
 		slowMs = int64(len(reposPerFmt) * 500)
@@ -1171,25 +1193,15 @@ func getAssetWithBlobRefAsCsv(blobId string, reposPerFmt []string, format string
 	return ""
 }
 
-func getRepNames(format string) []string {
+func getReposByFormat(format string) []string {
 	repNames := make([]string, 0)
 	for repoName, repoFmt := range common.Repo2Fmt {
+		// if format is empty, return all repoNames
 		if len(format) == 0 || repoFmt == format {
 			repNames = append(repNames, repoName)
 		}
 	}
 	return repNames
-}
-
-func getFormats(repoNames []string) map[string][]string {
-	formats := make(map[string][]string)
-	for _, repoName := range repoNames {
-		repoFmt := getFmtFromRepName(repoName)
-		if len(repoFmt) > 0 {
-			formats[repoFmt] = append(formats[repoFmt], repoName)
-		}
-	}
-	return formats
 }
 
 func getFmtFromRepName(repoName string) string {
@@ -1202,67 +1214,59 @@ func getFmtFromRepName(repoName string) string {
 	return ""
 }
 
-func getAssetTableNamesFromRepoNames(repoNames string) (result []string) {
-	rnSlice := strings.Split(repoNames, ",")
-	u := make(map[string]bool)
-	for _, repoName := range rnSlice {
-		format := getFmtFromRepName(repoName)
-		if len(format) > 0 {
-			tableName := getFmtFromRepName(repoName) + "_asset"
-			if len(tableName) > 0 {
-				if _, ok := u[tableName]; !ok {
-					result = append(result, tableName)
-					u[tableName] = true
-				}
-			}
+func getFormatsWithRepos(repoNames []string) map[string][]string {
+	formats := make(map[string][]string)
+	for _, repoName := range repoNames {
+		repoFmt := getFmtFromRepName(repoName)
+		if len(repoFmt) > 0 {
+			formats[repoFmt] = append(formats[repoFmt], repoName)
 		}
 	}
-	return result
+	return formats
 }
 
-func genAssetBlobUnionQuery(assetTableNames []string, columns string, afterWhere string, reposPerFmt []string, format string) string {
-	cte := ""
-	cteJoin := ""
-	if len(assetTableNames) == 0 {
-		if len(format) > 0 {
-			h.Log("DEBUG", fmt.Sprintf("No assetTableNames but format %s is provided.", format))
-			assetTableNames = []string{format + "_asset"}
-		} else {
-			h.Log("DEBUG", fmt.Sprintf("No assetTableNames. Using the default AssetTables (%d)", len(common.AssetTables)))
-			assetTableNames = common.AssetTables
-		}
+func getAssetTableNameFromRepo(repoName string) string {
+	format := getFmtFromRepName(repoName)
+	if len(format) > 0 {
+		return format + "_asset"
 	}
+	return ""
+}
+
+func genAssetBlobUnionQuery(columns string, afterWhere string, repos []string, format string) string {
 	if len(columns) == 0 {
 		columns = "a.repository_id, a.asset_id, a.path, a.kind, a.component_id, ab.blob_ref, ab.blob_size, ab.blob_created"
 	}
+
 	if !h.IsEmpty(afterWhere) && !common.RxAnd.MatchString(afterWhere) {
 		afterWhere = "AND " + afterWhere
 	}
-	if len(reposPerFmt) > 0 {
-		if len(format) == 0 {
-			format = getFmtFromRepName(reposPerFmt[0])
-			h.Log("DEBUG", fmt.Sprintf("No format for %v so using %s", reposPerFmt, format))
-		}
-		repoIn := `'` + strings.Join(reposPerFmt, `', '`) + `'`
-		// As not using LEFT JOIN, no need to use ` or r.name is NULL`
-		cte = "WITH r AS (select r.name, cr.repository_id from " + format + "_content_repository cr join repository r on r.id = cr.config_repository_id WHERE r.name IN (" + repoIn + ")) "
-		cteJoin = "JOIN r USING (repository_id)"
-		columns = "r.name as repo_name, " + columns
+
+	formatRepoNames := make(map[string][]string)
+	if len(format) > 0 {
+		h.Log("INFO", fmt.Sprintf("Using format:%s for repos:%s to generate formatRepoNames", format, repos))
+		formatRepoNames[format] = repos
+	} else {
+		formatRepoNames = getFormatsWithRepos(repos)
 	}
-	elements := make([]string, 0)
-	for _, tableName := range assetTableNames {
-		element := cte + "SELECT " + columns
-		element = fmt.Sprintf("%s FROM %s_blob ab", element, tableName)
-		// NOTE: Due to the performance concern, NOT using LEFT JOIN even though this script may think orphaned when Cleanup unused asset blob task hadn't been run
-		element = fmt.Sprintf("%s JOIN %s a USING (asset_blob_id) %s", element, tableName, cteJoin)
-		element = fmt.Sprintf("%s WHERE 1=1 %s", element, afterWhere)
-		elements = append(elements, element)
+
+	queries := make([]string, 0)
+	for actualFmt, actualRepos := range formatRepoNames {
+		repoIn := `'` + strings.Join(actualRepos, `','`) + `'`
+		q := "WITH r AS (select r.name, cr.repository_id from " + actualFmt + "_content_repository cr join repository r on r.id = cr.config_repository_id WHERE r.name IN (" + repoIn + ")) "
+		q = q + "SELECT r.name as repo_name, " + columns
+		q = q + " FROM " + actualFmt + "_asset_blob ab"
+		// NOTE: Due to the performance concern, NOT using LEFT JOIN even though this script may find orphaned blobs when Cleanup unused asset blob tasks aren't run yet.
+		q = q + " JOIN " + actualFmt + "_asset a USING (asset_blob_id) JOIN r USING (repository_id)"
+		q = q + " WHERE 1=1 " + afterWhere
+		queries = append(queries, q)
 	}
+
 	query := ""
-	if len(elements) == 1 {
-		query = elements[0]
-	} else if len(elements) > 1 {
-		query = "(" + strings.Join(elements, ") UNION ALL (") + ")"
+	if len(queries) == 1 {
+		query = queries[0]
+	} else if len(queries) > 1 {
+		query = "(" + strings.Join(queries, ") UNION ALL (") + ")"
 	}
 	return query
 }
@@ -1307,37 +1311,41 @@ func isOrphanedBlob(contents string, blobId string, db *sql.DB) string {
 	// Orphaned blob is the blob which is in the blob store but not in the DB
 	// UNION ALL query against many tables is slow. so if contents is given, using specific table of the repo-name.
 	repoName := lib.GetRepoName(contents)
+	if len(repoName) > 0 && len(common.QRepoNameList) > 0 {
+		if slices.Contains(common.QRepoNameList, repoName) == false {
+			h.Log("DEBUG", fmt.Sprintf("Skipping blobId:%s as repoName:%s not in the query repo name list", blobId, repoName))
+			return ""
+		}
+	}
+
 	blobName := lib.GetBlobName(contents)
 	format := getFmtFromRepName(repoName)
-	tableNames := getAssetTableNamesFromRepoNames(repoName)
-	if len(repoName) > 0 && len(tableNames) == 0 {
-		h.Log("WARN", fmt.Sprintf("Repsitory: %s does not exist in the database, so assuming %s as orphan", repoName, blobId))
+	tableName := getAssetTableNameFromRepo(repoName)
+	if len(repoName) > 0 && len(tableName) == 0 {
+		// Returning early if the repoName does not exist in the common.Repo2Fmt
+		h.Log("WARN", fmt.Sprintf("Repository: %s does not exist in the database, so assuming %s as orphan", repoName, blobId))
 		return "ORPHAN:" + repoName + "/" + format + "(NO_REPO)"
 	}
+	// If repoName is empty, still checks to get the details
 	var repoNames []string
 	if len(repoName) > 0 {
 		repoNames = []string{repoName}
 	}
-	// Generating query to search the blobId from the blob_ref, and returning only asset_id column
-	// Currently not utilising common.BsName as can't trust blob store name in blob_ref, and may not work with group blob stores
 	h.Log("DEBUG", fmt.Sprintf("repoNames: %v, format:%s", repoNames, format))
 	// If blobId does not contain `@`, append '%' to match the old style blob IDs
-	blobIdTmp := blobId
-	// This function expects the exact blobID, either UUID or UUID@timestamp
+	blobIdLike := blobId
 	// NoDateBsLayout = false means the DB may contain both formats but if `@` is in the blobId, then new format, so not adding `%`
 	if !common.NoDateBsLayout && !strings.Contains(blobId, "@") {
-		blobIdTmp = blobId + "%"
+		blobIdLike = blobId + "%"
 	}
-	query := genAssetBlobUnionQuery(tableNames, "asset_id, path", "blob_ref LIKE '%"+blobIdTmp+"' LIMIT 1", repoNames, format)
+	// Currently NOT utilising common.BsName as can't trust blob store name in blob_ref, and may not work with group blob stores
+	query := genAssetBlobUnionQuery("asset_id, path", "blob_ref LIKE '%"+blobIdLike+"' LIMIT 1", repoNames, format)
 	if len(query) == 0 { // Mainly for unit test
-		h.Log("WARN", fmt.Sprintf("query is empty for blobId: %s and tableNames: %v", blobId, tableNames))
+		h.Log("WARN", fmt.Sprintf("query is empty for blobId: %s and tableName: %s", blobId, tableName))
 		return "UNKNOWN1:" + repoName + "/" + format
 	}
-	// This query can take longer so not showing too many WARNs
+	// This query can take longer, so using larger slowMs not showing too many WARNs
 	slowMs := int64(1000)
-	if len(tableNames) > 0 {
-		slowMs = int64(len(tableNames) * 300)
-	}
 	rows := lib.Query(query, db, slowMs)
 	if rows == nil { // Mainly for unit test
 		h.Log("WARN", "rows is nil for query: "+query)

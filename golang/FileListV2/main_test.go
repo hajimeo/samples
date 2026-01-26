@@ -54,7 +54,7 @@ func TestGenBlobPath_EmptyBlobId_ReturnsCorrectPath(t *testing.T) {
 }
 
 func TestGenAssetBlobUnionQuery_NoAssetTableNames_UsesDefaultAssetTables(t *testing.T) {
-	result := genAssetBlobUnionQuery(nil, "", "", nil, "")
+	result := genAssetBlobUnionQuery("", "", nil, "")
 	if common.AssetTables == nil || len(common.AssetTables) == 0 {
 		assert.Contains(t, result, "")
 		return
@@ -62,39 +62,30 @@ func TestGenAssetBlobUnionQuery_NoAssetTableNames_UsesDefaultAssetTables(t *test
 	assert.Contains(t, result, "FROM default_asset_blob")
 }
 
-func TestGenAssetBlobUnionQuery_WithAssetTableNames_UsesProvidedAssetTables(t *testing.T) {
-	assetTableNames := []string{"table1", "table2"}
-	result := genAssetBlobUnionQuery(assetTableNames, "", "", nil, "")
-	assert.Contains(t, result, "FROM table1_blob")
-	assert.Contains(t, result, "FROM table2_blob")
-}
-
 func TestGenAssetBlobUnionQuery_WithColumns_UsesProvidedColumns(t *testing.T) {
 	columns := "a.asset_id, a.path"
-	result := genAssetBlobUnionQuery([]string{"table1"}, columns, "", nil, "")
-	assert.Contains(t, result, "SELECT a.asset_id, a.path")
+	repoNames := []string{"repo1"}
+	result := genAssetBlobUnionQuery(columns, "", repoNames, "testfmt")
+	assert.Contains(t, result, "SELECT r.name as repo_name, a.asset_id, a.path")
 }
 
 func TestGenAssetBlobUnionQuery_WithAfterWhere_AddsCondition(t *testing.T) {
 	afterWhere := "a.kind = 'blob'"
-	result := genAssetBlobUnionQuery([]string{"table1"}, "", afterWhere, nil, "")
+	repoNames := []string{"repo1"}
+	result := genAssetBlobUnionQuery("", afterWhere, repoNames, "testfmt")
 	assert.Contains(t, result, "WHERE 1=1 AND a.kind = 'blob'")
 }
 
 func TestGenAssetBlobUnionQuery_WithRepoName_AddsRepoNameCondition(t *testing.T) {
 	repoNames := []string{"repo1"}
-	result := genAssetBlobUnionQuery([]string{"table1"}, "", "", repoNames, "test")
+	result := genAssetBlobUnionQuery("", "", repoNames, "testfmt")
 	assert.Contains(t, result, "('repo1')")
 }
 
 func TestGenAssetBlobUnionQuery_SingleTable_ReturnsSingleQuery(t *testing.T) {
-	result := genAssetBlobUnionQuery([]string{"table1"}, "", "", nil, "")
+	repoNames := []string{"repo1"}
+	result := genAssetBlobUnionQuery("", "", repoNames, "testfmt")
 	assert.NotContains(t, result, "UNION ALL")
-}
-
-func TestGenAssetBlobUnionQuery_MultipleTables_ReturnsUnionQuery(t *testing.T) {
-	result := genAssetBlobUnionQuery([]string{"table1", "table2"}, "", "", nil, "")
-	assert.Contains(t, result, "UNION ALL")
 }
 
 func TestGetBlobRef_ValidNewBlobRefLine_ReturnsFullMatch(t *testing.T) {
@@ -107,40 +98,36 @@ func TestGetBlobRef_ValidNewBlobRefLine_ReturnsFullMatch(t *testing.T) {
 
 func TestGetBlobRef_ValidNewBlobRefLine2_ReturnsFullMatch(t *testing.T) {
 	blobRef := "aaaa,blobStore@6c1d3423-ecbc-4c52-a0fe-01a45a12883a@2025-08-14T02:44,bbbb"
-
 	result := getBlobRef(blobRef)
-
 	assert.Equal(t, "blobStore@6c1d3423-ecbc-4c52-a0fe-01a45a12883a@2025-08-14T02:44", result)
 }
 
 func TestGetBlobRef_ValidNewBlobRef_ReturnsFullMatch(t *testing.T) {
 	blobRef := "blobStore@6c1d3423-ecbc-4c52-a0fe-01a45a12883a@2025-08-14T02:44"
-
 	result := getBlobRef(blobRef)
-
 	assert.Equal(t, blobRef, result)
 }
 
 func TestGetBlobRef_ValidOldBlobRef_ReturnsFullMatch(t *testing.T) {
 	blobRef := "blobStore@6c1d3423-ecbc-4c52-a0fe-01a45a12883a"
-
 	result := getBlobRef(blobRef)
-
 	assert.Equal(t, blobRef, result)
 }
 
 func TestGetBlobRef_InvalidBlobRef_ReturnsEmptyString(t *testing.T) {
 	blobRef := "invalidBlobRef"
-
 	result := getBlobRef(blobRef)
-
 	assert.Equal(t, "", result)
 }
 
 func TestGetBlobRef_EmptyBlobRef_ReturnsEmptyString(t *testing.T) {
 	blobRef := ""
-
 	result := getBlobRef(blobRef)
-
 	assert.Equal(t, "", result)
+}
+
+func TestGetBlobRef_MaybeBlobRefWithTab_ReturnBlobRef(t *testing.T) {
+	blobRef := "raw-hosted	/dummies/staging_move2.txt	default@47d9e6d4-308e-4984-89f2-96db825ea66c@2025-12-17T08:15"
+	result := getBlobRef(blobRef)
+	assert.Equal(t, "default@47d9e6d4-308e-4984-89f2-96db825ea66c@2025-12-17T08:15", result)
 }
