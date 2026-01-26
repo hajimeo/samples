@@ -42,6 +42,7 @@ type BlobInfo struct {
 	Owner   string
 	Tags    string // JSON string
 	BlobRef string
+	Note    string
 	Error   bool
 }
 
