@@ -81,7 +81,7 @@ function test_2_ShouldNotFindAny() {
     _find_sample_repo_name "${_b}" "${_p}" || return 1
 
     local _out_file="/tmp/test_not-finding_${_TEST_REPO_NAME}.tsv"
-    _exec_filelist "filelist2 -b '${_b}' -p '${_p}' -pRx '@Bucket\.repo-name=${_TEST_REPO_NAME},' -pRxNot 'BlobStore\.blob-name=' -P -H" "${_out_file}"
+    _exec_filelist "filelist2 -b '${_b}' -p '${_p}' -pRx '@Bucket\.repo-name=${_TEST_REPO_NAME},' -pRxExcl 'BlobStore\.blob-name=' -P -H" "${_out_file}"
     if [ "$?" == "0" ] && [ ! -s "${_out_file}" ]; then
         echo "TEST=OK : ${_out_file} is empty"
     else
@@ -164,7 +164,7 @@ function test_5_Undelete() {
     local _should_not_find_soft_delete=true
 
     # Find 10 NOT soft-deleted .properties files
-    _exec_filelist "filelist2 -b '${_b}' -p '${_p}' -pRx '@Bucket\.repo-name=${_TEST_REPO_NAME}' -pRxNot ',(deleted=true|originalLocation=)' -n 10 -H" "${_prep_file}"
+    _exec_filelist "filelist2 -b '${_b}' -p '${_p}' -pRx '@Bucket\.repo-name=${_TEST_REPO_NAME}' -pRxExcl ',(deleted=true|originalLocation=)' -n 10 -H" "${_prep_file}"
     if [ -s "${_prep_file}" ]; then
         # Append 'deleted=true' in each blob by reading the tsv file
         _exec_filelist "filelist2 -b '${_b}' -rF ${_prep_file} -wStr \"deleted=true\" -P -H" "/tmp/test_preparing-soft-deleted_${_TEST_REPO_NAME}.tsv"
@@ -232,7 +232,7 @@ function test_6_Orphaned() {
     [ -n "${_TEST_DB_CONN_PWD}" ] && export PGPASSWORD="${_TEST_DB_CONN_PWD}"
 
     local _out_file="/tmp/test_orphaned.tsv"
-    _exec_filelist "filelist2 -b '${_b}' -p '${_p}' -src BS -db ${_nexus_store}  -pRxNot ',(deleted=true|originalLocation=)' -BytesChk -H" "${_out_file}"
+    _exec_filelist "filelist2 -b '${_b}' -p '${_p}' -src BS -db ${_nexus_store}  -pRxExcl ',(deleted=true|originalLocation=)' -BytesChk -H" "${_out_file}"
     if [ "$?" == "0" ]; then
         echo "TEST=OK (${_out_file})"
         echo "To remove: cat ${_out_file} | sed -n -E 's/^(.+)\.properties.+/\1/p' | xargs -P2 -t -I{} mv {}.{properties,bytes} /tmp/"
@@ -357,8 +357,8 @@ function test_9_TextFileToCheckDatabase() {
 
     #find ${_b%/} -maxdepth 4 -name '*.properties' -path '*/content/vol*' -print | head -n10 >/tmp/test_mock_blob_ids.txt
     # Assuming / hoping the newer files wouldn't be orphaned files.
-    # Can not use -pRxNot 'deletedReason=' and '-n 1000' with the new blob store layout...
-    _TEST_MAX_NUM=100000 _exec_filelist "filelist2 -b ${_b} -p '${_p}' -pRxNot ',(deleted=true|originalLocation=)' -BytesChk" "/tmp/test_mock_blob_ids.tmp"
+    # Can not use -pRxExcl 'deletedReason=' and '-n 1000' with the new blob store layout...
+    _TEST_MAX_NUM=100000 _exec_filelist "filelist2 -b ${_b} -p '${_p}' -pRxExcl ',(deleted=true|originalLocation=)' -BytesChk" "/tmp/test_mock_blob_ids.tmp"
     #cat /tmp/test_mock_blob_ids.tmp | sort -k2r,3r | head -n10 > /tmp/test_mock_blob_ids.txt
     # Excluding BYTES_MISSING as probably deletion markers
     rg -v "BYTES_MISSING" /tmp/test_mock_blob_ids.tmp | rg '/([^/]+\.properties)' -o -r '$1' | sort | uniq -c | rg '^\s*1\s(\S+)' -o -r '$1' | head -n10 > /tmp/test_mock_blob_ids_maybeNotDeleted.tmp
@@ -426,7 +426,7 @@ function test_11_CopyBlobs() {
     fi
 
     local _out_file="/tmp/test_copy_local_blobs.tsv"
-    _exec_filelist "filelist2 -b '${_b}' -p '${_p}' -pRxNot ',(deleted=true|originalLocation=)' -bTo ${_tmpdir%/}/default_copied -bTo-repoName 'raw-bTo-hosted' -H" "${_out_file}"
+    _exec_filelist "filelist2 -b '${_b}' -p '${_p}' -pRxExcl ',(deleted=true|originalLocation=)' -bTo ${_tmpdir%/}/default_copied -bTo-repoName 'raw-bTo-hosted' -H" "${_out_file}"
     local _result_num="$(_line_num ${_out_file})"
     if [ ${_result_num:-"0"} -ge ${_TEST_MAX_NUM} ]; then
         echo "TEST=OK (${_out_file}) result:${_result_num}/${_TEST_MAX_NUM}"

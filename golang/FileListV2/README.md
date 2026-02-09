@@ -93,12 +93,12 @@ NOTE: Using `-pRx` automatically does same as `-f ".propperties"`.
 NOTE: To make the regex simpler, in the internal memory, the content of .properties file becomes same as
 `cat <blobId>.properties | sort | tr '\n' ','`, so that `@xxxxx` lines come before `deleted=true` lines.
 
-### List files which does NOT match with `-pRxNot "regex"` but matches with `-pRx "regex"`
+### List files which does NOT match with `-pRxExcl "regex"` but matches with `-pRx "regex"`
 
-NOTE: `-pRxNot` is evaluated before `-pRx`
+NOTE: `-pRxExcl` is evaluated before `-pRx`
 
 ```
-filelist2 -b "$BLOB_STORE" -pRxNot "BlobStore\.blob-name=.+/maven-metadata.xml.*" -pRx "@Bucket\.repo-name=maven-proxy," -P -c 80 -s /tmp/filelist_maven-proxy_excl_maven-metadata.tsv
+filelist2 -b "$BLOB_STORE" -pRxExcl "BlobStore\.blob-name=.+/maven-metadata.xml.*" -pRx "@Bucket\.repo-name=maven-proxy," -P -c 80 -s /tmp/filelist_maven-proxy_excl_maven-metadata.tsv
 ```
 
 ### Read the result File `-rF "file-path"`, which each lne contains a blobId, and list the .properties files only
@@ -156,14 +156,14 @@ table. Also, `-c` shouldn't be too high with `-db`.
 ```
 # Accessing DB by using the connection string and check all formats for orphaned blobs (-src BS)
 # Also `-BytesChk` to exclude .properties files which do not have the .bytes file (deletion marker)
-filelist2 -b "$BLOB_STORE" -c 10 -src BS -db ./sonatype-work/nexus3/etc/fabric/nexus-store.properties -mDT "$(date -d "1 day ago" +%Y-%m-%d)" -P -pRxNot "deleted=true" -BytesChk -s /tmp/filelist_orphaned_blobs.tsv
+filelist2 -b "$BLOB_STORE" -c 10 -src BS -db ./sonatype-work/nexus3/etc/fabric/nexus-store.properties -mDT "$(date -d "1 day ago" +%Y-%m-%d)" -P -pRxExcl "deleted=true" -BytesChk -s /tmp/filelist_orphaned_blobs.tsv
 ```
 
 NOTE: `-db` also accepts "host=localhost user=nexus dbname=nexus" (with export
 PGPASSWORD="*******") https://pkg.go.dev/github.com/lib/pq#hdr-Connection_String_Parameters    
 NOTE: Nexus 3.86 may be going to have the originalLocation line for deletion markers, so may not need to use -BytesChk (
-TODO: if upgraded, could be confusing), so `-pRxNot "(deleted=true|originalLocation)"` or just
-`-pRxNot "originalLocation"`
+TODO: if upgraded, could be confusing), so `-pRxExcl "(deleted=true|originalLocation)"` or just
+`-pRxExcl "originalLocation"`
 
 Can use a text file which contains Blob IDs, so that no Blobstore access is needed:
 
@@ -225,7 +225,7 @@ work. (e.g. AWS S3 to MinIO)
 ```
 # NOTE: MinIO example. HTTPS is required.
 export AWS_ACCESS_KEY_ID_2="admin" AWS_SECRET_ACCESS_KEY_2="admin123" AWS_REGION_2="" AWS_ENDPOINT_URL_2="https://local.standalone.localdomain:19000" AWS_CA_BUNDLE_2="$HOME/minio_data/certs/public.crt"
-filelist2 -b "s3://apac-support-bucket/filelist-test/" -bTo "s3://test-bucket/filelist-test_copied/" -PathStyle -P -pRx "@Bucket.repo-name=raw-s3-hosted," -pRxNot ",(deleted=true|originalLocation=)" -H -s ./copied_blobs.tsv
+filelist2 -b "s3://apac-support-bucket/filelist-test/" -bTo "s3://test-bucket/filelist-test_copied/" -PathStyle -P -pRx "@Bucket.repo-name=raw-s3-hosted," -pRxExcl ",(deleted=true|originalLocation=)" -H -s ./copied_blobs.tsv
 ```
 
 NOTE: Using `AWS_CA_BUNDLE` may break HTTPS requests to the real AWS S3. May also need to use `-PathStyle` if not
@@ -235,7 +235,7 @@ wildcard certificate.
 # NOTE: Azurite example for Demo Azure (so that `http`). Need to create a Container. Can not use '_' in the container name.
 export AZURE_STORAGE_CONNECTION_STRING_2="DefaultEndpointsProtocol=http;AccountName=admin;AccountKey=YWRtaW4xMjM=;BlobEndpoint=http://localhost:10000/admin;"
 az storage container create --name "apac-support-bucket-filelist-test-copied" --connection-string "${AZURE_STORAGE_CONNECTION_STRING_2}"
-filelist2 -b "s3://apac-support-bucket/filelist-test/" -bTo "az://apac-support-bucket-filelist-test-copied/" -P -pRx "@Bucket.repo-name=raw-s3-hosted," -pRxNot ",(deleted=true|originalLocation=)" -H -s ./copied_blobs.tsv
+filelist2 -b "s3://apac-support-bucket/filelist-test/" -bTo "az://apac-support-bucket-filelist-test-copied/" -P -pRx "@Bucket.repo-name=raw-s3-hosted," -pRxExcl ",(deleted=true|originalLocation=)" -H -s ./copied_blobs.tsv
 # To validate
 AZURE_STORAGE_CONNECTION_STRING="${AZURE_STORAGE_CONNECTION_STRING_2}" filelist2 -b "az://apac-support-bucket-filelist-test-copied/" -rF ./copied_blobs.tsv
 ```
