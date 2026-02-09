@@ -39,7 +39,7 @@ HOW TO and USAGE EXAMPLES:
 // Populate all global variables
 func setGlobals() {
 	common.StartTimestamp = time.Now().Unix()
-
+	// TODO: Read from $HOME/.filelist_config file and populate the default values
 	// TODO: (low) 'b' should accept the comma separated values for supporting the group blob store
 	flag.StringVar(&common.BaseDir, "b", "", "Blob store directory or URI (eg. 's3://s3-test-bucket/s3-test-prefix/'), which location contains 'content' directory (default: '.')")
 	flag.StringVar(&common.BaseDir2, "bTo", "", "*Experimental* Blob store directory or URI (eg. 's3://s3-test-bucket/s3-test-prefix_to_content/') for copying files from -b")
@@ -51,8 +51,9 @@ func setGlobals() {
 	flag.StringVar(&common.Filter4FileName, "f", "", "Regular Expression for the file *name* (eg: '\\.properties' to include only this extension)")
 	flag.BoolVar(&common.WithProps, "P", false, "If true, the .properties file content is included in the output")
 	flag.StringVar(&common.Filter4PropsIncl, "pRx", "", "Regular Expression against the text of the .properties files (eg: 'deleted=true')")
-	flag.StringVar(&common.Filter4PropsExcl, "pRxNot", "", "Excluding Regular Expression for .properties files (eg: 'BlobStore.blob-name=.+/maven-metadata.xml.*')")
+	flag.StringVar(&common.Filter4PropsExcl, "pRxExcl", "", "Excluding Regular Expression for .properties files (eg: 'BlobStore.blob-name=.+/maven-metadata.xml.*')")
 	// TODO: (low) not implemented yet
+	flag.StringVar(&common.Filter4PropsNot, "pRxNot", "", "Regular Expression for finding .properties files which does not contain this regex (eg: 'BlobStore.content-type')")
 	//flag.StringVar(&common.Filter4BytesIncl, "bRx", "", "Regular Expression for .bytes files (max size 32KB)")
 	//flag.StringVar(&common.Filter4BytesExcl, "bRxNot", "", "Excluding Regular Expression for .bytes files (max size 32KB)")
 	flag.StringVar(&common.SaveToFile, "s", "", "Save the output (TSV text) into the specified path")
@@ -1297,7 +1298,7 @@ func genSubDirs(baseDir string, pathFilter string, client bs_clients.Client) (ma
 		return matchingDirs, err
 	}
 
-	h.Log("DEBUG", fmt.Sprintf("From %s, got %v direcories.", baseDir, dirs))
+	h.Log("DEBUG", fmt.Sprintf("From %s, got %v directories.", baseDir, dirs))
 	for _, dir := range dirs {
 		newMatchingDirs := lib.ComputeSubDirs(dir, pathFilter)
 		matchingDirs = append(matchingDirs, newMatchingDirs...)
