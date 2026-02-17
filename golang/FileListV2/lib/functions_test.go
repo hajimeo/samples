@@ -236,6 +236,7 @@ func TestGetAfterContent_PathWithMultipleContentSubdirs_ReturnsLastSubsequentPat
 	assert.Equal(t, "vol-NN", result)
 }
 
+// TODO: performance test by creating a few years directories.
 func TestComputeSubDirs_VolDirWithoutFilter_ReturnsAllChapDirs(t *testing.T) {
 	path := "vol-01"
 	pathFilter := ""
