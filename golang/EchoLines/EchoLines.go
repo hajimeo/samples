@@ -66,12 +66,13 @@ Read one file and output only necessary lines.
 ### NXRM2 thread dumps (not perfect. still contains some junk lines):
     EXCL_REGEX="^(jvm 1\s+\|\s+\d\d\d\d-\d\d-\d\d \d\d:\d\d:\d\d.+|.+Pause reading child output to share cycles.+)" echolines "wrapper.log.2,wrapper.log.1,wrapper.log" "^jvm 1\s+\|\s+\d\d\d\d-\d\d-\d\d \d\d:\d\d:\d\d$" "(^\s+class space.+)" | sed 's/^jvm 1    | //' > threads.txt
 ### NXRM3 thread dumps:
-    HTML_REMOVE=Y echolines "./jvm.log" "^\d\d\d\d-\d\d-\d\d \d\d:\d\d:\d\d$" "(^\s+class space.+|^\s+Metaspace\s+.+)" "threads"
-    _THREAD_FILE_GLOB="0*.out" f_threads ./threads/
-    # If would like to split the thread dumps per datetime. Considering in case the datetime includes the timezone (eg. +09:00)
+    HTML_REMOVE=Y echolines "./jvm.log" "^\d\d\d\d-\d\d-\d\d \d\d:\d\d:\d\d$" "(^\s+class space.+|^\s+Metaspace\s+.+)" > threads.txt
+#### If would like to split the thread dumps per datetime. Considering in case the datetime includes the timezone (eg. +09:00)
     echolines ./threads.txt '^20\d\d-\d\d-\d\d.\d\d:\d\d:\d\d\S{0,6}$' '' "threads_per_datetime"
     #echolines "threads.txt" "^\".+" "" "./threads_per_thread"
     find ./threads_per_dump -type f -name '[0-9]*_*.out' | xargs -P3 -t -I{} bash -c '_d="$(basename "{}" ".out")";echolines "{}" "^\".+" "" "./threads_per_thread/${_d}"'
+### IQ thread dumps from the STDOUT file (not perfect. may contains some junk lines):
+    HTML_REMOVE=Y EXCL_REGEX="^\d\d\d\d-\d\d-\d\d \d\d:\d\d:\d\d,\d\d\d.\d\d\d\d" echolines "./iq-server.out" "^\d\d\d\d-\d\d-\d\d \d\d:\d\d:\d\d$" "(^\s+class space.+|^\s+Metaspace\s+.+)" > threads.txt
 
 ## Durations
 NOTE: "rg" is used several times in the below examples because it is faster than this tool for filtering the results.
@@ -86,7 +87,7 @@ NOTE: "rg" is used several times in the below examples because it is faster than
     export ELAPSED_REGEX="^\d\d\d\d-\d\d-\d\d.(\d\d:\d\d:\d\d.\d\d\d)" ASCII_DISABLED=Y ELAPSED_KEY_REGEX="(\[dw\-[^\]]+\]\s\S+\s\S+)"
     echolines "_hourly_logs/clm-server_2024-09-13_16.out" "^\d\d\d\d-\d\d-\d\d.\d\d:\d\d:\d\d.\d\d\d" "^\d\d\d\d-\d\d-\d\d.\d\d:\d\d:\d\d.\d\d\d" | rg '^# ' | sort -t'|' -k3n
 ### NXRM3: SQL queries #and sort by the longest:
-    export ELAPSED_REGEX="^\d\d\d\d-\d\d-\d\d.(\d\d:\d\d:\d\d.\d\d\d)" ASCII_DISABLED=Y ELAPSED_KEY_REGEX="(\[qtp\S+\s+\S+\s+\S+)"
+    export ELAPSED_REGEX="^\d\d\d\d-\d\d-\d\d.(\d\d:\d\d:\d\d.\d\d\d)" ASCII_DISABLED=Y ELAPSED_KEY_REGEX="(\[[^\]]+\])"
     echolines "./log/nexus.log" " - ==>  Preparing:" "(^.+ - <== .+)" | rg '^# (.+)' -o -r '$1'    #| sort -t'|' -k3n
 ### NXRM3: Specific method, which stops if 0 update, and related log lines:
     echolines "./log/nexus.log" "trimBrowseNodes - ==>  Preparing:" "(^.+Updates: 0)" | tee trimBrowseNodes.log | rg '^# (.+)' -o -r '$1' > trimBrowseNodes_dur.out
