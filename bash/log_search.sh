@@ -1497,7 +1497,7 @@ function _threads_extra_check() {
         echo "## No file provided for _threads_extra_check" >&2
         return 1
     fi
-    rg '(DefaultTimelineIndexer|content_digest|findAssetByContentDigest|touchItemLastRequested|preClose0|sun\.security\.util\.MemoryCache|java\.lang\.Class\.forName|CachingDateFormatter|metrics\.health\.HealthCheck\.execute|WeakHashMap|userId\.toLowerCase|MessageDigest|UploadManagerImpl\.startUpload|UploadManagerImpl\.blobsByName|maybeTrimRepositories|getQuarantinedVersions|nonCatalogedVersions|getProxyDownloadNumbers|RepositoryManagerImpl.retrieveConfigurationByName|\.StorageFacetManagerImpl\.|OTransactionRealAbstract\.isIndexKeyMayDependOnRid|AptFacetImpl.put|componentMetadata|ensureGetUpload|OrientCommonQueryDataService|getWaivedFixed|AbstractOperationalSqlDAO\.getAll|NewestRiskService|acquireLock|com\.sonatype\.insight\.brain\.dataaccess\.policy\.PolicyViolationDAO\.getUnfixed|SearchTableStore\.searchComponents)' ${_file} | sort | uniq -c > /tmp/$FUNCNAME_$$.out || return $?
+    rg '(DefaultTimelineIndexer|content_digest|findAssetByContentDigest|touchItemLastRequested|preClose0|sun\.security\.util\.MemoryCache|java\.lang\.Class\.forName|CachingDateFormatter|metrics\.health\.HealthCheck\.execute|WeakHashMap|userId\.toLowerCase|MessageDigest|UploadManagerImpl\.startUpload|UploadManagerImpl\.blobsByName|maybeTrimRepositories|getQuarantinedVersions|nonCatalogedVersions|getProxyDownloadNumbers|RepositoryManagerImpl.retrieveConfigurationByName|\.StorageFacetManagerImpl\.|OTransactionRealAbstract\.isIndexKeyMayDependOnRid|AptFacetImpl.put|componentMetadata|ensureGetUpload|OrientCommonQueryDataService|getWaivedFixed|AbstractOperationalSqlDAO\.getAll|NewestRiskService|acquireLock|com\.sonatype\.insight\.brain\.dataaccess\.policy\.PolicyViolationDAO\.getUnfixed|SearchTableStore\.searchComponents|GroupMemberMappingCache)' ${_file} | sort | uniq -c > /tmp/$FUNCNAME_$$.out || return $?
     if [ -s /tmp/$FUNCNAME_$$.out ]; then
         echo "## Counting:"
         echo "##    'DefaultTimelineIndexer' for NXRM2 System Feeds: timeline-plugin,"
@@ -1530,6 +1530,7 @@ function _threads_extra_check() {
         echo "##    'NewestRiskService' dashboard/policy/newestRisks"
         echo "##    'acquireLock' SELECT * FROM insight_brain_ods.lock WHERE lock_id = \$1 FOR UPDATE"
         echo "##    'SearchTableStore.searchComponents' NEXUS-43504"
+        echo "##    'GroupMemberMappingCache' NEXUS-45400"
         cat /tmp/$FUNCNAME_$$.out
         echo " "
     fi
@@ -1982,13 +1983,17 @@ function _gen_filename() {
 function f_splitPerHour() {
     local _file="$1"
     local _dest_dir="${2:-"_hourly_logs"}"
-    _SPLIT_BY_REGEX_SORT="Y" f_splitByRegex "${_file}" "^${_DATE_FORMAT}.\d\d" "${_dest_dir}"
+    local _regex="${3}" # "^\"CLMSERVER-LOG --> \" ${_DATE_FORMAT}.\d\d"
+    [ -z "${_regex}" ] && _regex="^${_DATE_FORMAT}.\d\d"
+    _SPLIT_BY_REGEX_SORT="Y" f_splitByRegex "${_file}" "${_regex}" "${_dest_dir}"
 }
 function f_splitPerHourReq() {
     local _file="$1"
     local _dest_dir="${2:-"_hourly_logs_req"}"
+    local _regex="${3}" # "^\"REQUEST-LOG --> \" .+${_DATE_FMT_REQ}:\d\d"
+    [ -z "${_regex}" ] && _regex="${_DATE_FMT_REQ}:\d\d"
     # Can't use _SPLIT_BY_REGEX_SORT="Y" when regex contains un-sortable values such as "dd/MMM/yyyy"
-    _SPLIT_BY_REGEX_SORT="Y" f_splitByRegex "${_file}" "${_DATE_FMT_REQ}:\d\d" "${_dest_dir}"
+    _SPLIT_BY_REGEX_SORT="Y" f_splitByRegex "${_file}" "${_regex}" "${_dest_dir}"
 }
 #f_extractFromLog ./nexus-2024-07-08.log.gz "^2024-07-08 19:45:[23]" "^2024-07-08 19:46:4" | tee nexus-2024-07-08_1945to1946.out
 #f_extractFromLog ./clm-server.log '^2025-01-15 01:4' '^2025-01-15 02:' > filtered_logs2.log
