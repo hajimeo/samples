@@ -4,10 +4,9 @@ import org.sonatype.nexus.common.log.LoggerLevel
 import groovy.json.JsonOutput
 
 def main(params) {
-    def blobIdPtnNew = '([a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12})@([0-9]{4})-([0-9]{2})-([0-9]{2}).([0-9]{2}):([0-9]{2}).*'
-    // 2025/09/08/06/07/aac3683b-111f-4d3d-96da-811e8cf23a0f
-    def blobIdPtnNewPath = '/?([0-9]{4})/([0-9]{2})/([0-9]{2})/([0-9]{2})/([0-9]{2})/([a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}).*'
-    def blobIdPtn = '([a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}).*'
+    // As it is deleting, requires the exact blobRef.
+    def blobRefPtnNew = '([^ ,\'"]+@[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}@[0-9]{4}-[0-9]{2}-[0-9]{2}.[0-9]{2}:[0-9]{2})'
+    def blobRefPtn = '([^ ,\'"]+@[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12})'
     def lineCounter = 0
     def deletedNum = 0
     def repositoryManager = container.lookup(org.sonatype.nexus.repository.manager.RepositoryManager)
@@ -21,54 +20,31 @@ def main(params) {
             return ['error': logMsg]
         }
     }
-    def blobIDs = (params.blobIDs as String).split(",")
-    if (!blobIDs || blobIDs.size() == 0) {
-        def logMsg = "params.blobIDs is empty"
+    def blobRefs = (params.blobRefs as String).split(",")
+    if (!blobRefs || blobRefs.size() == 0) {
+        def logMsg = "params.blobRefs is empty"
         log.error(logMsg)
         return ['error': logMsg]
     }
-    // 'params' should contain 'blobIDs', 'blobStore', 'noBsChk', 'dryRun', and 'debug'
-    log.info("Checking ${blobIDs.length} blobIds with blobStore: ${params.blobStore}, noBsChk: ${params.noBsChk}, dryRun: ${params.dryRun}, debug: ${params.debug}")
+    // 'params' should contain 'blobRefs', 'blobStore', 'noBsChk', 'dryRun', and 'debug'
+    log.info("Checking ${blobRefs.length} blobRefs with blobStore: ${params.blobStore}, noBsChk: ${params.noBsChk}, dryRun: ${params.dryRun}, debug: ${params.debug}")
 
-    for (line in blobIDs) {
+    for (line in blobRefs) {
         log.debug("line = ${line}")
         lineCounter++
         try {
-            def blobCreatedRef = null
-            def blobId = ""
-            def match = line =~ blobIdPtnNewPath
+            def blobRefStr = ""
+            def match = line =~ blobRefPtnNew
             if (match) {
-                blobId = match[0][6] as String
-                def year = match[0][1] as Integer
-                def month = match[0][2] as Integer
-                def day = match[0][3] as Integer
-                def hour = match[0][4] as Integer
-                def minute = match[0][5] as Integer
-                blobCreatedRef = java.time.OffsetDateTime.of(year, month, day, hour, minute, 0, 0, java.time.ZoneOffset.UTC)
+                blobRefStr = match[0][1] as String
             } else {
-                match = line =~ blobIdPtnNew
+                match = line =~ blobRefPtn
                 if (match) {
-                    blobId = match[0][1] as String
-                    def year = match[0][2] as Integer
-                    def month = match[0][3] as Integer
-                    def day = match[0][4] as Integer
-                    def hour = match[0][5] as Integer
-                    def minute = match[0][6] as Integer
-                    blobCreatedRef = java.time.OffsetDateTime.of(year, month, day, hour, minute, 0, 0, java.time.ZoneOffset.UTC)
+                    blobRefStr = match[0][1] as String
                 } else {
-                    match = line =~ blobIdPtn
-                    if (match) {
-                        blobId = match[0][1] as String
-                    } else {
-                        log.warn("#${lineCounter}: '${line}' does not contain blobId")
-                        continue
-                    }
+                    log.warn("#${lineCounter}: '${line}' does not contain blobRef")
+                    continue
                 }
-            }
-            log.debug("match[0] = ${match[0]}")
-            def blobRefStr = params.blobStore + "@" + blobId
-            if (blobCreatedRef) {
-                blobRefStr = blobRefStr + "@" + blobCreatedRef.toString()
             }
             log.debug("Deleting blobRef:{}", blobRefStr)
 
@@ -106,11 +82,11 @@ def main(params) {
         }
         // NOTE: not doing blobStoreIntegrityCheck as wouldn't need for this script
     }
-    log.info("Deleted {}/{}", deletedNum, blobIDs.size())
+    log.info("Deleted {}/{}", deletedNum, blobRefs.size())
     return ['checked': lineCounter, 'deleted': deletedNum, 'dryRun': params.dryRun]
 }
 
-log.info("Delete by Blob IDs script started.")
+log.info("Delete by BlobRefs script started.")
 def logMgr = container.lookup(LogManager.class.name) as LogManager
 def currentLevel = logMgr.getLoggerLevel("org.sonatype.nexus.internal.script.ScriptTask")
 try {
@@ -123,5 +99,5 @@ try {
 } finally {
     logMgr.setLoggerLevel("org.sonatype.nexus.internal.script.ScriptTask", currentLevel)
     logMgr.setLoggerLevel("org.sonatype.nexus.script.plugin.internal.rest.ScriptResource", currentLevel)
-    log.info("Delete by Blob IDs script completed.")
+    log.info("Delete by BlobRefs script completed.")
 }
