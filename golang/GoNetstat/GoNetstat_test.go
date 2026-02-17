@@ -43,7 +43,7 @@ func TestPadStrToDec(t *testing.T) {
 func TestPrintSocket(t *testing.T) {
 	header := genHeader()
 	t.Logf("%s", header)
-	s := Socket{"uid", "name", "pid", "test.exe", "TEST", "1.2.3.4", 5678, "5.6.7.8", 10001, "inode", 12345, 54321, "timeout", "misc."}
+	s := Socket{"uid", "name", "pid", "test.exe", "TEST", "1.2.3.4", 5678, "5.6.7.8", 10001, "inode", 12345, 54321, "timeout", "timer", "misc."}
 	line := genPrintLine(s, "tcp")
 	t.Logf("%s", line)
 	if len(header) != len(line) {
@@ -81,7 +81,19 @@ func TestNetstat(t *testing.T) {
 	if sockets == nil || len(sockets) == 0 {
 		t.Errorf("sockets created from ./net_tcp.out should not be empty")
 	}
-	t.Logf("%v", sockets[0])
+	//t.Logf("%v", sockets[0])
 	line := genPrintLine(sockets[0], "tcp")
+	t.Logf("%s", line)
+}
+
+func TestNetstatTcp6(t *testing.T) {
+	sockets := netstat("./net_tcp6.out")
+	if sockets == nil || len(sockets) == 0 {
+		t.Errorf("sockets created from ./net_tcp6.out should not be empty")
+	}
+	//t.Logf("%v", sockets[0])
+	header := genHeader()
+	t.Logf("%s", header)
+	line := genPrintLine(sockets[0], "tcp6")
 	t.Logf("%s", line)
 }

@@ -22,8 +22,10 @@ import (
 	"strings"
 )
 
+//	sl  local_address                         remote_address                        st tx_queue rx_queue tr tm->when retrnsmt   uid  timeout inode
+//
 // Proto    Recv-Q     Send-Q     Local Address           Foreign Address         State          Inode      Pid/Program          timeout
-var DisplayFmt = "%-8v %-10v %-10v %-22v %-22v %-14v %-10v %-20v %v %v"
+var DisplayFmt = "%-8v %-10v %-10v %-22v %-22v %-14v %-10v %-20v %v %v %v"
 
 var STATE = map[string]string{
 	"01": "ESTABLISHED",
@@ -53,6 +55,7 @@ type Socket struct {
 	RecvQ       int64
 	SendQ       int64
 	timeout     string
+	timer       string
 	misc        string
 }
 
@@ -201,7 +204,12 @@ func processNetstatLine(line string, fileDescriptors *[]FdLink) Socket {
 	sendRecvQ := strings.Split(l[4], ":")
 	sendQ := hexToDec(sendRecvQ[0])
 	recvQ := hexToDec(sendRecvQ[1])
-	return Socket{uid, name, pid, exe, state, ip, port, fIp, fPort, l[9], recvQ, sendQ, l[8], strings.Join(l[10:], " ")}
+
+	timer := strings.Split(l[5], ":")[0] // tr (timer_run)
+	timeout := l[8]
+	inode := l[9]
+	misc := strings.Join(l[10:], "/")
+	return Socket{uid, name, pid, exe, state, ip, port, fIp, fPort, inode, recvQ, sendQ, timeout, timer, misc}
 }
 
 func getFileDescriptors() []string {
@@ -244,7 +252,7 @@ func netstat(path string) []Socket {
 
 func genHeader() string {
 	return fmt.Sprintf(DisplayFmt, "Proto", "Recv-Q", "Send-Q", "Local Address", "Foreign Address",
-		"State", "Inode", "Pid/Program", "timeout", "misc.")
+		"State", "Inode", "Pid/Program", "timeout", "timer", "misc.")
 }
 
 func genPrintLine(s Socket, netType string) string {
@@ -253,7 +261,7 @@ func genPrintLine(s Socket, netType string) string {
 	pidProgram := fmt.Sprintf("%v/%v", s.Pid, s.Name)
 
 	return fmt.Sprintf(DisplayFmt,
-		netType, s.RecvQ, s.SendQ, ipPort, fipPort, s.State, s.Inode, pidProgram, s.timeout, s.misc)
+		netType, s.RecvQ, s.SendQ, ipPort, fipPort, s.State, s.Inode, pidProgram, s.timeout, s.timer, s.misc)
 }
 
 func main() {
