@@ -18,6 +18,10 @@ set directory=.,$TEMP
 set shellcmdflag=-ic
 autocmd QuickFixCmdPost *grep* cwindow
 
+"To use j/k in long lines
+map j gj
+map k gk
+
 "match ErrorMsg /\<FATAL\>/
 "2match ErrorMsg /\<ERROR\>/
 "3match WarningMsg /\<WARN\>/

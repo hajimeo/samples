@@ -45,7 +45,7 @@ type mdfind &>/dev/null && alias mdfindSize="mdfind 'kMDItemFSSize > 209715200 &
 alias noalnum='tr -cd "[:alnum:]._-"'
 alias gzipk='gzip -k'
 # Configure .ssh/config. Not using -f and autossh
-alias s5proxy='netstat -tln | grep -E ":38080\s+" || ssh -4gC2TxnN -D38080'
+#alias s5proxy='netstat -tln | grep -E ":38081\s+" || ssh -4gC2TxnN -D38081'
 #sudo mdutil -d /Volumes/Samsung_T5
 # not using sudo which may generate error if /var/db/locate.database is not accessible
 [ -s /usr/libexec/locate.updatedb ] && alias updatedb='sudo FILESYSTEMS="hfs ufs apfs exfat" /usr/libexec/locate.updatedb'
@@ -171,6 +171,35 @@ fi
 alias rdocker="ssh dh1 docker"
 alias docker_rmi_old="docker images | grep '(years|[0-9][0-9]+ months) ago' | awk '{print \$3}' | uniq | xargs -I{} docker rmi {}"
 alias docker_rm_old="docker ps -a | grep -E '(years|[0-9][0-9]+ months) ago\s+Exited' | awk '{print \$1}' | xargs -P2 -I{} docker rm {}"
+# skopeoCp nxrm3helmha-k8s.standalone.localdomain/docker-quay-proxy/buildah/stable:v1.21.4 "nxrm3helmha-k8s.standalone.localdomain/docker-quay-proxy/buildah/stable:v1.21.4_amd64" "amd64"
+function skopeoCp() {
+    local _src="${1}"   # nxrm3helmha-k8s.standalone.localdomain/docker-proxy/buildah/stable:v1.21.4
+    local _dst="${2}"   # {image_name_without_slash}_{tag}.tar:{image_name_without_slash}:{tag}
+    local _arch="${3}"
+    local _os="${4-"linux"}"
+    if [ -z "${_dst}" ]; then
+        [[ "${_src}" =~ /([^:]+)(:[^:/]+)?$ ]] || return 1
+        local image_name_without_slash="${BASH_REMATCH[1]}"
+        # Remove "/" from image_name_without_slash
+        image_name_without_slash="${image_name_without_slash//\//_}"
+        local tag_with_colon="${BASH_REMATCH[2]:-":latest"}"
+        _dst="docker-archive:${image_name_without_slash}_${tag_with_colon#*:}.tar:${image_name_without_slash}:${tag_with_colon#*:}"
+    elif [[ ! "${_dst}" =~ ^docker: ]]; then
+        _dst="docker://${_dst}"
+    fi
+    local _cmd_args=" docker://${_src} ${_dst}"
+    if [ -n "${_arch}" ]; then
+        _cmd_args="--override-arch=${_arch} ${_cmd_args}"
+    fi
+    if [ -n "${_os}" ]; then
+        _cmd_args="--override-os=${_os} ${_cmd_args}"
+    fi
+    if [ -z "${_arch}" ] && [ -z "${_os}" ]; then
+        _cmd_args="--all ${_cmd_args}"
+    fi
+    echo "skopeo --debug copy ${_cmd_args}" >&2; sleep 1
+    eval "skopeo --debug copy ${_cmd_args}"
+}
 #dhTags "alpine" "library"
 function dhTags() { # docker list tags
     local _image="${1}"
@@ -237,6 +266,7 @@ if [ -d $HOME/IdeaProjects/work/bash ]; then
     alias instSona="source $HOME/IdeaProjects/work/bash/install_sonatype.sh"
 fi
 #alias xmldiff="python $HOME/IdeaProjects/samples/python/xml_parser.py" # this is for Hadoop xml files
+
 alias caddy_reverse='caddy reverse-proxy --debug --change-host-header --header-up "REMOTE_USER: admin" --to '
 
 ## VM related
@@ -283,7 +313,7 @@ alias hblog='open -na "Google Chrome" --args --user-data-dir=$HOME/.chromep/haji
 alias geminiWeb='open -na "Google Chrome" --args --user-data-dir=$HOME/.chromep/work --app="https://gemini.google.com/"'
 alias kapaWeb='open -na "Google Chrome" --args --user-data-dir=$HOME/.chromep/work --app="https://chat.kapa.ai/dadecd3d-2984-46d3-9c6b-09df9a67668c"'
 # pretending windows chrome on Linux
-alias winchrome='/opt/google/chrome/chrome --user-data-dir=$HOME/.chromep --proxy-server=socks5://localhost:38080  --user-agent="Mozilla/5.0 (Windows NT 10.0; WOW64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/88.0.4324.96 Safari/537.36"'
+#alias winchrome='/opt/google/chrome/chrome --user-data-dir=$HOME/.chromep --proxy-server=socks5://localhost:38081  --user-agent="Mozilla/5.0 (Windows NT 10.0; WOW64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/88.0.4324.96 Safari/537.36"'
 
 ## Work specific aliases
 # Slack API Search
@@ -915,8 +945,15 @@ function listLargeDirs() {
     local _du="du"
     type gdu &>/dev/null && _du="gdu"
     ${_du} -ahx -d1 ${_src} | sort -hr | head -n "${_n}" | while read -r _size_dir; do
-        if [[ "${_size_dir}" =~ ^[[:space:]]*([0-9\.]+G)[[:space:]]+(.+) ]]; then
-            echo "${BASH_REMATCH[1]} $(ls -dl "${BASH_REMATCH[2]}" | cut -d' ' -f9-)"
+        if [[ "${_size_dir}" =~ ^[[:space:]]*([0-9\.]+G)[[:space:]]+(.+)/([^/]+) ]]; then
+            local _size="${BASH_REMATCH[1]}"
+            local _parent_dir="${BASH_REMATCH[2]}"
+            local _dir_name="${BASH_REMATCH[3]}"
+            local _url=""
+            if [[ "${_dir_name}" =~ ^[0-9][0-9][0-9][0-9][0-9]+$ ]]; then
+                _url="https://sonatype.zendesk.com/agent/tickets/${_dir_name}"
+            fi
+            echo -e "${_size}\t$(ls -dl "${_parent_dir}/${_dir_name}" | cut -d' ' -f9-)\t${_url}"
         fi
     done
 }
@@ -997,6 +1034,10 @@ function backupC() {
     fi
     if type codium &>/dev/null && [ -d "$HOME/backup" ]; then
         codium --list-extensions | xargs -L 1 echo codium --install-extension >$HOME/backup/vscodium_install_extensions.sh || return $?
+    fi
+
+    if type codex &>/dev/null && [ -d "$HOME/backup" ]; then
+        cp -v -f $HOME/.codex/config.toml $HOME/backup/codex_config.toml || return $?
     fi
 
     if type kubectl &>/dev/null && [ -d "$HOME/backup/kube" ]; then
@@ -1308,13 +1349,20 @@ EOF
 }
 
 function startCommonUtils() {
+    local _with_ollama="${1:-"Y"}"
     pgStatus start
     #tabby_start
     slackS
     #chrome-work
     #open -na "Google Chrome"
 
-    if false && type ollama &>/dev/null; then
+    # TODO: Can't remember what 'mcpo' was
+    #if [ -s "$HOME/IdeaProjects/work/demo-mcp/mcps.json" ]; then
+    #    mcpo --port 48000 --config $HOME/IdeaProjects/work/demo-mcp/mcps.json &>/tmp/mcpo.log &
+    #fi
+
+    # Currently not starting ollama by default
+    if [[ "${_with_ollama}" =~ ^[yY] ]] && type ollama &>/dev/null; then
         ollama serve &>/tmp/ollama.log &
         sleep 3
         ollama list
@@ -1322,9 +1370,6 @@ function startCommonUtils() {
         #if  [ -s "$HOME/.vnevAi/bin/open-webui" ]; then
         #    source $HOME/.vnevAi/bin/activate
         #    open-webui serve --host 127.0.0.1 --port 48080 &>/tmp/open-webui.log &
-        #    if [ -s "/Users/hosako/IdeaProjects/work/demo-mcp/mcps.json" ]; then
-        #       mcpo --port 48000 --config /Users/hosako/IdeaProjects/work/demo-mcp/mcps.json &>/tmp/mcpo.log &
-        #    fi
         #fi
     fi
 }

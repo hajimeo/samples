@@ -46,6 +46,8 @@ function _java_home() {
         _is_java17=true
     elif [[ "${_prod_ver}" =~ 1\.1[89][0-9]\. ]]; then  # For IQ
         _is_java17=true
+    elif [[ "${_prod_ver}" =~ 1\.2[0-9][0-9]\. ]]; then  # For IQ v200+
+        _is_java17=true # should be java 21?
     fi
     if ${_is_java17}; then
         if [ -d "${JAVA_HOME_17}" ]; then
@@ -355,6 +357,12 @@ function _updateNexusProps() {
         echo "WARN: nexus.datastore.clustered.enabled=true is set, so not changing the port from ${_current_port}" >&2
         return 0
     fi
+
+    # From 3.86
+    grep -qE '^#?nexus.security.oauth2.enabled' "${_cfg_file}" || echo "nexus.security.oauth2.enabled=true" >> "${_cfg_file}" # PR14446
+    grep -qE '^#?nexus.jwt.enabled' "${_cfg_file}" || echo "nexus.jwt.enabled=true" >> "${_cfg_file}" # PR14446
+    # From probably 3.88
+    grep -qE '^#?nexus.reconcile.task.enabled' "${_cfg_file}" || echo "nexus.reconcile.task.enabled=true" >> "${_cfg_file}" # PR14446
 
     # If no port specified, checking if the default port 8081 is available
     # If the port is specified and if it's not available, starting this Nexus should fail.
