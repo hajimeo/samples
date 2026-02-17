@@ -148,9 +148,11 @@ func handleDefault(w http.ResponseWriter, req *http.Request) {
 			if err != nil {
 				debug("DumpRequest failed for %s: %v", url, err)
 			} else {
-				debug("Request: %s (%s)\n%s", url, reqTime, reqDump)
 				if Debug2 {
+					debug("Request: %s (%s)", url, reqTime)
 					req.Body = saveBodyToFile(req.Body, reqTime+".req")
+				} else {
+					debug("Request: %s (%s)\n%s", url, reqTime, reqDump)
 				}
 			}
 		}
@@ -205,15 +207,20 @@ func saveBodyToFile(body io.ReadCloser, filename string) io.ReadCloser {
 		log.Printf("ERROR: Failed to read the body: %v", err)
 		return save
 	}
+	writeIntoCachePath(data, filename)
+	return save
+}
+
+func writeIntoCachePath(data []byte, filename string) bool {
 	// TODO: this may overwrite an existing file? as md5 includes header, maybe OK?
 	fullpath := filepath.Join(CachePath, filename)
-	err = os.WriteFile(fullpath, data, 0644)
+	err := os.WriteFile(fullpath, data, 0644)
 	if err != nil {
 		log.Printf("ERROR: Failed to write the body to %s: %v", fullpath, err)
-	} else {
-		debug("Saved body to %s", fullpath)
+		return false
 	}
-	return save
+	debug("Saved body to %s", fullpath)
+	return true
 }
 
 func drainBody(b io.ReadCloser) (r1, r2 io.ReadCloser, err error) {
@@ -280,9 +287,11 @@ func handleConnect(w http.ResponseWriter, req *http.Request) {
 			if err != nil {
 				debug("DumpRequest failed for %s: %v", url, err)
 			} else {
-				debug("Request: %s (%s)\n%s", url, reqTime, reqDump)
 				if Debug2 {
+					debug("Request: %s (%s)", url, reqTime)
 					req.Body = saveBodyToFile(req.Body, reqTime+".req")
+				} else {
+					debug("Request: %s (%s)\n%s", url, reqTime, reqDump)
 				}
 			}
 		}
