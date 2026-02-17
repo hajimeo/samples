@@ -113,6 +113,21 @@ function get_handler()
         _log("    Handled $req " . PHP_EOL);
         return;
     }
+
+    // If no handler, check if the file exists and return it, otherwise return 404
+    $path = '.' . $req;
+    if (file_exists($path) && is_file($path)) {
+        // Try detecting content type, but it may not work for some files, e.g. .jar
+        $mime_type = mime_content_type($path);
+        if ($mime_type) {
+            header("Content-Type: " . $mime_type);
+        } else {
+            header("Content-Type: application/octet-stream");
+        }
+        _return_file($path);
+        _log("    Handled $path ($mime_type)" . PHP_EOL);
+        return;
+    }
     _log("    No handler for $req " . PHP_EOL);
 }
 
