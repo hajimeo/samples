@@ -35,54 +35,6 @@ How to apply a patch example steps:
 EOS
 }
 
-function f_javaenvs() {
-    local _lib_dir="${1}"  # or directory path
-    local _user="$USER"
-
-    # If java version is 8, set JAVA_HOME=$JAVA_HOME_17
-    if [ -n "${JAVA_HOME_17}" ]; then
-        if [ -z "${JAVA_HOME}" ]; then
-            if java -version 2>&1 | head -n1 | grep -q 'version "1.8'; then
-                echo "INFO: 'java' version is 8, so setting JAVA_HOME=${JAVA_HOME_17} ..."
-                export JAVA_HOME="${JAVA_HOME_17}"
-            fi
-        else
-            if ${JAVA_HOME}/bin/java -version 2>&1 | head -n1 | grep -q 'version "1.8'; then
-                echo "INFO: ${JAVA_HOME}/bin/java version is 8, so setting JAVA_HOME=${JAVA_HOME_17} ..."
-                export JAVA_HOME="${JAVA_HOME_17}"
-            fi
-        fi
-    fi
-
-    if [ -n "$JAVA_HOME" ] && [ -n "$CLASSPATH" ]; then
-        echo "INFO: JAVA_HOME and CLASSPATH are already set. Skipping f_javaenvs"
-        return 0
-    fi
-
-    if [ -z "${_lib_dir}" ]; then
-        echo "ERROR: _lib_dir is empty. Please manually set JAVA_HOME and CLASSPATH."
-        return 1
-    fi
-
-    local _jcmd="$(_find_jcmd "${_lib_dir}")"
-    #[ -z "${JAVA_HOME}" ] && [ -n "${_jcmd}" ] && export JAVA_HOME="$(dirname $(dirname ${_jcmd}))"
-    if [ -z "${JAVA_HOME}" ]; then
-        echo "ERROR: No JAVA_HOME. Please set JAVA_HOME for javac and jar commands."
-        return 1
-    fi
-
-    if [ -x "${_jcmd}" ]; then
-        if [ -z "$CLASSPATH" ]; then
-            f_set_classpath "${_lib_dir}" "${_user}"
-            _set_extra_classpath "${_lib_dir}"  # If dir, will be just ignored (only _EXTRA_LIB is used)
-        else
-            echo "# CLASSPATH is already set, so not overwriting/appending." >&2
-        fi
-    else
-        echo "WARN: Couldn't not set CLASSPATH because of no executable jcmd found ..."; sleep 3
-    fi
-}
-
 function f_set_classpath() {
     local _lib_dir="${1}"  # directory path
     if [ -d "${_lib_dir}" ]; then
@@ -134,7 +86,7 @@ function f_update_jar() {
     local _compiled_dir="${_class_name}"
 
     if [ ! -d "$JAVA_HOME" ]; then
-        echo "ERROR: JAVA_HOME is not set. Use 'f_javaenvs <port>' or export JAVA_HOME=."
+        echo "ERROR: JAVA_HOME is not set."
         return 1
     fi
 
@@ -177,6 +129,50 @@ function f_update_jar() {
     return 0
 }
 
+function f_extract_and_update_classpath() {
+    local _spring_jar="${1}"
+    local _extract_dir="${2}"
+    if [ -z "${_extract_dir}" ]; then
+        _extract_dir="/tmp/patch_java_$$"
+    fi
+
+    if [ ! -d "${_extract_dir}" ]; then
+        mkdir -p "${_extract_dir}" || return $?
+    fi
+
+    if [ -d "${_extract_dir%/}/BOOT-INF/lib" ]; then
+        echo "# Not extracting as the directory ${_extract_dir%/}/BOOT-INF/lib already exists." >&2
+    else
+        if [ ! -s "${_spring_jar}" ]; then
+            echo "ERROR: Spring jar file ${_spring_jar} does not exist."
+            return 1
+        fi
+        _spring_jar="$(readlink -f "${_spring_jar}")"
+        cd "${_extract_dir}" || return $?
+        # TODO: -C is not working?
+        jar -xf "${_spring_jar}" || return $?
+        cd - &>/dev/null || return $?
+    fi
+
+    f_set_classpath "${_extract_dir%/}/BOOT-INF/lib" || return $?
+}
+
+function f_jshell() {
+    local _spring_jar="${1}"
+    local _install_dir="${2:-"."}"
+    f_extract_and_update_classpath "${_spring_jar}" "" || return $?
+
+    local _jshell="$(find ${_install_dir%/} -maxdepth 8 -type f -name jshell | sort -V | tail -n1)" || return $?
+    if [ -x "${_jshell}" ]; then
+        echo "# Using ${_jshell} ..." >&2
+        eval "${_jshell}"
+    elif [ -d "${JAVA_HOME}" ] && [ -x "${JAVA_HOME%/}/bin/jshell" ]; then
+        echo "# Using ${JAVA_HOME%/}/bin/jshell ..." >&2
+        eval "${JAVA_HOME%/}/bin/jshell"
+    elif type jshell &>/dev/null; then
+        jshell
+    fi
+}
 
 ### Main ###############################
 main() {
@@ -186,22 +182,7 @@ main() {
     local _extract_dir="${4}"
     local _target="${5:-"${_TARGET}"}"
 
-    if [ -z "${_extract_dir}" ]; then
-        _extract_dir="/tmp/patch_java_$$"
-    fi
-    if [ ! -d "${_extract_dir}" ]; then
-        mkdir -p "${_extract_dir}" || return $?
-    fi
-
-    if [ -d "${_extract_dir%/}/BOOT-INF/lib" ]; then
-        echo "# Not extracting as the directory ${_extract_dir%/}/BOOT-INF/lib already exists." >&2
-    else
-        # TODO: -C is not working?
-        cd "${_extract_dir}" || return $?
-        jar -xf "${_spring_jar}" || return $?
-        cd - &>/dev/null || return $?
-    fi
-    f_set_classpath "${_extract_dir%/}/BOOT-INF/lib" || return $?
+    f_extract_and_update_classpath "${_spring_jar}" "${_extract_dir}" || return $?
 
     # NOTE: _class_path can be .java or .class file, so removing the extension first
     local _class_name="${_class_path%.*}"

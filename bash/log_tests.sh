@@ -172,7 +172,7 @@ function f_run_tests() {
 }
 
 function _extract_configs() {
-    _head "CONFIG" "system-environment"
+    _head "CONFIG" "system-environment (not all)"
     echo '```'
     _search_json "sysinfo.json" "system-environment,HOSTNAME"
     _search_json "sysinfo.json" "system-environment,USER"
@@ -182,6 +182,10 @@ function _extract_configs() {
     rg '\.encoding"' -g sysinfo.json | sort | uniq
     _search_json "jmx.json" "java.lang:type=Runtime,Name" # to find PID and hostname (in case no HOSTNAME env set)
     _search_json "jmx.json" "java.lang:type=Runtime,SystemProperties" "" "Y" | rg '"(java.util.prefs.userRoot|java.home)'
+    echo '```'
+    _head "CONFIG" "system-properties (not all)"
+    echo '```'
+    _search_json "sysinfo.json" "system-properties" | rg -v "\"(exe4j\.|fablic\.|file\.|i4j|karaf\.|install4j\.|java\.awt\.|java\.specification\.|java\.util\.logging.|java\.vm\.|java\.version|line\.separator|org\.apache\.|org\.jboss\.|org\.jline\.|org\.osgi\.|org\.ops4j\.pax\.|sun\.|path\.separator|xml\.catalog\.files)"
     echo '```'
 
     _head "CONFIG" "OS/server information from jmx.json"
@@ -447,9 +451,10 @@ function r_configs() {
     fi
 }
 function r_audits() {
-    _head "AUDIT" "Top 20 'domain','type' from ${_AUDIT_LOG}"
+    local _n="${1:-"20"}"
+    _head "AUDIT" "Top ${_n} 'domain','type' from ${_AUDIT_LOG}"
     echo '```'
-    _rg --no-filename '"domain":"([^"]+)", *"type":"([^"]+)"' -o -r '$1,$2' -g "${_AUDIT_LOG}" | sort | uniq -c | sort -nr | head -n20
+    _rg --no-filename '"domain":"[^"]+", *"type":"[^"]+"' -o -g "${_AUDIT_LOG}" | sort | uniq -c | sort -nr | head -n ${_n}
     echo "NOTE: taskblockedevent would mean another task is running (dupe tasks?)."
     echo "      repositorymetadataupdatedevent (NXRM) and governance.repository.quarantine (IQ) could be quarantine."
     echo '```'
@@ -545,7 +550,7 @@ function t_system() {
         local _maxMemory="$(rg '"maxMemory"\s*:\s*(\d+)' "${_sysinfo_json}" --no-filename -o -r '$1' | sort | tail -n1)"
         if [ ${_maxMemory:-0} -lt 3221225472 ]; then
             _head "WARN" "maxMemory (heap|Xmx) might be too low (if docker/pod: NEXUS-35218, if Windows, NEXUS-47278)"
-        elif [ ${_maxMemory:-0} -gt 34359738368 ]; then
+        elif [ ${_maxMemory:-0} -gt 32000000000 ]; then
             _head "WARN" "maxMemory (heap|Xmx) might be too large https://confluence.atlassian.com/jirakb/do-not-use-heap-sizes-between-32-gb-and-47-gb-in-jira-compressed-oops-1167745277.html"
         fi
         if _rg -q '(DOCKER_TYPE|"SONATYPE_INTERNAL_HOST_SYSTEM"\s*:\s*"Docker"|"container"\s*:\s*"oci")' "${_sysinfo_json}"; then
@@ -553,6 +558,9 @@ function t_system() {
         fi
         if _rg -q 'KUBERNETES_' "${_sysinfo_json}"; then
             _head "WARN" "Might be installed on KUBERNETES (shouldn't use H2/OrientDB)"
+        fi
+        if _rg -q 'AWS_WEB_IDENTITY_TOKEN_FILE' "${_sysinfo_json}"; then
+            _head "WARN" "Connection pool shut down due to https://github.com/aws/aws-sdk-java-v2/issues/4386 (116043)"
         fi
         # TODO: if no _sysinfo_json, check _jmx_json
         _test_template "$(rg '"(file.encoding|sun.jnu.encoding)" *: *"' "${_sysinfo_json}" | rg -v -w 'UTF')" "WARN" "'file.encoding' or 'sun.jnu.encoding' might not be UTF (eg: on Windows)"

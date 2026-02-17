@@ -836,9 +836,9 @@ function _prepare_install() {
         fi
     fi
     local _tgz="${_download_dir:-"."}/${_tgz_name}"
-    local _extractTar=true
-    if [ -d "${_extract_path}" ]; then
-        echo "WARN ${_extract_path} exists, so not extracting ${_tgz}"
+    # Check if ${_extract_path} is empty directory
+    if [ -d "${_extract_path}" ] && [ -n "$(ls -A ${_extract_path})" ]; then
+        echo "WARN ${_extract_path} is not empty, so not extracting ${_tgz}"
         return
     fi
     # In case the path contains wildcards
