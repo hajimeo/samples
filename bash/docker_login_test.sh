@@ -1,4 +1,5 @@
 # docker_login login_userId docker_registry_host_port1
+#docker_login "admin" "https://local.standalone.localdomain:18182/"
 #docker_login "admin" "https://nxrm3helmha-docker-k8s.standalone.localdomain/"
 #docker_login "" "http://localhost:8081/" "docker-proxy/library/hello-world:latest"
 function docker_login() {
@@ -7,7 +8,7 @@ function docker_login() {
   local _p="${3}"
   echo "# Accessing ${_h%/}/v2/ (expecting 401) ..."
   local _s="$(curl -D- -sSf -k -H "Accept: application/json" -L "${_h%/}/v2/" | grep 'WWW-Authenticate' | sed 's/.*service="\([^"]*\/v2\/\).*/\1/')"
-  echo "# Generating token from host:${_h} with userId:${_userid} ..."
+  echo "# Generating token from host:${_s} with userId:${_userid} ..."
   if [ -n "${_userid}" ];then
     _TOKEN="$(curl -D/dev/stderr -sSf -k -u "$1" -L "${_s:-"${_h%/}/v2/"}token?account=${_userid}&client_id=docker&offline_token=true&service=${_h%/}/v2/token" | sed -E 's/.+"token":"([^"]+)".+/\1/')"
   else
