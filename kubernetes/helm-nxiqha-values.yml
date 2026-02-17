@@ -6,9 +6,9 @@
 #$ helm install nxiqha sonatype/nexus-iq-server-ha -f ./helm-nxiqha-values.yml --set-file iq_server.license=$HOME/share/sonatype/sonatype-license.lic -n sonatype-ha
 
 # To upgrade:
-#$ helm repo update sonatype && helm search repo sonatype/nexus-iq-server-ha --versions | head
+#$ helm repo update sonatype-helm && helm search repo sonatype-helm/nexus-iq-server-ha --versions | head
 #$ kubectl scale -n sonatype-ha deployment/nxiqha-iq-server-deployment --replicas=0
-#$ helm upgrade -i nxiqha sonatype/nexus-iq-server-ha -f ./helm-nxiqha-values.yml -n sonatype-ha #--dry-run
+#$ helm upgrade -i nxiqha sonatype-helm/nexus-iq-server-ha -f ./helm-nxiqha-values.yml -n sonatype-ha #--dry-run
 
 # Installing from github (eg: older versions due to CLM-28041)
 #$ git -C ~/IdeaProjects/nexus-iq-server-ha pull && git -C ~/IdeaProjects/nexus-iq-server-ha fetch

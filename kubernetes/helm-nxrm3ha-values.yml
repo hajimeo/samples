@@ -122,7 +122,7 @@ pvc:
 #  existingClaim: nexushelmha-nfs-pv-claim
 # Check the value of `kubectl get sc`
 storageClass:
-  enabled: false
+  enabled: false      # This is intentional
   name: nfs-client
 
 service:  #Nexus Repo NodePort Service
