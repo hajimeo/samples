@@ -75,7 +75,7 @@ func setGlobals() {
 	// DB / SQL related
 	flag.StringVar(&common.DbConnStr, "db", "", "DB connection string or path to DB connection properties file")
 	// This is now almost useless as used only for filtering repositories.
-	flag.StringVar(&common.BsName, "bsName", "", "Experimental: eg. 'default'. If provided, the SQL query *may* become *slightly* faster")
+	flag.StringVar(&common.BsName, "bsName", "", "Eg. 'default'. If provided, the SQL query *may* become *slightly* faster")
 	flag.StringVar(&common.QRepoNames, "qRepos", "", "Experimental: Comma separated repository names used to generate SQL query")
 	flag.StringVar(&common.Query, "query", "", "SQL 'SELECT blob_id ...' or 'SELECT blob_ref as blob_id ...' to filter the data from the DB")
 
@@ -393,7 +393,7 @@ func genBlobPath(blobIdLikeString string, extension string) string {
 
 	blobId = common.RxBlobId.FindString(blobIdLikeString)
 	if len(blobId) == 0 {
-		h.Log("WARN", "genBlobPath got empty blobId for "+blobIdLikeString)
+		h.Log("WARN", "genBlobPath got empty blobId for \""+blobIdLikeString+"\"")
 		return ""
 	}
 	// org.sonatype.nexus.blobstore.VolumeChapterLocationStrategy#location
@@ -403,7 +403,7 @@ func genBlobPath(blobIdLikeString string, extension string) string {
 	return filepath.Join(fmt.Sprintf("vol-%02d", int(vol)), fmt.Sprintf("chap-%02d", int(chap)), blobId) + extension
 }
 
-func getBlobRef(blobRefLikeString string) string {
+func getBlobRef(blobRefLikeString string, bsName string) string {
 	matches := common.RxBlobRefNew.FindStringSubmatch(blobRefLikeString)
 	if len(matches) > 0 {
 		// {blobStore}@{blobId}@{timestamp}
@@ -413,7 +413,14 @@ func getBlobRef(blobRefLikeString string) string {
 	if len(matches) > 0 {
 		return matches[1]
 	}
-	h.Log("DEBUT", "getBlobRef got empty blobRef for "+blobRefLikeString)
+	if len(bsName) > 0 {
+		blobId := lib.ExtractBlobIdFromString(blobRefLikeString)
+		if len(blobId) > 0 {
+			h.Log("DEBUG", "getBlobRef got empty blobRef so using "+bsName+"@"+blobId)
+			return bsName + "@" + blobId
+		}
+	}
+	h.Log("DEBUG", "getBlobRef got empty blobRef for "+blobRefLikeString)
 	return ""
 }
 
@@ -1078,7 +1085,13 @@ func checkBlobIdDetailFromBS(maybeBlobId string) interface{} {
 		return nil
 	}
 	// basePath is the file path without extension
-	basePath := h.AppendSlash(common.ContentPath) + genBlobPath(maybeBlobId, "")
+	basePath := genBlobPath(maybeBlobId, "")
+	if len(basePath) == 0 {
+		h.Log("DEBUG", fmt.Sprintf("Empty basePath in '%s'", maybeBlobId))
+		return nil
+	}
+	// TODO: should this be changed for Windows?
+	basePath = h.AppendSlash(common.ContentPath) + basePath
 	if common.BytesChk == false {
 		// If BytesChk were true, didn't need to do the below (RxFilter4FileName then printLineFromPath) because it *should* be checked in BytesChk, which means if BytesChk is false, need to check in here
 		bytesPath := basePath + common.BYTES_EXT
@@ -1106,7 +1119,7 @@ func checkBlobIdDetailFromBS(maybeBlobId string) interface{} {
 	if common.RxFilter4FileName == nil || common.RxFilter4FileName.MatchString(propsPath) {
 		blobInfo, err := Client.GetFileInfo(propsPath)
 		blobInfo.Note = maybeBlobId
-		blobInfo.BlobRef = getBlobRef(maybeBlobId)
+		blobInfo.BlobRef = getBlobRef(maybeBlobId, common.BsName)
 		args := bs_clients.PrintLineArgs{
 			Path:  propsPath,
 			BInfo: blobInfo,

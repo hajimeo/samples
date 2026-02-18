@@ -66,7 +66,7 @@ var WriteIntoStr = ""
 var Query = ""
 var QRepoNames = ""
 var QRepoNameList []string
-var RxSelect = regexp.MustCompile(`(?i)^ *SELECT ?.* +blob_id *,? *[^;]+;?$`) // Currently max only one ';'
+var RxSelect = regexp.MustCompile(`(?is)^ *SELECT ?.* +blob_id *,? *[^;]+;?$`)
 var RxAnd = regexp.MustCompile(`(?i)^ *AND `)
 var GetFile = ""
 var GetTo = ""
