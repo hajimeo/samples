@@ -8,8 +8,8 @@ QUAY_URL="https://quay.io/"
 function test_quay() {
     local _img="${1:-"${QUAY_IMAGE}"}"   #"hosako/test-repo"
     local _path="${2:-"${QUAY_API_PATH:-"/tags/list"}"}"
-    local _username="${2:-"${QUAY_USERNAME}"}"
-    local _password="${3:-"${QUAY_PASSWORD}"}"
+    local _username="${3:-"${QUAY_USERNAME}"}"
+    local _password="${4:-"${QUAY_PASSWORD}"}"
     if [ -n "${_password}" ]; then
         _password=":${_password}"
     fi
@@ -22,8 +22,9 @@ function test_quay() {
       return 1
     fi
 
-    echo "# Testing Token against ${_img} with -D ./test_quay-header.out -o ./test_quay-result.json" >&2
-    curl -sf -k -H "Authorization: Bearer ${_token}" -H "Accept: application/json" -k -L "${QUAY_URL%/}/v2/${_img#/}${_path}" -D ./test_quay-header.out -o ./test_quay-result.json
+    local _suffix="_$(date +"%Y%m%d%H%M%S")"
+    echo "# Testing Token against ${_img} with -D ./test_quay-header${_suffix}.out -o ./test_quay-result${_suffix}.json" >&2
+    curl -sf -k -H "Authorization: Bearer ${_token}" -H "Accept: application/json" -k -L "${QUAY_URL%/}/v2/${_img#/}${_path}" -D ./test_quay-header${_suffix}.out -o ./test_quay-result${_suffix}.json
     return $?
 }
 
