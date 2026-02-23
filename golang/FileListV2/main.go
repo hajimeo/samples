@@ -469,7 +469,7 @@ func genOutput(path string, bi bs_clients.BlobInfo, db *sql.DB) (string, error) 
 		/* if common.BytesChk && bytesChkErr == nil && !strings.HasSuffix(path, common.BYTES_EXT) {
 			modTimestamp = bytesInfo.ModTime.Unix()
 		} */
-		if common.Debug {
+		if common.Debug2 {
 			h.Log("DEBUG", fmt.Sprintf("path:%s modTimestamp=%d vs. %d %d", path, modTimestamp, common.ModDateFromTS, common.ModDateToTS))
 		}
 		if !lib.IsTsMSecBetweenTs(modTimestamp*1000, common.ModDateFromTS, common.ModDateToTS) {
@@ -1103,7 +1103,7 @@ func checkBlobIdDetailFromBS(maybeBlobId string) interface{} {
 				DB:    common.DB,
 			}
 			if err != nil {
-				h.Log("WARN", fmt.Sprintf("No %s in BS (error: %s)", bytesPath, err.Error()))
+				h.Log("WARN", fmt.Sprintf("No bytes: %s in %s (error: %s)", bytesPath, common.Truth, err.Error()))
 				// This combination shouldn't be possible but just in case (if "DB", the BytesChk should be always true)
 				if common.Truth == "DB" {
 					printLineFromPath(bytesArgs)
@@ -1126,7 +1126,7 @@ func checkBlobIdDetailFromBS(maybeBlobId string) interface{} {
 			DB:    common.DB,
 		}
 		if err != nil {
-			h.Log("WARN", fmt.Sprintf("No %s in BS (error: %s)", propsPath, err.Error()))
+			h.Log("WARN", fmt.Sprintf("No properties: %s in %s (error: %s)", propsPath, common.Truth, err.Error()))
 			if common.Truth == "DB" {
 				printLineFromPath(args)
 			}
