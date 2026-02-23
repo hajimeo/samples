@@ -1,301 +1,352 @@
 # File List V2
 
-## Purpose / Scope of this tool
+`filelist2` is a troubleshooting and data-maintenance utility for Nexus blob stores.
 
-- List files from specified location (File, S3, Azure, etc.)
-- Remove `deleted=true` lines from the specified files
-- Find missing blobs in blob store (similar to Orphaned Blobs Finder)
-- Find missing blobs in database (similar to Dead Blobs Finder)
-- Copy specific blobs to another Blob store (for slow Export/Import and Change Repository Blob Store, Docker GC
-  investigation, etc.)
+## What this tool does
 
-## Download and Install:
+- Lists files from supported blob stores (`file://`, `s3://`, `az://`)
+- Filters by path, file name, dates, and `.properties` content (regex)
+- Detects blob inconsistencies:
+  - blob exists in blob store but not DB (`-src BS`, orphaned blobs)
+  - blob exists in DB but not blob store (`-src DB`, dead blobs)
+- Removes `deleted=true` markers from selected `.properties` files (`-RDel`)
+- Copies selected blobs between stores (`-bTo`, experimental)
 
-Saving the binary as `filelist2` as an example:
+## Install
+
+Example download and install as `filelist2`:
 
 ```bash
 curl -o ./filelist2 -L "https://github.com/sonatype/nexus-monitoring/raw/refs/heads/main/resources/filelistv2_$(uname)_$(uname -m)"
 chmod a+x ./filelist2
 ```
 
-## Display help:
+## Help
 
+```bash
+filelist2 --help
 ```
-$ filelist2 --help
+
+Note: flags that start with a capital letter are boolean switches (no value), for example `-X`, `-XX`.
+
+## Conventions
+
+- Default blob URI scheme is `file://`, so both of these work:
+  - `-b ./sonatype-work/nexus3/blobs/default/content`
+  - `-b file://sonatype-work/nexus3/blobs/default/content`
+- `-pRx` applies regex to normalized `.properties` content.
+- `-pRxExcl` is evaluated before `-pRx`.
+- `-BytesChk` is useful when deletion markers are ambiguous.
+
+## Quick Start
+
+### 1) List files in a blob store
+
+```bash
+BLOB_STORE="./sonatype-work/nexus3/blobs/default/content"
+filelist2 -b "$BLOB_STORE"
 ```
 
-NOTE: The argument name starts with a Capital letter is boolean type (no value). For example `-X` and `-XX` for Debug.
+### 2) Save results with concurrency
 
-## Usage Examples
-
-### List files under the Blob store content `-b "blob-store-uri"`
-
+```bash
+filelist2 -b "$BLOB_STORE" -c 80 -s /tmp/filelist_under-path.tsv
 ```
-# The default is `file://` so with or without works
-filelist2 -b "./sonatype-work/nexus3/blobs/default/content"
-filelist2 -b "file://sonatype-work/nexus3/blobs/default/content"
 
-# If S3, use `s3://` and populate necessary environment variables
+Recommended `-c`: usually less than `(CPU / 2) * 10`, unless storage/network behavior suggests otherwise. For S3, `-c 1 -c2 8` can improve throughput in some environments.
+
+### 3) List matching `.properties` lines
+
+```bash
+filelist2 -b "$BLOB_STORE" -pRx ",deleted=true" -P -c 10 -s /tmp/filelist_soft-deleted.tsv
+```
+
+## Blob Store Backends
+
+### S3
+
+```bash
 export AWS_ACCESS_KEY_ID="*******" AWS_SECRET_ACCESS_KEY="********" AWS_REGION="ap-southeast-2"
-filelist2 -b "s3://${AWS_BLOB_STORE_NAME}/filelist-test/content" -n 5
 
-# If MinIO
+filelist2 -b "s3://${AWS_BLOB_STORE_NAME}/filelist-test/content"
+```
+
+### MinIO (S3-compatible)
+
+```bash
 export AWS_ACCESS_KEY_ID="*******" AWS_SECRET_ACCESS_KEY="********" AWS_REGION="" AWS_ENDPOINT_URL="http://127.0.0.1:19000"
-filelist2 -b "s3://test2/aaaaaa/content" -n 5
 
-# If Azure, use `az://` and also populate necessary environment variables
+filelist2 -b "s3://MinIO_bucket_name/prefix_name/content"
+```
+
+### Azure Blob
+
+```bash
 export AZURE_STORAGE_ACCOUNT_NAME="********" AZURE_STORAGE_ACCOUNT_KEY="*********************"
-filelist2 -b "az://${AZURE_STORAGE_CONTAINER_NAME}/content" -n 5
 
-TODO: filelist2 -b "gs://google-test-storage/google-test-prefix/content" -n 5
+filelist2 -b "az://${AZURE_STORAGE_CONTAINER_NAME}/content"
 ```
 
-For extra logging for Azure, `export AZURE_SDK_GO_LOGGING="all"`
+For Azure SDK debug logs:
 
-#### List files which matches with specific repo and modified from yesterday
-
+```bash
+export AZURE_SDK_GO_LOGGING="all"
 ```
+
+### GCS
+
+Not yet implemented:
+
+```bash
+# TODO
+filelist2 -b "gs://google-test-storage/google-test-prefix/content"
+```
+
+## Common Workflows
+
+### List by repository and modified date
+
+```bash
 BLOB_STORE="./sonatype-work/nexus3/blobs/default/content"
 filelist2 -b "$BLOB_STORE" -P -pRx "@Bucket.repo-name=raw-hosted," -mDF "$(date -d "1 day ago" +%Y-%m-%d)" 2>/dev/null
-# As .properties file's modified date can be different from the .bytes file's one, use `-BytesChk`
+
+# As .properties and .bytes timestamps can differ, use -BytesChk to check .bytes timestamp
 filelist2 -b "$BLOB_STORE" -P -pRx "@Bucket.repo-name=raw-hosted," -mDF "$(date -d "1 day ago" +%Y-%m-%d)" -BytesChk 2>/dev/null
 ```
 
-#### List files which path matches with the concurrency N `-c N`, and save to a file with
+### Restrict by file extension while saving output
 
-`-s "save-to-file-path"`
-
-```
-filelist2 -b "$BLOB_STORE" -c 80 -s "/tmp/filelist_under-path.tsv"
+```bash
+filelist2 -b "$BLOB_STORE" -f ".properties" -P -c 80 -s /tmp/filelist_props-only.tsv
 ```
 
-NOTE: The recommended concurrency is less than (CPUs / 2) * 10, unless against some slow disk/network.  
-Also, if the blob store type is S3, `-c 1 -c2 8` (changing 2nd concurrency higher/lower) may improve the throughput.
+### Include and exclude regex together
 
-#### Same as the above but only files which File name matches with
-
-`-f "file-filter"`, and including the Properties file content `-P` into the saving file
-
-```
-filelist2 -b "$BLOB_STORE" -f ".propperties" -P -c 80 -s "/tmp/filelist_under-path_props-only.tsv"
+```bash
+filelist2 -b "$BLOB_STORE" \
+  -pRxExcl "BlobStore\.blob-name=.+/maven-metadata.xml.*" \
+  -pRx "@Bucket\.repo-name=maven-proxy," \
+  -P -c 80 -s /tmp/filelist_maven-proxy_excl_metadata.tsv
 ```
 
-#### List .properties which matches with `-pRx "{regex}"`, also including the properties content `-P` in the saving file
+### Reuse a previous result file
 
-`-s`, but only the first N `-n N`
+Read blob IDs from a saved file and list only `.properties`:
 
-```
-filelist2 -b "$BLOB_STORE" -pRx ",deleted=true" -P -n 10 -c 10 -s /tmp/filelist_top10_soft-deleted.tsv
-filelist2 -b "$BLOB_STORE" -pRx "@Bucket\.repo-name=raw-hosted,.+deleted=true" -P -c 80 -s /tmp/filelist_raw-hosted_soft-deleted.tsv
-```
-
-NOTE: Using `-pRx` automatically does same as `-f ".propperties"`.  
-NOTE: To make the regex simpler, in the internal memory, the content of .properties file becomes same as
-`cat <blobId>.properties | sort | tr '\n' ','`, so that `@xxxxx` lines come before `deleted=true` lines.
-
-### List files which does NOT match with `-pRxExcl "regex"` but matches with `-pRx "regex"`
-
-NOTE: `-pRxExcl` is evaluated before `-pRx`
-
-```
-filelist2 -b "$BLOB_STORE" -pRxExcl "BlobStore\.blob-name=.+/maven-metadata.xml.*" -pRx "@Bucket\.repo-name=maven-proxy," -P -c 80 -s /tmp/filelist_maven-proxy_excl_maven-metadata.tsv
-```
-
-### Read the result File `-rF "file-path"`, which each lne contains a blobId, and list the .properties files only
-
-`-f "file-name-filter"` with the content `-P`
-
-```
+```bash
 filelist2 -b "$BLOB_STORE" -f ".properties" -P -s /tmp/filelist_reused_result.tsv -rF ./reuse_some_previous_result.tsv
 ```
 
-NOTE: The above picks the blobID-like strings automatically, so no need to remove unnecessary strings. If no
-`-f ".properties"`, the result lines include ".bytes".
+If `-f ".properties"` is omitted, the output can include `.bytes` paths too.
 
-### Use this tool to check the total count and size of all .bytes files
+### Count total `.bytes` files and size
 
-```
+```bash
 filelist2 -b "$BLOB_STORE" -f ".bytes" >/dev/null
-... (in the end of the command it outputs the below) ...
-13:52:46.972949 INFO  Printed 136895 of 273790 files, size: 2423593014 bytes (elapsed:26s)
 ```
 
-NOTE: the above means it checked 273790 and 136895 matched with ".bytes" and the total size of the matching files was
-2423593014 bytes
+Example end-of-run log:
 
-#### Check the bytes size from the .properties file's `size={n}`
-
+```text
+INFO  Printed 136895 of 273790 files, size: 2423593014 bytes (elapsed:26s)
 ```
+
+Meaning: 273790 scanned, 136895 matched `.bytes`, total matched size = 2423593014 bytes.
+
+### Sum size from `.properties` `size={n}`
+
+```bash
 filelist2 -b "$BLOB_STORE" -pRx "@Bucket\.repo-name=raw-hosted" -P -s /tmp/filelist_raw-hosted_props.tsv
 rg -o -r '$1' ',size=(\d+)' /tmp/filelist_raw-hosted_props.tsv | awk '{ c+=1;s+=$1 }; END { print "blobCount:"c", totalSize:"s" bytes" }'
 ```
 
-### Remove `deleted=true` lines from the specified files in a text file or while listing
+## Remove `deleted=true` Markers
 
-Like dry-run (`-H` to not output headers, `-BytesChk` is to detect deletion markers as `originalLocation` is unreliable)
+Dry-run style collection first (`-H` no header):
 
-```
+```bash
 filelist2 -b "$BLOB_STORE" -pRx "@Bucket\.repo-name=raw-hosted,.+deleted=true" -P -H -BytesChk -c 80 -s /tmp/filelist_raw-hosted_soft-deleted.tsv
 ```
 
-NOTE: As the `-p` default is `/(vol-\d\d|20\d\d)/`, excluding tmp/direcct-path etc.
+Then review the TSV (for example, remove `BYTES_MISSING` lines), and apply marker removal with `-RDel`:
 
-After reviewing the tsv file (e.g. remove `BYTES_MISSING` lines)
-
-```
+```bash
 filelist2 -b "$BLOB_STORE" -rF /tmp/filelist_raw-hosted_soft-deleted.tsv -RDel -P -c 80 -s /tmp/filelist_raw-hosted_undeleted.tsv
 ```
 
-NOTE: -s
+## Consistency Checks Against DB
 
-### Find blobs which exist in Blob store but not in database with `-src BS` (like Orphaned Blobs Finder)
+### Orphaned blobs: exists in blob store, missing in DB (`-src BS`)
 
-NOTE: Cleanup unused asset blob tasks should be run before this script because asset_blob is INNER JOIN-ed with asset
-table. Also, `-c` shouldn't be too high with `-db`.
-
-```
-# Accessing DB by using the connection string and check all formats for orphaned blobs (-src BS)
-# Also `-BytesChk` to exclude .properties files which do not have the .bytes file (deletion marker)
-filelist2 -b "$BLOB_STORE" -c 10 -src BS -db ./sonatype-work/nexus3/etc/fabric/nexus-store.properties -mDT "$(date -d "1 day ago" +%Y-%m-%d)" -P -pRxExcl "deleted=true" -BytesChk -s /tmp/filelist_orphaned_blobs.tsv
-```
-
-NOTE: `-db` also accepts "host=localhost user=nexus dbname=nexus" (with export
-PGPASSWORD="*******") https://pkg.go.dev/github.com/lib/pq#hdr-Connection_String_Parameters    
-NOTE: Nexus 3.86 may be going to have the originalLocation line for deletion markers, so may not need to use -BytesChk (
-TODO: if upgraded, could be confusing), so `-pRxExcl "(deleted=true|originalLocation)"` or just
-`-pRxExcl "originalLocation"`
-
-Can use a text file which contains Blob IDs, so that no Blobstore access is needed:
-
-```
-filelist2 -src BS -rF ./some_filelist_result.tsv -db ./sonatype-work/nexus3/etc/fabric/nexus-store.properties -bsName default -s /tmp/filelist_orphaned-blobs_no-BS-access.tsv
+```bash
+NOT_NEWER_THAN_DATE="$(date -d "1 day ago" +%Y-%m-%d)"  # `gdate` if Mac
+filelist2 -b "$BLOB_STORE" -c 10 -src BS \
+  -db ./sonatype-work/nexus3/etc/fabric/nexus-store.properties \
+  -mDT "${NOT_NEWER_THAN_DATE}" \
+  -P -pRxExcl "deleted=true" -BytesChk \
+  -s /tmp/filelist_orphaned_blobs.tsv
 ```
 
-```
-cd /To/Blobstore/blobs   # As -C doesn't work with the wildcard
-cut -d '.' -f1 ./some_filelist_result.tsv | while read -r _l; do tar -rvf /tmp/test.tar --remove-files ${_l}.*; done
-```
+Notes:
 
-NOTE: `-z` tar option may fail if the system does not have the gzip/gunzip command.
+- Run cleanup unused asset blobs tasks first; query logic depends on INNER JOIN of `asset_blob` and `asset`.
+- Keep concurrency moderate when `-db` is used.
+- `-db` also supports connection strings, e.g.:
+  - `host=localhost user=nexus dbname=nexus` (with `PGPASSWORD`)
+  - Reference: https://pkg.go.dev/github.com/lib/pq#hdr-Connection_String_Parameters
+- In newer Nexus versions, `originalLocation` behavior may change. If needed:
+  - `-pRxExcl "(deleted=true|originalLocation)"`
 
-### Find blobs which exist in Database but not in Blob store with `-src DB` (like Dead Blobs Finder)
+#### No blob-store access mode (comparing blob IDs in `-rF` and DB):
 
-NOTE: if `query` result is large, may want to split the query into smaller parts (e.g. order by asset_id limit 100000
-offset N)
-
-```
-filelist2 -b "$BLOB_STORE" -db ./sonatype-work/nexus3/etc/fabric/nexus-store.properties -c 10 -query "SELECT blob_ref as blob_id from raw_asset_blob ab join raw_asset a using (asset_blob_id) where repository_id IN (select cr.repository_id from raw_content_repository cr join repository r on r.id = cr.config_repository_id where r.name in ('raw-hosted'))" -src DB -s /tmp/filelist_potentially_dead-blobs.tsv
-```
-```
-filelist2 -b "$BLOB_STORE" -db ./sonatype-work/nexus3/etc/fabric/nexus-store.properties -c 10 -qRepos "raw-hosted,raw-s3-hosted" -src DB -s /tmp/filelist_potentially_dead-blobs.tsv
-```
-
-### With the undeleter script, like Point-In-Time-Recovery for blobs which exist in Blob store but not in DB
-
-NOTE: if `query` result is large, may want to split the query into smaller parts (e.g. order by record_id (or
-deleted_date) limit 100000 offset N)
-
-```
-filelist2 -b "$BLOB_STORE" -db ./sonatype-work/nexus3/etc/fabric/nexus-store.properties -query "SELECT blob_id||'@'||TO_CHAR(date_path_ref AT TIME ZONE 'UTC', 'YYYY-MM-DD\"T\"HH24:MI') as blob_id FROM soft_deleted_blobs WHERE source_blob_store_name = 'default' AND deleted_date > NOW() - INTERVAL '3 days' ORDER BY deleted_date LIMIT 1000" -s ./restoring_blobs.tsv
-# After reviewing the tsv file (removing unnecessary lines), then:
-bash ./nrm3-undelete-3.83.sh -I -s "default" -b ./restoring_blobs.tsv
+```bash
+filelist2 -src BS -rF ./some_filelist_result.tsv \
+  -db ./sonatype-work/nexus3/etc/fabric/nexus-store.properties \
+  -bsName default -s /tmp/filelist_orphaned-blobs_no-BS-access.tsv
 ```
 
-NOTE: The above result can be directly path to the undeleter script.
+Optional archive workflow:
 
-#### Just saving the query result with `-rf`:
-
-In case want to quickly check the soft_deleted_blobs table (just in case, using LIMIT):
-
+```bash
+cd /To/Blobstore
+cut -d '.' -f1 ./some_filelist_result.tsv | while read -r id; do tar -rvf /tmp/test.tar --remove-files ${id}.*; done
 ```
+
+### Dead blobs: exists in DB, missing in blob store (`-src DB`)
+
+```bash
+filelist2 -b "$BLOB_STORE" \
+  -db ./sonatype-work/nexus3/etc/fabric/nexus-store.properties \
+  -c 10 \
+  -query "SELECT blob_ref as blob_id from raw_asset_blob ab join raw_asset a using (asset_blob_id) where repository_id IN (select cr.repository_id from raw_content_repository cr join repository r on r.id = cr.config_repository_id where r.name in ('raw-hosted'))" \
+  -src DB -s /tmp/filelist_potentially_dead-blobs.tsv
+```
+
+Alternative repo shortcut:
+
+```bash
+filelist2 -b "$BLOB_STORE" -db ./sonatype-work/nexus3/etc/fabric/nexus-store.properties -c 10 -qRepos "raw-hosted,raw-filestore-hosted" -src DB -s /tmp/filelist_potentially_dead-blobs.tsv
+```
+
+## Soft-Deleted Blob Recovery Workflow
+
+Generate candidate blob IDs from `soft_deleted_blobs` and prepare input for undeleter:
+
+```bash
+filelist2 -b "$BLOB_STORE" \
+  -db ./sonatype-work/nexus3/etc/fabric/nexus-store.properties \
+  -query "SELECT blob_id||'@'||TO_CHAR(date_path_ref AT TIME ZONE 'UTC', 'YYYY-MM-DD\"T\"HH24:MI') as blob_id FROM soft_deleted_blobs WHERE source_blob_store_name = 'default' AND deleted_date > NOW() - INTERVAL '3 days' ORDER BY deleted_date LIMIT 1000" \
+  -s ./restoring_blobs.tsv
+
+# After review the result:
+bash ./nrm3-undelete-3.83.sh -I -s default -b ./restoring_blobs.tsv
+```
+
+If you only need the query output quickly:
+
+```bash
 filelist2 -db ./sonatype-work/nexus3/etc/fabric/nexus-store.properties -query "SELECT blob_id, * FROM soft_deleted_blobs WHERE source_blob_store_name = 'default' and deleted_date > NOW() - INTERVAL '300 days' ORDER BY deleted_date limit 1000" -rF /tmp/filelist_query-result.out
 ```
 
-Check / restore specific repository and specific path:
+Another example query with REPO_ID and some `path` fileter:
 
-```
-filelist2 -db ./sonatype-work/nexus3/etc/fabric/nexus-store.properties -query "SELECT ab.blob_ref as blob_id FROM raw_asset_blob ab JOIN raw_asset a USING (asset_blob_id) WHERE repository_id IN (1) and path like '/test%' LIMIT 1000" -rF /tmp/filelist_query-result_2.out
-```
-
-### *Experimental* Copy specific blobs to another Blob store with `-bTo` (like Export/Import)
-
-Excluding the soft-deleted blobs and including only specific repo. For bTo uses a different credential, appending _2 may
-work. (e.g. AWS S3 to MinIO)
-
-```
-# NOTE: MinIO example. HTTPS is required.
-export AWS_ACCESS_KEY_ID_2="admin" AWS_SECRET_ACCESS_KEY_2="admin123" AWS_REGION_2="" AWS_ENDPOINT_URL_2="https://local.standalone.localdomain:19000" AWS_CA_BUNDLE_2="$HOME/minio_data/certs/public.crt"
-filelist2 -b "s3://apac-support-bucket/filelist-test/" -bTo "s3://test-bucket/filelist-test_copied/" -PathStyle -P -pRx "@Bucket.repo-name=raw-s3-hosted," -pRxExcl ",(deleted=true|originalLocation=)" -H -s ./copied_blobs.tsv
+```bash
+filelist2 -db ./sonatype-work/nexus3/etc/fabric/nexus-store.properties -query "SELECT ab.blob_ref as blob_id FROM raw_asset_blob ab JOIN raw_asset a USING (asset_blob_id) WHERE repository_id IN (${REPO_ID}) and path like '/test%' LIMIT 1000" -rF /tmp/filelist_query-result_2.out
 ```
 
-NOTE: Using `AWS_CA_BUNDLE` may break HTTPS requests to the real AWS S3. May also need to use `-PathStyle` if not
-wildcard certificate.
+## Experimental Copy Between Blob Stores (`-bTo`)
 
+Example S3 to MinIO copy for selected blobs:
+
+```bash
+# Assuming necessary envs for the source blob store are set already. XXXX_2 is for the destination
+export AWS_ACCESS_KEY_ID_2="admin"
+export AWS_SECRET_ACCESS_KEY_2="admin123"
+export AWS_REGION_2=""
+export AWS_ENDPOINT_URL_2="https://local.standalone.localdomain:19000"
+export AWS_CA_BUNDLE_2="$HOME/minio_data/certs/public.crt"
+
+filelist2 -b "s3://apac-support-bucket/filelist-test/" \
+  -bTo "s3://test-bucket/filelist-test_copied/" \
+  -PathStyle -P \
+  -pRx "@Bucket.repo-name=raw-s3-hosted," \
+  -pRxExcl ",(deleted=true|originalLocation=)" \
+  -H -s ./copied_blobs.tsv
 ```
-# NOTE: Azurite example for Demo Azure (so that `http`). Need to create a Container. Can not use '_' in the container name.
+
+`AWS_CA_BUNDLE` can interfere with normal AWS S3 TLS; use with care. May also require to use `-PathStyle` if not wildcard certificate.
+
+Example S3 to Azurite:
+
+```bash
 export AZURE_STORAGE_CONNECTION_STRING_2="DefaultEndpointsProtocol=http;AccountName=admin;AccountKey=YWRtaW4xMjM=;BlobEndpoint=http://localhost:10000/admin;"
 az storage container create --name "apac-support-bucket-filelist-test-copied" --connection-string "${AZURE_STORAGE_CONNECTION_STRING_2}"
-filelist2 -b "s3://apac-support-bucket/filelist-test/" -bTo "az://apac-support-bucket-filelist-test-copied/" -P -pRx "@Bucket.repo-name=raw-s3-hosted," -pRxExcl ",(deleted=true|originalLocation=)" -H -s ./copied_blobs.tsv
-# To validate
+
+filelist2 -b "s3://apac-support-bucket/filelist-test/" \
+  -bTo "az://apac-support-bucket-filelist-test-copied/" \
+  -P -pRx "@Bucket.repo-name=raw-s3-hosted," \
+  -pRxExcl ",(deleted=true|originalLocation=)" \
+  -H -s ./copied_blobs.tsv
+
+# Validate copied blobs
 AZURE_STORAGE_CONNECTION_STRING="${AZURE_STORAGE_CONNECTION_STRING_2}" filelist2 -b "az://apac-support-bucket-filelist-test-copied/" -rF ./copied_blobs.tsv
 ```
 
-After reviewing ./copied_blobs.tsv, execute the Undeleter against another Nexus instance
+After review, run the undeleter against another Nexus instance to populate the DB:
 
-```
-bash ./nrm3-undelete-3.83.sh -I -s "default" -b ./copied_blobs.tsv
-```
-
-SQL query can be used to generate the blobId list for specific repository
-
-```
-filelist2 -b ./sonatype-work/nexus3/blobs/default -db ./sonatype-work/nexus3/etc/fabric/nexus-store.properties -query "select blob_ref as blob_id from raw_asset_blob ab join raw_asset a using (asset_blob_id) where repository_id IN (select cr.repository_id from raw_content_repository cr join repository r on r.id = cr.config_repository_id where r.name in ('raw-hosted')) LIMIT 1" -c 100 -bTo "s3://apac-support-bucket/filelist-test_copied/" -P -s copied_from_local_blobs.tsv
+```bash
+bash ./nrm3-undelete-3.83.sh -I -s default -b ./copied_blobs.tsv
 ```
 
-## Misc.
+SQL-generated list copy example:
 
-NOTE: For more accurate performance testing, may want to clear the Linux file cache (as 'root' user)
-
+```bash
+filelist2 -b ./sonatype-work/nexus3/blobs/default \
+  -db ./sonatype-work/nexus3/etc/fabric/nexus-store.properties \
+  -query "select blob_ref as blob_id from raw_asset_blob ab join raw_asset a using (asset_blob_id) where repository_id IN (select cr.repository_id from raw_content_repository cr join repository r on r.id = cr.config_repository_id where r.name in ('raw-hosted')) LIMIT 1" \
+  -c 100 -bTo "s3://apac-support-bucket/filelist-test_copied/" -P -s copied_from_local_blobs.tsv
 ```
-echo 3 > /proc/sys/vm/drop_caches
-```
 
-### Generate blobIDs with comma separated from the saved result file:
+## Utilities and Notes
 
-```
+### Generate comma-separated blob IDs from saved output
+
+```bash
 sed -n -E 's/.+([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})\..+/\1/p' ./docker-proxy_soft_deleted.tsv | paste -sd, -
-# Example for the Reconcile Task, get datetime and blobId
+```
+
+Get `datetime,blobId` pairs (for reconciliation input):
+
+```bash
 sed -n -E 's/.+([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})\..+([0-9]{4}.[0-9]{2}.[0-9]{2}.[0-9]{2}:[0-9]{2}:[0-9]{2}).+/\2,\1/p' ./$(date +"%Y%m%d%H%M%S").tsv > "./reconciliation/$(date '+%Y-%m-%d')"
 ```
 
-### Hard-delete files
+### Hard-delete files from a saved list (file blob store)
 
-If File type blob store, re-use the saved file to delete the matching files with xargs + rm:
-
-```
+```bash
 cat ./docker-proxy_soft_deleted.tsv | cut -d '.' -f1 | xargs -I{} -t rm -v -f {}.{properties,bytes}
 ```
 
-Expecting the strings up to the first `.` is the full or relative path of the target files, then deleting both
-.properties and .bytes files.
+This assumes the text before the first `.` is the full or relative blob file path.
 
-### Example of generating blob_ref|blobId from OrientDB
+### OrientDB example (`blob_ref` list)
 
-```
+```bash
 cd ./sonatype-work/nexus3/
 echo "select blob_ref from asset where bucket.repository_name = 'xxxxxxx'" | orient-console ./db/component/
 ```
 
-### Update|reset the deletion marker
+### Update or restore deletion marker string with `-wStr` (under `2025` directory)
 
-```
+```bash
 filelist2 -b s3://apac-support-bucket/filelist-test/content/ -p 2025 -pRx "deleted=true" -wStr "deleted=true"
-# To confirm
+
+# Confirm (Without `-T` is faster and not needed for newer Nexus)
 filelist2 -b s3://apac-support-bucket/filelist-test -pRx "deleted=true" -T
 ```
 
-### Misc. note
+## Safety
 
-```
-filelist2 -b "s3://${AWS_BLOB_STORE_NAME}/filelist-test/content" -mDF 2025-08-06 -P -T -s all_props_since-6th.tsv
-```
+- Review generated TSV files before destructive operations (`-RDel`, `rm`, or external restore scripts).
+- Start with lower concurrency for DB-backed or blob-store which utilis some connection pool.
+- For very large DB queries, split with `LIMIT/OFFSET` or range conditions.
