@@ -1,12 +1,15 @@
 [
   {
-    "name": "admin",
+    "name": "samladmin",
     "groups": ["admins", "ipausers"],
     "email": "admin@standalone.localdomain",
     "common_name": "Administrator",
-    "surname": "superuser",
+    "username": "samladmin",
+    "password": "secret12",
+    "surname": "saml",
     "given_name": "admin",
-    "password": "secret12"
+    "firstName": "Admin",
+    "lastName": "User"
   },
   {
     "name": "samluser",
@@ -15,9 +18,9 @@
     "common_name": "Saml User",
     "username": "samluser",
     "password": "samluser",
-    "surname": "user",
-    "given_name": "saml",
-    "firstName": "Saml",
-    "lastName": "User"
+    "surname": "saml",
+    "given_name": "user",
+    "firstName": "User",
+    "lastName": "Saml"
   }
 ]
