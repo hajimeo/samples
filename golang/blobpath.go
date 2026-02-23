@@ -1,7 +1,7 @@
 /*
 Doing same as org.sonatype.nexus.blobstore.VolumeChapterLocationStrategy#location and java.lang.String.hashCode
 
-To build: GO_SKIP_TESTS=Y goBuild blobpath.go
+To build: GO_SKIP_TESTS=Y goBuild ./blobpath.go
 */
 package main
 
@@ -37,7 +37,7 @@ USAGE EXAMPLE:
 
 	# Report if .properties file is missing ("Y" in the 4th argument)
 	$ psql -d nxrm3pg -c "\copy (SELECT REGEXP_REPLACE(ab.blob_ref, '.+@', '') as blobId FROM nuget_asset a JOIN nuget_asset_blob ab USING (asset_blob_id) JOIN nuget_content_repository cr USING (repository_id) JOIN repository r ON r.id = cr.config_repository_id and r.name IN ('nuget-proxy') WHERE ab.blob_created < (NOW() - interval '14 days') ORDER BY 1) to '/tmp/blobIds.out' csv;"
-    $ cat /tmp/blobIds.out | xargs -I{} -P3 ./blobpath "{}" "" "/nexus-data/blobs/default/content/" "Y"
+    $ cat /tmp/blobIds.out | xargs -I{} -P3 blobpath "{}" "" "/nexus-data/blobs/default/content/" "Y"
     /nexus-data/blobs/default/content/vol-31/chap-32/83e59741-f05d-4915-a1ba-7fc789be34b1.properties
 
 ADVANCED USAGE:
@@ -60,6 +60,7 @@ func myHashCode(s string) int32 {
 }
 
 func genPath(blobIdLikeString string, pathPfx string, ext string) string {
+	// As this is called only once, not bothering pre-compiling the regex
 	NewBlobIdPattern := regexp.MustCompile(`.*([a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12})@(\d{4})-(\d{2})-(\d{2}).(\d{2}):(\d{2}).*`)
 	matches := NewBlobIdPattern.FindStringSubmatch(blobIdLikeString)
 	if len(matches) > 6 {
