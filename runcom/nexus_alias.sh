@@ -123,7 +123,7 @@ function _get_iq_url() {
 # export JAVA_HOME=$JAVA_HOME_17
 #
 # To start Nexus with customer's database, _CUSTOM_DNS will use the dummy DNS server and also update the DB.
-#   _NO_RM3_START_SQLS="Y" _CUSTOM_DNS="$(hostname -f)" nxrmStart
+#   _LOG_LEVEL="DEBUG" _NO_RM3_START_SQLS="Y" _CUSTOM_DNS="$(hostname -f)" nxrmStart
 #   TODO: If the blob store uses absolute path, need to change the path
 #   TODO: Update the notification emai in the tasks (and something else?)
 alias rmStart="nxrmStart"
