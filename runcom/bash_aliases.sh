@@ -664,7 +664,7 @@ function mov2gif() {
     # based on https://gist.github.com/dergachev/4627207
     [ -z "${_out}" ] && _out="$(basename "${_in}" ".mov").gif"
     #ffmpeg -i "${_in}" -vf "fps=${_fps},scale=${_width}:-1:" -f gif - | gifsicle --optimize=3 --delay=5 >"${_out}"
-    local _ffmpeg_cmd="ffmpeg -i \"${_in}\" -vf \"fps=${_fps},scale=${_width}:-1:flags=lanczos,split[s0][s1];[s0]palettegen[p];[s1][p]paletteuse\" -f gif \"${_out}\""
+    local _ffmpeg_cmd="ffmpeg -i \"${_in}\" -vf \"fps=${_fps},scale=${_width}:-1:flags=lanczos,split[s0][s1];[s0]palettegen[p];[s1][p]paletteuse\" -f gif -loop -1 \"${_out}\""
     if [ -n "${_speed}" ]; then
         _ffmpeg_cmd="${_ffmpeg_cmd} -vf \"setpts=PTS/${_speed}\" -af \"atempo=${_speed}\""
     fi
@@ -1059,6 +1059,11 @@ function backupC() {
         cp -v -f $HOME/IdeaProjects/m2_settings*.xml $HOME/backup/IdeaProjects/ || return $?
     fi
 
+    if [ -s "$HOME/.pyvenv_new/bin/activate" ]; then
+        source $HOME/.pyvenv_new/bin/activate && pip freeze > $HOME/IdeaProjects/samples/misc/requirements.txt
+        deactivate &>/dev/null
+    fi
+
     echo ""
     echo "#### Synchronising a few Github repositories into 'oldmac' ####" >&2
     echo ""
@@ -1314,8 +1319,8 @@ function update_cacerts() {
         fi
     fi
     [ -z "${_alias}" ] && _alias="$(basename "${_pem%%.*}")"
-    echo 'keytool -import -alias "'${_alias}'" -keystore "'${_truststore}'" -file "'${_pem}'" -noprompt -storepass changeit' >&2
-    keytool -import -alias "${_alias}" -keystore "${_truststore}" -file "${_pem}" -noprompt -storepass changeit
+    echo 'keytool -importcert -trustcacerts -alias "'${_alias}'" -keystore "'${_truststore}'" -file "'${_pem}'" -noprompt -storepass changeit' >&2
+    keytool -importcert -trustcacerts -alias "${_alias}" -keystore "${_truststore}" -file "${_pem}" -noprompt -storepass changeit
 }
 
 function oApi() {
