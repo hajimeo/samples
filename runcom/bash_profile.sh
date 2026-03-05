@@ -18,6 +18,9 @@ export PATH="/opt/homebrew/bin:/opt/homebrew/sbin${PATH+:$PATH}";
 export MANPATH="/opt/homebrew/share/man${MANPATH+:$MANPATH}:";
 export INFOPATH="/opt/homebrew/share/info:${INFOPATH:-}";
 
+# Below is ZSH command spelling correction
+#setopt correct
+
 # nuget/dotnet related
 if [ -s "$HOME/Apps/dotnet/dotnet" ]; then
     DOTNET_ROOT=$HOME/Apps/dotnet
@@ -102,6 +105,9 @@ if [ "$(uname)" = "Darwin" ]; then
     fi
     if [ -e "/Users/hosako/.sdkman/candidates/java/21.0.8-zulu" ]; then
         [ -z "${JAVA_HOME_21}" ] && export JAVA_HOME_21="/Users/hosako/.sdkman/candidates/java/21.0.8-zulu"
+    fi
+    if [ -e "/Users/hosako/.sdkman/candidates/java/25.0.2-zulu" ]; then
+        [ -z "${JAVA_HOME_25}" ] && export JAVA_HOME_25="/Users/hosako/.sdkman/candidates/java/25.0.2-zulu"
     fi
     # For now, using java11's jshell
     if [ -n "${JAVA_HOME_11%/}" ]; then
