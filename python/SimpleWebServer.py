@@ -18,8 +18,6 @@ from http.server import BaseHTTPRequestHandler
 from http.server import HTTPServer
 import urllib, sys, os, json, traceback, base64, datetime, math
 
-import imp  # Deprecated in Python 3.4, but still works
-# import importlib
 import importlib.util
 import importlib.machinery
 import re
@@ -33,9 +31,13 @@ def toDateStr(ts):
     return datetime.datetime.fromtimestamp(math.floor(float(ts))).strftime('%Y-%m-%d %H:%M:%S')
 
 
-def loadSource(modname, filename):  # not in use yet
-    loader = importlib.machinery.SourceFileLoader(modname, filename)
-    spec = importlib.util.spec_from_file_location(modname, filename, loader=loader)
+def loadSource(modname, filename):
+    # Credentials can be plain source (.py) or bytecode (.pyc/custom .c).
+    if filename.endswith(".py"):
+        loader = importlib.machinery.SourceFileLoader(modname, filename)
+    else:
+        loader = importlib.machinery.SourcelessFileLoader(modname, filename)
+    spec = importlib.util.spec_from_loader(modname, loader)
     module = importlib.util.module_from_spec(spec)
     # The module is always executed and not cached in sys.modules.
     # Uncomment the following line to cache the module.
@@ -302,6 +304,7 @@ class SimpleWebServer(BaseHTTPRequestHandler):
         # Either _cred is empty or force reloading is set
         SimpleWebServer.log("Loading credentials ...")
         credpath = current_dir + "/" + "." + os.path.basename(os.path.splitext(__file__)[0]).lower()
+        credbase = credpath
         # try reading a compiled one first
         if reload == False and os.path.exists(credpath + "c"):
             credpath = credpath + "c"
@@ -313,13 +316,19 @@ class SimpleWebServer(BaseHTTPRequestHandler):
             SimpleWebServer.log("No credentials found at " + credpath + ", exiting ...", "ERROR")
             sys.exit(1)
         try:
-            # c = importlib.import_module("*", credpath)
-            c = imp.load_compiled("*", credpath)
+            c = loadSource("*", credpath)
+            plain = credpath.endswith(".py")
         except ImportError:
-            SimpleWebServer.log("load_source is called")
-            # TODO: below function is not working
-            # c = loadSource("*", credpath)
-            c = imp.load_source("*", credpath)
+            # Compiled creds may be stale (magic/version mismatch); fallback to source creds.
+            fallback_path = credbase + ".py"
+            if not os.path.exists(fallback_path):
+                raise
+            SimpleWebServer.log(
+                "Compiled credentials could not be loaded; falling back to " + fallback_path,
+                "WARN",
+            )
+            credpath = fallback_path
+            c = loadSource("*", credpath)
             plain = True
         for p, v in vars(c).items():
             if not p.startswith('__'):
