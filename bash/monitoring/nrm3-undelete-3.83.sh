@@ -90,6 +90,7 @@ main() {
             # As the order might matter, not using 'sort'... but running two sed for YYYY dir and vol-NN.
             sed -n -E 's/.*\/([0-9]{4}\/[0-9]{2}\/[0-9]{2}\/[0-9]{2}\/[0-9]{2}\/[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[xa-f0-9]{4}-[a-f0-9]{12}).*/\1/p' ${_blobIDs} > ${_TMP%/}/blobIDs_$$.tmp
             sed -n -E 's/.*\/content\/vol-[0-9]{2}\/chap-[0-9]{2}\/([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}).*/\1/p' ${_blobIDs} >> ${_TMP%/}/blobIDs_$$.tmp
+            sed -n -E 's/.*@([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}[0-9@:-]*).*/\1/p' ${_blobIDs} >> ${_TMP%/}/blobIDs_$$.tmp
             if [ ! -s "${_TMP%/}/blobIDs_$$.tmp" ]; then
                 echo "No valid blobIDs found in file ${_blobIDs} (${_TMP%/}/blobIDs_$$.tmp)" >&2
                 echo "If ${_blobIDs} contains only blob IDs (no '.properties'), may want to use _USE_SED=\"false\"" >&2
