@@ -14,9 +14,9 @@ REQUIREMENTS:
 
 EXAMPLES:
     cd /some/workDir
-    curl --compressed -o nrm3-delete-blobs.sh -L https://raw.githubusercontent.com/sonatype/nexus-monitoring/main/scripts/nrm3-delete-blobs-3.83.sh
+    curl --compressed -o nrm3-DELETE-blobs.sh -L https://raw.githubusercontent.com/sonatype/nexus-monitoring/main/scripts/nrm3-DELETE-blobs-3.83.sh
     export _ADMIN_USER="admin" _ADMIN_PWD="******" _NEXUS_URL="http://localhost:8081/" #_NO_BS_CHK="true" _DRY_RUN="true" _USE_SED="false"
-    bash ./nrm3-undelete.sh -I  -s <blobStoreName> -b <blobRefs>
+    bash ./nrm3-DELETE-blobs.sh -I  -s <blobStoreName> -b <blobRefs>
 
 OPTIONS:
     -I  Installing the groovy script for deleting blobs (only once per Nexus)
@@ -39,7 +39,7 @@ _SCRIPT_NAME="deleteByBlobRefs"
 # Below is used in the POST json string
 : "${_BLOB_STORE:=""}"
 : "${_BLOB_REFS:=""}"    # comma separated blobRefs
-: "${_NO_BS_CHK:="false"}"
+: "${_NO_BS_CHK:="false"}"  # If false, blob store name in the blob_ref needs to match, which doesn't if group blob store
 : "${_DRY_RUN:="false"}"
 : "${_DEBUG:="false"}"
 
@@ -77,7 +77,7 @@ main() {
         # In case the line contains unnecessary strings, like file-list result
         if [ "${_USE_SED}" == "true" ] && type sed >/dev/null 2>&1; then
             # As the order might matter, not using 'sort'... but running two sed for YYYY dir and vol-NN.
-            sed -n -E 's/.*([^ ,"]+@[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}[@0-9\-:T]*).*/\1/p' ${_blobRefs} > ${_TMP%/}/blobRefs_$$.tmp
+            sed -n -E 's/([^ ,"]+@[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}[@0-9:T-]*).*/\1/p' ${_blobRefs} > ${_TMP%/}/blobRefs_$$.tmp
             if [ ! -s "${_TMP%/}/blobRefs_$$.tmp" ]; then
                 echo "No valid blobRefs found in file ${_blobRefs} (${_TMP%/}/blobRefs_$$.tmp)" >&2
                 echo "If ${_blobRefs} contains only blobRefs (no '.properties'), may want to use _USE_SED=\"false\"" >&2
