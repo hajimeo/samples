@@ -385,14 +385,14 @@ func TestGenCopyToPath_B2NewBlobIdFalse_ReturnsOriginalPath(t *testing.T) {
 
 	common.B2NewBlobId = false
 	path := "dir/file.txt"
-	result := GenCopyToPath(path)
+	result := GenPartialCopyToPath(path)
 	assert.Equal(t, path, result)
 }
 
 func TestGenCopyToPath_B2NewBlobIdTrue_ReturnsPathWithNewUUID(t *testing.T) {
 	common.B2NewBlobId = true
 	path := "dir/file.txt"
-	result := GenCopyToPath(path)
+	result := GenPartialCopyToPath(path)
 	assert.NotEqual(t, path, result)
 	assert.Regexp(t, `^dir/[0-9a-fA-F-]{36}\.txt$`, result)
 }
@@ -400,14 +400,14 @@ func TestGenCopyToPath_B2NewBlobIdTrue_ReturnsPathWithNewUUID(t *testing.T) {
 func TestGenCopyToPath_B2NewBlobIdTrue_HandlesEmptyPathGracefully(t *testing.T) {
 	common.B2NewBlobId = true
 	path := ""
-	result := GenCopyToPath(path)
+	result := GenPartialCopyToPath(path)
 	assert.Equal(t, path, result)
 }
 
 func TestGenCopyToPath_B2NewBlobIdTrue_HandlesPathWithoutExtension(t *testing.T) {
 	common.B2NewBlobId = true
 	path := "dir/file"
-	result := GenCopyToPath(path)
+	result := GenPartialCopyToPath(path)
 	t.Log(result)
 	assert.Regexp(t, `^dir/[0-9a-fA-F-]{36}$`, result)
 }
