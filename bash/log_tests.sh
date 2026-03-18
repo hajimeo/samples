@@ -550,7 +550,7 @@ function t_system() {
         local _maxMemory="$(rg '"maxMemory"\s*:\s*(\d+)' "${_sysinfo_json}" --no-filename -o -r '$1' | sort | tail -n1)"
         if [ ${_maxMemory:-0} -lt 3221225472 ]; then
             _head "WARN" "maxMemory (heap|Xmx) might be too low (if docker/pod: NEXUS-35218, if Windows, NEXUS-47278)"
-        elif [ ${_maxMemory:-0} -gt 32000000000 ]; then
+        elif [ ${_maxMemory:-0} -gt 31000000000 ]; then
             _head "WARN" "maxMemory (heap|Xmx) might be too large https://confluence.atlassian.com/jirakb/do-not-use-heap-sizes-between-32-gb-and-47-gb-in-jira-compressed-oops-1167745277.html"
         fi
         if _rg -q '(DOCKER_TYPE|"SONATYPE_INTERNAL_HOST_SYSTEM"\s*:\s*"Docker"|"container"\s*:\s*"oci")' "${_sysinfo_json}"; then
