@@ -28,6 +28,7 @@ fi
 # Debug network performance with curl
 alias curld='curl -w "\ntime_namelookup:\t%{time_namelookup}\ntime_connect:\t%{time_connect}\ntime_appconnect:\t%{time_appconnect}\ntime_pretransfer:\t%{time_pretransfer}\ntime_redirect:\t%{time_redirect}\ntime_starttransfer:\t%{time_starttransfer}\n----\ntime_total:\t%{time_total}\nhttp_code:\t%{http_code}\nsize_download:\t%{size_download}\nspeed_download:\t%{speed_download}\nspeed_upload:\t%{speed_upload}\n"'
 # output the longest line *number* as wc|gwc -L does not show the line number
+alias line_lengths='awk "{ print $0, length }"'
 alias longest_line_no="awk 'length > max_length { max_length = length; longest_line_num = NR } END { print longest_line_num }'"
 # count a specific character from each line with the line number. eg. gunzip -c large.sql.gz |
 function count_char() {
@@ -1219,8 +1220,12 @@ function pubS() {
         #[ $HOME/IdeaProjects/samples/misc/filelist_Linux_x86_64 -nt /tmp/pubS.last ] && scp $HOME/IdeaProjects/samples/misc/filelist_Linux_x86_64 ${_backup_server}:/var/tmp/share/bin/
         [ $HOME/IdeaProjects/samples/misc/filelistv2_Linux_x86_64 -nt /tmp/pubS.last ] && scp $HOME/IdeaProjects/samples/misc/filelistv2_Linux_x86_64 ${_backup_server}:/var/tmp/share/bin/
     fi
+
+    sync_nexus_binaries &>/dev/null &
+
+
     if ! type rsync >/dev/null; then
-        echo "rsync command not found. Skipping rsync part." >&2
+        echo "rsync command not found. Skipping all remaining part." >&2
         date | tee /tmp/pubS.last
         return 1
     fi
@@ -1245,7 +1250,10 @@ function pubS() {
         cd -
     fi
 
-    sync_nexus_binaries &>/dev/null &
+    # May not need to do this for now as AI may not be good at processing PDFs
+    echo "rsync-ing PDFs from remote to local..." >&2
+    rsync -av $HOME/Google\ Drive/My\ Drive/work/sonatype/*.pdf $HOME/Documents/sonatype/kbs/
+
     date | tee /tmp/pubS.last
 }
 function sync_nexus_binaries() {
@@ -1354,7 +1362,7 @@ EOF
 }
 
 function startCommonUtils() {
-    local _with_ollama="${1:-"Y"}"
+    local _with_ollama="${1:-"N"}"
     pgStatus start
     #tabby_start
     slackS
