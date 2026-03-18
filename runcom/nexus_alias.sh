@@ -170,6 +170,8 @@ function nxrmStart() {
         return 1
     fi
     local _nexus_ver="$(basename "$(dirname "$(dirname "$(realpath "${_nexus_file}")")")")"
+    echo "Starting Nexus \"${_nexus_ver}\" ..."; sleep 1;
+
     local _jetty_https="$(find ${_base_dir%/} -maxdepth 4 -path '*/etc/*' -type f -name 'jetty-https.xml' 2>/dev/null | sort -V | tail -n1)"
     local _karaf_conf="$(find . -maxdepth 4 -type f -name 'config.properties' -path '*/etc/karaf/*' | head -n1)"
     if [ -n "${_karaf_conf}" ] && ! grep -q 'org.openjdk.btrace' ${_karaf_conf}; then
@@ -353,8 +355,8 @@ function _updateNexusProps() {
     # To workaround: org.yaml.snakeyaml.error.YAMLException: The incoming YAML document exceeds the limit: 25165824 code points.
     grep -qE '^#?nexus.helm.yaml.max.bytes' "${_cfg_file}" || echo "nexus.helm.yaml.max.bytes=36700160" >> "${_cfg_file}"
 
-    if grep -q "^nexus.datastore.clustered.enabled=true" ${_cfg_file}; then
-        echo "WARN: nexus.datastore.clustered.enabled=true is set, so not changing the port from ${_current_port}" >&2
+    if grep -q "^nexus.datastore.clustered.enabled=true" ${_cfg_file} && [ "${_current_port}" != "8081" ]; then
+        echo "WARN: nexus.datastore.clustered.enabled=true is set, so not changing the customised port: ${_current_port}" >&2; sleep 3;
         return 0
     fi
 
@@ -373,13 +375,13 @@ function _updateNexusProps() {
     # update the config with the port
     if [ -n "${_port}" ]; then
         if [ "${_port}" != "8081" ]; then
-            echo "WARN: Using non default port *** '${_port}' !! (export _NEXUS_URL=\"http://localhost:${_port}\")" >&2; sleep 5;
+            echo "WARN: Using non default port *** '${_port}' !! (export _NEXUS_URL=\"http://localhost:${_port}\")" >&2; sleep 3;
         elif [ "${_port}" != "${_current_port}" ]; then
             echo "WARN: Changing port to *** '${_port}' *** from ${_current_port} !!" >&2; sleep 3;
         fi
         sed -i'' -E "s/^application-port=.*/application-port=${_port}/" "${_cfg_file}"
         if ! grep -qE "^application-port=${_port}" "${_cfg_file}"; then
-            echo "ERROR: Failed to confirm port: '${_port}' in ${_cfg_file}" >&2; sleep 5;
+            echo "WARN: Failed to confirm port: '${_port}' in ${_cfg_file}" >&2; sleep 5;
             #return 1
         fi
     fi
