@@ -25,6 +25,8 @@
 #   keytool -list -cacerts -storepass changeit > cacerts_sha256.out
 #   keytool -list -keystore $JAVA_HOME/lib/security/cacerts -storepass changeit > cacerts_sha256.out
 #   keytool -printcert -rfc -sslserver ${_host}:${_port} > server.pem
+#   keytool -printcert -rfc -sslserver certs.godaddy.com:443
+#   echo -n | openssl s_client -connect certs.godaddy.com:443 -servername certs.godaddy.com -showcerts
 #   keytool -printcert -file server.pem | grep -o -E 'SHA256:.+'
 #   keytool -printcert -file rootCA.pem | grep -o -E 'SHA256:.+' # to compare with server.pem
 
