@@ -948,6 +948,7 @@ function f_check_topH() {
     ls -ltr ./high_cpu_threads_*.out
 }
 
+#f_check_netstat "top_netstat/netstat_0*"
 function f_check_netstat() {
     local _file="${1}"  # file path or glob for rg
     local _port="${2}"
@@ -958,15 +959,18 @@ function f_check_netstat() {
     echo "# Large Receive / Send Q from netstat"
     rg "^(Proto|tcp\s+(\d{5,}\s+\d+|\d+\s+\d{5,})\s+[^ ]+:${_port:-"[0-9]+"}\s+.+/)" ${_file}
     echo ""
-    echo "# Counting _WAIT|SYN_RECV"
-    rg "\s+([^ ]+_WAIT[0-9]?|SYN_RECV)\s+" -o -r '$1' ${_file} | sort | uniq -c
     if [ -n "${_port}" ]; then
         echo "# Counting _WAIT against Local Address:${_port}"
         rg "\s+[^ ]+:${_port}\s+([^:]+):\d+\s+([^ ]+_WAIT)\s+" -o -r '$1 $2' ${_file} | sort | uniq -c
-        echo "# Counting _WAIT against Foreign Address:${_port} (top 10)"
+        echo ""
+        echo "# Counting _WAIT against Foreign Address, which connects to Local Address:${_port} (top 10)"
         rg "\s+[^ ]+:${_port}\s+([^:]+:\d+)\s+([^ ]+_WAIT)\s+" -o -r '$1 $2' --no-filename ${_file} | sort | uniq -c | rg -v '^\s+1\s+' | sort -nr | head -n10
+        echo ""
     fi
-    echo "(check /proc/sys/net/ipv4/tcp_tw_reuse)"
+    echo "# Counting _WAIT|SYN_RECV"
+    rg "\s+([^ ]+_WAIT[0-9]?|SYN_RECV)\s+" -o -r '$1' ${_file} | sort | uniq -c
+    echo "# If CLOSE_WAIT shows same count, the application might be in hanging state"
+    echo "# If TIME_WAIT, check /proc/sys/net/ipv4/tcp_tw_reuse (and maybe tcp_tw_recycle?)"
 }
 
 function f_splitTopNetstat() {
