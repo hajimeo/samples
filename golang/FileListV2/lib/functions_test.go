@@ -3,6 +3,7 @@ package lib
 import (
 	"FileListV2/common"
 	"github.com/stretchr/testify/assert"
+	"path/filepath"
 	"testing"
 )
 
@@ -378,6 +379,10 @@ func TestIsLeafDir_InvalidPathForDepth_ReturnsFalse(t *testing.T) {
 }
 
 func TestGenCopyToPath_B2NewBlobIdFalse_ReturnsOriginalPath(t *testing.T) {
+	dir := filepath.Dir("sonatype-work/nexus3/blobs/default_copied/content/vol-43/chap-15/6ec8438e-737d-4260-9a67-9ff93e28a6bf.properties")
+	shouldMatch := common.RxVolChapDir.MatchString(dir)
+	assert.True(t, shouldMatch)
+
 	common.B2NewBlobId = false
 	path := "dir/file.txt"
 	result := GenCopyToPath(path)
@@ -513,4 +518,96 @@ func TestGetBlobName_EmptyContent_ReturnsEmptyString(t *testing.T) {
 	contents := ""
 	result := GetBlobName(contents)
 	assert.Equal(t, "", result)
+}
+
+func TestGenBlobPath_ValidBlobId_ReturnsCorrectPath(t *testing.T) {
+	result := GenBlobPath("f062f002-88f0-4b53-aeca-7324e9609329", ".properties")
+	expected := "vol-42/chap-31/f062f002-88f0-4b53-aeca-7324e9609329.properties"
+	assert.Equal(t, expected, result)
+}
+
+func TestGenBlobPath_ValidBlobPath_ReturnsCorrectPath(t *testing.T) {
+	result := GenBlobPath("content/vol-42/chap-31/f062f002-88f0-4b53-aeca-7324e9609329", ".properties")
+	expected := "vol-42/chap-31/f062f002-88f0-4b53-aeca-7324e9609329.properties"
+	assert.Equal(t, expected, result)
+}
+
+func TestGenBlobPath_InvalidBlobPath_StillReturnsCorrectPath(t *testing.T) {
+	result := GenBlobPath("content/vol-43/chap-43/f3bd19c8-fa9d-4005-9ced-4104fe77f600", ".properties")
+	expected := "vol-31/chap-31/f3bd19c8-fa9d-4005-9ced-4104fe77f600.properties"
+	assert.Equal(t, expected, result)
+
+	path := "/var/tmp/test/blobs/default/content/vol-43/chap-43/f3bd19c8-fa9d-4005-9ced-4104fe77f600"
+	dir := filepath.Dir(path)
+	beforeVolChap := dir[:len(dir)-len(filepath.Join("vol-NN", "chap-MM"))]
+	copyToPath := GenBlobPath(path, ".properties")
+	result = filepath.Join(beforeVolChap, copyToPath)
+	expected = "/var/tmp/test/blobs/default/content/vol-31/chap-31/f3bd19c8-fa9d-4005-9ced-4104fe77f600.properties"
+	assert.Equal(t, expected, result)
+}
+
+func TestGenBlobPath_ValidBlobId_ReturnsCorrectPath_NewLayout(t *testing.T) {
+	result := GenBlobPath("f062f002-88f0-4b53-aeca-7324e9609329@2022-10-20T12:33", ".properties")
+	expected := "2022/10/20/12/33/f062f002-88f0-4b53-aeca-7324e9609329.properties"
+	assert.Equal(t, expected, result)
+}
+
+func TestGenBlobPath_ValidBlobId_ReturnsCorrectPath_NewLayout2(t *testing.T) {
+	result := GenBlobPath("/2022/10/20/12/33/f062f002-88f0-4b53-aeca-7324e9609329", ".properties")
+	expected := "2022/10/20/12/33/f062f002-88f0-4b53-aeca-7324e9609329.properties"
+	assert.Equal(t, expected, result)
+}
+
+func TestGenBlobPath_EmptyBlobId_ReturnsCorrectPath(t *testing.T) {
+	result := GenBlobPath("", ".properties")
+	expected := ""
+	assert.Equal(t, expected, result)
+}
+
+func TestGetBlobRef_ValidNewBlobRefLine_ReturnsFullMatch(t *testing.T) {
+	blobRef := "aaaa blobStore@6c1d3423-ecbc-4c52-a0fe-01a45a12883a@2025-08-14T02:44 bbbb"
+	result := GetBlobRef(blobRef, "")
+	assert.Equal(t, "blobStore@6c1d3423-ecbc-4c52-a0fe-01a45a12883a@2025-08-14T02:44", result)
+}
+
+func TestGetBlobRef_ValidNewBlobRefLine2_ReturnsFullMatch(t *testing.T) {
+	blobRef := "aaaa,blobStore@6c1d3423-ecbc-4c52-a0fe-01a45a12883a@2025-08-14T02:44,bbbb"
+	result := GetBlobRef(blobRef, "")
+	assert.Equal(t, "blobStore@6c1d3423-ecbc-4c52-a0fe-01a45a12883a@2025-08-14T02:44", result)
+}
+
+func TestGetBlobRef_ValidNewBlobRef_ReturnsFullMatch(t *testing.T) {
+	blobRef := "blobStore@6c1d3423-ecbc-4c52-a0fe-01a45a12883a@2025-08-14T02:44"
+	result := GetBlobRef(blobRef, "")
+	assert.Equal(t, blobRef, result)
+}
+
+func TestGetBlobRef_ValidOldBlobRef_ReturnsFullMatch(t *testing.T) {
+	blobRef := "blobStore@6c1d3423-ecbc-4c52-a0fe-01a45a12883a"
+	result := GetBlobRef(blobRef, "")
+	assert.Equal(t, blobRef, result)
+}
+
+func TestGetBlobRef_InvalidBlobRef_ReturnsEmptyString(t *testing.T) {
+	blobRef := "invalidBlobRef"
+	result := GetBlobRef(blobRef, "")
+	assert.Equal(t, "", result)
+}
+
+func TestGetBlobRef_EmptyBlobRef_ReturnsEmptyString(t *testing.T) {
+	blobRef := ""
+	result := GetBlobRef(blobRef, "")
+	assert.Equal(t, "", result)
+}
+
+func TestGetBlobRef_MaybeBlobRefWithTab_ReturnBlobRef(t *testing.T) {
+	blobRef := "raw-hosted	/dummies/staging_move2.txt	default@47d9e6d4-308e-4984-89f2-96db825ea66c@2025-12-17T08:15"
+	result := GetBlobRef(blobRef, "")
+	assert.Equal(t, "default@47d9e6d4-308e-4984-89f2-96db825ea66c@2025-12-17T08:15", result)
+}
+
+func TestGetBlobRef_WithTab_FileListResult(t *testing.T) {
+	blobRef := "filelist-test/content/vol-08/chap-08/08080d79-06b0-4274-885e-ea78b8c463f5.properties"
+	result := GetBlobRef(blobRef, "default")
+	assert.Equal(t, "default@08080d79-06b0-4274-885e-ea78b8c463f5", result)
 }

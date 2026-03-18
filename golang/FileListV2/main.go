@@ -11,7 +11,6 @@ import (
 	h "github.com/hajimeo/samples/golang/helpers"
 	"io"
 	"log"
-	"math"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -372,56 +371,6 @@ func printHeader(saveToPointer *os.File) {
 		}
 		printOrSave(header, saveToPointer)
 	}
-}
-
-func genBlobPath(blobIdLikeString string, extension string) string {
-	// NOTE: this returns path without slash at the beginning
-	blobId := blobIdLikeString
-	if !common.NoDateBsLayout {
-		var matches []string
-		matches = common.RxBlobIdNew.FindStringSubmatch(blobIdLikeString)
-		if len(matches) > 6 {
-			// 6c1d3423-ecbc-4c52-a0fe-01a45a12883a@2025-08-14T02:44
-			// 2025/08/14/02/44/6c1d3423-ecbc-4c52-a0fe-01a45a12883a.properties
-			return filepath.Join(matches[2], matches[3], matches[4], matches[5], matches[6], matches[1]) + extension
-		}
-		matches = common.RxBlobIdNew2.FindStringSubmatch(blobIdLikeString)
-		if len(matches) > 6 {
-			return filepath.Join(matches[1], matches[2], matches[3], matches[4], matches[5], matches[6]) + extension
-		}
-	}
-
-	blobId = common.RxBlobId.FindString(blobIdLikeString)
-	if len(blobId) == 0 {
-		h.Log("WARN", "genBlobPath got empty blobId for \""+blobIdLikeString+"\"")
-		return ""
-	}
-	// org.sonatype.nexus.blobstore.VolumeChapterLocationStrategy#location
-	hashInt := lib.HashCode(blobId)
-	vol := math.Abs(math.Mod(float64(hashInt), 43)) + 1
-	chap := math.Abs(math.Mod(float64(hashInt), 47)) + 1
-	return filepath.Join(fmt.Sprintf("vol-%02d", int(vol)), fmt.Sprintf("chap-%02d", int(chap)), blobId) + extension
-}
-
-func getBlobRef(blobRefLikeString string, bsName string) string {
-	matches := common.RxBlobRefNew.FindStringSubmatch(blobRefLikeString)
-	if len(matches) > 0 {
-		// {blobStore}@{blobId}@{timestamp}
-		return matches[1]
-	}
-	matches = common.RxBlobRef.FindStringSubmatch(blobRefLikeString)
-	if len(matches) > 0 {
-		return matches[1]
-	}
-	if len(bsName) > 0 {
-		blobId := lib.ExtractBlobIdFromString(blobRefLikeString)
-		if len(blobId) > 0 {
-			h.Log("DEBUG", "getBlobRef got empty blobRef so using "+bsName+"@"+blobId)
-			return bsName + "@" + blobId
-		}
-	}
-	h.Log("DEBUG", "getBlobRef got empty blobRef for "+blobRefLikeString)
-	return ""
 }
 
 func genOutput(path string, bi bs_clients.BlobInfo, db *sql.DB) (string, error) {
@@ -900,7 +849,7 @@ func copyPropsBytesToBaseDir2(propPath string) string {
 	if !common.B2PropsOnly {
 		// Regardless of the errorCode, try to copy the .bytes file as well
 		bytesPath := lib.GetPathWithoutExt(propPath) + common.BYTES_EXT
-		maybeCustomizedBytesPath := lib.GenCopyToPath(bytesPath)
+		maybeCustomizedBytesPath := lib.GetPathWithoutExt(maybeCustomizedPath) + common.BYTES_EXT
 		errorCodeBytes := copyPathToBaseDir2(bytesPath, maybeCustomizedBytesPath)
 		if len(errorCodeBytes) > 0 && errorCodeBytes != "ALREADY_EXISTS" {
 			// write error should be already reported, so DEBUG
@@ -921,7 +870,6 @@ func copyPathToBaseDir2(path string, toPath string) string {
 	}
 	writingPath := filepath.Join(common.ContentPath2, lib.GetAfterContent(toPath))
 	h.Log("DEBUG", fmt.Sprintf("Copying into %s for %s", writingPath, common.BaseDir2))
-	// TODO: Check if the writingPath already exists in BaseDir2 with GetFileInfo
 	if !common.NoExtraChk {
 		info, err := Client2.GetFileInfo(writingPath)
 		if err == nil {
@@ -993,6 +941,7 @@ func copyPathToBaseDir2(path string, toPath string) string {
 	reader := maybeReader.(io.ReadCloser)
 	defer reader.Close()
 
+	// TODO: this doesn't work with -bTo-NewBlobId because the path is different from the original one, so need to consider the customized path as well
 	_, errC := io.Copy(writer, reader)
 	if errC != nil {
 		h.Log("ERROR", fmt.Sprintf("Copying data from path:%s to BaseDir2:%s failed with %s", path, common.BaseDir2, errC))
@@ -1000,13 +949,13 @@ func copyPathToBaseDir2(path string, toPath string) string {
 	}
 
 	if !common.NoExtraChk {
-		toInfo, errD := Client.GetFileInfo(toPath)
+		toInfo, errD := Client.GetFileInfo(writingPath)
 		if errD != nil {
-			h.Log("ERROR", fmt.Sprintf("Getting destination file info for path:%s failed with %s", toPath, errD))
+			h.Log("ERROR", fmt.Sprintf("Getting destination file info for path:%s failed with %s", writingPath, errD))
 			return "ERROR_NO_DEST_INFO" + errSfx
 		}
 		if toInfo.Size == 0 {
-			h.Log("WARN", fmt.Sprintf("Size 0 after copying to %s to BaseDir2:%s", toPath, common.BaseDir2))
+			h.Log("WARN", fmt.Sprintf("Size 0 after copying to %s to BaseDir2:%s", writingPath, common.BaseDir2))
 			return "WARN_ZERO_SIZE" + errSfx
 		}
 		// Currently not doing the below.
@@ -1085,7 +1034,7 @@ func checkBlobIdDetailFromBS(maybeBlobId string) interface{} {
 		return nil
 	}
 	// basePath is the file path without extension
-	basePath := genBlobPath(maybeBlobId, "")
+	basePath := lib.GenBlobPath(maybeBlobId, "")
 	if len(basePath) == 0 {
 		h.Log("DEBUG", fmt.Sprintf("Empty basePath in '%s'", maybeBlobId))
 		return nil
@@ -1119,7 +1068,7 @@ func checkBlobIdDetailFromBS(maybeBlobId string) interface{} {
 	if common.RxFilter4FileName == nil || common.RxFilter4FileName.MatchString(propsPath) {
 		blobInfo, err := Client.GetFileInfo(propsPath)
 		blobInfo.Note = maybeBlobId
-		blobInfo.BlobRef = getBlobRef(maybeBlobId, common.BsName)
+		blobInfo.BlobRef = lib.GetBlobRef(maybeBlobId, common.BsName)
 		args := bs_clients.PrintLineArgs{
 			Path:  propsPath,
 			BInfo: blobInfo,
@@ -1151,7 +1100,7 @@ func maybeCopyPathToBaseDir2(maybeSrcBlobPath string) interface{} {
 	}
 
 	// basePath is the file path without extension
-	basePath := h.AppendSlash(common.ContentPath) + genBlobPath(maybeSrcBlobPath, "")
+	basePath := h.AppendSlash(common.ContentPath) + lib.GenBlobPath(maybeSrcBlobPath, "")
 	propPath := basePath + common.PROP_EXT
 	h.Log("DEBUG", fmt.Sprintf("Copying %s to BaseDir2", propPath))
 	finalErrorCode := copyPropsBytesToBaseDir2(propPath)

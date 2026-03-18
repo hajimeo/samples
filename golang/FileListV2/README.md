@@ -254,7 +254,7 @@ Another example query with REPO_ID and some `path` fileter:
 filelist2 -db ./sonatype-work/nexus3/etc/fabric/nexus-store.properties -query "SELECT ab.blob_ref as blob_id FROM raw_asset_blob ab JOIN raw_asset a USING (asset_blob_id) WHERE repository_id IN (${REPO_ID}) and path like '/test%' LIMIT 1000" -rF /tmp/filelist_query-result_2.out
 ```
 
-## Experimental Copy Between Blob Stores (`-bTo`)
+## Copy Between Blob Stores (`-bTo`)
 
 Example S3 to MinIO copy for selected blobs:
 

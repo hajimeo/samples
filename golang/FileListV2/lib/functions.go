@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"github.com/google/uuid"
 	h "github.com/hajimeo/samples/golang/helpers"
+	"math"
 	"net/url"
 	"os"
 	"path/filepath"
@@ -259,7 +260,16 @@ func GenCopyToPath(path string) string {
 	if len(path) > 0 && common.B2NewBlobId {
 		ext := filepath.Ext(path)
 		dir := filepath.Dir(path)
-		copyToPath = filepath.Join(dir, uuid.New().String()+ext)
+		newFileName := uuid.New().String() + ext
+		// If `dir` contains `vol-NN/chap-MM`, it needs to be recalculated by GenBlobPath to make sure the blob is in the right place.
+		if common.RxVolChapDir.MatchString(dir) {
+			beforeVolChap := dir[:len(dir)-len(filepath.Join("vol-NN", "chap-MM"))]
+			copyToPath = GenBlobPath(newFileName, ext)
+			copyToPath = filepath.Join(beforeVolChap, copyToPath)
+			h.Log("DEBUG", fmt.Sprintf("Changing path from %s to %s for BaseDir2 copy as it contains vol-NN/chap-MM", path, copyToPath))
+			return copyToPath
+		}
+		copyToPath = filepath.Join(dir, newFileName)
 		h.Log("DEBUG", fmt.Sprintf("Changing path from %s to %s for BaseDir2 copy", path, copyToPath))
 	}
 	return copyToPath
@@ -308,5 +318,55 @@ func GetBlobName(contents string) string {
 		}
 		return m[2]
 	}
+	return ""
+}
+
+func GenBlobPath(blobIdLikeString string, extension string) string {
+	// NOTE: this returns path without slash at the beginning
+	blobId := blobIdLikeString
+	if !common.NoDateBsLayout {
+		var matches []string
+		matches = common.RxBlobIdNew.FindStringSubmatch(blobIdLikeString)
+		if len(matches) > 6 {
+			// 6c1d3423-ecbc-4c52-a0fe-01a45a12883a@2025-08-14T02:44
+			// 2025/08/14/02/44/6c1d3423-ecbc-4c52-a0fe-01a45a12883a.properties
+			return filepath.Join(matches[2], matches[3], matches[4], matches[5], matches[6], matches[1]) + extension
+		}
+		matches = common.RxBlobIdNew2.FindStringSubmatch(blobIdLikeString)
+		if len(matches) > 6 {
+			return filepath.Join(matches[1], matches[2], matches[3], matches[4], matches[5], matches[6]) + extension
+		}
+	}
+
+	blobId = common.RxBlobId.FindString(blobIdLikeString)
+	if len(blobId) == 0 {
+		h.Log("WARN", "genBlobPath got empty blobId for \""+blobIdLikeString+"\"")
+		return ""
+	}
+	// org.sonatype.nexus.blobstore.VolumeChapterLocationStrategy#location
+	hashInt := HashCode(blobId)
+	vol := math.Abs(math.Mod(float64(hashInt), 43)) + 1
+	chap := math.Abs(math.Mod(float64(hashInt), 47)) + 1
+	return filepath.Join(fmt.Sprintf("vol-%02d", int(vol)), fmt.Sprintf("chap-%02d", int(chap)), blobId) + extension
+}
+
+func GetBlobRef(blobRefLikeString string, bsName string) string {
+	matches := common.RxBlobRefNew.FindStringSubmatch(blobRefLikeString)
+	if len(matches) > 0 {
+		// {blobStore}@{blobId}@{timestamp}
+		return matches[1]
+	}
+	matches = common.RxBlobRef.FindStringSubmatch(blobRefLikeString)
+	if len(matches) > 0 {
+		return matches[1]
+	}
+	if len(bsName) > 0 {
+		blobId := ExtractBlobIdFromString(blobRefLikeString)
+		if len(blobId) > 0 {
+			h.Log("DEBUG", "getBlobRef got empty blobRef so using "+bsName+"@"+blobId)
+			return bsName + "@" + blobId
+		}
+	}
+	h.Log("DEBUG", "getBlobRef got empty blobRef for "+blobRefLikeString)
 	return ""
 }
