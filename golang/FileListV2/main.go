@@ -57,7 +57,8 @@ func setGlobals() {
 	//flag.StringVar(&common.Filter4BytesExcl, "bRxNot", "", "Excluding Regular Expression for .bytes files (max size 32KB)")
 	flag.StringVar(&common.SaveToFile, "s", "", "Save the output (TSV text) into the specified path")
 	flag.BoolVar(&common.SavePerDir, "SavePerDir", false, "If true and -s is given, save the output per sub-directory")
-	flag.Int64Var(&common.TopN, "n", 0, "Return first N lines (0 = no limit). If -c is greater than 1, it could return more than N lines.")
+	// TODO: no centralised place to control this topN
+	flag.Int64Var(&common.TopN, "n", 0, "Print first N lines (0 = no limit). If -c is greater than 1, it could return more than N lines.")
 	flag.IntVar(&common.Conc1, "c", 1, "Concurrent number for reading directories")
 	flag.IntVar(&common.Conc2, "c2", 8, "2nd Concurrent number. Currently used when retrieving object from AWS S3")
 	// TODO: probably the depth is not needed?
@@ -777,7 +778,11 @@ func printLineFromPath(args bs_clients.PrintLineArgs) bool {
 	// if output is empty, that means skipped, so not copying to BaseDir2
 	if len(common.BaseDir2) > 0 && strings.HasSuffix(path, common.PROP_EXT) {
 		if len(output) > 0 {
-			finalErrorCode := copyPropsBytesToBaseDir2(path)
+			finalErrorCode, maybeCustomizedPath := copyPropsBytesToBaseDir2(path)
+			if maybeCustomizedPath != "" && maybeCustomizedPath != path {
+				// Replace the path part in the output with maybeCustomizedPath
+				output = strings.Replace(output, path, maybeCustomizedPath, 1)
+			}
 			if len(finalErrorCode) > 0 {
 				output = fmt.Sprintf("%s%s%s", output, common.SEP, finalErrorCode)
 			}
@@ -797,9 +802,7 @@ func printLineFromPath(args bs_clients.PrintLineArgs) bool {
 	// If not empty output, updating counters before saving and returning
 	if len(output) > 0 {
 		//h.Log("DEBUG", fmt.Sprintf("Current output: '%s' for %s", output, path))
-		atomic.AddInt64(&common.PrintedNum, 1)
 		atomic.AddInt64(&common.TotalSize, blobInfo.Size)
-
 		printOrSave(output, saveToPointer)
 	}
 	return true
@@ -828,7 +831,7 @@ func writeToPath(path string, contents string) (bool, error) {
 	return true, nil
 }
 
-func copyPropsBytesToBaseDir2(propPath string) string {
+func copyPropsBytesToBaseDir2(propPath string) (string, string) {
 	// Just in case, checking BaseDir2
 	if len(common.BaseDir2) == 0 {
 		panic("BaseDir2 is empty")
@@ -837,11 +840,12 @@ func copyPropsBytesToBaseDir2(propPath string) string {
 	// if BaseDir2 (-bTo) is given, try to copy the .properties file and associated .bytes file to BaseDir2
 	// Skip/ignore non properties files
 	if !strings.HasSuffix(propPath, common.PROP_EXT) {
-		return ""
+		return "", ""
 	}
 
-	maybeCustomizedPath := lib.GenCopyToPath(propPath)
-	if common.BaseDir == common.BaseDir2 && propPath == maybeCustomizedPath {
+	maybeCustomizedPath := lib.GenPartialCopyToPath(propPath)
+	writingPath := filepath.Join(common.ContentPath2, lib.GetAfterContent(maybeCustomizedPath))
+	if propPath == writingPath {
 		panic("Source path and destination path are same")
 	}
 
@@ -849,26 +853,27 @@ func copyPropsBytesToBaseDir2(propPath string) string {
 	if !common.B2PropsOnly {
 		// Regardless of the errorCode, try to copy the .bytes file as well
 		bytesPath := lib.GetPathWithoutExt(propPath) + common.BYTES_EXT
-		maybeCustomizedBytesPath := lib.GetPathWithoutExt(maybeCustomizedPath) + common.BYTES_EXT
+		maybeCustomizedBytesPath := lib.GetPathWithoutExt(writingPath) + common.BYTES_EXT
 		errorCodeBytes := copyPathToBaseDir2(bytesPath, maybeCustomizedBytesPath)
 		if len(errorCodeBytes) > 0 && errorCodeBytes != "ALREADY_EXISTS" {
 			// write error should be already reported, so DEBUG
 			h.Log("DEBUG", fmt.Sprintf("copyPathToBaseDir2 completed with error. path:%s, errorCodeBytes:%s", bytesPath, errorCodeBytes))
 			// If Bytes failed to copy, no point of copying properties.
-			return errorCodeBytes
+			return errorCodeBytes, ""
 		}
 	}
 
-	errorCode := copyPathToBaseDir2(propPath, maybeCustomizedPath)
+	errorCode := copyPathToBaseDir2(propPath, writingPath)
 	h.Log("DEBUG", fmt.Sprintf("copyPathToBaseDir2 completed for %s, errorCode:%s", propPath, errorCode))
-	return errorCode
+	return errorCode, writingPath
 }
 
-func copyPathToBaseDir2(path string, toPath string) string {
-	if len(toPath) == 0 {
-		toPath = path
+func copyPathToBaseDir2(path string, writingPath string) string {
+	if len(writingPath) == 0 {
+		h.Log("ERROR", fmt.Sprintf("writingPath is empty for path:%s. Skipping copy to BaseDir2.", path))
+		return "ERROR_NO_DEST_PATH"
 	}
-	writingPath := filepath.Join(common.ContentPath2, lib.GetAfterContent(toPath))
+
 	h.Log("DEBUG", fmt.Sprintf("Copying into %s for %s", writingPath, common.BaseDir2))
 	if !common.NoExtraChk {
 		info, err := Client2.GetFileInfo(writingPath)
@@ -982,6 +987,8 @@ func printOrSave(line string, saveToPointer *os.File) {
 	if len(line) == 0 || line == common.SEP {
 		return
 	}
+
+	atomic.AddInt64(&common.PrintedNum, 1)
 	if saveToPointer != nil {
 		//h.Log("INFO", saveToPointer.Name())
 		_, _ = fmt.Fprintln(saveToPointer, line)
@@ -1088,6 +1095,11 @@ func checkBlobIdDetailFromBS(maybeBlobId string) interface{} {
 }
 
 func maybeCopyPathToBaseDir2(maybeSrcBlobPath string) interface{} {
+	if common.TopN > 0 && common.TopN <= common.PrintedNum {
+		h.Log("DEBUG", fmt.Sprintf("Printed %d >= %d", common.PrintedNum, common.TopN))
+		return nil
+	}
+
 	blobId := lib.ExtractBlobIdFromString(maybeSrcBlobPath)
 	if len(blobId) == 0 {
 		h.Log("DEBUG", fmt.Sprintf("Empty blobId in '%s'", maybeSrcBlobPath))
@@ -1103,8 +1115,8 @@ func maybeCopyPathToBaseDir2(maybeSrcBlobPath string) interface{} {
 	basePath := h.AppendSlash(common.ContentPath) + lib.GenBlobPath(maybeSrcBlobPath, "")
 	propPath := basePath + common.PROP_EXT
 	h.Log("DEBUG", fmt.Sprintf("Copying %s to BaseDir2", propPath))
-	finalErrorCode := copyPropsBytesToBaseDir2(propPath)
-	output := maybeSrcBlobPath // TODO: this may not be accurate as this line may ends with some error code (so errorcode\terrorcode)
+	finalErrorCode, maybeCustomizedPath := copyPropsBytesToBaseDir2(propPath)
+	output := maybeCustomizedPath
 	if len(finalErrorCode) > 0 {
 		output = fmt.Sprintf("%s%s%s", output, common.SEP, finalErrorCode)
 	}
