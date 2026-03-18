@@ -152,3 +152,6 @@ if [ -f '/Users/hosako/Apps/google-cloud-sdk/completion.bash.inc' ]; then . '/Us
 # rust / cargo installation added the below
 . "$HOME/.cargo/env"
 #eval "$(jenv init -)"
+
+test -e "${HOME}/.iterm2_shell_integration.bash" && source "${HOME}/.iterm2_shell_integration.bash" || true
+
