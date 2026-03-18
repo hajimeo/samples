@@ -254,7 +254,8 @@ func ComputeSubDirs(path string, pathFilter string) (matchingDirs []string) {
 	return matchingDirs
 }
 
-func GenCopyToPath(path string) string {
+func GenPartialCopyToPath(path string) string {
+	// NOTE: This function may return non final Copy-to-path as the base dir may be changed later by the caller.
 	copyToPath := path
 	// if B2NewBlobId is true, the filename in the path should use the new UUID
 	if len(path) > 0 && common.B2NewBlobId {
