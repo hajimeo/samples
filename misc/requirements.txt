@@ -6,6 +6,7 @@ defusedxml==0.7.1
 docker==7.1.0
 idna==3.11
 jproperties==2.1.2
+lxml==6.0.2
 packaging==26.0
 python-dateutil==2.9.0.post0
 PyYAML==6.0.3
