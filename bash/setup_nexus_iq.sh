@@ -105,7 +105,10 @@ function f_install_iq() {
     if [ -z "${_port}" ]; then
         _port="$(_find_port "8070" "" "^8071$")"
         [ -z "${_port}" ] && return 1
-        _log "WARN" "Using port: *** ${_port} ***"; sleep 1
+        if [ ${_port} -ne 8070 ]; then
+            _log "WARN" "Using port: *** ${_port} ***"
+            sleep 1
+        fi
     fi
     if [ -n "${_dbname}" ]; then
         if [[ "${_dbname}" =~ _ ]]; then
@@ -202,7 +205,7 @@ function _update_db_config() {
     [ -z "${_cfg_file}" ] && _cfg_file="$(find ${_dirpath%/} -maxdepth 2 -type f -name 'config.yml' 2>/dev/null | sort -V | tail -n1)"
     [ -z "${_cfg_file}" ] && return 12
 
-    cat << EOF >"${_cfg_file}"
+    cat <<EOF >"${_cfg_file}"
 $(sed -n '/^database:/q;p' ${_cfg_file})
 database:
   type: postgresql
@@ -227,6 +230,27 @@ function _api_out() {
         cat "${_stdout_file}"
     fi
     return ${_rc}
+}
+
+function f_api_status_wait() {
+    local __doc__="Wait until the status is not PENDING"
+    local _status_path="${1}" #/rest/integration/applications/${_app_name}/evaluations/status/${_statusId}"
+    local _iq_url="${2}"
+    local _interval="${3:-3}"
+    local _how_many="${4:-60}"
+    [ -z "${_iq_url}" ] && _iq_url="$(_get_iq_url)"
+    for i in $(seq 1 ${_how_many}); do
+        sleep ${_interval}
+        local _http_code="$(_curl -o "${_TMP%/}/f_api_status_wait_$$.json" -w "%{http_code}" "${_iq_url%/}/${_status_path#/}")"
+        _log "INFO" "http_code: ${_http_code}"
+        # NOTE: maybe IQ does not no return 404 status from HDS?
+        if grep '"status":"PENDING"' "${_TMP%/}/f_api_status_wait_$$.json"; then
+            continue
+        fi
+        cat "${_TMP%/}/f_api_status_wait_$$.json"
+        _log "INFO" "Completed."
+        break
+    done
 }
 
 function f_api_config() {
@@ -293,8 +317,9 @@ function f_api_create_app() {
     local _iq_url="${3}"
     [ -z "${_iq_url}" ] && _iq_url="$(_get_iq_url "${_IQ_URL%/}")"
     if [ -z "${_app_pub_id}" ]; then
-        _log "ERROR" "Application public ID is required."
-        return 1
+        _log "WARN" "Application public ID is required. Using 'sandbox-application'"
+        _app_pub_id="sandbox-application"
+        sleep 2
     fi
     local _org_int_id="$(f_api_orgId "${_create_under_org}" "Y")"
     [ -z "${_org_int_id}" ] && return 11
@@ -312,7 +337,7 @@ function f_api_role_mapping() {
     local _external_id="$2" # login username, LDAP/AD groupname etc.
     local _apporg_name="${3:-"Root Organization"}"
     local _user_or_group="${4:-"group"}"
-    local _app_or_org="${5:-"organization"}"    # or 'application'
+    local _app_or_org="${5:-"organization"}" # or 'application'
     local _iq_url="${6}"
     [ -z "${_iq_url}" ] && _iq_url="$(_get_iq_url "${_IQ_URL%/}")"
     local _role_int_id="$(_curl "${_iq_url%/}/api/v2/roles" | python -c "import sys,json
@@ -383,7 +408,7 @@ function _gen_comp_id() {
             _comp_id="{\"packageUrl\":\"${_purl}\"}"
         fi
     elif [[ "${_component_identifier}" =~ coordinates ]]; then
-        _comp_id="{\"componentIdentifier\":${_component_identifier}}"   # NOTE: don't need "hash":null, ?
+        _comp_id="{\"componentIdentifier\":${_component_identifier}}" # NOTE: don't need "hash":null, ?
     else
         _log "WARN" "Unsupported Component Identifier: ${_component_identifier}"
         return 1
@@ -392,9 +417,8 @@ function _gen_comp_id() {
 }
 
 #f_api_comp_details "pkg:maven/log4j/log4j@1.2.12?type=jar"
-#f_api_comp_details '{"packageUrl":"pkg:npm/@nx/devkit@20.9.0"}'
-#f_api_comp_details '{"packageUrl":"pkg:npm/@posthog/plugin-server@1.10.7"}'
-#f_api_comp_details '{"packageUrl":"pkg:npm/color@5.0.1"}'
+#f_api_comp_details '{"packageUrl":"pkg:npm/@accordproject/concerto-analysis@3.24.1"}'
+#f_api_comp_details '{"packageUrl":"pkg:pypi/ruff@0.15.5?extension=whl&qualifier=py3-none-macosx_11_0_arm64"}'
 #f_api_comp_details 'b0e4da108211e81700433e167ced88e6296b1def'
 #f_api_comp_details 'ipaddr.js : 2.3.0' # assuming npm
 function f_api_comp_details() {
@@ -427,6 +451,50 @@ function f_api_vul_details() {
     _curl "${_iq_url%/}/api/v2/vulnerabilities/${_vul_id}" -H "Content-Type: application/json" | _sortjson
 }
 
+function f_api_nxiq_rescan() {
+    local __doc__="Call Promote/promotion/move API. https://help.sonatype.com/iqserver/automating/rest-apis/promote-scan-rest-api---v2"
+    local _app_pub_id="${1:-"sandbox-application"}"
+    local _stage="${2-"build"}"
+    local _scanId="${3}"
+    local _promo_stage="${4:-"${_stage}"}"
+
+    local _iq_url="$(_get_iq_url "${_IQ_URL%/}")" || return $?
+    local _app_int_id="$(f_api_appIntId "${_app_pub_id}")" || return $?
+    _log "INFO" "Using application Internal Id = ${_app_int_id} for ${_app_pub_id} ..."
+    if [ -z "${_scanId}" ] || [ -z "${_stage}" ]; then
+        local _results="$(_curl "${_iq_url%/}/api/v2/reports/applications/${_app_int_id}" -H "Content-Type: application/json")" || return $?
+        [ -z "${_stage}" ] && return
+        # TODO: shouldn't use python as container doesn't have it.
+        local _repo_data_path="$(echo "${_results}" | python -c "import sys,json
+a=json.loads(sys.stdin.read())
+for r in a:
+    if '${_stage}' == r['stage']:
+        print(r['reportDataUrl'])
+        break")"
+        if [[ "${_repo_data_path}" =~ .+/([^/]+)/raw ]]; then
+            _scanId="${BASH_REMATCH[1]}"
+            _log "INFO" "Using scanId for stage = ${_stage} ..."
+        else
+            return
+        fi
+    fi
+    _log "INFO" "/api/v2/evaluation/applications/${_app_int_id}/promoteScan with '{\"scanId\":\"${_scanId}\",\"targetStageId\":\"${_stage}\"}' ..."
+    # TODO: shouldn't use python as container doesn't have it.
+    local _statusUrl="$(_curl "${_iq_url%/}/api/v2/evaluation/applications/${_app_int_id}/promoteScan" -H "Content-Type: application/json" -d '{"scanId":"'${_scanId}'","targetStageId":"'${_promo_stage}'"}' | python -c "import sys,json
+a=json.loads(sys.stdin.read())
+print(a['statusUrl'])")"
+    if [ -z "${_statusUrl}" ]; then
+        _log "ERROR" "promoteScan did not return 'statusUrl'"
+        return 1
+    fi
+    f_api_status_wait "${_statusUrl}" "${_iq_url}" || return $?
+    # TODO: shouldn't use python as container doesn't have it.
+    local _report_path="$(cat "${_TMP%/}/f_api_status_wait_$$.json" | python -c "import sys,json
+a=json.loads(sys.stdin.read())
+print(a['reportHtmlUrl'])")"
+    _log "INFO" "Report URL: ${_iq_url%/}/${_report_path}"
+}
+
 function f_api_eval() {
     local __doc__="/api/v2/evaluation/applications/\${_app_int_id}"
     local _app_pub_id="${1:-"sandbox-application"}"
@@ -456,19 +524,62 @@ function f_api_eval_scm() {
     _curl "${_iq_url%/}/api/v2/evaluation/applications/${_app_int_id}/sourceControlEvaluation" -H "Content-Type: application/json" -d '{"stageId":"'${_stage}'","branchName":"'${_branch}'"}' | _sortjson
 }
 
-function f_api_audit() {
-    local __doc__="/api/v2/auditLogs?startUtcDate=&endUtcDate="
-    local _startUtcDate="${1}"
-    local _endUtcDate="${2}"
-    local _saveTo="${3}"
-    [ -z "${_startUtcDate}" ] && _startUtcDate="$(date -u "+%Y-%m-%d")"
-    [ -z "${_endUtcDate}" ] && _endUtcDate="$(date -u "+%Y-%m-%d")"
-    [ -z "${_saveTo}" ] && _saveTo="./audit-${_startUtcDate}.log"
+function f_api_eval_firewall() {
+    local __doc__="POST /api/v2/firewall/components/{repositoryManagerId}/{repositoryId}/evaluate (https://help.sonatype.com/en/firewall-evaluation-api.html)"
+    local _repository_manager_id="${1}"
+    local _repository_id="${2}"
+    local _purl="${3}"   # "pkg:maven/commons-fileupload/commons-fileupload@1.0",
+    local _hash="${4}"   # 2366159e25523d99e96d05211a2fa5399c938735
+    local _format="${5}" # maven2
+    #local _pathname="${6}"  # "commons-fileupload/commons-fileupload/1.0/commons-fileupload-1.0.jar"
+    if [ -z "${_repository_manager_id}" ]; then
+        f_api_repositories_config ""
+        return $?
+    fi
+    if [ -z "${_repository_id}" ]; then
+        f_api_repositories_config "${_repository_manager_id}"
+        return $?
+    fi
+    if [ -z "${_purl}" ] && [ -z "${_pathname}" ]; then
+        _log "ERROR" "PURL or Pathname is required ( https://help.sonatype.com/en/package-url-and-component-identifiers.html )"
+        return 1
+    fi
+    if [ -z "${_hash}" ]; then
+        f_api_comp_details '{"packageUrl":"'${_purl}'"}'
+        return $?
+    fi
+    if [ -z "${_format}" ] && [ -n "${_purl}" ]; then
+        [[ "${_purl}" =~ ^pkg:([^/]+)/ ]] && _format="${BASH_REMATCH[1]}"
+        if [ "${_format}" == "maven" ]; then
+            _format="maven2"
+        fi
+    fi
+    cat <<EOF >${_TMP%/}/${FUNCNAME[0]}_comp_$$.json
+{
+  "format":"${_format}",
+  "components":
+  [
+    {
+      "packageUrl":"${_purl}",
+      "hash":"${_hash}"
+    }
+  ]
+}
+EOF
     local _iq_url="$(_get_iq_url "${_IQ_URL%/}")" || return $?
-    _curl "${_iq_url%/}/api/v2/auditLogs?startUtcDate=${_startUtcDate}&endUtcDate=${_endUtcDate}" -o "${_saveTo}"
+    _log "INFO" "/api/v2/firewall/components/${_repository_manager_id}/${_repository_id}/evaluate with ${_TMP%/}/${FUNCNAME[0]}_comp_$$.json ..."
+    _curl "${_iq_url%/}/api/v2/firewall/components/${_repository_manager_id}/${_repository_id}/evaluate" -H "Content-Type: application/json" -d@${_TMP%/}/${FUNCNAME[0]}_comp_$$.json | _sortjson
 }
 
-function f_api_report_success() {
+function f_api_report_history() {
+    local __doc__="API to get report history from /api/v2/reports/applications/{applicationId}/history"
+    local _app_pub_id="${1:-"sandbox-application"}"
+    local _iq_url="$(_get_iq_url "${_IQ_URL%/}")" || return $?
+    local _app_int_id="$(f_api_appIntId "${_app_pub_id}" "${_iq_url}")" || return $?
+    _curl "${_iq_url%/}/api/v2/reports/applications/${_app_int_id}/history" -H "Content-Type: application/json" | _sortjson
+}
+
+function f_api_success_metrics() {
     local __doc__="API to get Success Metrics *Weekly* report from /api/v2/reports/metrics"
     local _first_date_str="${1:-"1 week ago"}"
     local _last_date_str="${2:-"1 week ago"}"
@@ -486,13 +597,13 @@ function f_api_report_success() {
 
 function f_api_repositories_config() {
     local __doc__="API: GET /api/v2/firewall/repositories/configuration/{repositoryManagerId}"
-    local _repo_id="${1}"
+    local _repository_manager_id="${1}"
     local _iq_url="$(_get_iq_url "${_IQ_URL%/}")" || return $?
-    if [ -z "${_repo_id}" ]; then
+    if [ -z "${_repository_manager_id}" ]; then
         _curl "${_iq_url%/}/api/v2/firewall/repositoryManagers" | _sortjson
         return $?
     fi
-    _curl "${_iq_url%/}/api/v2/firewall/repositories/configuration/${_repo_id}" -o "${_TMP%/}/${FUNCNAME[0]}_$$.json"
+    _curl "${_iq_url%/}/api/v2/firewall/repositories/configuration/${_repository_manager_id}" -o "${_TMP%/}/${FUNCNAME[0]}_$$.json"
     _api_out "$?" "${_TMP%/}/${FUNCNAME[0]}_$$.json"
     return $?
 }
@@ -507,10 +618,22 @@ function f_api_repository_results() {
         _log "ERROR" "Search parameter JSON is required."
         return 1
     fi
-    echo ${_search_param_json} > ${_TMP%/}/${FUNCNAME[0]}_search_param_$$.json
+    echo ${_search_param_json} >${_TMP%/}/${FUNCNAME[0]}_search_param_$$.json
     _curl "${_iq_url%/}/api/experimental/repositories/${_owner_type}/${_owner_id}/results/details" -H "Content-Type: application/json" -d@"${_TMP%/}/${FUNCNAME[0]}_search_param_$$.json" -o "${_TMP%/}/${FUNCNAME[0]}_$$.json"
     _api_out "$?" "${_TMP%/}/${FUNCNAME[0]}_$$.json"
     return $?
+}
+
+function f_api_audit() {
+    local __doc__="/api/v2/auditLogs?startUtcDate=&endUtcDate="
+    local _startUtcDate="${1}"
+    local _endUtcDate="${2}"
+    local _saveTo="${3}"
+    [ -z "${_startUtcDate}" ] && _startUtcDate="$(date -u "+%Y-%m-%d")"
+    [ -z "${_endUtcDate}" ] && _endUtcDate="$(date -u "+%Y-%m-%d")"
+    [ -z "${_saveTo}" ] && _saveTo="./audit-${_startUtcDate}.log"
+    local _iq_url="$(_get_iq_url "${_IQ_URL%/}")" || return $?
+    _curl "${_iq_url%/}/api/v2/auditLogs?startUtcDate=${_startUtcDate}&endUtcDate=${_endUtcDate}" -o "${_saveTo}"
 }
 
 ### Misc. setup functions
@@ -628,6 +751,44 @@ Also update _IQ_URL. For example: export _IQ_URL=\"https://${_fqdn}:${_port}/\""
     _log "INFO" "To trust this certificate, _trust_ca \"\${_ca_pem}\""
 }
 
+function f_setup_oauth2_oidcserver() {
+    local __doc__="Setup OAuth2/OIDC for IQ v198+"
+    local _oidc_url="${1:-"http://localhost:9998/"}"
+    local _client_id="${2:-"web"}"
+    local _client_secret="${3:-"secret"}"
+    if ! f_api_config "" "/features/OAUTH2_ENABLED" "POST"; then
+        _log "WARN" "Failed to enable OAUTH2_ENABLED feature. Ignore this WARN if it's already enabled (non 400 HTTP Status)."; sleep 3
+    fi
+
+    if _curl "${_IQ_URL%/}/api/v2/config/oidc"; then
+        _log "WARN" "OIDC might be already configured."; sleep 3
+    fi
+
+    #    if ! f_api "/service/rest/internal/ui/oauth2" '{"idpJwksUrl":"'${_oidc_url%/}'/keys","idpJwsAlgorithm":"RS256","idpJwks":"","usernameClaim":"preferred_username","firstNameClaim":"given_name","lastNameClaim":"family_name","emailClaim":"email","groupsClaim":"groups","exactMatchClaims":{},"clientId":"'${_client_id}'","clientSecret":"'${_client_secret}'","idpAuthorizationUrl":"'${_oidc_url%/}'/auth","idpLogoutUrl":"'${_oidc_url%/}'/end_session","idpTokenUrl":"'${_oidc_url%/}'/oauth/token","authorizationCustomParams":{},"tokenRequestCustomParams":{}}' "PUT"; then
+    _curl "${_IQ_URL%/}/api/v2/config/oidc" -X PUT -H "Content-Type: application/json" \
+        -d '{
+               "oauth2Configuration": {
+                 "idpIssuer": "'${_oidc_url}'",
+                 "idpJwksUrl": "'${_oidc_url%/}'/keys",
+                 "idpJwsAlgorithm": "RS256",
+                 "usernameClaim": "preferred_username",
+                 "firstNameClaim":"given_name",
+                 "lastNameClaim":"family_name",
+                 "groupsClaim": "groups",
+                 "emailClaim": "email"
+               },
+               "oidcConfiguration": {
+                 "idpIssuer": "'${_oidc_url}'",
+                 "clientId": "'${_client_id}'",
+                 "clientSecret": "'${_client_secret}'",
+                 "idpAuthorizationUrl": "'${_oidc_url%/}'/auth",
+                 "idpTokenUrl": "'${_oidc_url%/}'/oauth/token"
+               }
+             }' || return $?
+    _log "INFO" "OIDC configuration is set. Please test with the OIDC"
+    _log "INFO" "f_config_update might be needed to update baseUrl for callback URL."
+}
+
 function f_setup_saml_simplesaml() {
     local __doc__="Setup SAML for SimpleSAML server."
     local _name="${1:-"simplesaml"}"
@@ -696,7 +857,7 @@ function f_setup_forward_proxy() {
     local __doc__="Setup Forward Proxy for IQ"
     local _host="${1:-"localhost"}"
     local _port="${2:-"8080"}"
-    local _nonProxyHosts_json="${3:-"[]"}"  # JSON array of non-proxy hosts, e.g. ["localhost"]
+    local _nonProxyHosts_json="${3:-"[]"}" # JSON array of non-proxy hosts, e.g. ["localhost"]
     local _username="${3}"
     local _password="${4}"
     if [ -n "${_username}" ]; then
@@ -710,7 +871,7 @@ function f_setup_forward_proxy() {
         _password="null"
     fi
     _curl "${_IQ_URL%/}/api/v2/config/httpProxyServer" -H "Content-Type: application/json" -X PUT -d '{"hostname":"'${_host}'","port":'${_port}',"username":'${_username}',"password":'${_password}',"passwordIsIncluded":true,"excludeHosts":'${_nonProxyHosts_json}'}' || return $?
-    local _pid="$(ps auxwww | grep -E 'java .+nexus-iq-server.+ server' | grep -vw grep | awk '{print $2}' | tail -n1)";
+    local _pid="$(ps auxwww | grep -E 'java .+nexus-iq-server.+ server' | grep -vw grep | awk '{print $2}' | tail -n1)"
     local _maybe_truststore=""
     if [ -n "${_pid}" ] && type jcmd &>/dev/null; then
         _maybe_truststore="$(jcmd "${_pid}" VM.system_properties | grep '^javax.net.ssl.trustStore' | cut -d'=' -f2)"
@@ -719,7 +880,7 @@ function f_setup_forward_proxy() {
             if [ -n "${_maybe_java_home}" ]; then
                 _maybe_truststore="$(find "${_maybe_java_home%/}" -maxdepth 3 -type f -name 'cacerts' | head -n1)"
                 [ $? -eq 0 ] &&
-                _maybe_truststore="${_maybe_java_home}/lib/security/cacerts"
+                    _maybe_truststore="${_maybe_java_home}/lib/security/cacerts"
             fi
         fi
     fi
@@ -797,7 +958,7 @@ function f_setup_scm() {
     local _git_url="${2}" # https://github.com/sonatype/support-apac-scm-test https://github.com/hajimeo/private-repo
     local _provider="${3:-"github"}"
     local _branch="${4:-"main"}"
-    local _scm_user="${5}"  # Some SCM provider (e.g. Azure and BitBucket) may require user name
+    local _scm_user="${5}" # Some SCM provider (e.g. Azure and BitBucket) may require user name
     local _token="${6:-"${_IQ_GIT_TOKEN:-"${GIT_TOKEN}"}"}"
     local _parent_org="${7:-"${_IQ_PARENT_ORG}"}"
     [ -z "${_org_name}" ] && _org_name="${_provider:-"scmtest"}-org"
@@ -1166,7 +1327,7 @@ function f_golang_versions() {
 
 function f_prep_docker_image_for_scan() {
     local __doc__="TODO: Incomplete. Generate an image for docker scanning"
-    local _base_img="${1:-"alpine:latest"}"    # dh1.standalone.localdomain:15000/alpine:3.7
+    local _base_img="${1:-"alpine:latest"}" # dh1.standalone.localdomain:15000/alpine:3.7
     local _host_port="${2}"
     local _tag_to="${3:-"${_TAG_TO}"}"
     local _num_layers="${4:-"${_NUM_LAYERS:-"1"}"}" # Can be used to test overwriting image
@@ -1174,7 +1335,7 @@ function f_prep_docker_image_for_scan() {
     local _usr="${7:-"${_ADMIN_USER}"}"
     local _pwd="${8:-"${_ADMIN_PWD}"}"
     [ -z "${_cmd}" ] && _cmd="$(_docker_cmd)"
-    [ -z "${_cmd}" ] && return 0    # If no docker command, just exist
+    [ -z "${_cmd}" ] && return 0 # If no docker command, just exist
 
     local _repo_tag="${_tag_to}"
     [ -n "${_host_port%/}" ] && _repo_tag="${_host_port%/}/${_tag_to}"
@@ -1184,7 +1345,7 @@ function f_prep_docker_image_for_scan() {
     fi
 
     # NOTE: docker build -f does not work (bug?)
-    local _build_dir="${HOME%/}/${FUNCNAME[0]}_build_tmp_dir_$(date +'%Y%m%d%H%M%S')"  # /tmp or /var/tmp fails on Ubuntu
+    local _build_dir="${HOME%/}/${FUNCNAME[0]}_build_tmp_dir_$(date +'%Y%m%d%H%M%S')" # /tmp or /var/tmp fails on Ubuntu
     if [ ! -d "${_build_dir%/}" ]; then
         mkdir -v -p ${_build_dir} || return $?
     fi
@@ -1196,10 +1357,10 @@ function f_prep_docker_image_for_scan() {
         #\nRUN apk add --no-cache mysql-client
         _build_str="${_build_str}\nRUN echo 'Adding layer ${i} for ${_tag_to} at $(date +'%Y%m%d%H%M%S') (R${RANDOM})' > /var/tmp/layer_${i}"
     done
-    echo -e "${_build_str}" > Dockerfile
+    echo -e "${_build_str}" >Dockerfile
     ${_cmd} build --rm -t ${_tag_to} .
     local _rc=$?
-    cd -  && mv -v ${_build_dir} ${_TMP%/}/
+    cd - && mv -v ${_build_dir} ${_TMP%/}/
     if [ ${_rc} -ne 0 ]; then
         _log "ERROR" "'${_cmd} build --rm -t ${_tag_to} .' failed (${_rc}, ${_TMP%/}/$(basename "${_build_dir}"))"
         return ${_rc}
@@ -1265,6 +1426,18 @@ function f_import_sbom() {
     _curl "${_iq_url%/}/api/v2/sbom/import?ignoreValidationError=true" -F file="@${_sbom_file}" -F applicationId="${_app_int_id}" -F applicationVersion="${_app_ver}" -X POST
 }
 
+function f_webgoat_jar_scan() {
+    local __doc__="Scan WebGoat jar file"
+    local _ver="${1:-"2025.3"}"
+    local _app_name="${2:-"sandbox-application"}"
+    local _stage="${3:-"build"}"
+    local _filename="webgoat-${_ver}.jar"
+    if [ ! -s "${_TMP%/}/${_filename}" ]; then
+        curl -o ${_TMP%/}/${_filename} -L "https://github.com/WebGoat/WebGoat/releases/download/v2025.3/${_filename}" || return $?
+    fi
+    f_cli "${_TMP%/}/${_filename}" "${_app_name}" "${_stage}" || return $?
+}
+
 function f_dummy_scans() {
     local __doc__="Generate dummy reports by scanning (dummy) scan targets against one application"
     local _scan_target="${1}"
@@ -1292,7 +1465,7 @@ function f_dummy_scans() {
     for i in $(eval "seq ${_seq_start} ${_seq_end}"); do
         local _this_scan_target="${_scan_target}"
         if [ -z "${_scan_target}" ]; then
-            echo "test at $(date +'%Y-%m-%d %H:%M:%S')" > dummy.txt
+            echo "test at $(date +'%Y-%m-%d %H:%M:%S')" >dummy.txt
             jar -cf ${_TMP%/}/dummy-${i}.jar dummy.txt || return $?
             rm -f dummy.txt
             _this_scan_target="${_TMP%/}/dummy-${i}.jar"
@@ -1313,17 +1486,17 @@ function f_dummy_scans() {
 #_NO_SCAN="Y" _IQ_CRED="testuser:testuser123" f_dummy_orgs_apps_with_scans "1000"
 #_HOW_MANY_ORG="10" _IQ_CRED="testuser:testuser123" f_dummy_orgs_apps_with_scans "100"
 #_SEQ_START="101" _HOW_MANY_ORG="10" _IQ_CRED="testuser:testuser123" f_dummy_orgs_apps_with_scans "100"
-# TODO: this may not be working properly.
+#_SCAN_TARGET="$HOME/Desktop/temp/jars/abbot-1.4.0.jar" f_dummy_orgs_apps_with_scans 2
 function f_dummy_orgs_apps_with_scans() {
     local __doc__="Generate dummy organisations, applications with dummy scan"
-    local _how_many="${1:-10}"  # how many applications to create
+    local _how_many="${1:-10}" # how many applications to create
     local _app_name_prefix="${2:-"dummy-app"}"
     local _org_name_prefix="${3:-"dummy-org"}"
     local _create_under_org="${4-"${_CREATE_UNDER_ORG:-"Sandbox Organization"}"}"
     local _scan_target="${5-"${_SCAN_TARGET}"}"   # If not given, use maven-policy-demo-1.3.0.jar
     local _iq_stage="${6:-${_IQ_STAGE:-"build"}}" #(source)|build|stage-release|release    #develop (and operate) is not in UI
     local _no_scan="${7-"${_NO_SCAN}"}"
-    local _how_many_org="${8:-"${_HOW_MANY_ORG:-5}"}"   # Used for parallel scan and also for number of orgs
+    local _how_many_org="${8:-"${_HOW_MANY_ORG:-5}"}" # Used for parallel scan and also for number of orgs
 
     local _seq_start="${_SEQ_START:-1}"
     local _seq_end="$((_seq_start + _how_many - 1))"
@@ -1355,12 +1528,12 @@ function f_dummy_orgs_apps_with_scans() {
             if [ ${_counter} -ge ${_how_many} ]; then
                 _last_one=true
                 _log "INFO" "Last Scan started (${_TMP%/}/${FUNCNAME[0]}_last_${j}.out) ... "
-                break   # reached to _how_many, so break the inner loop
+                break # reached to _how_many, so break the inner loop
             fi
         done &>/dev/null
         wait
         if ${_last_one}; then
-            _log "INFO" "Last Scan output: ${_TMP%/}/${FUNCNAME[0]}_last.out"
+            _log "INFO" "Last Scan output: ${_TMP%/}/${FUNCNAME[0]}_last_*.out"
             break
         else
             _log "INFO" "Scanned up to ${_counter}/${_how_many} ..."
@@ -1382,8 +1555,6 @@ function _dummy_orgs_apps_with_scans_inner() {
         _SIMPLE_SCAN="Y" f_cli "${_scan_target}" "${_app_name}" "${_iq_stage}"
     fi
 }
-
-
 
 ### Misc.
 function f_h2_console() {
@@ -1417,15 +1588,15 @@ function f_h2_console() {
         #if [ -s "${_iq_jar}" ]; then
         #    _h2_jar="${_iq_jar}"
         #else
-            if [ ! -s "${_TMP%/}/h2-${_h2_ver}.jar" ]; then
-                _log "INFO" "Downloading H2 ${_h2_ver} jar ..."
-                curl -f -o ${_TMP%/}/h2-${_h2_ver}.jar "https://repo1.maven.org/maven2/com/h2database/h2/${_h2_ver}/h2-${_h2_ver}.jar" || return $?
-            fi
-            _h2_jar="${_TMP%/}/h2-${_h2_ver}.jar"
+        if [ ! -s "${_TMP%/}/h2-${_h2_ver}.jar" ]; then
+            _log "INFO" "Downloading H2 ${_h2_ver} jar ..."
+            curl -f -o ${_TMP%/}/h2-${_h2_ver}.jar "https://repo1.maven.org/maven2/com/h2database/h2/${_h2_ver}/h2-${_h2_ver}.jar" || return $?
+        fi
+        _h2_jar="${_TMP%/}/h2-${_h2_ver}.jar"
         #fi
         _log "INFO" "Using ${_h2_jar} ..."
     fi
-    local _java="java"  # In case needs to change to java 8 / java 17
+    local _java="java" # In case needs to change to java 8 / java 17
     [ -n "${JAVA_HOME}" ] && _java="${JAVA_HOME%/}/bin/java"
     _log "INFO" "Starting H2 Console from \"${_baseDir}\" on http://localhost:${_webPort}/ ..."
     _log "INFO" "JDBC URL: jdbc:h2:./ods;DATABASE_TO_UPPER=FALSE;DB_CLOSE_DELAY=-1;LOCK_TIMEOUT=60000;MV_STORE=FALSE;DEFAULT_LOCK_TIMEOUT=600000;MV_STORE=FALSE;SCHEMA=insight_brain_ods (sa)"
@@ -1492,7 +1663,6 @@ function f_setup_service() {
         chmod u+x ${_app_dir%/}/nexus-iq-server.sh || return $?
     fi
 
-
     if [ -s ${_svc_file} ]; then
         _log "WARN" "${_svc_file} already exists. Overwriting..."
         sleep 3
@@ -1529,12 +1699,13 @@ EOF
 
 #JAVA_TOOL_OPTIONS="-agentlib:jdwp=transport=dt_socket,server=y,suspend=y,address=5007" f_cli
 #_IQ_CLI_OPT="-D containerScannerMode=sonatype" _IQ_CLI_VER="2.7.0-01" f_cli "container:sonatype/nexus-iq-server:1.198.0-alpine"
+#_IQ_CLI_OPT="-D containerScannerMode=sonatype" _IQ_CLI_VER="2.8.4-01" f_cli "container:https://registry.hub.docker.com/library/alpine:3.4"
 function f_cli() {
     local __doc__="Start IQ CLI https://help.sonatype.com/integrations/nexus-iq-cli#NexusIQCLI-Parameters"
     local _path="${1:-"./"}"
     # overwrite-able global variables
-    local _iq_app_id="${2:-${_IQ_APP_ID:-"sandbox-application"}}"
-    local _iq_stage="${3:-${_IQ_STAGE:-"build"}}" #develop|build|stage-release|release|operate
+    local _iq_app_id="${2:-${_IQ_APP_ID:-"sandbox-application"}}" # f_api_create_app to create
+    local _iq_stage="${3:-${_IQ_STAGE:-"build"}}"                 #develop|build|stage-release|release|operate
     local _iq_url="${4:-${_IQ_URL}}"
     local _iq_cli_ver="${5:-${_IQ_CLI_VER}}"
     local _iq_cli_opt="${6:-${_IQ_CLI_OPT}}" # -D containerScannerMode=sonatype -D fileIncludes="**/package-lock.json"
@@ -1609,6 +1780,7 @@ function f_cli() {
     fi
 }
 
+#JAVA_HOME="${JAVA_HOME_21}" f_mvn
 function f_mvn() {
     local __doc__="Start mvn with IQ plugin https://help.sonatype.com/en/sonatype-clm-for-maven.html"
     # overwrite-able global variables
