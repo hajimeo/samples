@@ -45,7 +45,7 @@ export insight_brain_ods.*_ancestor to ./export_dir;
 ```
 Or normal H2 SCRIPT command (somehow "NO DATA" does not work):
 ```
-echo "SCRIPT TO './nexus.sql'" | java -jar ./h2-console_v232.jar ./nexus.mv.db
+echo "SCRIPT TO './nexus.sql.gz' COMPRESSION GZIP" | java -jar ./h2-console_v232.jar ./nexus.mv.db
 ```
 NOTE: To compare with the PostgreSQL table dump, use `--column-inserts` in pg_dump, then `rg 'VALUES\s*\((.+)\);' -o -r '$1'`
 ```shell
