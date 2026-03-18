@@ -663,14 +663,14 @@ function f_setup_docker() {
     # add some data for xxxx-proxy
     _log "INFO" "Populating ${_prefix}-proxy repository with some image ..."
     # TODO: For IQ firewall/quarantine, might want to pull from https://hub.docker.com/r/sonatypecommunity/docker-policy-demo/tags
-    if ! _populate_docker_proxy; then
-        _log "WARN" "_populate_docker_proxy failed. May need f_setup_https (and FQDN) or 'Docker Bearer Token Realm' (not only for anonymous access)."
+    if ! _populate_docker_proxy_oras "" "18178"; then
+        _log "WARN" "_populate_docker_proxy_oras failed. May need f_setup_https (and FQDN) or 'Docker Bearer Token Realm' (not only for anonymous access)."
     fi
 
     # add some data for xxxx-hosted
     _log "INFO" "Populating ${_prefix}-hosted repository with some image ..."
-    if ! _populate_docker_hosted; then
-        _log "WARN" "_populate_docker_hosted failed. May need f_setup_https (and FQDN) or 'Docker Bearer Token Realm' (not only for anonymous access)."
+    if ! _populate_docker_hosted_oras "" "18181"; then
+        _log "WARN" "_populate_docker_hosted_oras failed. May need f_setup_https (and FQDN) or 'Docker Bearer Token Realm' (not only for anonymous access)."
     fi
     if type helm &>/dev/null; then
         if [ -s "${_TMP%/}/helm-oci-demo-0.1.0.tgz" ] || curl -sf -o ${_TMP%/}/helm-oci-demo-0.1.0.tgz -L "https://github.com/hajimeo/samples/raw/refs/heads/master/misc/helm-oci-demo-0.1.0.tgz"; then
@@ -692,21 +692,41 @@ function f_setup_docker() {
 
     # add some data for xxxx-group
     _log "INFO" "Populating ${_prefix}-group repository with some image via docker proxy repo ..."
-    _populate_docker_proxy "hello-world" "" "15000 4999"
+    _populate_docker_proxy_oras "hello-world:latest" "4999"
 }
 
-#_populate_docker_proxy "" "m1mac.standalone.localdomain:15000"
-function _populate_docker_proxy() {
+#_populate_docker_proxy_oras "" "m1mac.standalone.localdomain:15000"
+function _populate_docker_proxy_oras() {
     local _img_name="${1:-"alpine:3.7"}"    # To test OCI image: jenkins/jenkins:lts
-    local _host_port="${2:-"${r_DOCKER_PROXY:-"${r_DOCKER_GROUP:-"${r_NEXUS_URL}"}"}"}"
-    local _backup_ports="${3-"18179 18178 15000 443"}"
+    local _host_port="${2}"
+    local _usr="${3:-"${_ADMIN_USER}"}"
+    local _pwd="${4:-"${_ADMIN_PWD}"}"
 
+    f_install_oras || return $?
 
-    [ -z "${_host_port}" ] && _host_port="$(_get_docker_hostname)"
-
-    _log "INFO" "${_cmd} pull ${_host_port}/${_img_name}"
-    ${_cmd} pull ${_host_port}/${_img_name} || return $?
+    [[ "${_host_port}" =~ ^[0-9]+$ ]] && _host_port="$(_get_docker_hostname):${_host_port}"
+    [ -z "${_host_port}" ] && _host_port="$(_get_docker_hostname):8081/docker-proxy"
+    _log "INFO" "oras pull -u \"${_usr}\" ${_host_port%/}/${_img_name}"
+    oras pull --plain-http -u "${_usr}" -p "${_pwd}" ${_host_port%/}/${_img_name} -o /dev/null || return $?
 }
+
+function _populate_docker_hosted_oras() {
+    local _tag_to="${1}"
+    local _host_port="${2}"
+    local _usr="${3:-"${_ADMIN_USER}"}"
+    local _pwd="${4:-"${_ADMIN_PWD}"}"
+
+    f_install_oras || return $?
+
+    [[ "${_host_port}" =~ ^[0-9]+$ ]] && _host_port="$(_get_docker_hostname):${_host_port}"
+    [ -z "${_host_port}" ] && _host_port="$(_get_docker_hostname):8081/docker-hosted"
+    [ -z "${_tag_to}" ] && _tag_to="dummy-img-oras:test-$$"
+    #${_cmd} push ${_host_port}/${_tag_to} || return $?
+    echo "Test image content" > dummy-image-content_$$.txt
+    _log "INFO" "oras push -u \"${_usr}\" ${_host_port%/}/${_tag_to} ..."
+    oras push --plain-http -u "${_usr}" -p "${_pwd}" ${_host_port%/}/${_tag_to} dummy-image-content_$$.txt:application/vnd.docker.image.rootfs.diff.tar.gzip
+}
+
 # Example 1: RHEL UBI9 image
 #   _populate_docker_hosted "redhat/ubi9:9.4-1181" "local.standalone.localdomain:18182"
 # Example 2: with ssh port forwarding
@@ -725,8 +745,9 @@ function _populate_docker_hosted() {
     local _cmd="${6-"${r_DOCKER_CMD}"}"
     local _usr="${7:-"${_ADMIN_USER}"}"
     local _pwd="${8:-"${_ADMIN_PWD}"}"
-    # TODO: change this to use 'crane'
+    # NOTE: docker is required for this function
     [ -z "${_cmd}" ] && _cmd="$(_docker_cmd)"
+    type ${_cmd} &>/dev/null || { _log "WARN" "docker command '${_cmd}' not found. Please install docker or set DOCKER_CMD env var."; return 1; }
     [ -z "${_cmd}" ] && return 0    # If no docker command, just exist
     [ -z "${_host_port}" ] && _host_port="$(_get_docker_hostname)"
     if [[ ! "${_DOCKER_NO_LOGIN}" =~ [yY] ]]; then
@@ -736,12 +757,6 @@ function _populate_docker_hosted() {
 
     if [ -z "${_tag_to}" ]; then
         _tag_to="dummy-img-n${_num_layers}:latest"
-    fi
-    if ${_cmd} images --format "{{.Repository}}:{{.Tag}}" | grep -qE "^${_host_port%/}/${_tag_to}$"; then
-        _log "INFO" "'${_host_port%/}/${_tag_to}' already exists. Skipping the build ..."
-    else
-        local _build_dir="${HOME%/}/${FUNCNAME[0]}_build_tmp_dir_$(date +'%Y%m%d%H%M%S')"  # /tmp or /var/tmp fails on Ubuntu
-        _docker_build "${_base_img}" "${_tag_to}" "${_num_layers}" "" "${_build_dir}" "${_cmd}" || return $?
     fi
 
     # It seems newer docker appends "localhost/" so trying this one first.
@@ -808,7 +823,7 @@ function f_setup_yum() {
     local _prefix="${1:-"yum"}"
     local _bs_name="${2:-"${r_BLOBSTORE_NAME:-"${_BLOBTORE_NAME}"}"}"
     local _ds_name="${3:-"${r_DATASTORE_NAME:-"${_DATASTORE_NAME}"}"}"
-    local _yum_upload_path="${_YUM_UPLOAD_PATH:-"Packages"}"
+    local _yum_upload_path="${_YUM_UPLOAD_PATH:-"8/os/x86_64/Packages"}"
     [ -z "${_bs_name}" ] && _bs_name="$(_get_blobstore_name)"
     [ -z "${_ds_name}" ] && _ds_name="$(_get_datastore_name)"
     local _extra_sto_opt="$(_get_extra_sto_opt "${_ds_name}")"
@@ -834,8 +849,9 @@ function f_setup_yum() {
 
     # If no xxxx-hosted, create it
     if ! _is_repo_available "${_prefix}-hosted"; then
-        # NOTE: using '3' for repodataDepth because of using 7/os/x86_64/Packages (x86_64 is 3rd)
-        _apiS '{"action":"coreui_Repository","method":"create","data":[{"attributes":{"yum":{"repodataDepth":0,"deployPolicy":"PERMISSIVE"},"storage":{"blobStoreName":"'${_bs_name}'","writePolicy":"ALLOW","strictContentTypeValidation":true'${_extra_sto_opt}'},"cleanup":{"policyName":[]}},"name":"'${_prefix}'-hosted","format":"","type":"","url":"","online":true,"recipe":"yum-hosted"}],"type":"rpc"}' || return $?
+        # Get the repodataDepth by counting "/" in _yum_upload_path ("8/os/x86_64/Packages")
+        local _repodata_depth="$(echo "${_yum_upload_path}" | awk -F'/' '{print NF-1}')"
+        _apiS '{"action":"coreui_Repository","method":"create","data":[{"attributes":{"yum":{"repodataDepth":'${_repodata_depth:-0}',"deployPolicy":"PERMISSIVE"},"storage":{"blobStoreName":"'${_bs_name}'","writePolicy":"ALLOW","strictContentTypeValidation":true'${_extra_sto_opt}'},"cleanup":{"policyName":[]}},"name":"'${_prefix}'-hosted","format":"","type":"","url":"","online":true,"recipe":"yum-hosted"}],"type":"rpc"}' || return $?
     fi
     # add some data for xxxx-hosted
     local _upload_file=""   #$(_rpm_build "test-rpm" "9.9.9" "1" 2>/dev/null)
@@ -862,11 +878,11 @@ function f_setup_yum() {
         _apiS '{"action":"coreui_Repository","method":"create","data":[{"attributes":{"storage":{"blobStoreName":"'${_bs_name}'","strictContentTypeValidation":true'${_extra_sto_opt}'},"group":{"memberNames":["'${_prefix}'-hosted","'${_prefix}'-proxy"]}},"name":"'${_prefix}'-group","format":"","type":"","url":"","online":true,"recipe":"yum-group"}],"type":"rpc"}' || return $?
     fi
     # add some data for xxxx-group
-    #f_get_asset "${_prefix}-group" "7/os/x86_64/Packages/$(basename ${_upload_file})"
-    #f_get_asset "${_prefix}-hosted" "7/os/x86_64/repodata/repomd.xml"
-    #f_get_asset "${_prefix}-proxy" "7/os/x86_64/repodata/repomd.xml"
+    #f_get_asset "${_prefix}-group" "8/os/x86_64/Packages/$(basename ${_upload_file})"
+    #f_get_asset "${_prefix}-hosted" "8/os/x86_64/repodata/repomd.xml"
+    #f_get_asset "${_prefix}-proxy" "8/os/x86_64/repodata/repomd.xml"
     # This can be very slow ...
-    _ASYNC_CURL="Y" f_get_asset "${_prefix}-group" "7/os/x86_64/repodata/repomd.xml"
+    _ASYNC_CURL="Y" f_get_asset "${_prefix}-group" "8/os/x86_64/repodata/repomd.xml"
 }
 function _rpm_build() {
     # https://stackoverflow.com/questions/880227/what-is-the-minimum-i-have-to-do-to-create-an-rpm-file
@@ -1219,7 +1235,6 @@ function f_setup_cocoapods() {
     if ! _is_repo_available "${_prefix}-proxy"; then
         _apiS '{"action":"coreui_Repository","method":"create","data":[{"attributes":{"proxy":{"remoteUrl":"https://cdn.cocoapods.org/","contentMaxAge":1440,"metadataMaxAge":1440},"httpclient":{"blocked":false,"autoBlock":true,"connection":{"useTrustStore":false}},"storage":{"blobStoreName":"'${_bs_name}'","strictContentTypeValidation":true'${_extra_sto_opt}'},"negativeCache":{"enabled":true,"timeToLive":1440},"cleanup":{"policyName":[]}},"name":"'${_prefix}'-proxy","format":"","type":"","url":"","online":true,"routingRuleId":"","authEnabled":false,"httpRequestSettings":false,"recipe":"cocoapods-proxy"}],"type":"rpc"}' || return $?
     fi
-    # add some data for xxxx-proxy
     # add some data for xxxx-proxy
     local _name="SDWebImage"
     local _ver="5.9.3"
@@ -1897,8 +1912,12 @@ function f_create_azure_blobstore() {
     export AZURE_STORAGE_CONNECTION_STRING=\"AccountName=\${AZURE_STORAGE_ACCOUNT_NAME};AccountKey=\${AZURE_STORAGE_ACCOUNT_KEY};\"
     az storage container list #--output table
     #az storage container create --name ${_container_name}
-    az storage blob list --container-name ${_container_name} --output table
+    az storage blob list --container-name ${_container_name} --output table --num-results \"*\"
+    az storage blob list --container-name ${_container_name} --prefix metadata.properties
     az storage blob download --container-name ${_container_name} --name metadata.properties --file ./az_dl.tmp && echo '----' && cat ./az_dl.tmp
+    echo \"rebuildDeletedBlobIndex=true\" >> ./az_dl.tmp
+    az storage blob upload --container-name ${_container_name} --name metadata.properties --file ./az_dl.tmp --overwrite
+    az storage blob delete-batch -s ${_container_name} --pattern "content/*"
     "
 }
 
@@ -2722,7 +2741,7 @@ function f_create_csel() {
     local _expression="${2:-"path =^ '/'"}" # TODO: currently can't use double quotes. Probably no need "format == 'raw'" in newer versions
     local _repo="${3-"*"}"
     local _format="${4-"*"}"
-    local _actions="${5:-"${_CSEL_ACTIONS:-"browse,read,edit,add,delete"}"}"   # comma separated actions
+    local _actions="${5:-"${_CSEL_ACTIONS:-"browse,read,edit,add,delete"}"}"   # comma separated actions or "ALL"
     if [ -z "${_csel_name}" ]; then
         _csel_name="csel-test"
         if [ -n "${_format}" ] && [ "${_format}" != "*" ]; then
@@ -2730,7 +2749,8 @@ function f_create_csel() {
         fi
         _log "INFO" "Using \"${_csel_name}\" as content selector name ..."
     fi
-    f_api "/service/rest/v1/security/content-selectors" "{\"name\":\"${_csel_name}\",\"description\":\"\",\"expression\":\"${_expression}\"}" || return $?
+    echo "{\"name\":\"${_csel_name}\",\"description\":\"\",\"expression\":\"${_expression}\"}" > ${_TMP%/}/csel_$$.json
+    f_api "/service/rest/v1/security/content-selectors" "@${_TMP%/}/csel_$$.json" || return $?
 
     if [ -n "${_format}" ] && [ "${_format}" != "*" ] && [ "${_repo}" == "*" ]; then
         local _ver="$(_get_version)"
@@ -2864,10 +2884,17 @@ function f_install_oras() {
     local __doc__="Install ORAS https://oras.land/docs/installation/"
     local _install_dir="${1:-"${_SHARE_DIR%/}/oras"}"
     local _ver="${2:-"1.3.0"}"
-    if [ -x "${_install_dir%/}/oras" ]; then
-        _log "DEBUG" "${_install_dir%/}/oras already exists and executable. reusing ..."; sleep 1
+    if type oras &>/dev/null; then
+        _log "INFO" "oras is already in the PATH."
         return 0
     fi
+    if [ -s "${_install_dir%/}/oras" ]; then
+        _log "INFO" "${_install_dir%/}/oras already exists and executable. adding in PATH ..."; sleep 1
+        chmod u+x ${_install_dir%/}/oras || return $?
+        export PATH="${_install_dir%/}/oras:$PATH"
+        return 0
+    fi
+
     if [ ! -d "${_install_dir%/}" ]; then
         mkdir -v -p "${_install_dir%/}" || return $?
     fi
@@ -2882,17 +2909,20 @@ function f_install_oras() {
     fi
     tar -zxf ${_install_dir%/}/${_file_name} -C ${_install_dir%/}/ || return $?
     chmod u+x ${_install_dir%/}/oras || return $?
-    if [ -d /usr/local/bin/ ]; then
-        ln -s ${_install_dir%/}/oras /usr/local/bin/oras
-    fi
+    #if [ -d /usr/local/bin/ ]; then
+    #    ln -s ${_install_dir%/}/oras /usr/local/bin/oras
+    #fi
+    _log "INFO" "export PATH=\"${_install_dir%/}/oras:\$PATH\""
+    export PATH="${_install_dir%/}/oras:$PATH"
     local _hostname="$(_get_docker_hostname)"
     cat << EOF
 [INFO] ORAS installed to ${_install_dir%/}/oras and linked to /usr/local/bin/oras (if exists).
 To check the installation, run 'oras version' or 'oras help'.
 
     oras login --plain-http ${_hostname}
-    oras push ${_hostname}/hello-text:v1 hi.txt
+    oras push --debug ${_hostname}/hello-text:v1 hi.txt
     oras cp --to-plain-http docker.io/library/alpine:3.7 ${_hostname}/docker-hosted/alpine-test:3.7
+    oras repo tags -u hosako -p ******** quay.io/hosako/test-repo
 EOF
 }
 
@@ -2937,7 +2967,7 @@ function f_start_forward_proxy() {
         _cmd="${_install_dir%/}/${_cmd}"
     fi
 
-    _cmd="${_cmd} -port ${_port}"
+    _cmd="${_cmd} --port ${_port}"
 
     if [[ "${_repl_cert}" =~ ^(y|Y) ]]; then
         if [ -z "${_key}" ] || [ -z "${_cert}" ]; then
@@ -3038,6 +3068,11 @@ function f_start_reverse_proxy() {
     sleep 2
     echo "[INFO] Running '${_cmd}' in background (may need to use '-Djavax.net.ssl.trustStoreType=KeychainStore')"
     echo "       PID: ${_pid}  Log: ${_TMP%/}/caddy_$$.log"
+}
+
+function f_install_keykloak() {
+    local __doc__="Install and start Keycloak server for SAML and OIDC with local LDAP (TODO)"
+
 }
 
 # friendly attributes {uid=[samluser], eduPersonAffiliation=[users], givenName=[saml], eduPersonPrincipalName=[samluser@standalone.localdomain], cn=[Saml User], sn=[user]}
@@ -3142,19 +3177,19 @@ function f_setup_saml_simplesaml() {
     if [ ! -s "${_idp_metadata}" ]; then
         echo "Please specify _idp_metadata"; return 1
     fi
+    f_put_realms "SamlRealm"
     # Escaping \n on Mac is complicated so just removing new lines
     local _idp_meta_str="$(cat "${_idp_metadata}" | sed 's/^[ \t]*//;s/[ \t]*$//;s/\"/\\"/g' | tr -d '\n')"
     if ! f_api "/service/rest/v1/security/saml" "{\"entityId\":\"${_entityId}\",\"idpMetadata\":\"${_idp_meta_str}\",\"usernameAttribute\":\"uid\",\"firstNameAttribute\":\"givenName\",\"lastNameAttribute\":\"sn\",\"emailAttribute\":\"eduPersonPrincipalName\",\"groupsAttribute\":\"eduPersonAffiliation\",\"validateResponseSignature\":false,\"validateAssertionSignature\":false}" "PUT"; then
-        echo "If SAML is already configured, please try 'DELETE /service/rest/v1/security/saml' first."
+        echo "If SAML is already configured, please try 'f_api /service/rest/v1/security/saml \"\" DELETE' first."
         return 1
     fi
-    f_put_realms "SamlRealm"
 }
 
 function f_start_oidc_server() {
     # Zitadel/oidc clone: https://github.com/hajimeo/oidc/tree/main/example/server
-    local __doc__="Install and start a dummy OIDC service"
-    local _redirect_urls="${1:-"${_NEXUS_URL%/}/oidc/callback,${_NEXUS_URL%/}/oidc/callback?hash=#browse/welcome,http://localhost:9999/auth/callback"}"
+    local __doc__="Install and start a dummy OIDC service: https://github.com/hajimeo/oidc/blob/main/README.md#how-to-use-it"
+    local _redirect_urls="${1-"http://localhost:9999/auth/callback"}"
     local _install_dir="${2:-"${_SHARE_DIR%/}/oidcserver"}"
     local _users_json="${3:-"${_install_dir%/}/oidcserver-users.json"}"
 
@@ -3175,7 +3210,21 @@ function f_start_oidc_server() {
     #    curl -sSf -o "${_users_json}" -L "https://raw.githubusercontent.com/hajimeo/samples/master/misc/oidcserver-users.json" --compressed  || return $?
     #fi
 
-    export REDIRECT_URI=${_redirect_urls}
+    if [ -n "${_NEXUS_URL%/}" ]; then
+        if [ -n "${_redirect_urls%,}" ]; then
+            _redirect_urls="${_redirect_urls%,},"
+        fi
+        _redirect_urls="${_redirect_urls}${_NEXUS_URL%/}/oidc/callback,${_NEXUS_URL%/}/oidc/callback?hash=#browse/welcome"
+    fi
+    if [ -n "${_IQ_URL%/}" ]; then
+        if [ -n "${_redirect_urls%,}" ]; then
+            _redirect_urls="${_redirect_urls%,},"
+        fi
+        _redirect_urls="${_redirect_urls}${_IQ_URL%/}/oidc/callback"
+    fi
+
+    _log "INFO" "REDIRECT_URI\"${_redirect_urls}\" as REDIRECT_URI"; sleep 1
+    export REDIRECT_URI="${_redirect_urls}"
     _log "INFO" "Starting OIDC service with REDIRECT_URI: ${REDIRECT_URI} ..."
     eval "${_cmd}" &> ${_TMP%/}/oidcserver_$$.log &
     local _pid="$!"
@@ -3188,6 +3237,7 @@ function f_start_oidc_server() {
     echo "       PID: ${_pid}  Log: ${_TMP%/}/oidcserver_$$.log"
     echo "[INFO] Please execute 'f_setup_oauth2_oidcserver'."
 }
+
 function f_setup_oauth2_oidcserver() {
     local __doc__="Setup OAuth2 for Nexus3 for oidcserver"
     local _oidc_url="${1:-"http://localhost:9998/"}"
@@ -3302,10 +3352,10 @@ function f_start_ldap_server() {
     echo "To test group mappings (space may need to be changed to %20):"
     echo "    curl -v -u \"cn=ldapadmin,dc=standalone,dc=localdomain\" -k \"ldap://${_host:-"localhost"}:${_port:-"389"}/ou=users,dc=standalone,dc=localdomain?dn,cn,mail,memberof?sub?(&(objectClass=posixAccount)(uid=ldapuser))\"" # + userFilter
     # echo "To test: LDAPTLS_REQCERT=never ldapsearch -H ldap://${_host}:${_port} -b 'dc=standalone,dc=localdomain' -D 'admin@standalone.localdomain' -w '${_LDAP_PWD:-"secret12"}' -s sub '(&(objectClass=posixAccount)(uid=*))'"
-    # TODO: Bind request: curl -v -u "cn=ldapuser,ou=ipausers,ou=users,dc=standalone,dc=localdomain:ldapuser" -k "ldap://${_host:-"localhost"}:${_port:-"389"}/dc=standalone,dc=localdomain""   # + userFilter
+    # TODO: Bind request: curl -v -u "cn=ldapuser,ou=ipausers,ou=users,dc=standalone,dc=localdomain:ldapuser" -k "ldap://${_host:-"localhost"}:${_port:-"8389"}/dc=standalone,dc=localdomain"   # + userFilter
     echo "    # For STATIC group mapping type:"
     # groupIDAttribute is returned
-    echo "    curl -v -u \"cn=ldapadmin,dc=standalone,dc=localdomain\" -k \"ldap://${_host:-"localhost"}:${_port:-"389"}/ou=users,dc=standalone,dc=localdomain?cn?sub?(&(objectClass=posixGroup)(cn=*)(memberUid=ldapuser))\"" # + userFilter
+    echo "    curl -v -u \"cn=ldapadmin,dc=standalone,dc=localdomain\" -k \"ldap://${_host:-"localhost"}:${_port:-"8389"}/ou=users,dc=standalone,dc=localdomain?cn?sub?(&(objectClass=posixGroup)(cn=*)(memberUid=ldapuser))\"" # + userFilter
 }
 function f_gen_glauth_groups_config() {
     local __doc__="Generate/output glauth groups config"
@@ -3574,9 +3624,11 @@ function _gen_mvn_settings() {
 EOF
 }
 
-#f_deploy_maven "maven-hosted" "/tmp/dummy.jar" "my.deploy.test:dummy:1.0" "-Dpackaging=jar -DcreateChecksum=true"
+#_gen_dummy_jar "${_TMP%/}/dummy.jar"
+#f_deploy_maven "maven-hosted" "${_TMP%/}/dummy.jar" "my.deploy.test:dummy:1.0" "-Dpackaging=jar -DcreateChecksum=true"
 # If Nexus 2, use `export _REPO_PATH_OVERRIDE="content/repositories"`
 function f_deploy_maven() {
+    local __doc__="Deploy/Upload a dummy jar file into maven hosted repository by using mvn deploy:deploy-file"
     local _repo_name="${1}"
     local _file="${2}"
     local _gav="${3}"
