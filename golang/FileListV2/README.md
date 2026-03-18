@@ -165,7 +165,7 @@ rg -o -r '$1' ',size=(\d+)' /tmp/filelist_raw-hosted_props.tsv | awk '{ c+=1;s+=
 Dry-run style collection first (`-H` no header):
 
 ```bash
-filelist2 -b "$BLOB_STORE" -pRx "@Bucket\.repo-name=raw-hosted,.+deleted=true" -P -H -BytesChk -c 80 -s /tmp/filelist_raw-hosted_soft-deleted.tsv
+filelist2 -b "$BLOB_STORE" -mDF "$(date -d "1 day ago" +%Y-%m-%d)" -pRx "@BlobStore\.blob-name=/dummies/test_subdir1/.+@Bucket\.repo-name=raw-hosted,.+deleted=true" -P -H -BytesChk -c 80 -s /tmp/filelist_raw-hosted_soft-deleted.tsv
 ```
 
 Then review the TSV (for example, remove `BYTES_MISSING` lines), and apply marker removal with `-RDel`:
