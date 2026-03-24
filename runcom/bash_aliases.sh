@@ -51,6 +51,21 @@ alias gzipk='gzip -k'
 # not using sudo which may generate error if /var/db/locate.database is not accessible
 [ -s /usr/libexec/locate.updatedb ] && alias updatedb='sudo FILESYSTEMS="hfs ufs apfs exfat" /usr/libexec/locate.updatedb'
 
+#type zsh &>/dev/null && alias zzhi='env /usr/bin/arch -x86_64 /bin/zsh —-login'
+type zsh &>/dev/null && alias ibrew="arch -x86_64 /usr/local/bin/brew"
+type zsh &>/dev/null && alias pbrew="ALL_PROXY=http://proxyuser:proxypwd@dh1:28081 arch -x86_64 /usr/local/bin/brew"
+
+
+## Common software/command but need to install #######################################################################
+alias qcsv='q -O -d"," -T --disable-double-double-quoting'
+alias qtsv="q -O -T -d$'\t'"
+alias pgbg='pgbadger --timezone 0'
+export TABBY_DISABLE_USAGE_COLLECTION=1 # just in case
+alias tabby_start='TABBY_DISABLE_USAGE_COLLECTION=1 tabby serve --device metal --model TabbyML/StarCoder-1B &>/tmp/tabby.out &'
+alias caddy_reverse='caddy reverse-proxy --debug --change-host-header --header-up "REMOTE_USER: admin" --to '
+alias codeNexus='codium -r $HOME/IdeaProjects/nexus-internal'
+
+
 ## Git #################################################################################################################
 # Show current tag
 alias git_tag_crt='git describe --tags'
@@ -94,6 +109,7 @@ function git_search() {
     for c in $(git -C "${_git_repo}" log --all --grep "$_search" | grep ^commit | cut -d ' ' -f 2); do git branch -r --contains $c; done
     for c in $(git -C "${_git_repo}" log --all --grep "$_search" | grep ^commit | cut -d ' ' -f 2); do git tag --contains $c; done
 }
+
 
 ## Python ##############################################################################################################
 #pip tends to cause a lot of issue and using -m is safer
@@ -153,25 +169,44 @@ alias jn='pyvN && jupyter-notebook &> /tmp/jupyter-notebook.out'
 # php -S 0.0.0.0:7999
 alias startWeb='python3 -m http.server' # specify port (default:8000) if python2: python -m SimpleHTTPServer 8000
 
-#type zsh &>/dev/null && alias zzhi='env /usr/bin/arch -x86_64 /bin/zsh —-login'
-type zsh &>/dev/null && alias ibrew="arch -x86_64 /usr/local/bin/brew"
-type zsh &>/dev/null && alias pbrew="ALL_PROXY=http://proxyuser:proxypwd@dh1:28081 arch -x86_64 /usr/local/bin/brew"
 
-## Common software/command but need to install #######################################################################
-alias qcsv='q -O -d"," -T --disable-double-double-quoting'
-alias qtsv="q -O -T -d$'\t'"
-alias pgbg='pgbadger --timezone 0'
-export TABBY_DISABLE_USAGE_COLLECTION=1 # just in case
-alias tabby_start='TABBY_DISABLE_USAGE_COLLECTION=1 tabby serve --device metal --model TabbyML/StarCoder-1B &>/tmp/tabby.out &'
-if type echolines &>/dev/null; then
-    alias line_duration='ELAPSED_REGEX="^\d\d\d\d-\d\d-\d\d.(\d\d:\d\d:\d\d.\d\d\d)" ASCII_DISABLED=Y echolines "" "^\d\d\d\d-\d\d-\d\d.\d\d:\d\d:\d\d.\d\d\d" "^\d\d\d\d-\d\d-\d\d.\d\d:\d\d:\d\d.\d\d\d" | rg "^#\s*([^\|]+)\|\s*([^\|]+)\|\s*([^\|]+)" -o -r "\"\$1\",\"\$2\",\$3"'
+## Java / jar related ####################################################################################
+# https://www.metabase.com/start/oss/jar
+alias mb='${JAVA_HOME_21%/}/bin/java --add-opens java.base/java.nio=ALL-UNNAMED -jar $HOME/Apps/metabase.jar' # port is 3000
+alias vnc='java -Xmx2g -jar $HOME/Apps/tightvnc-jviewer.jar &>/tmp/vnc-java-viewer.out &'
+#alias vnc='java -jar $HOME/Applications/VncViewer-1.9.0.jar &>/tmp/vnc-java-viewer.out &'
+alias samurai='java -Xmx4g -jar $HOME/Apps/samurali/samurai.jar &>/tmp/samurai.out &'
+alias tda='java -Xmx4g -jar $HOME/Apps/tda-bin-2.4/tda.jar &>/tmp/tda.out &' #https://github.com/irockel/tda/releases/latest
+alias gcviewer='java -Xmx4g -jar $HOME/Apps/gcviewer-1.37-SNAPSHOT.jar'      # &>/tmp/gcviewer.out & # Mac can't stop this so not put in background
+alias gitbucket='java -jar gitbucket.war &> /tmp/gitbucket.out &'            #https://github.com/gitbucket/gitbucket/releases/download/4.34.0/gitbucket.war
+#alias groovyi='JAVA_HOME="$JAVA_HOME_17" groovysh -e ":set interpreterMode true"'
+alias jenkins='${JAVA_HOME_17%/}/bin/java -Djava.util.logging.config.file=$HOME/Apps/jenkins-logging.properties -jar $HOME/Apps/jenkins.war' #curl -o $HOME/Apps/jenkins.war -L https://get.jenkins.io/war-stable/2.426.3/jenkins.war
+# http (but https fails) + reverse proxy server https://www.mock-server.com/mock_server/getting_started.html
+alias mockserver='java -jar $HOME/Apps/mockserver-netty.jar'                                      #curl -o $HOME/Apps/mockserver-netty.jar -L https://search.maven.org/remotecontent?filepath=org/mock-server/mockserver-netty/5.11.1/mockserver-netty-5.11.1-jar-with-dependencies.jar
+alias jkCli='java -jar $HOME/Apps/jenkins-cli.jar -s http://localhost:8080/ -auth admin:admin123' #curl -o $HOME/Apps/jenkins-cli.jar -L http://localhost:8080/jnlpJars/jenkins-cli.jar
+[ -f $HOME/IdeaProjects/samples/misc/orient-console.jar ] && alias orient-console="${JAVA_HOME_8:-"/Library/Java/JavaVirtualMachines/zulu-8.jdk/Contents/Home"}/bin/java -jar $HOME/IdeaProjects/samples/misc/orient-console.jar"
+[ -f $HOME/IdeaProjects/samples/misc/h2-console.jar ] && alias h2-console="\$JAVA_HOME_17/bin/java -jar $HOME/IdeaProjects/samples/misc/h2-console.jar"
+[ -f $HOME/IdeaProjects/samples/misc/h2-console_v200.jar ] && alias h2-console_v200="\$JAVA_HOME_17/bin/java -jar $HOME/IdeaProjects/samples/misc/h2-console_v200.jar"
+[ -f $HOME/IdeaProjects/samples/misc/h2-console_v224.jar ] && alias h2-console_v224="\$JAVA_HOME_17/bin/java -jar $HOME/IdeaProjects/samples/misc/h2-console_v224.jar"
+# requires Java 11 or higher
+[ -f $HOME/IdeaProjects/samples/misc/h2-console_v232.jar ] && alias h2-console_v232="/opt/homebrew/opt/openjdk\@17/libexec/openjdk.jdk/Contents/Home/bin/java -jar $HOME/IdeaProjects/samples/misc/h2-console_v232.jar"
+[ -f $HOME/IdeaProjects/samples/misc/h2-console_v240.jar ] && alias h2-console_v240="/opt/homebrew/opt/openjdk\@17/libexec/openjdk.jdk/Contents/Home/bin/java -jar $HOME/IdeaProjects/samples/misc/h2-console_v240.jar"
+[ -f $HOME/IdeaProjects/samples/misc/pg-console.jar ] && alias pg-console="java -jar $HOME/IdeaProjects/samples/misc/pg-console.jar"
+#[ -f $HOME/IdeaProjects/samples/misc/blobpath.jar ] && alias blobpathJ="java -jar $HOME/IdeaProjects/samples/misc/blobpath.jar"
+# JAVA_HOME_11 is set in bash_profile.sh
+alias matJ11='/Applications/mat.app/Contents/MacOS/MemoryAnalyzer -vm ${JAVA_HOME_11%/}/bin'
+if [ -s $HOME/IdeaProjects/samples/bash/patch_java_v2.sh ]; then
+    alias patchJava='$HOME/IdeaProjects/samples/bash/patch_java_v2.sh'
 fi
 
-### Docker/K8s/VM related
+
+### Docker/K8s/VM related ########################################################################################
 #alias rdocker="DOCKER_HOST='tcp://dh1:2375' docker"
 alias rdocker="ssh dh1 docker"
 alias docker_rmi_old="docker images | grep '(years|[0-9][0-9]+ months) ago' | awk '{print \$3}' | uniq | xargs -I{} docker rmi {}"
 alias docker_rm_old="docker ps -a | grep -E '(years|[0-9][0-9]+ months) ago\s+Exited' | awk '{print \$1}' | xargs -P2 -I{} docker rm {}"
+# virt-manager remembers the connections, so normally would not need to start in this way.
+alias kvm='virt-manager -c "qemu+ssh://virtuser@dh1/system?socket=/var/run/libvirt/libvirt-sock" &>/tmp/virt-manager.out &'
 # skopeoCp nxrm3helmha-k8s.standalone.localdomain/docker-quay-proxy/buildah/stable:v1.21.4 "nxrm3helmha-k8s.standalone.localdomain/docker-quay-proxy/buildah/stable:v1.21.4_amd64" "amd64"
 function skopeoCp() {
     local _src="${1}"   # nxrm3helmha-k8s.standalone.localdomain/docker-proxy/buildah/stable:v1.21.4
@@ -247,7 +282,8 @@ if [ -s "$HOME/.kube/support_test_config" ]; then
     alias kcSpt='aws-vault exec support -- kubectl'
 fi
 
-## Non default (need to install some complex software and/or develop script) alias commands ############################
+
+## Non default (usually my developped scripts) alias commands ############################
 # Load/source my own searching utility functions / scripts
 #mkdir -p $HOME/IdeaProjects/samples/bash; curl -o $HOME/IdeaProjects/samples/bash/log_search.sh https://raw.githubusercontent.com/hajimeo/samples/master/bash/log_search.sh
 if [ -d $HOME/IdeaProjects/samples/bash ]; then
@@ -268,42 +304,12 @@ if [ -d $HOME/IdeaProjects/work/bash ]; then
 fi
 #alias xmldiff="python $HOME/IdeaProjects/samples/python/xml_parser.py" # this is for Hadoop xml files
 
-alias caddy_reverse='caddy reverse-proxy --debug --change-host-header --header-up "REMOTE_USER: admin" --to '
-
-## VM related
-# virt-manager remembers the connections, so normally would not need to start in this way.
-alias kvm='virt-manager -c "qemu+ssh://virtuser@dh1/system?socket=/var/run/libvirt/libvirt-sock" &>/tmp/virt-manager.out &'
-
-## Java / jar related
-# https://www.metabase.com/start/oss/jar
-alias mb='${JAVA_HOME_21%/}/bin/java --add-opens java.base/java.nio=ALL-UNNAMED -jar $HOME/Apps/metabase.jar' # port is 3000
-alias vnc='java -Xmx2g -jar $HOME/Apps/tightvnc-jviewer.jar &>/tmp/vnc-java-viewer.out &'
-#alias vnc='java -jar $HOME/Applications/VncViewer-1.9.0.jar &>/tmp/vnc-java-viewer.out &'
-alias samurai='java -Xmx4g -jar $HOME/Apps/samurali/samurai.jar &>/tmp/samurai.out &'
-alias tda='java -Xmx4g -jar $HOME/Apps/tda-bin-2.4/tda.jar &>/tmp/tda.out &' #https://github.com/irockel/tda/releases/latest
-alias gcviewer='java -Xmx4g -jar $HOME/Apps/gcviewer-1.37-SNAPSHOT.jar'      # &>/tmp/gcviewer.out & # Mac can't stop this so not put in background
-alias gitbucket='java -jar gitbucket.war &> /tmp/gitbucket.out &'            #https://github.com/gitbucket/gitbucket/releases/download/4.34.0/gitbucket.war
-#alias groovyi='JAVA_HOME="$JAVA_HOME_17" groovysh -e ":set interpreterMode true"'
-alias jenkins='${JAVA_HOME_17%/}/bin/java -Djava.util.logging.config.file=$HOME/Apps/jenkins-logging.properties -jar $HOME/Apps/jenkins.war' #curl -o $HOME/Apps/jenkins.war -L https://get.jenkins.io/war-stable/2.426.3/jenkins.war
-# http (but https fails) + reverse proxy server https://www.mock-server.com/mock_server/getting_started.html
-alias mockserver='java -jar $HOME/Apps/mockserver-netty.jar'                                      #curl -o $HOME/Apps/mockserver-netty.jar -L https://search.maven.org/remotecontent?filepath=org/mock-server/mockserver-netty/5.11.1/mockserver-netty-5.11.1-jar-with-dependencies.jar
-alias jkCli='java -jar $HOME/Apps/jenkins-cli.jar -s http://localhost:8080/ -auth admin:admin123' #curl -o $HOME/Apps/jenkins-cli.jar -L http://localhost:8080/jnlpJars/jenkins-cli.jar
-[ -f $HOME/IdeaProjects/samples/misc/orient-console.jar ] && alias orient-console="${JAVA_HOME_8:-"/Library/Java/JavaVirtualMachines/zulu-8.jdk/Contents/Home"}/bin/java -jar $HOME/IdeaProjects/samples/misc/orient-console.jar"
-[ -f $HOME/IdeaProjects/samples/misc/h2-console.jar ] && alias h2-console="\$JAVA_HOME_17/bin/java -jar $HOME/IdeaProjects/samples/misc/h2-console.jar"
-[ -f $HOME/IdeaProjects/samples/misc/h2-console_v200.jar ] && alias h2-console_v200="\$JAVA_HOME_17/bin/java -jar $HOME/IdeaProjects/samples/misc/h2-console_v200.jar"
-[ -f $HOME/IdeaProjects/samples/misc/h2-console_v224.jar ] && alias h2-console_v224="\$JAVA_HOME_17/bin/java -jar $HOME/IdeaProjects/samples/misc/h2-console_v224.jar"
-# requires Java 11 or higher
-[ -f $HOME/IdeaProjects/samples/misc/h2-console_v232.jar ] && alias h2-console_v232="/opt/homebrew/opt/openjdk\@17/libexec/openjdk.jdk/Contents/Home/bin/java -jar $HOME/IdeaProjects/samples/misc/h2-console_v232.jar"
-[ -f $HOME/IdeaProjects/samples/misc/h2-console_v240.jar ] && alias h2-console_v240="/opt/homebrew/opt/openjdk\@17/libexec/openjdk.jdk/Contents/Home/bin/java -jar $HOME/IdeaProjects/samples/misc/h2-console_v240.jar"
-[ -f $HOME/IdeaProjects/samples/misc/pg-console.jar ] && alias pg-console="java -jar $HOME/IdeaProjects/samples/misc/pg-console.jar"
-#[ -f $HOME/IdeaProjects/samples/misc/blobpath.jar ] && alias blobpathJ="java -jar $HOME/IdeaProjects/samples/misc/blobpath.jar"
-# JAVA_HOME_11 is set in bash_profile.sh
-alias matJ11='/Applications/mat.app/Contents/MacOS/MemoryAnalyzer -vm ${JAVA_HOME_11%/}/bin'
-if [ -s $HOME/IdeaProjects/samples/bash/patch_java_v2.sh ]; then
-    alias patchJava='$HOME/IdeaProjects/samples/bash/patch_java_v2.sh'
+if type echolines &>/dev/null; then
+    alias line_duration='ELAPSED_REGEX="^\d\d\d\d-\d\d-\d\d.(\d\d:\d\d:\d\d.\d\d\d)" ASCII_DISABLED=Y echolines "" "^\d\d\d\d-\d\d-\d\d.\d\d:\d\d:\d\d.\d\d\d" "^\d\d\d\d-\d\d-\d\d.\d\d:\d\d:\d\d.\d\d\d" | rg "^#\s*([^\|]+)\|\s*([^\|]+)\|\s*([^\|]+)" -o -r "\"\$1\",\"\$2\",\$3"'
 fi
 
-## Chrome aliases for Mac (URL needs to be IP as hostname wouldn't be resolvable on remote)
+
+## Chrome aliases for Mac (URL needs to be IP as hostname wouldn't be resolvable on remote) ###########################
 #alias shib-local='open -na "Google Chrome" --args --user-data-dir=$HOME/.chromep/local --proxy-server=socks5://localhost:28081'
 #alias shib-dh1='open -na "Google Chrome" --args --user-data-dir=$HOME/.chromep/dh1 --proxy-server=socks5://dh1:28081 http://192.168.1.31:4200/webuser/'
 alias chrome-work='open -na "Google Chrome" --args --user-data-dir=$HOME/.chromep/work'
@@ -316,7 +322,8 @@ alias kapaWeb='open -na "Google Chrome" --args --user-data-dir=$HOME/.chromep/wo
 # pretending windows chrome on Linux
 #alias winchrome='/opt/google/chrome/chrome --user-data-dir=$HOME/.chromep --proxy-server=socks5://localhost:38081  --user-agent="Mozilla/5.0 (Windows NT 10.0; WOW64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/88.0.4324.96 Safari/537.36"'
 
-## Work specific aliases
+
+## Work specific aliases ############################################################################################3
 # Slack API Search
 [ -s $HOME/IdeaProjects/samples/python/SimpleWebServer.py ] && alias slackS="pyvN && cd $HOME/IdeaProjects/samples/python/ && python3 ./SimpleWebServer.py &> /tmp/SimpleWebServer.out &"
 # up to python 3.11
@@ -324,6 +331,7 @@ alias smtpdemo='python -m smtpd -n -c DebuggingServer localhost:2500'
 if [ -s "/Users/hosako/IdeaProjects/work/demo-mcp/mcps.json" ]; then
     alias mcp-cli='mcphost -m ollama:qwen2.5 --config "/Users/hosako/IdeaProjects/work/demo-mcp/mcps.json"'
 fi
+
 
 ### Functions (some command syntax does not work with alias eg: sudo) ##################################################
 # mac doesn't have namei (util-linux)
