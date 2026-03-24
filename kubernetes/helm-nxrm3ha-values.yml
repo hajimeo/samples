@@ -105,7 +105,8 @@ statefulset:
     env:
       nexusDBName: nxrm3helmha
       nexusDBPort: 5432
-      install4jAddVmParams: '-Xms2g -Xmx2g -Dcom.redhat.fips=false -Dnexus.scripts.allowCreation=true -Dnexus.datastore.nexus.maximumPoolSize=10 -Dnexus.datastore.nexus.advanced=maxLifetime=30000 -Dnexus.jwt.expiry=28800'
+      # Also check the `nexus:` section below
+      install4jAddVmParams: '-Xms2g -Xmx2g -Dcom.redhat.fips=false -Dnexus.datastore.nexus.maximumPoolSize=10 -Dnexus.datastore.nexus.advanced=maxLifetime=30000'
       jdbcUrlParams: ?targetServerType=primary # Must start with a '?' e.g. '?foo=bar&baz=foo'
       zeroDowntimeEnabled: true
     additionalEnv:
@@ -164,6 +165,11 @@ secret:
       mountPath: /var/nexus-repo-license
 
 nexus:
+  properties:
+    override: true
+    data:
+      nexus.scripts.allowCreation: true
+      nexus.jwt.expiry: 28800
   # This seems to work after 'uninstall' even "Ingress.networking.k8s.io "nxrm3ha-nxrm-ha-docker-5000" is invalid:..."
   docker:
     enabled: true
