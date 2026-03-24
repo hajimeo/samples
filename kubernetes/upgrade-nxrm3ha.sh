@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Upgrade Nexus Repository Manager 3 HA to the latest version using Helm chart.
-set -euo pipefail
+#set -euo pipefail
 
 _current_dir="$(dirname "$(realpath "${BASH_SOURCE[0]}")")"
 VALUES_YAML="${VALUES_YAML:-"${_current_dir%/}/helm-nxrm3ha-values.yml"}"
