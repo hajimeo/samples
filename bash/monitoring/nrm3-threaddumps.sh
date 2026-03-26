@@ -23,6 +23,7 @@ OPTIONS:
     -s  Path to nexus-store.properties file (default empty = no DB check)
     -f  File to monitor (-r is required)
     -r  Regex (used in 'grep -E') to monitor -f file
+    -t  Used in "tail -n {t}" to monitor log file. Default -1 (all)
     -p  PID
     -o  Output directory (default WORD_DIR/log/tasks)
 EOF
@@ -33,6 +34,7 @@ EOF
 : "${_LIB_EXTRACT_DIR:=""}"
 _INTERVAL=2
 _COUNT=5
+_TAIL_N="-1"
 _STORE_FILE=""
 _LOG_FILE=""
 _REGEX=""
@@ -238,9 +240,9 @@ function tailStdout() {
         local jvmLog="${BASH_REMATCH[1]}"
         # Default is karaf.data (or PWD) + LogFile. Also, LogFile can be absolute path
         if [[ "${jvmLog}" =~ ^/ ]]; then
-            _cmd="tail -n -1 -f ${jvmLog}"
+            _cmd="tail -n ${_TAIL_N:-"-1"} -f ${jvmLog}"
         else
-            _cmd="tail -n -1 -f ${_installDir%/}/${jvmLog#/}"
+            _cmd="tail -n ${_TAIL_N:-"-1"} -f ${_installDir%/}/${jvmLog#/}"
         fi
     elif readlink -f /proc/${_pid}/fd/1 2>/dev/null | grep -q '/pipe:'; then
         #_cmd="cat /proc/${_pid}/fd/1"
@@ -397,7 +399,7 @@ main() {
     [ -z "${_REGEX}" ] && echo "'-f' is provided but no '-r'" >&2 && return 1
     echo "Monitoring ${_LOG_FILE} with '${_REGEX}' ..." >&2
     while true; do
-        if tail -n -1 -F "${_LOG_FILE}" | grep --line-buffered -m1 -E "${_REGEX}"; then
+        if tail -n ${_TAIL_N:-"-1"} -F "${_LOG_FILE}" | grep --line-buffered -m1 -E "${_REGEX}"; then
             trap "_stopping" SIGINT
             takeDumps "${_PID}" "${_COUNT}" "${_INTERVAL}" "${_PROP_FILE}" "${_INSTALL_DIR%/}" "${_outDir%/}"
             sleep 1
@@ -412,13 +414,16 @@ if [ "$0" = "${BASH_SOURCE[0]}" ]; then
         exit 0
     fi
 
-    while getopts "c:i:s:p:f:r:o:" opts; do
+    while getopts "c:i:t:s:p:f:r:o:" opts; do
         case $opts in
         c)
             [ -n "$OPTARG" ] && _COUNT="$OPTARG"
             ;;
         i)
             [ -n "$OPTARG" ] && _INTERVAL="$OPTARG"
+            ;;
+        t)
+            [ -n "$OPTARG" ] && _TAIL_N="$OPTARG"
             ;;
         s)
             _STORE_FILE="$OPTARG"
