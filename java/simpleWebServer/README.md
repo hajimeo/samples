@@ -28,6 +28,20 @@ Start the server from the project directory:
 java -jar target/simpleWebServer-1.0-SNAPSHOT.jar
 ```
 
+Use a custom port with a command-line argument:
+
+```bash
+java -jar target/simpleWebServer-1.0-SNAPSHOT.jar 9090
+```
+
+Or with an environment variable:
+
+```bash
+PORT=9090 java -jar target/simpleWebServer-1.0-SNAPSHOT.jar
+```
+
+If both are provided, the command-line argument takes precedence.
+
 You should see output similar to:
 
 ```text
@@ -61,4 +75,4 @@ The file is created in the server's current working directory.
 
 - Only `PUT` and `POST` are accepted on `/upload`.
 - Other HTTP methods return `405 Method Not Allowed`.
-- The server listens on port `8080`.
+- The default port is `8080`.

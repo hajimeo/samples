@@ -6,8 +6,8 @@ import java.net.InetSocketAddress;
 
 public class SimpleWebServer {
     public static void main(String[] args) throws Exception {
-        // Start server on port 8080
-        HttpServer server = HttpServer.create(new InetSocketAddress(8080), 0);
+        int port = resolvePort(args);
+        HttpServer server = HttpServer.create(new InetSocketAddress(port), 0);
 
         server.createContext("/upload", exchange -> {
             String method = exchange.getRequestMethod();
@@ -37,7 +37,7 @@ public class SimpleWebServer {
         server.setExecutor(null);
         server.start();
         System.out.println("Minimal server running.");
-        System.out.println("Send a PUT request to: http://localhost:8080/upload");
+        System.out.println("Send a PUT request to: http://localhost:" + port + "/upload");
     }
 
     private static void copy(InputStream input, FileOutputStream output) throws IOException {
@@ -46,5 +46,20 @@ public class SimpleWebServer {
         while ((read = input.read(buffer)) != -1) {
             output.write(buffer, 0, read);
         }
+    }
+
+    private static int resolvePort(String[] args) {
+        String rawPort = args.length > 0 ? args[0] : System.getenv("PORT");
+
+        if (rawPort == null || rawPort.trim().isEmpty()) {
+            return 8080;
+        }
+
+        int port = Integer.parseInt(rawPort.trim());
+        if (port < 1 || port > 65535) {
+            throw new IllegalArgumentException("Port must be between 1 and 65535");
+        }
+
+        return port;
     }
 }
