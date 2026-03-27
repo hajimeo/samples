@@ -1,5 +1,6 @@
 import com.sun.net.httpserver.HttpServer;
 import java.io.FileOutputStream;
+import java.io.IOException;
 import java.io.InputStream;
 import java.net.InetSocketAddress;
 
@@ -18,7 +19,7 @@ public class SimpleWebServer {
                 try (InputStream is = exchange.getRequestBody();
                      FileOutputStream os = new FileOutputStream("uploaded_test_file.bin")) {
 
-                    is.transferTo(os); // Convenient Java 9+ method to stream data
+                    copy(is, os);
                 }
 
                 String response = "File received successfully!\n";
@@ -37,5 +38,13 @@ public class SimpleWebServer {
         server.start();
         System.out.println("Minimal server running.");
         System.out.println("Send a PUT request to: http://localhost:8080/upload");
+    }
+
+    private static void copy(InputStream input, FileOutputStream output) throws IOException {
+        byte[] buffer = new byte[8192];
+        int read;
+        while ((read = input.read(buffer)) != -1) {
+            output.write(buffer, 0, read);
+        }
     }
 }
