@@ -10,8 +10,9 @@ A minimal Java HTTP server that accepts file uploads on `http://localhost:8080/u
 ## Build
 
 ```bash
-cd /Users/hosako/IdeaProjects/samples/java/simpleWebServer
+cd $HOME/IdeaProjects/samples/java/simpleWebServer
 mvn clean package
+cp target/simpleWebServer-1.0-SNAPSHOT.jar $HOME/IdeaProjects/samples/misc/simpleWebServer.jar
 ```
 
 This creates:
