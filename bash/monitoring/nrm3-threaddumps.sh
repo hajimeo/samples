@@ -383,7 +383,8 @@ main() {
     fi
 
     if [ -z "${_LOG_FILE}" ]; then
-        miscChecks "${_PID}" &>"${_outDir%/}/${_pfx}900.log" &
+        # Generating misc checks log only when non-monitoring mode as _pfx can be different
+        miscChecks "${_PID}" &> "${_outDir%/}/${_pfx}900.log" &
 
         if [ -s "${_STORE_FILE}" ] || [ -n "${jdbcUrl}" ]; then
             genDbConnTest
