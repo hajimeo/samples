@@ -22,7 +22,7 @@ USAGE:
     -s  Path to config.yml file
     -f  File to monitor (-r is required)
     -r  Regex (used in 'grep -E') to monitor -f file
-    -t  Used in "tail -n {t}" to monitor log file. Default -1 (all)
+    -t  Used in "tail -n {t}" to monitor log file. Default -1 (only new lines)
     -p  PID
     -o  Output directory (default /tmp)
 EOF
