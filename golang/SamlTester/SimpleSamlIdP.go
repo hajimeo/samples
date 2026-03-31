@@ -21,6 +21,7 @@ import (
 	"encoding/pem"
 	"flag"
 	"fmt"
+	"github.com/crewjam/saml"
 	"github.com/crewjam/saml/logger"
 	"github.com/crewjam/saml/samlidp"
 	"github.com/pkg/errors"
@@ -45,7 +46,13 @@ var key = func() crypto.PrivateKey {
 			logger.DefaultLogger.Fatalf("reading idp key: %s", err)
 		}
 	}
+	if len(keyData) == 0 {
+		return nil
+	}
 	b, _ := pem.Decode(keyData)
+	if b == nil {
+		logger.DefaultLogger.Fatalf("parsing idp key: failed to decode PEM")
+	}
 	k, err := x509.ParsePKCS1PrivateKey(b.Bytes)
 	if err != nil {
 		// try one more time
@@ -67,13 +74,55 @@ var cert = func() *x509.Certificate {
 			logger.DefaultLogger.Fatalf("reading idp cert: %s", err)
 		}
 	}
+	if len(certData) == 0 {
+		return nil
+	}
 	b, _ := pem.Decode(certData)
+	if b == nil {
+		logger.DefaultLogger.Fatalf("parsing idp cert: failed to decode PEM")
+	}
 	c, err := x509.ParseCertificate(b.Bytes)
 	if err != nil {
 		logger.DefaultLogger.Fatalf("parsing idp cert: %s", err)
 	}
 	return c
 }()
+
+type rolesSessionProvider struct {
+	server *samlidp.Server
+}
+
+func (p rolesSessionProvider) GetSession(w http.ResponseWriter, r *http.Request, req *saml.IdpAuthnRequest) *saml.Session {
+	session := p.server.GetSession(w, r, req)
+	if session == nil {
+		return nil
+	}
+
+	replaceGroupAttributeWithRoles(session)
+	return session
+}
+
+func replaceGroupAttributeWithRoles(session *saml.Session) {
+	if len(session.Groups) == 0 {
+		return
+	}
+
+	roleAttributeValues := make([]saml.AttributeValue, 0, len(session.Groups))
+	for _, group := range session.Groups {
+		roleAttributeValues = append(roleAttributeValues, saml.AttributeValue{
+			Type:  "xs:string",
+			Value: group,
+		})
+	}
+
+	session.CustomAttributes = append(session.CustomAttributes, saml.Attribute{
+		FriendlyName: "Roles",
+		Name:         "Roles",
+		NameFormat:   "urn:oasis:names:tc:SAML:2.0:attrname-format:basic",
+		Values:       roleAttributeValues,
+	})
+	session.Groups = nil
+}
 
 func main() {
 	logr := logger.DefaultLogger
@@ -90,6 +139,12 @@ func main() {
 	if err != nil {
 		logr.Fatalf("cannot parse base URL: %v", err)
 	}
+	if key == nil {
+		logr.Fatal("IDP_KEY is required and must point to a valid PEM private key")
+	}
+	if cert == nil {
+		logr.Fatal("IDP_CERT is required and must point to a valid PEM certificate")
+	}
 
 	idpServer, err := samlidp.New(samlidp.Options{
 		URL:         *idpBaseURL,
@@ -101,6 +156,7 @@ func main() {
 	if err != nil {
 		logr.Fatalf("create idp: %s", err)
 	}
+	idpServer.IDP.SessionProvider = rolesSessionProvider{server: idpServer}
 
 	// Loading (putting) users from the json file
 	addUsers(userJsonFilename, idpServer, logr)
