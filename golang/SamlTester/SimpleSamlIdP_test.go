@@ -2,6 +2,9 @@ package main
 
 import (
 	"github.com/crewjam/saml"
+	"github.com/crewjam/saml/samlidp"
+	"net/http/httptest"
+	"strings"
 	"testing"
 )
 
@@ -63,5 +66,76 @@ func TestReplaceGroupAttributeWithRolesUsesEnvOverride(t *testing.T) {
 	}
 	if roles.Name != "CustomRoles" {
 		t.Fatalf("expected CustomRoles attribute name, got %q", roles.Name)
+	}
+}
+
+func TestGroupAttributeStoreTransformsStoredSessions(t *testing.T) {
+	store := groupAttributeStore{store: &samlidp.MemoryStore{}}
+	session := &saml.Session{
+		ID:     "session-1",
+		Groups: []string{"users", "ipausers"},
+	}
+
+	if err := store.Put("/sessions/session-1", session); err != nil {
+		t.Fatalf("put session: %v", err)
+	}
+
+	if len(session.Groups) != 0 {
+		t.Fatalf("expected session groups to be cleared after put, got %v", session.Groups)
+	}
+	if len(session.CustomAttributes) != 1 {
+		t.Fatalf("expected one custom attribute after put, got %d", len(session.CustomAttributes))
+	}
+
+	var stored saml.Session
+	if err := store.Get("/sessions/session-1", &stored); err != nil {
+		t.Fatalf("get session: %v", err)
+	}
+
+	if len(stored.Groups) != 0 {
+		t.Fatalf("expected stored session groups to be cleared, got %v", stored.Groups)
+	}
+	if len(stored.CustomAttributes) != 1 {
+		t.Fatalf("expected one custom attribute in stored session, got %d", len(stored.CustomAttributes))
+	}
+	if stored.CustomAttributes[0].FriendlyName != defaultGroupAttributeName {
+		t.Fatalf("expected %s friendly name, got %q", defaultGroupAttributeName, stored.CustomAttributes[0].FriendlyName)
+	}
+}
+
+func TestGroupAttributeStoreTransformsDoublePointerSessions(t *testing.T) {
+	store := groupAttributeStore{store: &samlidp.MemoryStore{}}
+	session := &saml.Session{
+		ID:     "session-2",
+		Groups: []string{"users", "ipausers"},
+	}
+
+	if err := store.Put("/sessions/session-2", &session); err != nil {
+		t.Fatalf("put session pointer: %v", err)
+	}
+
+	if len(session.Groups) != 0 {
+		t.Fatalf("expected session groups to be cleared after put, got %v", session.Groups)
+	}
+	if len(session.CustomAttributes) != 1 {
+		t.Fatalf("expected one custom attribute after put, got %d", len(session.CustomAttributes))
+	}
+}
+
+func TestShouldResumeSAMLLogin(t *testing.T) {
+	request := httptest.NewRequest("POST", "http://idp.test/login", strings.NewReader("user=alice&SAMLRequest=abc"))
+	request.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+
+	if !shouldResumeSAMLLogin("/login", request) {
+		t.Fatal("expected login POST with SAMLRequest to resume SAML flow")
+	}
+}
+
+func TestShouldResumeSAMLLoginSkipsOtherRequests(t *testing.T) {
+	request := httptest.NewRequest("POST", "http://idp.test/login", strings.NewReader("user=alice"))
+	request.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+
+	if shouldResumeSAMLLogin("/login", request) {
+		t.Fatal("expected login POST without SAMLRequest to skip SAML resume")
 	}
 }

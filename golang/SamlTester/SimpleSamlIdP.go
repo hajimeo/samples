@@ -91,18 +91,72 @@ var cert = func() *x509.Certificate {
 
 const defaultGroupAttributeName = "Groups"
 
-type rolesSessionProvider struct {
-	server *samlidp.Server
+type groupAttributeStore struct {
+	store samlidp.Store
 }
 
-func (p rolesSessionProvider) GetSession(w http.ResponseWriter, r *http.Request, req *saml.IdpAuthnRequest) *saml.Session {
-	session := p.server.GetSession(w, r, req)
-	if session == nil {
-		return nil
+type appHandler struct {
+	idpServer *samlidp.Server
+}
+
+func (h appHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	if shouldResumeSAMLLogin(h.idpServer.IDP.LoginURL.Path, r) {
+		h.idpServer.IDP.ServeSSO(w, r)
+		return
+	}
+	h.idpServer.ServeHTTP(w, r)
+}
+
+func (s groupAttributeStore) Get(key string, value interface{}) error {
+	if err := s.store.Get(key, value); err != nil {
+		return err
+	}
+	if strings.HasPrefix(key, "/sessions/") {
+		if session, ok := value.(*saml.Session); ok {
+			replaceGroupAttributeWithRoles(session)
+		}
+	}
+	return nil
+}
+
+func (s groupAttributeStore) Put(key string, value interface{}) error {
+	if !strings.HasPrefix(key, "/sessions/") {
+		return s.store.Put(key, value)
 	}
 
-	replaceGroupAttributeWithRoles(session)
-	return session
+	switch session := value.(type) {
+	case **saml.Session:
+		if session != nil && *session != nil {
+			replaceGroupAttributeWithRoles(*session)
+		}
+		return s.store.Put(key, value)
+	case *saml.Session:
+		replaceGroupAttributeWithRoles(session)
+		return s.store.Put(key, session)
+	case saml.Session:
+		replaceGroupAttributeWithRoles(&session)
+		return s.store.Put(key, session)
+	default:
+		return s.store.Put(key, value)
+	}
+}
+
+func (s groupAttributeStore) Delete(key string) error {
+	return s.store.Delete(key)
+}
+
+func (s groupAttributeStore) List(prefix string) ([]string, error) {
+	return s.store.List(prefix)
+}
+
+func shouldResumeSAMLLogin(loginPath string, r *http.Request) bool {
+	if r.Method != http.MethodPost || r.URL.Path != loginPath {
+		return false
+	}
+	if err := r.ParseForm(); err != nil {
+		return false
+	}
+	return r.PostForm.Get("SAMLRequest") != ""
 }
 
 func replaceGroupAttributeWithRoles(session *saml.Session) {
@@ -125,6 +179,8 @@ func replaceGroupAttributeWithRoles(session *saml.Session) {
 		NameFormat:   "urn:oasis:names:tc:SAML:2.0:attrname-format:basic",
 		Values:       roleAttributeValues,
 	})
+	// log CustomAttributes for debugging
+	logger.DefaultLogger.Printf("Added custom attribute %s with values %v to session", groupAttributeName, roleAttributeValues)
 	session.Groups = nil
 }
 
@@ -163,12 +219,11 @@ func main() {
 		Key:         key,
 		Logger:      logr,
 		Certificate: cert,
-		Store:       &samlidp.MemoryStore{},
+		Store:       groupAttributeStore{store: &samlidp.MemoryStore{}},
 	})
 	if err != nil {
 		logr.Fatalf("create idp: %s", err)
 	}
-	idpServer.IDP.SessionProvider = rolesSessionProvider{server: idpServer}
 
 	// Loading (putting) users from the json file
 	addUsers(userJsonFilename, idpServer, logr)
@@ -184,7 +239,7 @@ func main() {
 
 	flag.Set("bind", ":"+idpBaseURL.Port())
 
-	goji.Handle("/*", idpServer)
+	goji.Handle("/*", appHandler{idpServer: idpServer})
 	goji.Serve()
 }
 

@@ -3,7 +3,7 @@ For Unit / Integ tests, based on https://github.com/d-rk/mini-saml-idp.
 
 ## How to build (using alias function)
 ```
-goBuild "" "simplesamlidp"
+goBuild "./SimpleSamlIdp.go" "simplesamlidp"
 ```
 
 ## Download / install
