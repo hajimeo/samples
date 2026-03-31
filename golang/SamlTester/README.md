@@ -1,6 +1,11 @@
 # Simplest SAML IdP
 For Unit / Integ tests, based on https://github.com/d-rk/mini-saml-idp.
 
+## How to build (using alias function)
+```
+goBuild "" "simplesamlidp"
+```
+
 ## Download / install
 ```
 curl -o ./simplesamlidp -L https://github.com/hajimeo/samples/raw/master/misc/simplesamlidp_$(uname)_$(uname -m);
@@ -18,9 +23,10 @@ openssl req -x509 -newkey rsa:2048 -keyout ./myidp.key -out ./myidp.crt -days 36
 export IDP_KEY=./myidp.key IDP_CERT=./myidp.crt USER_JSON=./simple-saml-idp.json IDP_BASE_URL="http://localhost:2080/" SERVICE_METADATA_URL="./metadata.xml"
 ./simplesamlidp
 ```
+Optional: set `GROUP_ATTRIBUTE_NAME` to override the default group attribute name (`Groups`).
 ### Set up SAML on your Service
 To get IdP's metadata, access "${IDP_BASE_URL%/}/metadata"
-```
+``` 
 curl "${IDP_BASE_URL%/}/metadata"
 ```
 If your Service is NXRM3, just paste above metadata XML and save (and add SAML Realm).

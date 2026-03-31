@@ -21,12 +21,6 @@ import (
 	"encoding/pem"
 	"flag"
 	"fmt"
-	"github.com/crewjam/saml"
-	"github.com/crewjam/saml/logger"
-	"github.com/crewjam/saml/samlidp"
-	"github.com/pkg/errors"
-	"github.com/zenazn/goji"
-	"golang.org/x/crypto/bcrypt"
 	"io"
 	"io/ioutil"
 	"log"
@@ -35,6 +29,13 @@ import (
 	"os"
 	"strings"
 	"time"
+
+	"github.com/crewjam/saml"
+	"github.com/crewjam/saml/logger"
+	"github.com/crewjam/saml/samlidp"
+	"github.com/pkg/errors"
+	"github.com/zenazn/goji"
+	"golang.org/x/crypto/bcrypt"
 )
 
 var key = func() crypto.PrivateKey {
@@ -88,6 +89,8 @@ var cert = func() *x509.Certificate {
 	return c
 }()
 
+const defaultGroupAttributeName = "Groups"
+
 type rolesSessionProvider struct {
 	server *samlidp.Server
 }
@@ -107,6 +110,7 @@ func replaceGroupAttributeWithRoles(session *saml.Session) {
 		return
 	}
 
+	groupAttributeName := getGroupAttributeName()
 	roleAttributeValues := make([]saml.AttributeValue, 0, len(session.Groups))
 	for _, group := range session.Groups {
 		roleAttributeValues = append(roleAttributeValues, saml.AttributeValue{
@@ -116,12 +120,20 @@ func replaceGroupAttributeWithRoles(session *saml.Session) {
 	}
 
 	session.CustomAttributes = append(session.CustomAttributes, saml.Attribute{
-		FriendlyName: "Roles",
-		Name:         "Roles",
+		FriendlyName: groupAttributeName,
+		Name:         groupAttributeName,
 		NameFormat:   "urn:oasis:names:tc:SAML:2.0:attrname-format:basic",
 		Values:       roleAttributeValues,
 	})
 	session.Groups = nil
+}
+
+func getGroupAttributeName() string {
+	groupAttributeName := strings.TrimSpace(os.Getenv("GROUP_ATTRIBUTE_NAME"))
+	if groupAttributeName == "" {
+		return defaultGroupAttributeName
+	}
+	return groupAttributeName
 }
 
 func main() {
