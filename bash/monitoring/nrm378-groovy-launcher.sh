@@ -1,6 +1,3 @@
-#!/usr/bin/env bash
-# TODO: this should be `sh`
-
 : "${_INSTALL_DIR:=""}"
 : "${_WORK_DIR:=""}"
 : "${_LIB_EXTRACT_DIR:=""}"
@@ -11,7 +8,7 @@ _GROOVY_CLASSPATH=""
 function usage() {
     echo "
 USAGE:
-    bash ./nrm378-groovy-launcher.sh /path/to/script.groovy [script_args]
+    sh ./nrm378-groovy-launcher.sh /path/to/script.groovy [script_args]
 
 PURPOSE:
     Invoke Groovy command using the library from Nexus 3.78 or higher jar file.
@@ -48,7 +45,10 @@ function setGlobals() { # Best effort. may not return accurate dir path
     fi
     if [ ! -d "${_WORK_DIR}" ] && [ -d "${_INSTALL_DIR%/}" ]; then
         _WORK_DIR="$(ps wwwp ${_pid} | sed -n -E 's/.+-Dkaraf.data=([^ ]+) .+/\1/p' | head -n1)"
-        [[ ! "${_WORK_DIR}" =~ ^/ ]] && _WORK_DIR="${_INSTALL_DIR%/}/${_WORK_DIR}"
+        case "${_WORK_DIR}" in
+            /*) ;;
+            *) _WORK_DIR="${_INSTALL_DIR%/}/${_WORK_DIR}" ;;
+        esac
         [ -d "${_WORK_DIR}" ] || return 1
     fi
 }
@@ -61,7 +61,7 @@ function prepareLibForSingleJar() {
         echo "ERROR:No single jar file provided." >&2
         return 1
     fi
-    if ! type unzip >/dev/null 2>&1; then
+    if ! command -v unzip >/dev/null 2>&1; then
         echo "ERROR:unzip not found, please install it." >&2
         return 1
     fi
@@ -96,6 +96,8 @@ function main() {
         return 1
     fi
 
+    setGlobals || return $?
+    
     local _single_jar="$(find "${_INSTALL_DIR%/}/bin" -type f -name 'sonatype-nexus-repository-3.*.jar' 2>/dev/null | head -n1)"
     if [ ! -s "${_single_jar}" ]; then
         echo "ERROR:No single jar file found under ${_INSTALL_DIR%/}/bin." >&2
@@ -132,10 +134,8 @@ function main() {
     timeout ${_TIMEOUT:-30}s ${_java} -Dgroovy.classpath="${_GROOVY_CLASSPATH}" -jar "${_groovy_jar}" "$@"
 }
 
-if [ "$0" = "${BASH_SOURCE[0]}" ]; then
-    if [ -z "$1" ] || [ "$1" == "-h" ] || [ "$1" == "--help" ] || [ "$1" == "help" ]; then
-        usage
-        exit 0
-    fi
-    main "$@"
+if [ -z "$1" ] || [ "$1" == "-h" ] || [ "$1" == "--help" ] || [ "$1" == "help" ]; then
+    usage
+    exit 0
 fi
+main "$@"
