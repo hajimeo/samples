@@ -4,17 +4,24 @@
 // Run: groovy BlobStoreMoveTest.groovy {file_blobstore_path} {dummy_file_path}
 
 import java.nio.file.*
-import java.nio.file.attribute.BasicFileAttributes
 
-def blobStoreRoot = args.length > 0 ? Path.of(args[0]) : Path.of("/tmp/blobstore-test")
-def fileSizeMB    = args.length > 1 ? args[1].toLong() : 512L
+def blobStoreRoot = args.length > 0 ? Path.of(args[0]) : null
+if (!blobStoreRoot || !Files.exists(blobStoreRoot)) {
+    println "Error: blob_store_root is required and must exist."
+    System.exit(1)
+}
+def dummyFilePath = args.length > 1 ? Path.of(args[1]) : null
+if (!dummyFilePath || !Files.exists(dummyFilePath)) {
+    println "Error: dummy_file_path is required and must exist."
+    System.exit(1)
+}
 
 def contentDir    = blobStoreRoot.resolve("content")
 def tmpDir        = contentDir.resolve("tmp")
 def blobId        = UUID.randomUUID().toString()
 def uuid          = UUID.randomUUID().toString()
 
-// Mirrors temporaryContentPath and contentPath in FileBlobStore
+// Mirrors temporaryContentPath and contentPath in FileBlobStore (except using `tmp${blobId}.bytes`)
 def tmpBlobPath   = tmpDir.resolve("${blobId}.${uuid}.bytes")
 def finalDir      = contentDir.resolve("2026/06/19/00/00")
 def finalBlobPath = finalDir.resolve("${blobId}.bytes")
@@ -24,21 +31,20 @@ Files.createDirectories(finalDir)
 
 println "=== FileBlobStore move test ==="
 println "Blob store root : ${blobStoreRoot}"
-println "File size       : ${fileSizeMB} MB"
+println "Source file     : ${dummyFilePath}"
 println "Temp path       : ${tmpBlobPath}"
 println "Final path      : ${finalBlobPath}"
 println ""
 
 // --- Phase 1: simulate ingester.ingestTo(temporaryBlobPath) ---
-println "[1] Writing ${fileSizeMB} MB to temp path..."
+println "[1] Copying ${dummyFilePath} to temp path..."
 def t0 = System.currentTimeMillis()
-tmpBlobPath.withOutputStream { out ->
-    def buf = new byte[1024 * 1024]  // 1 MB buffer
-    new Random().nextBytes(buf)
-    fileSizeMB.times { out.write(buf) }
-}
+Files.copy(dummyFilePath, tmpBlobPath, StandardCopyOption.REPLACE_EXISTING)
 def writeMs = System.currentTimeMillis() - t0
-println "    Done in ${writeMs} ms  (${String.format('%.1f', fileSizeMB * 1000.0 / writeMs)} MB/s)"
+def fileSize = Files.size(tmpBlobPath)
+def sha256 = java.security.MessageDigest.getInstance("SHA-256").digest(Files.readAllBytes(tmpBlobPath)).encodeHex().toString()
+println "    Done in ${writeMs} ms (${String.format('%.1f', fileSize / 1024.0 / 1024.0 / (writeMs / 1000.0))} MB/s)"
+println "    SHA-256: ${sha256}"
 println ""
 
 // --- Phase 2: simulate move(temporaryBlobPath, blobPath) ---
@@ -59,9 +65,12 @@ println ""
 
 // --- Verify ---
 def finalSize = Files.size(finalBlobPath)
+def finalSha256 = java.security.MessageDigest.getInstance("SHA-256").digest(Files.readAllBytes(finalBlobPath)).encodeHex().toString()
 println "Final file exists: ${Files.exists(finalBlobPath)}"
-println "Final file size  : ${finalSize} bytes (expected ${fileSizeMB * 1024 * 1024})"
+println "Final file size  : ${finalSize} bytes (expected ${Files.size(dummyFilePath)})"
+println "Final file SHA-256: ${finalSha256} (expected ${sha256})"
 println "Temp file gone   : ${!Files.exists(tmpBlobPath)}"
 
 // Cleanup
 Files.deleteIfExists(finalBlobPath)
+println "Test completed and cleaned up ${finalBlobPath}."
