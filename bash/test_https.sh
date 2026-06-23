@@ -72,6 +72,7 @@ function list_ciphers() {
 
 # Get (actually testing) enabled and not supported TLS protocols
 # NOTE: If unexpected result, may want to check "jdk.tls.disabledAlgorithms" in $JAVA_HOME/jre/lib/security/java.security
+#       Or `-Djava.security.properties==custom_java.security` and this file contains only `jdk.tls.disabledAlgorithms=SSLv3, RC4, DES, MD5withRSA, 3DES_EDE_CBC` (using `==` is intentional)
 function test_tls_versions() {
     local _host="${1:-`hostname -f`}"
     local _port="${2:-443}"
