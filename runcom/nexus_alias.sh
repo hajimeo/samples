@@ -40,16 +40,47 @@ function _java_home() {
     local _prod_ver="${1}"
     local _is_java17=false
     local _is_java21=false
+    local _is_java25=false
+    local _is_java_bundled=false
     if [[ "${_prod_ver}" =~ 3\.(8[6-9]\.|9[0-9]\.).+ ]]; then
         _is_java21=true
+        _is_java_bundled=true
     elif [[ "${_prod_ver}" =~ 3\.(7[1-9]\.|8[0-6]\.).+ ]]; then
         _is_java17=true
+    elif [[ "${_prod_ver}" =~ 1\.2[1-9][0-9]\. ]]; then  # For IQ v21x+
+        _is_java25=true
+    elif [[ "${_prod_ver}" =~ 1\.20[4-9]\. ]]; then  # For IQ v204+
+        _is_java25=true
+    elif [[ "${_prod_ver}" =~ 1\.20[0-3]\. ]]; then  # For IQ v200+
+        _is_java17=true # should be java 21?
     elif [[ "${_prod_ver}" =~ 1\.1[89][0-9]\. ]]; then  # For IQ
         _is_java17=true
-    elif [[ "${_prod_ver}" =~ 1\.2[0-9][0-9]\. ]]; then  # For IQ v200+
-        _is_java17=true # should be java 21?
     fi
-    if ${_is_java17}; then
+    if ${_is_java25}; then
+        if [ -d "${JAVA_HOME_25}" ]; then
+            _ORIG_JAVA_HOME="${JAVA_HOME}"
+            export JAVA_HOME="${JAVA_HOME_25}" #NEXUSTOOLS_JAVA_HOME="${JAVA_HOME_25}"
+            export INSTALL4J_JAVA_HOME="${JAVA_HOME_25}"
+            export INSTALL4J_JAVA_HOME_OVERRIDE="${JAVA_HOME_25}"
+            export APP_JAVA_HOME="${JAVA_HOME_25}"
+            echo "# export JAVA_HOME=\"${JAVA_HOME_25}\""
+        else
+            echo "# Make sure JAVA_HOME is set to Java 25"; sleep 3
+        fi
+    elif ${_is_java21}; then
+        if ${_is_java_bundled}; then
+            echo "# Java 21 is bundled with Nexus 3.86+ (no need to set JAVA_HOME or any environment variable)"
+        elif [ -d "${JAVA_HOME_21}" ]; then
+            _ORIG_JAVA_HOME="${JAVA_HOME}"
+            export JAVA_HOME="${JAVA_HOME_21}" #NEXUSTOOLS_JAVA_HOME="${JAVA_HOME_21}"
+            export INSTALL4J_JAVA_HOME="${JAVA_HOME_21}"
+            export INSTALL4J_JAVA_HOME_OVERRIDE="${JAVA_HOME_21}"
+            export APP_JAVA_HOME="${JAVA_HOME_21}"
+            echo "# export JAVA_HOME=\"${JAVA_HOME_21}\""
+        else
+            echo "# Make sure JAVA_HOME is set to Java 21"; sleep 3
+        fi
+    elif ${_is_java17}; then
         if [ -d "${JAVA_HOME_17}" ]; then
             _ORIG_JAVA_HOME="${JAVA_HOME}"
             export JAVA_HOME="${JAVA_HOME_17}" #NEXUSTOOLS_JAVA_HOME="${JAVA_HOME_17}"
@@ -60,8 +91,6 @@ function _java_home() {
         else
             echo "# Make sure JAVA_HOME is set to Java 17"; sleep 3
         fi
-    elif ${_is_java21}; then
-        echo "# Java 21 is required for Nexus 3.86+ (no need to set JAVA_HOME or any environment variable)"
     elif [ -n "${_ORIG_JAVA_HOME}" ]; then
         export JAVA_HOME="${_ORIG_JAVA_HOME}"
         #export INSTALL4J_JAVA_HOME="${_ORIG_JAVA_HOME}"
@@ -598,10 +627,13 @@ function nxrmDocker() {
 
     local _my_params="-XX:ActiveProcessorCount=2 -Xms2g -Xmx2g -Djava.util.prefs.userRoot=/tmp/javaprefs" # no need to be /nexus-data
     _my_params="${_my_params} -Dnexus.security.randompassword=false -Dnexus.onboarding.enabled=false -Dnexus.script.allowCreation=true -Dnexus.assetBlobCleanupTask.blobCreatedDelayMinute=0"
-    local _license="$(ls -1t ${_work_dir%/}/sonatype/*.lic 2>/dev/null | head -n1)"
+    #local _license="$(ls -1t ${_work_dir%/}/sonatype/*.lic 2>/dev/null | head -n1)"
+    local _license="${_work_dir%/}/sonatype/sonatype-license.lic"
     if [ -s "${_license}" ]; then
         local _license_filename="$(basename "${_license}")"
         _my_params="${_my_params} -Dnexus.licenseFile=${_container_share_dir%/}/sonatype/${_license_filename}"
+    else
+        echo "WARN: No license file ${_license} found"; sleep 3
     fi
     [ -n "${INSTALL4J_ADD_VM_PARAMS}" ] && _my_params="${_my_params} ${INSTALL4J_ADD_VM_PARAMS}"
 
@@ -717,7 +749,7 @@ $(sed -n "/^  loggers:/,\$p" ${_cfg_file} | grep -v '^  loggers:')" > "${_cfg_fi
         _iqStartSQLs | eval "${_console}" || return $?
     fi
 
-    local _cmd="${_java} ${_java_opts} -jar \"${_jar_file}\" server \"${_cfg_file}\""
+    local _cmd="${_java} ${_java_opts} -Dfile.encoding=UTF-8 -Dsun.jnu.encoding=UTF-8 -jar \"${_jar_file}\" server \"${_cfg_file}\""
     if [[ "${_H2_WEB}" =~ [yY] ]] && ! grep -q '^database:' ${_cfg_file} && [ -s "${_h2_jar}" ] && [ -s "${_loader_jar}" ]; then
         _cmd="${_java} ${_java_opts} -cp ${_jar_file}:${_h2_jar}:${_loader_jar} com.sonatype.insight.brain.supportloader.StartIqWithH2 ${_cfg_file}"
     fi
@@ -759,6 +791,8 @@ function iqInstall() {
     fi
 }
 
+#echo "jdk.tls.disabledAlgorithms=SSLv3, RC4, DES, MD5withRSA, 3DES_EDE_CBC" > $HOME/share/sonatype/nxiq-latest-data/custom_java.security
+#export JAVA_OPTS="-Djava.security.properties=/sonatype-work/custom_java.security"
 #iqDocker "1.191.0" "" "8170:8070 8171:8071" #"--read-only -v /tmp/nxiq-test:/tmp"
 function iqDocker() {
     local _tag="${1:-"latest"}"
@@ -800,10 +834,13 @@ function iqDocker() {
     local _opts="--name=${_name}"
     local _java_opts="-XX:ActiveProcessorCount=2 -Xms2703m -Xmx2703m" #"-Ddw.dbCacheSizePercent=50 -Ddw.needsAcknowledgementOfInitialDashboardFilter=true"
     # NOTE: symlink of *.lic does not work with -v
-    local _license="$(ls -1t ${_work_dir%/}/sonatype/*.lic 2>/dev/null | head -n1)"
+    #local _license="$(ls -1t ${_work_dir%/}/sonatype/*.lic 2>/dev/null | head -n1)"
+    local _license="${_work_dir%/}/sonatype/sonatype-license.lic"
     if [ -s "${_license}" ]; then
         local _license_filename="$(basename "${_license}")"
         _java_opts="${_java_opts} -Ddw.licenseFile=${_container_share_dir%/}/sonatype/${_license_filename}"
+    else
+        echo "WARN: No license file ${_license} found"; sleep 3
     fi
     # To use PostgreSQL
     #-e JAVA_OPTS="-Ddw.database.type=postgresql -Ddw.database.hostname=db-server-name.domain.net"

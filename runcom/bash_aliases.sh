@@ -60,11 +60,32 @@ type zsh &>/dev/null && alias pbrew="ALL_PROXY=http://proxyuser:proxypwd@dh1:280
 alias qcsv='q -O -d"," -T --disable-double-double-quoting'
 alias qtsv="q -O -T -d$'\t'"
 alias pgbg='pgbadger --timezone 0'
-export TABBY_DISABLE_USAGE_COLLECTION=1 # just in case
 alias tabby_start='TABBY_DISABLE_USAGE_COLLECTION=1 tabby serve --device metal --model TabbyML/StarCoder-1B &>/tmp/tabby.out &'
 alias caddy_reverse='caddy reverse-proxy --debug --change-host-header --header-up "REMOTE_USER: admin" --to '
-alias codeNexus='codium -r $HOME/IdeaProjects/nexus-internal'
-
+# to switch/check out to specific tag, `rm3Vers "release-3.90.2-06"` first
+alias codeNexus='codium -r . $HOME/IdeaProjects/nexus-internal'
+alias codeIQ='codium -r . $HOME/IdeaProjects/insight-brain'
+alias opencode-cli='/Applications/OpenCode.app/Contents/MacOS/opencode-cli'
+alias opencode='/Applications/OpenCode.app/Contents/MacOS/OpenCode'
+function pdf2md() {
+    local _pdf="${1}"
+    local _md="${2:-"${_pdf%.*}.md"}"
+    # if _pdf is empty, search all pdf files in current directory and convert to md
+    if [ -z "${_pdf}" ]; then
+        for f in ./*.pdf; do
+            local _temp_md="${f%.*}.md"
+            if [ -s "${_temp_md}" ]; then
+                echo "File ${_temp_md} already exists, skipping ${f}" >&2
+                continue
+            fi
+            pdf2md "$f" || echo "Failed to convert ${f}" >&2
+        done
+        return $?
+    fi
+    #pdftotext -layout "${_pdf}" - | pandoc -f plain -t markdown -o "${_md}"
+    lit parse "${_pdf}" --no-ocr -o "${_md}"
+    echo "Converted ${_pdf} to ${_md}" >&2
+}
 
 ## Git #################################################################################################################
 # Show current tag
@@ -252,7 +273,7 @@ alias podmand="podman --log-level debug" && alias podman_login="podman --log-lev
 alias podman_delete_all='podman system prune --all' # --force && podman rmi --all
 #type microk8s &>/dev/null && alias kubectl="microk8s kubectl"
 alias kPods='kubectl get pods --show-labels -A'
-function kBash() {
+function kShell() {
     local _pod="${1}"
     local _ns="${2}"
     #kubectl get pods -n sonatype-ha -l name=nxiqha-iq-server -o jsonpath={.items[0].metadata.name} | head -n1
@@ -267,7 +288,8 @@ function kBash() {
         _ns="$(kubectl get pods -A | grep -E "\s${_pod}\s.+\sRunning\s" | awk '{print $1}')"
         [ -z "${_ns}" ] && return 1
     fi
-    kubectl exec "${_pod}" -n "${_ns}" -t -i -- bash
+    # 3.91 doesn't have bash
+    kubectl exec "${_pod}" -n "${_ns}" -t -i -- sh
 }
 function kConfMerge() {
     local _append="${1}"
@@ -283,7 +305,7 @@ if [ -s "$HOME/.kube/support_test_config" ]; then
 fi
 
 
-## Non default (usually my developped scripts) alias commands ############################
+## Non default (usually my developed scripts) alias commands ############################
 # Load/source my own searching utility functions / scripts
 #mkdir -p $HOME/IdeaProjects/samples/bash; curl -o $HOME/IdeaProjects/samples/bash/log_search.sh https://raw.githubusercontent.com/hajimeo/samples/master/bash/log_search.sh
 if [ -d $HOME/IdeaProjects/samples/bash ]; then
@@ -312,6 +334,7 @@ fi
 ## Chrome aliases for Mac (URL needs to be IP as hostname wouldn't be resolvable on remote) ###########################
 #alias shib-local='open -na "Google Chrome" --args --user-data-dir=$HOME/.chromep/local --proxy-server=socks5://localhost:28081'
 #alias shib-dh1='open -na "Google Chrome" --args --user-data-dir=$HOME/.chromep/dh1 --proxy-server=socks5://dh1:28081 http://192.168.1.31:4200/webuser/'
+alias chrome='open -na "Google Chrome"' # use the default profile
 alias chrome-work='open -na "Google Chrome" --args --user-data-dir=$HOME/.chromep/work'
 alias chrome-dh1='open -na "Google Chrome" --args --user-data-dir=$HOME/.chromep/dh1 --proxy-server=http://dh1:28080'
 alias k8s-dh1='open -na "Google Chrome" --args --user-data-dir=$HOME/.chromep/k8s-dh1 --proxy-server=socks5://dh1:38081'
@@ -319,6 +342,7 @@ alias hblog='open -na "Google Chrome" --args --user-data-dir=$HOME/.chromep/haji
 #alias geminiWeb='open -na "Google Chrome" --args --app="https://gemini.google.com/u/1/app"'
 alias geminiWeb='open -na "Google Chrome" --args --user-data-dir=$HOME/.chromep/work --app="https://gemini.google.com/"'
 alias kapaWeb='open -na "Google Chrome" --args --user-data-dir=$HOME/.chromep/work --app="https://chat.kapa.ai/dadecd3d-2984-46d3-9c6b-09df9a67668c"'
+alias goose-app='open -na "Goose"'
 # pretending windows chrome on Linux
 #alias winchrome='/opt/google/chrome/chrome --user-data-dir=$HOME/.chromep --proxy-server=socks5://localhost:38081  --user-agent="Mozilla/5.0 (Windows NT 10.0; WOW64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/88.0.4324.96 Safari/537.36"'
 
@@ -328,8 +352,11 @@ alias kapaWeb='open -na "Google Chrome" --args --user-data-dir=$HOME/.chromep/wo
 [ -s $HOME/IdeaProjects/samples/python/SimpleWebServer.py ] && alias slackS="pyvN && cd $HOME/IdeaProjects/samples/python/ && python3 ./SimpleWebServer.py &> /tmp/SimpleWebServer.out &"
 # up to python 3.11
 alias smtpdemo='python -m smtpd -n -c DebuggingServer localhost:2500'
-if [ -s "/Users/hosako/IdeaProjects/work/demo-mcp/mcps.json" ]; then
-    alias mcp-cli='mcphost -m ollama:qwen2.5 --config "/Users/hosako/IdeaProjects/work/demo-mcp/mcps.json"'
+if [ -s "${HOME%/}/.mcps.json" ]; then
+    #go install github.com/mark3labs/mcphost@latest    # NOTE: this is deprecated and replaced by Kit
+    alias mcp-cli='mcphost -m ollama:gemma4:12b-it-qat --config '${HOME%/}/.mcps.json
+    #go install github.com/mark3labs/kit/cmd/kit@latest
+    alias kit-cli='kit -m ollama/gemma4:12b-it-qat --max-tokens 524288 --config '${HOME%/}/.mcps.json
 fi
 
 
@@ -503,7 +530,7 @@ function multiexec() {
     local _cmd="$1"
     local _ttl="${2:-"1"}" # How many times
     local _con="${3:-"1"}" # Concurrency
-    echo "$(seq 1 ${_ttl})" | xargs -I{} -P${_con} -t bash -c "${_cmd}"
+    echo "$(seq 1 ${_ttl})" | xargs -I{} -P${_con} -t sh -c "${_cmd}"
 }
 # monitorexec ./db-migrator-2025-02-17T14-23.log "low heap memory" "jmap -dump:format=b,file=./db-mig_$(date +"%Y%m%d%H%M%S").hprof $PID" 5
 function monitorexec() {
@@ -685,7 +712,7 @@ function bar() {
     local _file="${2}"
     [ -z "${_time_regex}" ] && _time_regex="\d\d:\d"
     #ggrep -oP "${_datetime_regex}" | sed 's/ /./g' | bar_chart.py
-    rg "(^\"?20\d\d-\d\d-\d\d|\"timestamp\":\"20\d\d-\d\d-\d\d|\d\d.[A-Z][a-z]{2}.20\d\d|\"date\":\"20\d\d-\d\d-\d\d).${_time_regex}" -o ${_file} | sed 's/ /./g' | bar_chart.py
+    rg "(^\"?20\d\d-\d\d-\d\d|\"timestamp\":\"20\d\d-\d\d-\d\d|\d\d.[A-Z][a-z]{2}.20\d\d|\"date\":\"20\d\d-\d\d-\d\d|^\[20\d\d-\d\d-\d\d).${_time_regex}" -o ${_file} | sed 's/ /./g' | bar_chart.py
 }
 # Start Jupyter Lab as service
 function jpl() {
@@ -928,7 +955,7 @@ function cleanOldDBs() {
         if [[ "${_db}" =~ (sptboot|filelisttest|large) ]]; then
             continue
         fi
-        local _sql="ALTER DATABASE ${_db} RENAME TO to_be_deleted_${_db}"
+        local _sql="ALTER DATABASE \"${_db}\" RENAME TO \"to_be_deleted_${_db}\""
         echo "# Executing ${_sql}" >&2
         psql -c "${_sql}" || return $?
     done
@@ -975,7 +1002,13 @@ function syncGitReposWithRemotePC() {
     local _local_base_dir="${4:-"$HOME"}"
     local _rsync_exclude="${5:-"--exclude .idea --exclude .git"}"
     local _dry_run="${6:-"${_RSYNC_DRY_RUN}"}"
-
+    # Check if the remote is reachable
+    if ping -c1 ${_remote_host} &>/dev/null; then
+        echo "# '${_remote_host}' is reachable. Starting rsync." >&2
+    else
+        echo "# '${_remote_host}' is not reachable. Skipping rsync." >&2
+        return 1
+    fi
     local _remote_user_host="${_remote_user}@${_remote_host}"
     local _remote_home="$(ssh ${_remote_user_host} 'echo $HOME')"
     if [ -z "${_remote_home%/}" ]; then
@@ -1045,8 +1078,28 @@ function backupC() {
         codium --list-extensions | xargs -L 1 echo codium --install-extension >$HOME/backup/vscodium_install_extensions.sh || return $?
     fi
 
+    # If $HOME/.bashrc is not a symlink, then copy to $HOME/backup/bashrc (just in case, not copying if it's empty)
+    if [ -s "$HOME/.bashrc" ] && [ -d "$HOME/backup" ] && [ ! -L "$HOME/.bashrc" ]; then
+        cp -v -f $HOME/.bashrc $HOME/backup/bashrc || return $?
+    fi
+
+    if [ -s "$HOME/.mcps.json" ] && [ -d "$HOME/backup" ]; then
+        cp -v -f $HOME/.mcps.json $HOME/backup/mcps.json || return $?
+    fi
+
     if type codex &>/dev/null && [ -d "$HOME/backup" ]; then
-        cp -v -f $HOME/.codex/config.toml $HOME/backup/codex_config.toml || return $?
+        # Don't want to copy an empty file
+        if [ -s "$HOME/.codex/config.toml" ]; then
+            cp -v -f $HOME/.codex/config.toml $HOME/backup/codex_config.toml || return $?
+        fi
+    fi
+    if type claude &>/dev/null && [ -d "$HOME/backup" ]; then
+        if [ -s "$HOME/.claude.json" ]; then
+            cp -v -f $HOME/.claude.json $HOME/backup/claude_config.json || return $?
+        fi
+        if [ -s "$HOME/.claude/settings.json" ]; then
+            cp -v -f $HOME/.claude/settings.json $HOME/backup/claude_settings.json || return $?
+        fi
     fi
 
     if type kubectl &>/dev/null && [ -d "$HOME/backup/kube" ]; then
@@ -1104,7 +1157,7 @@ function backupC() {
     echo "#### Moving up old (90 days) directories from ${_src} into Trash ####" >&2
     echo ""
     ## Special: support_tmp directory or .tmp or .out file wouldn't need to backup (not using atime as directory doesn't work)
-    # NOTE: xargs may not work with very long file name 'mv: rename {} to /Users/hosako/.Trash/{}: No such file or directory', so not using.
+    # NOTE: xargs may not work with very long file name 'mv: rename {} to ${HOME%/}/.Trash/{}: No such file or directory', so not using.
     _src="$(realpath "${_src}")" # because find -L ... -delete does not work
     [ -z "${_src%/}" ] && return 12
     # Find directories from the src and if no files newer than 120 days, then move to trash (no background)
@@ -1370,26 +1423,61 @@ EOF
 }
 
 function startCommonUtils() {
-    local _with_ollama="${1:-"N"}"
+    local _with_localai="${1:-"Y"}"
+    local _with_mlx="${2:-"n"}"
     pgStatus start
     #tabby_start
     slackS
     #chrome-work
     #open -na "Google Chrome"
 
-    # TODO: Can't remember what 'mcpo' was
-    #if [ -s "$HOME/IdeaProjects/work/demo-mcp/mcps.json" ]; then
-    #    mcpo --port 48000 --config $HOME/IdeaProjects/work/demo-mcp/mcps.json &>/tmp/mcpo.log &
-    #fi
-
     # Currently not starting ollama by default
-    if [[ "${_with_ollama}" =~ ^[yY] ]] && type ollama &>/dev/null; then
-        ollama serve &>/tmp/ollama.log &
-        sleep 3
-        ollama list
-        # no webUI required for pandasai or jupyterlab-ai
-        #if  [ -s "$HOME/.vnevAi/bin/open-webui" ]; then
-        #    source $HOME/.vnevAi/bin/activate
+    if [[ "${_with_localai}" =~ ^[yY] ]]; then
+        source $HOME/.pyvenv/bin/activate || return $?
+
+        if [ -s "$HOME/.mcps.json" ]; then
+            # This is for Open WebUI as it doesn't support stdio for MCP
+            echo "# Starting mcpo (127.0.0.1:48000) with config $HOME/.mcps.json" >&2
+            #pip install mcpo
+            mcpo --host 127.0.0.1 --port 48000 --config $HOME/.mcps.json &>/tmp/mcpo.log &
+            sleep 1
+            tail /tmp/mcpo.log
+        fi
+
+        #if type uvx &>/dev/null; then
+        #    echo "# Starting open-terminal (127.0.0.1:48001)" >&2
+        #    uvx open-terminal run --host 127.0.0.1 --port 48001 --cwd $HOME/Documents/cases --api-key admin123 &>/tmp/uvx_open-terminal.log &
+        #    sleep 1
+        #    tail /tmp/uvx_open-terminal.log
+        #fi
+
+        if [[ "${_with_mlx}" =~ ^[yY] ]]; then
+            # NOTE: Currently vllm-mlx does not work with CodeX app, but as this function is for Open WebUI, starting.
+            #       Not checking ' && type $HOME/.pyvenv/bin/vllm-mlx &>/dev/null' as it should fail with error
+            #       Using https://huggingface.co/mlx-community/gemma-4-12B-it-qat-4bit
+            vllm-mlx serve mlx-community/gemma-4-12B-it-qat-4bit \
+                --enable-auto-tool-choice \
+                --tool-call-parser gemma4 \
+                --reasoning-parser gemma4 \
+                --port 48080 &>/tmp/vllm-mlx.log &
+            #vllm-mlx serve mlx-community/gemma-4-e4b-it-8bit --port 48080 &>/tmp/vllm-mlx.log &
+            sleep 1
+            tail /tmp/vllm-mlx.log
+            return
+        fi
+
+        if type ollama &>/dev/null; then
+            OLLAMA_NO_CLOUD="1" OLLAMA_FLASH_ATTENTION="1" OLLAMA_KV_CACHE_TYPE="q8_0" ollama serve &>/tmp/ollama.log &
+            sleep 3
+            tail $HOME/.ollama/logs/server.log
+            ollama list
+            echo "# how to stop 'killall Ollama && pkill ollama'" >&2
+            return
+        fi
+
+        # NOTE: If pandasai or jupyterlab-ai, no webUI required
+        #       Also, not starting this because I'm using Open WebUI app
+        #if  [ -s "$HOME/.pyvenv/bin/open-webui" ]; then
         #    open-webui serve --host 127.0.0.1 --port 48080 &>/tmp/open-webui.log &
         #fi
     fi
