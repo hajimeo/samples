@@ -270,6 +270,13 @@ function f_api_config() {
     eval "${_cmd} ${_url}" || return $?
 }
 
+# f_api_policies | grep "Security-Critical" -B1
+function f_api_policies() {
+    local __doc__="GET /api/v2/policies"
+    local _url="${_IQ_URL%/}/api/v2/policies"
+    _curl "${_url}" | _sortjson || return $?
+}
+
 function f_api_orgId() {
     local __doc__="Get organization Internal ID from /api/v2/organizations (or create)"
     local _org_name="${1:-"Sandbox Organization"}"
@@ -375,7 +382,8 @@ for r in a['memberMappings']:
 function _gen_comp_id() {
     local __doc__="https://help.sonatype.com/iqserver/automating/rest-apis/using-other-supported-formats-with-the-rest-api"
     local _component_identifier="$1"
-    local _no_version="$2"
+    local _no_version="$2"  # TODO: for Component Versions Rest API
+    local _format="$3"      # TODO: for Component Versions Rest API
     local _comp_id=""
     local _purl=""
     if [[ "${_component_identifier}" =~ ^pkg ]]; then
@@ -401,7 +409,7 @@ function _gen_comp_id() {
         local _artifactId="${BASH_REMATCH[2]}"
         if [[ "${_no_version}" =~ ^[yY] ]]; then
             # TODO: Assuming 'maven' without version
-            _comp_id="{\"format\":\"maven\",\"coordinates\":{\"groupId\":\"${_groupId}\",\"artifactId\":\"${_artifactId}\"}}"
+            _comp_id="{\"format\":\"${_format}\",\"coordinates\":{\"groupId\":\"${_groupId}\",\"artifactId\":\"${_artifactId}\"}}"
         else
             # NOTE: Assuming 'npm'
             _purl="pkg:npm/${_groupId}@${_artifactId}"
@@ -413,6 +421,20 @@ function _gen_comp_id() {
         _log "WARN" "Unsupported Component Identifier: ${_component_identifier}"
         return 1
     fi
+    echo "${_comp_id}"
+}
+function _gen_comp_ids(){
+    local _comp_ids_like_string="$1"
+    local _no_version="$2"  # for Maven
+    local _comp_id=""
+    local _tmp_comp_id=""
+    local -a _comp_like_ids=()
+    IFS=',' read -r -a _comp_like_ids <<< "${_comp_ids_like_string}"
+    for comp_like_id in "${_comp_like_ids[@]}"; do
+        [ -z "${comp_like_id}" ] && continue
+        _tmp_comp_id="$(_gen_comp_id "${comp_like_id}")" || return $?
+        [ -z "${_comp_id}" ] && _comp_id="{${_tmp_comp_id}}" || _comp_id="${_comp_id},{${_tmp_comp_id}}"
+    done
     echo "${_comp_id}"
 }
 
@@ -437,9 +459,79 @@ function f_api_comp_versions() {
     local __doc__="Call Component Versions API https://help.sonatype.com/iqserver/automating/rest-apis/component-versions-rest-api---v2"
     local _component_identifier_without_ver="$1"
     local _iq_url="$(_get_iq_url "${_IQ_URL%/}")" || return $?
-    local _comp_id="$(_gen_comp_id "${_component_identifier_without_ver}")" || return $?
-    _log "INFO" "/api/v2/components/versions with '${_comp_id}' ..."
-    _curl "${_iq_url%/}/api/v2/components/versions" -H "Content-Type: application/json" -d ${_comp_id} | _sortjson
+    #local _comp_id="$(_gen_comp_id "${_component_identifier_without_ver}")" "Y" "format" || return $?
+    _log "INFO" "/api/v2/components/versions with '${_component_identifier_without_ver}' ..."
+    _curl -H "Content-Type: application/json" "${_iq_url%/}/api/v2/components/versions" -d ${_component_identifier_without_ver} | _sortjson
+}
+
+#f_api_remediate "pkg:maven/tomcat/tomcat-util@5.5.23?type=jar"
+#f_api_remediate 'pkg:pypi/jaraco.logging@1.5?extension=whl&qualifier=py2.py3-none-any'
+#f_api_remediate '{"format":"maven","coordinates":{"artifactId":"commons-beanutils","classifier":"","extension":"jar","groupId":"commons-beanutils","version":"20020520"}}'  # not sure if this still works 
+# Example of bash command to check duplicate hashes:
+#   _hashes="$(cat hashes.txt | while read _h; do echo -n '{"hash":"'${_h}'"},'; done)"
+#   _curl -H "Content-Type: application/json" "${_iq_url%/}/api/v2/components/details" -d'{"components":['${_hashes%,}']}' | grep -i hash
+function f_api_remediate() {
+    local __doc__="Call Remediation API. If maven, GAV or pkg:maven/groupId/artifactId@version?type=jar. https://help.sonatype.com/iqserver/automating/rest-apis/component-remediation-rest-api---v2 (next-no-violations, next-non-failing)"
+    # identificationSource = Manual, Sonatype, Sonatype-Artifactory
+    # NOTE: Even remediate (not scan), it still accesses HDS:
+    #   Starting request: GET https://clm.sonatype.com/rest/component/summary?componentIdentifier=
+    #   Starting request: GET https://clm.sonatype.com/rest/ci/componentDetails/list?componentIdentifier=
+    #   Starting request: POST https://clm.sonatype.com/rest/component/dependencies
+    local _component_identifier="$1"
+    # NOTE: "/api/v2/components/remediation/organization/ROOT_ORGANIZATION_ID" is acceptable as well
+    local _app_pub_id="${2-"sandbox-application"}"    # if "", uses ROOT_ORGANIZATION_ID
+    local _scanId="${3}"   # as per doc this is optional, so if "", not setting
+    local _stage="${4-"operate"}"   # as per doc this is optional, so if "", not setting
+    local _comp_id="$(_gen_comp_id "${_component_identifier}")" || return $?
+    local _iq_url="$(_get_iq_url "${_IQ_URL%/}")" || return $?
+    local _purl=""
+    local _need_comp_details=false
+    if [[ "${_component_identifier}" =~ ^pkg ]]; then
+        _purl="${_component_identifier}"
+    elif [[ "${_component_identifier}" =~ ^[0-9a-f]+$ ]]; then
+        _need_comp_details=true
+    elif [[ "${_component_identifier}" =~ ^([^ :]+)\ *:\ *([^ :]+)\ *:\ *([^ :]+)$ ]]; then
+        # NOTE: do not need to do ${BASH_REMATCH[1]//.//}
+        _purl="pkg:maven/${BASH_REMATCH[1]}/${BASH_REMATCH[2]}@${BASH_REMATCH[3]}?type=jar"
+    fi
+    local _app_int_id=""
+    if [ -n "${_app_pub_id}" ]; then
+        _app_int_id="$(f_api_appIntId "${_app_pub_id}")" || return $?
+        _log "INFO" "Using '${_app_pub_id}' Internal Id = ${_app_int_id} ..."
+    fi
+
+    # NOTE: IQ API is inconsistent. Remediation API does not accept hash, so getting purl from the component details.
+    if [ -n "${_comp_id}" ]; then
+        _log "INFO" "/api/v2/components/details with '{\"components\":[${_comp_id}]}' ..."
+        _curl -H "Content-Type: application/json" "${_iq_url%/}/api/v2/components/details" -d '{"components":['${_comp_id}']}' | tee ${_TMP%/}/${FUNCNAME[0]}_comp_details_$$.out
+        if [ -s ${_TMP%/}/${FUNCNAME[0]}_comp_details_$$.out ]; then
+            if [ -z "${_purl}" ]; then
+                # TODO: replace with non python
+                _purl="$(cat ${_TMP%/}/${FUNCNAME[0]}_comp_details_$$.out | python -c "import sys,json
+a=json.loads(sys.stdin.read())
+print(a['componentDetails'][0]['component']['packageUrl'])")"
+                _log "INFO" "Using packageUrl \"${_purl}\""
+            fi
+            if ${_need_comp_details}; then
+                if [ -z "${_purl}" ]; then
+                    _log "ERROR" "Couldn't find packageUrl from the result output."
+                    cat ${_TMP%/}/${FUNCNAME[0]}_comp_details_$$.out
+                    return 1
+                fi
+                _comp_id="{\"packageUrl\":\"${_purl}\"}"
+            fi
+        fi
+    fi
+    local _opts=""
+    [ -n "${_stage}" ] && _opts="${_opts}&stageId=${_stage}"
+    [ -n "${_scanId}" ] && _opts="${_opts}&identificationSource=Manual&scanId=${_scanId}"
+    if [ -n "${_app_int_id}" ]; then
+        _log "INFO" "/api/v2/components/remediation/application/${_app_int_id}?${_opts} with ${_comp_id} ..."
+        _curl -H "Content-Type: application/json" "${_iq_url%/}/api/v2/components/remediation/application/${_app_int_id}?${_opts}" -d "${_comp_id}"
+    else
+        _log "INFO" "/api/v2/components/remediation/organization/ROOT_ORGANIZATION_ID?${_opts} with ${_comp_id} ..."
+        _curl -H "Content-Type: application/json" "${_iq_url%/}/api/v2/components/remediation/organization/ROOT_ORGANIZATION_ID?${_opts}" -d "${_comp_id}"
+    fi
 }
 
 function f_api_vul_details() {
@@ -495,22 +587,45 @@ print(a['reportHtmlUrl'])")"
     _log "INFO" "Report URL: ${_iq_url%/}/${_report_path}"
 }
 
+#f_api_eval "sandbox-application" "pkg:npm/word@0.3.0:"
+#f_api_eval "sandbox-application" '"packageUrl":"pkg:npm/awaitly-postgres@0.1.1","packageUrl":"pkg:npm/%40evolvconsulting/evolv-coder-lite@1.2.0","packageUrl":"pkg:npm/autotel-mcp@5.0.1","packageUrl":"pkg:npm/executable-stories-vitest@6.1.1","packageUrl":"pkg:npm/autotel-terminal@13.0.1","packageUrl":"pkg:npm/awaitly-postgres@17.0.1"'
 function f_api_eval() {
-    local __doc__="/api/v2/evaluation/applications/\${_app_int_id}"
+    local __doc__="Useful API to evaluate multiple components /api/v2/evaluation/applications/\${_app_int_id}"
     local _app_pub_id="${1:-"sandbox-application"}"
-    local _comp_id_like_string="${2}"
+    local _comp_id_like_string="${2}"   # {comp_like_id},{comp_like_id},...  comp_like_id can be a purl, hash, or even 'groupId:artifactId:version' (assuming maven)
     local _app_int_id="$(f_api_appIntId "${_app_pub_id}")" || return $?
-    local _comp_id="$(_gen_comp_id "${_comp_id_like_string}")" || return $?
+    local _comp_id="$(_gen_comp_ids "${_comp_id_like_string}")"
     [ -z "${_comp_id}" ] && return 11
     local _iq_url="$(_get_iq_url "${_IQ_URL%/}")" || return $?
     _log "INFO" "/api/v2/evaluation/applications/${_app_int_id} with '{\"components\":[${_comp_id}]}' ..."
     local _results="$(_curl "${_iq_url%/}/api/v2/evaluation/applications/${_app_int_id}" -H "Content-Type: application/json" -d '{"components":['${_comp_id}']}')" || return $?
-    if [ -n "${_results}" ]; then
-        _resultsUrl="$(echo "[${_results}]" | JSON_SEARCH_KEY="resultsUrl" _sortjson)"
-        if [ -n "${_resultsUrl}" ]; then
-            echo "Results URL: ${_iq_url%/}/${_resultsUrl}"
-        fi
+    if [ -z "${_results}" ]; then
+        _log "ERROR" "No results from evaluation API"
+        return 1
     fi
+    _resultsUrl="$(echo "[${_results}]" | JSON_SEARCH_KEY="resultsUrl" _sortjson)"
+    if [ -z "${_resultsUrl}" ]; then
+        _log "ERROR" "No resultsUrl in evaluation API response"
+        echo "Response: ${_results}"
+        return 1
+    fi
+    echo "# curl -f -u \"${_IQ_CRED:-"${_ADMIN_USER}:${_ADMIN_PWD}"}\" \"${_iq_url%/}/${_resultsUrl}\" -o ./result.json"
+}
+
+function f_api_malware_eval() {
+    local __doc__="https://help.sonatype.com/en/malware-defense-evaluate-api.html This can be used to find hash."
+    local _format="${1}"
+    local _package_urls="${2}"   # {package_url1},{package_url2}, not supporting hash at this moment
+    local _comp_id="$(_gen_comp_ids "${_package_urls}")"
+    [ -z "${_comp_id}" ] && return 11
+    local _iq_url="$(_get_iq_url "${_IQ_URL%/}")" || return $?
+    _log "INFO" "/api/v2/malware-defense/evaluate with '{\"format\":\"${_format}\",\"components\":[${_comp_id}]}' ..."
+    local _results="$(_curl "${_iq_url%/}/api/v2/malware-defense/evaluate" -H "Content-Type: application/json" -d '{"format":"'${_format}'","components":['${_comp_id}']}')" || return $?
+    if [ -z "${_results}" ]; then
+        _log "ERROR" "No results from evaluation API"
+        return 1
+    fi
+    echo "${_results}" | _sortjson
 }
 
 function f_api_eval_scm() {
@@ -526,14 +641,14 @@ function f_api_eval_scm() {
 
 function f_api_eval_firewall() {
     local __doc__="POST /api/v2/firewall/components/{repositoryManagerId}/{repositoryId}/evaluate (https://help.sonatype.com/en/firewall-evaluation-api.html)"
-    local _repository_manager_id="${1}"
+    local _repository_manager_id="${1}" # This is "id" in /api/v2/firewall/repositoryManagers
     local _repository_id="${2}"
     local _purl="${3}"   # "pkg:maven/commons-fileupload/commons-fileupload@1.0",
     local _hash="${4}"   # 2366159e25523d99e96d05211a2fa5399c938735
     local _format="${5}" # maven2
     #local _pathname="${6}"  # "commons-fileupload/commons-fileupload/1.0/commons-fileupload-1.0.jar"
     if [ -z "${_repository_manager_id}" ]; then
-        f_api_repositories_config ""
+        f_api_repositories_config
         return $?
     fi
     if [ -z "${_repository_id}" ]; then
@@ -609,17 +724,23 @@ function f_api_repositories_config() {
 }
 
 function f_api_repository_results() {
-    local __doc__="Experimental API: POST /api/experimental/repositories/{ownerType: repository_container|repository_manager|repository}/{ownerId}/results/details"
-    local _owner_id="${1}"
-    local _owner_type="${2:-"repository"}"
-    local _search_param_json="${3}"
+    local __doc__="Experimental Repository Results API: POST /api/experimental/repositories/{ownerType: repository_container|repository_manager|repository}/{ownerId}/results/details"
+    local _owner_type_id="${1}"
+    local _search_param_json="${2}"
     local _iq_url="$(_get_iq_url "${_IQ_URL%/}")" || return $?
-    if [ -z "${_search_param_json}" ]; then
-        _log "ERROR" "Search parameter JSON is required."
+    if [ -z "${_owner_type_id}" ]; then
+        _log "ERROR" "Owner Type/ID is required. (eg: repository_container/{id}, repository_manager/{id}, or repository/{repositoryId})"
+        echo "Use f_api_repositories_config"
+        echo "Use f_api_repositories_config {id}\""
         return 1
     fi
+    if [ -z "${_search_param_json}" ]; then
+        _log "WARN" "Search parameter JSON is required. Using the below:"
+        _search_param_json="{\"page\": 1,\"pageSize\": 10, \"matchStateFilters\": [\"MATCH_STATE_ALL\"], \"violationStateFilters\": [\"VIOLATION_STATE_ALL\"], \"searchFilters\": [{\"filterableField\": \"POLICY_NAME\", \"value\": \"Security-Critical\"}],\"sortFields\": [{\"sortableField\": \"QUARANTINE_TIME\", \"asc\": false, \"sortPriority\": 1}]}"
+        echo "${_search_param_json}" && sleep 2
+    fi
     echo ${_search_param_json} >${_TMP%/}/${FUNCNAME[0]}_search_param_$$.json
-    _curl "${_iq_url%/}/api/experimental/repositories/${_owner_type}/${_owner_id}/results/details" -H "Content-Type: application/json" -d@"${_TMP%/}/${FUNCNAME[0]}_search_param_$$.json" -o "${_TMP%/}/${FUNCNAME[0]}_$$.json"
+    _curl "${_iq_url%/}/api/experimental/repositories/${_owner_type_id}/results/details" -H "Content-Type: application/json" -d@"${_TMP%/}/${FUNCNAME[0]}_search_param_$$.json" -o "${_TMP%/}/${FUNCNAME[0]}_$$.json"
     _api_out "$?" "${_TMP%/}/${FUNCNAME[0]}_$$.json"
     return $?
 }
@@ -647,6 +768,8 @@ function f_config_update() {
         fi
         f_api_config '{"baseUrl":"'${_baseUrl%/}'/","forceBaseUrl":false}' || return $?
     fi
+    #f_api_config '{"firewallWaiverDashboardAndRenew":true}'    # from v204?
+    #TODO: INSERT INTO insight_brain_ods.system_configuration_property VALUES (gen_random_uuid(), 'firewallWaiverDashboardAndRenew', 'true');
     #f_api_config 'property=hdsUrl'
     if [[ "${_CLM_STAGING}" =~ ^[yY] ]]; then
         f_api_config '{"hdsUrl":"https://clm-staging.sonatype.com/"}'
@@ -670,8 +793,14 @@ function f_create_testuser() {
     if _apiS "/rest/user" '{"firstName":"'${_username}'","lastName":"test","email":"'${_username}'@example.com","username":"'${_username}'","password":"'${_password}'"}'; then
         _log "INFO" "Created user '${_username}'"
     fi
-    # IQ does not have role create/delete API
-    _apiS "/rest/security/roles" '{"name":"test-role","description":"test_role_desc","builtIn":false,"permissionCategories":[{"displayName":"Administrator","permissions":[{"id":"VIEW_ROLES","displayName":"View","description":"All Roles","allowed":false}]},{"displayName":"IQ","permissions":[{"id":"MANAGE_PROPRIETARY","displayName":"Edit","description":"Proprietary Components","allowed":false},{"id":"CLAIM_COMPONENT","displayName":"Claim","description":"Components","allowed":false},{"id":"WRITE","displayName":"Edit","description":"IQ Elements","allowed":true},{"id":"READ","displayName":"View","description":"IQ Elements","allowed":true},{"id":"EDIT_ACCESS_CONTROL","displayName":"Edit","description":"Access Control","allowed":false},{"id":"EVALUATE_APPLICATION","displayName":"Evaluate","description":"Applications","allowed":true},{"id":"EVALUATE_COMPONENT","displayName":"Evaluate","description":"Individual Components","allowed":true},{"id":"ADD_APPLICATION","displayName":"Add","description":"Applications","allowed":true},{"id":"MANAGE_AUTOMATIC_APPLICATION_CREATION","displayName":"Manage","description":"Automatic Application Creation","allowed":false},{"id":"MANAGE_AUTOMATIC_SCM_CONFIGURATION","displayName":"Manage","description":"Automatic Source Control Configuration","allowed":false}]},{"displayName":"Remediation","permissions":[{"id":"WAIVE_POLICY_VIOLATIONS","displayName":"Waive","description":"Policy Violations","allowed":true},{"id":"CHANGE_LICENSES","displayName":"Change","description":"Licenses","allowed":false},{"id":"CHANGE_SECURITY_VULNERABILITIES","displayName":"Change","description":"Security Vulnerabilities","allowed":false},{"id":"LEGAL_REVIEWER","displayName":"Review","description":"Legal obligations for components licenses","allowed":false}]}]}' || return $?
+    # shellcheck disable=SC2089
+    local _pay_load_common='"name":"test-role","description":"test_role_desc","permissionCategories":[{"displayName":"Administrator","permissions":[{"id":"VIEW_ROLES","displayName":"View","description":"All Roles","allowed":false},{"id":"ACCESS_AUDIT_LOG","displayName":"Access","description":"Audit Log","allowed":false}]},{"displayName":"IQ","permissions":[{"id":"MANAGE_PROPRIETARY","displayName":"Edit","description":"Proprietary Components","allowed":false},{"id":"CLAIM_COMPONENT","displayName":"Claim","description":"Components","allowed":false},{"id":"WRITE","displayName":"Edit","description":"IQ Elements","allowed":true},{"id":"READ","displayName":"View","description":"IQ Elements","allowed":true},{"id":"EDIT_ACCESS_CONTROL","displayName":"Edit","description":"Access Control","allowed":false},{"id":"EVALUATE_APPLICATION","displayName":"Evaluate","description":"Applications","allowed":false},{"id":"EVALUATE_COMPONENT","displayName":"Evaluate","description":"Individual Components","allowed":false},{"id":"ADD_APPLICATION","displayName":"Add","description":"Applications","allowed":true},{"id":"MANAGE_AUTOMATIC_APPLICATION_CREATION","displayName":"Manage","description":"Automatic Application Creation","allowed":false},{"id":"MANAGE_AUTOMATIC_SCM_CONFIGURATION","displayName":"Manage","description":"Automatic Source Control Configuration","allowed":false}]},{"displayName":"Remediation","permissions":[{"id":"WAIVE_POLICY_VIOLATIONS","displayName":"Waive","description":"Policy Violations","allowed":false},{"id":"CHANGE_LICENSES","displayName":"Change","description":"Licenses","allowed":false},{"id":"CHANGE_SECURITY_VULNERABILITIES","displayName":"Change","description":"Security Vulnerabilities","allowed":false},{"id":"LEGAL_REVIEWER","displayName":"Review","description":"Legal obligations for components licenses","allowed":false},{"id":"CREATE_PULL_REQUESTS","displayName":"Create","description":"Pull requests","allowed":false}]}]'
+    
+    if ! _curl "${_IQ_URL%/}/api/v2/roles" -H "Content-Type: application/json" -d '{"id":null,'${_pay_load_common}'}'; then
+        _log "WARN" "'/api/v2/roles' API did not work. Trying old rest '/rest/security/roles' ..."
+        # old IQ does not have role create/delete API
+        _apiS "/rest/security/roles" '{"builtIn":false,'${_pay_load_common}']}' || return $?
+    fi
     _log "INFO" "Created role 'test-role'"
     if [ -n "${_apporg_name}" ]; then
         f_api_role_mapping "test-role" "${_username}" "${_apporg_name}" "user" "${_app_or_org}" || return $?
@@ -1285,6 +1414,15 @@ EOF
     fi
 }
 
+function f_prep_pypi_meta_for_scan() {
+    cat <<EOF > requirements.txt
+boto3-stubs>=1.41.0
+pandas==1.5.3
+PyYAML==6.0
+six==1.16.0
+EOF
+}
+
 function f_prep_yum_meta_for_scan() {
     local _tmpdir="$(mktemp -d)" || return $?
     cd "${_tmpdir}" || return $?
@@ -1407,6 +1545,8 @@ EOF
     # TODO: scanning zip file is not working?
     #java -jar $HOME/.nexus_executable_cache/nexus-iq-cli-2.8.0-01.jar -i sandbox-application -s http://localhost:8070/ -a admin:admin123 -t build -rajs -rjs "packages/**" . -X
 }
+
+# TODO: create same for Java (maybe INT-10383 is the good example)
 
 function f_import_sbom() {
     local __doc__="https://help.sonatype.com/en/sbom-manager-api.html SBOM examples: https://help.sonatype.com/en/cyclonedx-rest-api.html#response-162417"
@@ -1633,6 +1773,7 @@ function f_backup_postgresql() {
 }
 
 #f_set_log_level "org.apache.http.headers"
+#f_set_log_level "org.jooq.tools.LoggerListener"
 function f_set_log_level() {
     local __doc__="Set / Change some logger's log level (TODO: currently only localhost:8071)"
     local _log_class="${1}"

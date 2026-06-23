@@ -80,7 +80,7 @@ Just get the repositories setting:
 }
 
 
-## Global variables
+## Global variables_populate_docker_proxy_oras
 : ${_REPO_FORMATS:="maven,pypi,npm,nuget,docker,yum,rubygem,helm,conda,cocoapods,bower,go,apt,r,p2,gitlfs,raw"}
 #TODO: : ${_NO_ASSET_UPLOAD:=""}
 : ${_ADMIN_USER:="admin"}
@@ -117,9 +117,9 @@ _RESP_FILE=""
 # To upgrade (from ${_dirpath}/):
 #   tar -xvf $HOME/.nexus_executable_cache/nexus-3.
 # To install HA instances (port is automatic):
-#   _VER="3.89.1-02" _DB="nxrm3891ha"
-#   _NXRM3_INSTALL_DIR="./nxrm_${_VER}_${_DB}_1st" _NEXUS_ENABLE_HA=Y f_install_nexus3 "${_VER}" "${_DB}"
-#   _NXRM3_INSTALL_DIR="./nxrm_${_VER}_${_DB}_2nd" _NEXUS_ENABLE_HA=Y f_install_nexus3 "${_VER}" "${_DB}"
+#   _VER="3.91.1-03"
+#   _NXRM3_INSTALL_DIR="./nxrm_${_VER}_1st" _NEXUS_ENABLE_HA=Y f_install_nexus3 "${_VER}"
+#   _NXRM3_INSTALL_DIR="./nxrm_${_VER}_2nd" _NEXUS_ENABLE_HA=Y f_install_nexus3 "${_VER}"
 #   # Need to think about the location of the shared blob store. e.g. create a symlink between blobs dir.
 function f_install_nexus3() {
     local __doc__="Install specific NXRM3 version (to recreate sonatype-work and DB, _RECREATE_ALL=Y)"
@@ -134,8 +134,9 @@ function f_install_nexus3() {
     local _schema="${_DB_SCHEMA}"
 
     if [ -z "${_dbname}" ] && _isYes "${_NEXUS_ENABLE_HA:-"${r_NEXUS_ENABLE_HA}"}"; then
-        _log "ERROR" "HA is requested but no DB name"
-        return 1
+        # if _ver is given, generate _dbname with it, otherwise, just ask for it
+        _dbname="nxrm${_ver//[^0-9]/}ha"
+        _log "INFO" "HA is requested but no DB name, so using ${_dbname} ..."; sleep 3
     fi
     if [ -n "${_dbname}" ]; then
         local _dbname_mod="${_dbname//[^[:alnum:]]/}"
@@ -623,6 +624,13 @@ function f_setup_docker() {
     # NOTE: How to test Docker subdomain connector https://help.sonatype.com/en/docker-subdomain-connector.html
     #curl -I -H 'Host: docker-proxy.${_DOMAIN#.}:8443' "${_NEXUS_URL%/}/repository/docker-proxy/v2/"
 
+    local _realms="$(f_api "/service/rest/v1/security/realms/active")"
+    if [ -n "${_realms}" ] && ! echo "${_realms}" | grep -q -w "DockerToken"; then
+        _realms="$(echo "${_realms}" | sed 's/\]/,"DockerToken"\]/')"
+        _log "INFO" "Docker Bearer Token is not active. Adding ..."
+        f_api "/service/rest/v1/security/realms/active" "${_realms}" "PUT" || return $?
+    fi
+
     # If no xxxx-proxy, create it
     if ! _is_repo_available "${_prefix}-proxy"; then
         # "httpPort":18178 - 18179
@@ -661,18 +669,22 @@ function f_setup_docker() {
 
 
     # add some data for xxxx-proxy
-    _log "INFO" "Populating ${_prefix}-proxy repository with some image ..."
-    # TODO: For IQ firewall/quarantine, might want to pull from https://hub.docker.com/r/sonatypecommunity/docker-policy-demo/tags
-    if ! _populate_docker_proxy_oras "" "18178"; then
-        _log "WARN" "_populate_docker_proxy_oras failed. May need f_setup_https (and FQDN) or 'Docker Bearer Token Realm' (not only for anonymous access)."
-    fi
+    _log "INFO" "Populating ${_prefix}-proxy repository with some image (ignoring errors) ..."
+    # NOTE: For IQ firewall/quarantine, might want to pull from https://hub.docker.com/r/sonatypecommunity/docker-policy-demo/tags
+    _populate_docker_proxy_oras "" "18178" &>${_TMP%/}/_populate_docker_proxy_oras.out &
 
     # add some data for xxxx-hosted
-    _log "INFO" "Populating ${_prefix}-hosted repository with some image ..."
-    if ! _populate_docker_hosted_oras "" "18181"; then
-        _log "WARN" "_populate_docker_hosted_oras failed. May need f_setup_https (and FQDN) or 'Docker Bearer Token Realm' (not only for anonymous access)."
-    fi
+    _log "INFO" "Populating ${_prefix}-hosted repository with some image (ignoring errors) ..."
+    _populate_docker_hosted_oras "" "18181" &>${_TMP%/}/_populate_docker_hosted_oras.out &
+
+    # add some data for xxxx-group
+    _log "INFO" "Populating ${_prefix}-group repository with some image via docker proxy repo (ignoring errors) ..."
+    _populate_docker_proxy_oras "hello-world:latest" "4999" &>${_TMP%/}/_populate_docker_proxy_oras_group.out &
+    wait
+
+    # Extra
     if type helm &>/dev/null; then
+        _log "INFO" "Populating ${_prefix}-hosted (18182) with helm-oci-demo-0.1.0.tgz ..."
         if [ -s "${_TMP%/}/helm-oci-demo-0.1.0.tgz" ] || curl -sf -o ${_TMP%/}/helm-oci-demo-0.1.0.tgz -L "https://github.com/hajimeo/samples/raw/refs/heads/master/misc/helm-oci-demo-0.1.0.tgz"; then
             #_log "INFO" "Populating ${_prefix}-hosted repository with demo helm chart (OCI) ..."
             local _docker_hostname="$(_get_docker_hostname)"
@@ -689,10 +701,6 @@ function f_setup_docker() {
             fi
         fi
     fi
-
-    # add some data for xxxx-group
-    _log "INFO" "Populating ${_prefix}-group repository with some image via docker proxy repo ..."
-    _populate_docker_proxy_oras "hello-world:latest" "4999"
 }
 
 #_populate_docker_proxy_oras "" "m1mac.standalone.localdomain:15000"
@@ -736,6 +744,9 @@ function _populate_docker_hosted_oras() {
 #   # After deleting alpine_hosted (and 'docker system prune -a -f'):
 #   _populate_docker_hosted "local.standalone.localdomain:15000/alpine:latest" "local.standalone.localdomain:15000"
 #   _TAG_TO="thrivent-web/doi-invite:latest" _populate_docker_hosted "local.standalone.localdomain:15000/alpine:latest" "local.standalone.localdomain:15000"
+# Example 4: Firewall for Docker test
+#   _populate_docker_hosted "alpine:latest" "local.standalone.localdomain:18182" "firewall-test:latest"
+#   _populate_docker_hosted "sonatypecommunity/docker-policy-demo:Security-Malicious" "local.standalone.localdomain:18182" "firewall-test:latest"
 function _populate_docker_hosted() {
     local _base_img="${1:-"alpine:latest"}"    # dh1.standalone.localdomain:15000/alpine:3.7
     local _host_port="${2:-"${r_DOCKER_PROXY:-"${r_DOCKER_GROUP:-"${r_NEXUS_URL}"}"}"}"
@@ -759,8 +770,14 @@ function _populate_docker_hosted() {
         _tag_to="dummy-img-n${_num_layers}:latest"
     fi
 
+    # check if the base image is available locally, if not pull it first (this is needed for testing firewall blocking)
+    if ! ${_cmd} image inspect ${_base_img} &>/dev/null; then
+        _log "INFO" "Pulling base image ${_base_img} ..."
+        ${_cmd} pull ${_base_img} || return $?
+    fi
+
     # It seems newer docker appends "localhost/" so trying this one first.
-    if ! ${_cmd} tag localhost/${_tag_to} ${_host_port}/${_tag_to} 2>/dev/null; then
+    if ! ${_cmd} tag ${_base_img} ${_host_port}/${_tag_to} 2>/dev/null; then
         _log "INFO" "docker tag ${_tag_to} ${_host_port}/${_tag_to}"
         ${_cmd} tag ${_tag_to} ${_host_port}/${_tag_to} || return $?
     fi
@@ -834,13 +851,14 @@ function f_setup_yum() {
         # http://mirror.centos.org/centos/ is dead
         #sed -i 's/mirrorlist/#mirrorlist/g' /etc/yum.repos.d/CentOS-*
         #sed -i 's|#baseurl=http://mirror.centos.org|baseurl=http://vault.centos.org|g' /etc/yum.repos.d/CentOS-*
-        _apiS '{"action":"coreui_Repository","method":"create","data":[{"attributes":{"proxy":{"remoteUrl":"https://vault.centos.org/7.9.2009/os/x86_64/","contentMaxAge":1440,"metadataMaxAge":1440},"httpclient":{"blocked":false,"autoBlock":true},"storage":{"blobStoreName":"'${_bs_name}'","strictContentTypeValidation":true'${_extra_sto_opt}'},"negativeCache":{"enabled":true,"timeToLive":1440},"cleanup":{"policyName":[]}},"name":"'${_prefix}'-proxy","format":"","type":"","url":"","online":true,"routingRuleId":"","authEnabled":false,"httpRequestSettings":false,"recipe":"yum-proxy"}],"type":"rpc"}' || return $?
+        _apiS '{"action":"coreui_Repository","method":"create","data":[{"attributes":{"proxy":{"remoteUrl":"https://vault.centos.org/","contentMaxAge":1440,"metadataMaxAge":1440},"httpclient":{"blocked":false,"autoBlock":true},"storage":{"blobStoreName":"'${_bs_name}'","strictContentTypeValidation":true'${_extra_sto_opt}'},"negativeCache":{"enabled":true,"timeToLive":1440},"cleanup":{"policyName":[]}},"name":"'${_prefix}'-proxy","format":"","type":"","url":"","online":true,"routingRuleId":"","authEnabled":false,"httpRequestSettings":false,"recipe":"yum-proxy"}],"type":"rpc"}' || return $?
     fi
     # Add some data for xxxx-proxy (Ubuntu has "yum" command)
     # NOTE: using 'yum' command is a bit too slow, so not using at this moment, but how to
     #   _echo_yum_repo_file "${_prefix}-proxy" > /etc/yum.repos.d/nexus-yum-test.repo
     #   yum --disablerepo="*" --enablerepo="nexusrepo-test" install --downloadonly --downloaddir=${_TMP%/} dos2unix
-    f_get_asset "${_prefix}-proxy" "Packages/dos2unix-6.0.3-7.el7.x86_64.rpm" "${_TMP%/}/dos2unix-6.0.3-7.el7.x86_64.rpm"
+    f_get_asset "${_prefix}-proxy" "7.9.2009/os/x86_64/Packages/dos2unix-6.0.3-7.el7.x86_64.rpm" "${_TMP%/}/dos2unix-6.0.3-7.el7.x86_64.rpm"
+    f_get_asset "${_prefix}-proxy" "7.9.2009/os/x86_64/repodata/repomd.xml"
 
     # This site is no longer working
     #if ! _is_repo_available "${_prefix}-epel-proxy"; then
@@ -1445,7 +1463,7 @@ function f_setup_gitlfs() {
 }
 
 function f_setup_cargo() {
-    local __doc__="Create Cargo Proxy/Hosted/Group repositories (v3.73+)"
+    local __doc__="Create Rust/Cargo Proxy/Hosted/Group repositories (v3.73+)"
     local _prefix="${1:-"cargo"}"
     local _bs_name="${2:-"${r_BLOBSTORE_NAME:-"${_BLOBTORE_NAME}"}"}"
     local _ds_name="${3:-"${r_DATASTORE_NAME:-"${_DATASTORE_NAME}"}"}"
@@ -1745,6 +1763,7 @@ function f_create_file_blobstore() {
     _log "DEBUG" "$(cat ${_TMP%/}/f_apiS_last.out)"
 }
 
+# TODO: Does this support AWS SDK v2
 function f_start_s3_compatible() {
     local __doc__="Start a MinIO docker container for S3 compatible API testing"
     # https://gist.github.com/ataylor284/7b15c276441906d16d43f58cf8e3ea94?permalink_comment_id=2986850
@@ -1988,7 +2007,8 @@ function f_iq_quarantine() {
     # To create IQ: Audit and Quarantine for this repository:
     if [ -n "${_repo_name}" ]; then
         _apiS '{"action":"capability_Capability","method":"create","data":[{"id":"NX.coreui.model.Capability-1","typeId":"firewall.audit","notes":"","enabled":true,"properties":{"repository":"'${_repo_name}'","quarantine":"true"}}],"type":"rpc"}' || return $?
-        _log "INFO" "IQ: Audit and Quarantine for ${_repo_name} completed (change \"proxy\" action to \"Fail\" and enable PCCS)"
+        _log "INFO" "IQ: Audit and Quarantine for ${_repo_name} completed"
+        _log "INFO" "If PCCS is required, change the config from ${_NEXUS_URL%/}/#admin/repository/repositories:${_repo_name}"
     fi
 }
 
@@ -3000,8 +3020,18 @@ function f_setup_forward_proxy() {
     local _host="${1:-"localhost"}"
     local _port="${2:-"8080"}"
     local _nonProxyHosts_json="${3:-"[]"}"  # JSON array of non-proxy hosts, e.g. ["localhost"]
-    local _proxy_ca_cert="${4:-"./proxy.crt"}"
+    local _proxy_ca_cert="${4}"
     _apiS '{"action":"coreui_HttpSettings","method":"update","data":[{"httpEnabled":true,"httpHost":"'${_host}'","httpPort":"'${_port}'","httpAuthEnabled":false,"httpsEnabled":true,"httpsHost":"'${_host}'","httpsPort":"'${_port}'","httpsAuthEnabled":false,"nonProxyHosts":'${_nonProxyHosts_json}',"timeout":null,"retries":null}],"type":"rpc"}'
+    if [ -z "${_proxy_ca_cert}" ]; then
+        if [ -s "./proxy.crt" ]; then
+            _proxy_ca_cert="./proxy.crt"
+        elif [ -s "${_SHARE_DIR%/}/httpproxy/proxy.crt" ]; then
+            _proxy_ca_cert="${_SHARE_DIR%/}/httpproxy/proxy.crt"
+        fi
+
+        _log "INFO" "No proxy CA cert provided but ${_proxy_ca_cert} exists. Using this ..."
+        sleep 1
+    fi
     if [ -s "${_proxy_ca_cert}" ]; then
         _log "INFO" "Trusting proxy CA cert ${_proxy_ca_cert} ..."
         f_api "/service/rest/v1/security/ssl/truststore" "$(cat "${_proxy_ca_cert}")"
@@ -3305,6 +3335,7 @@ function f_start_ldap_server() {
     local __doc__="Install and start a dummy LDAP server with glauth"
     local _install_dir="${1:-"${_SHARE_DIR%/}/glauth"}"
     local _port="${2:-8389}"
+    local _port2="${3}"
     local _download_dir="/tmp"
     if [ ! -d "${_install_dir%/}" ]; then
         mkdir -v -p "${_install_dir%/}" || return $?
@@ -3336,8 +3367,12 @@ function f_start_ldap_server() {
         curl -sSf -o ${_install_dir%/}/glauth-simple.cfg -L "https://raw.githubusercontent.com/hajimeo/samples/master/misc/glauth-simple.cfg" --compressed || return $?
     fi
     _log "INFO" "Starting glauth with ${_install_dir%/}/glauth-simple.cfg ..."
-    # listening 0.0.0.0:8389
-    eval "${_install_dir%/}/glauth -c ${_install_dir%/}/glauth-simple.cfg" &> ${_TMP%/}/glauth_$$.log &
+    local _cmd="${_install_dir%/}/glauth -c ${_install_dir%/}/glauth-simple.cfg --ldap 0.0.0.0:${_port}"
+    if [ -n "${_port2}" ]; then
+        _cmd="${_cmd}  --ldaps 0.0.0.0:${_port2}"
+    fi
+    echo "[INFO] Starting glauth with command: ${_cmd}"
+    eval "${_cmd}" &> ${_TMP%/}/glauth_$$.log &
     local _pid="$!"
     sleep 2
     if ! jobs -l | grep -w "${_pid}" | grep -q -w Running; then
@@ -3348,7 +3383,7 @@ function f_start_ldap_server() {
     echo "    PID: ${_pid}  Log: ${_TMP%/}/glauth_$$.log"
     echo "    LDAP config: ${_install_dir%/}/glauth-simple.cfg"
     echo "To test:"
-    echo "    curl -v -u \"admin@standalone.localdomain\" -k \"ldap://${_host}:${_port}/ou=users,dc=standalone,dc=localdomain?uid,cn,mail,memberof?sub?(&(objectClass=posixAccount)(uid=*))\""   # + userFilter
+    echo "    curl -v -u \"admin@standalone.localdomain\" -k \"ldap://${_host:-"localhost"}:${_port}/ou=users,dc=standalone,dc=localdomain?uid,cn,mail,memberof?sub?(&(objectClass=posixAccount)(uid=*))\""   # + userFilter
     echo "To test group mappings (space may need to be changed to %20):"
     echo "    curl -v -u \"cn=ldapadmin,dc=standalone,dc=localdomain\" -k \"ldap://${_host:-"localhost"}:${_port:-"389"}/ou=users,dc=standalone,dc=localdomain?dn,cn,mail,memberof?sub?(&(objectClass=posixAccount)(uid=ldapuser))\"" # + userFilter
     # echo "To test: LDAPTLS_REQCERT=never ldapsearch -H ldap://${_host}:${_port} -b 'dc=standalone,dc=localdomain' -D 'admin@standalone.localdomain' -w '${_LDAP_PWD:-"secret12"}' -s sub '(&(objectClass=posixAccount)(uid=*))'"
@@ -3510,7 +3545,7 @@ function f_upload_dummy_raw() {
     fi
     if [ -z "${_repo_path}" ]; then
         local _file_name="${_file_path##*/}"
-        _repo_path="/repository/raw-hosted/dummies/${_file_name}"
+        _repo_path="/repository/${_repo_name}/dummies/${_file_name}"
     fi
     _log "INFO" "curl -u \"${_usr}\" -T ${_file_path} -L -k \"${_NEXUS_URL%/}/repository/${_repo_name}/${_repo_path#/}\""
     curl -sf -u "${_usr}:${_pwd}" -w '%{http_code} '${_file_path}' (%{time_total}s)\n' -T ${_file_path} -L -k "${_NEXUS_URL%/}/repository/${_repo_name}/${_repo_path#/}"
@@ -3703,7 +3738,7 @@ function f_upload_dummies_maven() {
     #export -f f_upload_asset
     for i in $(eval "${_seq}"); do
       echo "$i${_ver_sfx}"
-    done | xargs -I{} -P${_parallel} curl -sf -u "${_usr}:${_pwd}" -w "%{http_code} ${_g}:${_a}:{} (%{time_total}s)\n" -H "accept: application/json" -H "Content-Type: multipart/form-data" -X POST -k "${_NEXUS_URL%/}/service/rest/v1/components?repository=${_repo_name}" -F maven2.groupId=${_g} -F maven2.artifactId=${_a} -F maven2.version={} -F maven2.asset1=@${_TMP%/}/dummy.jar -F maven2.asset1.extension=jar
+    done | xargs -I{} -P${_parallel} curl -sf -u "${_usr}:${_pwd}" -w "%{http_code} ${_g}:${_a}:{} (%{time_total}s)\n" -H "accept: application/json" -H "Content-Type: multipart/form-data" -X POST -k "${_NEXUS_URL%/}/service/rest/v1/components?repository=${_repo_name}" -F maven2.groupId=${_g} -F maven2.artifactId=${_a} -F maven2.version={} -F maven2.asset1=@${_TMP%/}/dummy.jar -F maven2.asset1.extension=jar -F maven2.generate-pom=true
     # TODO: -F maven2.generate-pom=true is not working
     # NOTE: xargs only stops if exit code is 255
 }
@@ -3888,13 +3923,38 @@ function _update_npm_tgz() {
     rm -rf ${_tmpdir%/}
 }
 
-# TODO: create f_upload_dummies_pypi
+function f_upload_dummies_pypi() {
+    local __doc__="Upload dummy tgz into npm hosted repository"
+    local _repo_name="${1:-"pypi-hosted"}"
+    local _how_many="${2:-"10"}"
+    local _dummy_pkg_name="${3:-"dummypypiproject"}"    # Do not use `-`
+
+    local _seq_start="${_SEQ_START:-1}"
+    local _seq_end="$((${_seq_start} + ${_how_many} - 1))"
+    local _seq="seq ${_seq_start} ${_seq_end}"
+
+    if [ -z "$VIRTUAL_ENV" ]; then
+        _log "ERROR" "Please activate a Python virtual environment with 'build' package"
+        return 1
+    fi
+
+    # TODO: upload concurrently with some limit (not only using _ASYNC_CURL="Y")
+    for i in $(eval "${_seq}"); do
+        f_upload_dummy_pypi "${_repo_name}" "${_dummy_pkg_name}" "9.${i}.0" || return $?
+    done
+}
+
 function f_upload_dummy_pypi() {
     local __doc__="Upload dummy .whl into PyPI hosted repository"
     local _repo_name="${1:-"pypi-hosted"}"
     local _new_name="${2:-"mydummyproject"}"  # Default project name if not specified
     local _new_ver="${3:-"0.0.1"}"  # Default version if not specified
     local _tmpbase="${4:-"${_TMP%/}"}"
+
+    if [ -z "$VIRTUAL_ENV" ]; then
+        _log "ERROR" "Please activate a Python virtual environment with 'build' package"
+        return 1
+    fi
 
     if [ ! -s "${_TMP%/}/pypi-sampleproject.tgz" ]; then
         if [ ! -s "${_TMP%/}/pypi-sampleproject.tgz_$$" ]; then
@@ -3941,14 +4001,15 @@ function _build_pypi_project() {
         _log "ERROR" "Failed to update pyproject.toml"
         return 1
     fi
-    #HOME="." python -m pip install --upgrade setuptools wheel build
     if ! HOME="${_build_home:-"${HOME}"}" python -m build &> ${_TMP%/}/pybuild_last.out; then
         _log "ERROR" "Building ${_project_dir} failed. Check ${_TMP%/}/pybuild_last.out for details."
+        _log "ERROR" "May need to run 'python -m pip install --upgrade setuptools wheel build'" # HOME=. may be needed?
         return 1
     fi
-    local _whl_file="$(find ./dist -type f -name "${_new_name}-${_new_ver}-*.whl" -mmin -1 | head -n 1)"
+    local _full_dist="$(readlink -f "./dist")"
+    local _whl_file="$(find ${_full_dist%/} -type f -name "${_new_name}?${_new_ver}?*.whl" -mmin -1 | head -n 1)"
     if [ -z "${_whl_file}" ]; then
-        _log "ERROR" "No wheel file found in ./dist after build"
+        _log "ERROR" "No ${_new_name}?${_new_ver}?*.whl found in ${_full_dist} after build"
         return 1
     fi
     _whl_file="$(readlink -f "${_whl_file}")"
@@ -4050,6 +4111,7 @@ function f_upload_dummies_rubygem() {
     done
 }
 
+#_populate_docker_hosted alpine:latest "local.standalone.localdomain:18182" "tdsstreaming:0.24.0-KafkaConfluentCloudET.55-SNAPSHOT-1-1-104219"
 #_IMAGE_NAME="hyphentest" _DOCKER_TAG_PFX="226944e1c-" f_upload_dummies_docker "" "1"
 #_ADMIN_USER="testuser" _ADMIN_PWD="testuser" _IMAGE_NAME="pws-blueprint-test-suite/manual-tests/oci-build-recipe-test" f_upload_dummies_docker "" "2"
 #_IMAGE_NAME="path-based-test" f_upload_dummies_docker "${_NEXUS_DOCKER_HOSTNAME}:8443/docker-hosted" "1"
@@ -4084,7 +4146,7 @@ function f_upload_dummies_docker() {
                 _img="${_image_name}:${_tag_prefix}${i}-${j}-$(date +'%H%M%S')"
             fi
             _log "INFO" "Populating ${_host_port} with ${_img} / base image: ${_base_img} ..."
-            (_DOCKER_NO_LOGIN="Y" _populate_docker_hosted "${_base_img}" "${_host_port}" "${_img}" &> ${_TMP%/}/${FUNCNAME[0]}_$$_${i}_${j}.out && echo "[$(date +'%H:%M:%S')] INFO Pushed dummy image '${_img}' (${_base_img}) to ${_host_port} completed" || echo "[$(date +'%H:%M:%S')] WARN Pushed dummy image '${_img}' (${_base_img}) to ${_host_port} failed") &
+            (_DOCKER_NO_LOGIN="Y" _populate_docker_hosted "${_base_img}" "${_host_port}" "${_img}" &> ${_TMP%/}/${FUNCNAME[0]}_$$_${i}_${j}.out && echo "[$(date +'%H:%M:%S')] INFO Pushing dummy image '${_img}' (${_base_img}) to ${_host_port} completed" || echo "[$(date +'%H:%M:%S')] WARN '_DOCKER_NO_LOGIN="Y" _populate_docker_hosted "${_base_img}" "${_host_port}" "${_img}"' failed") &
             _count=$((_count + 1))
             if [ ${_count} -ge ${_how_many} ]; then
                 break
@@ -4350,16 +4412,25 @@ function f_delete_asset() {
     done
     echo "Deleted ${_line_num} assets"
 }
+#f_get_all_assets "raw-group" "downloadUrl" "" "q=dummies"
 function f_get_all_assets() {
-    local __doc__="Get all assets but only one attribute from one repository with Search REST API (require correct search index)"
+    local __doc__="Get/List all assets but only one attribute from one repository with Search REST API (require correct search index)"
     local _repo="$1"
     local _attr="${2:-"id"}"    # or "downloadUrl"
     local _max_loop="${3:-200}" # 50 * 200 = 10000 max
+    local _search_criteria="${4}"    # or "downloadUrl"
     rm -f ${_TMP%/}/${FUNCNAME[0]}_*.out || return $?
     local _path="/service/rest/v1/search/assets"
     local _query=""
     local _base_query=""
     [ -n "${_repo}" ] && _base_query="?repository=${_repo}"
+    if [ "${_search_criteria}" != "" ]; then
+        if [ -n "${_base_query}" ]; then
+            _base_query="${_base_query}&${_search_criteria}"
+        else
+            _base_query="?${_search_criteria}"
+        fi
+    fi
     cat /dev/null > ${_TMP%/}/${FUNCNAME[0]}_attr_$$.out
     for i in $(seq "1" "${_max_loop}"); do
         f_api "${_path}${_base_query}${_query}" > ${_TMP%/}/${FUNCNAME[0]}_$$.json || return $?
@@ -4419,6 +4490,40 @@ function f_delete_all_assets() {
     done | xargs -I{} -P${_parallel} curl -sf -u "${_usr}:${_pwd}" -w '%{http_code} {} (%{time_total}s)\n' -X DELETE -L -k "${_nexus_url%/}{}"
     # To make this function faster, not using f_api "/service/rest/v1/assets/${BASH_REMATCH[1]}" "" "DELETE" (but now can't stop at the first error...)
     _log "INFO" "Deleted ${_line_num} assets. 'After waiting for 'nexus.assetBlobCleanupTask.blobCreatedDelayMinute', Cleanup unused <format> blobs from <datastore> task' (f_run_tasks_by_type \"assetBlob.cleanup\") needs to be run."
+}
+
+function f_staging_move_test() {
+    local __doc__="To test staging move API with search and tag APIs"
+    local _format="${1:-"raw"}"
+    local _src_host_repo="${2:-"${_format}-hosted"}"
+    local _dest_host_repo="${3:-"${_src_host_repo}-moved"}"
+    local _tag="${4}"
+    local _test_dir_path="${5:-"staging-move"}"
+
+    eval "f_setup_${_format}" || return $?
+    if ! _is_repo_available "${_dest_host_repo}"; then
+        local _bs_name="$(_get_blobstore_name)"
+        # TODO: this may fail if not 'raw' format.
+        f_api "/service/rest/v1/repositories/${_format}/hosted" '{"name":"'${_dest_host_repo}'","online":true,"storage":{"blobStoreName":"'${_bs_name}'","strictContentTypeValidation":false,"writePolicy":"ALLOW"}}' || return $?
+    fi
+
+    local _search="repository=${_src_host_repo}"
+    if [ -n "${_test_dir_path}" ]; then
+        # TODO: this may fail if not 'raw' format.
+        curl -D- -u "${_ADMIN_USER}:${_ADMIN_PWD}" -T<(echo "test for f_staging_move_test") -L -k "${_NEXUS_URL%/}/repository/${_src_host_repo}/${_test_dir_path#/}/dummy.txt" || return $?
+        _search="${_search}&name=/${_test_dir_path#/}/*"
+        sleep 2 # To make sure the component is searchable. This may not be needed if the search index is updated immediately.
+    fi
+
+    if [ -n "${_tag}" ]; then
+        f_associate_tag "${_search}" "${_tag}" || return $?
+        sleep 2 # To make sure the component is searchable. This may not be needed if the search index is updated immediately.
+        f_staging_move "${_dest_host_repo}" "${_tag}"
+        return $?
+    fi
+
+    f_staging_move "${_dest_host_repo}" "" "${_search}"
+    return $?
 }
 
 # 1. Create a new raw-test-hosted repo from Web UI (or API)
