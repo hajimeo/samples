@@ -168,11 +168,11 @@ function _postgresql_configure() {
     fi
 
     _psql_adm "ALTER SYSTEM SET auto_explain.log_min_duration TO '5000'"
-    # To check (it's not in pg_extension:
+    # To check (it's not in pg_extension):
     # SELECT setting, pending_restart FROM pg_settings WHERE name = 'shared_preload_libraries';
-    # ALTER system SET auto_explain.log_min_duration TO '0';
+    # ALTER system SET auto_explain.log_min_duration TO '-1';   -- to disable
     # SELECT pg_reload_conf();
-    # SELECT * FROM pg_settings WHERE name like 'auto_explain%';
+    # SELECT * FROM pg_settings WHERE name like 'auto_explain%';  -- to confirm the settings (auto_explain.log_analyze should be 'off')
 
     diff -wu ${__TMP%/}/postgresql.conf.orig ${_postgresql_conf}
     if ${_restart} || ! ${_psql_as_admin} -d template1 -c "SELECT pg_reload_conf();"; then
@@ -414,7 +414,7 @@ function _postgresql_create_role_and_db() {
 
     # test
     local _hostname="${PGHOST:-"${PGHOSTADDR:-"$(hostname -f)"}"}"
-    local _cmd="psql -h ${_hostname} -p ${_port} -U ${_dbusr} -d ${_dbname} -c \"\l ${_dbname}\""
+    local _cmd="psql -h ${_hostname} -p ${_port} -U ${_dbusr} -d ${_dbname} -c \"\l ${_dbname}\""   # TODO: should use double-quote for case sensitivity but not using for now.
     _log "INFO" "Testing the connection with \"${_cmd}\" ..."
     eval "${_CMD_PREFIX} PGPASSWORD=\"${_dbpwd}\" ${_cmd}" || return $?
 }
