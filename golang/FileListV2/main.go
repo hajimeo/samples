@@ -8,7 +8,6 @@ import (
 	"errors"
 	"flag"
 	"fmt"
-	h "github.com/hajimeo/samples/golang/helpers"
 	"io"
 	"log"
 	"os"
@@ -21,6 +20,8 @@ import (
 	"sync"
 	"sync/atomic"
 	"time"
+
+	h "github.com/hajimeo/samples/golang/helpers"
 )
 
 var Client bs_clients.Client
@@ -1060,7 +1061,7 @@ func checkBlobIdDetailFromBS(maybeBlobId string) interface{} {
 			}
 			if err != nil {
 				h.Log("WARN", fmt.Sprintf("No bytes: %s in %s (error: %s)", bytesPath, common.Truth, err.Error()))
-				// This combination shouldn't be possible but just in case (if "DB", the BytesChk should be always true)
+				// This combination shouldn't be possible, but just in case (if "DB", the BytesChk should always be true)
 				if common.Truth == "DB" {
 					printLineFromPath(bytesArgs)
 				}
@@ -1299,7 +1300,7 @@ func isOrphanedBlob(contents string, blobId string, db *sql.DB) string {
 	if len(repoName) > 0 && len(tableName) == 0 {
 		// Returning early if the repoName does not exist in the common.Repo2Fmt
 		h.Log("WARN", fmt.Sprintf("Repository: %s does not exist in the database, so assuming %s as orphan", repoName, blobId))
-		return "ORPHAN:" + repoName + "/" + format + "(NO_REPO)"
+		return "ORPHAN:" + repoName + "|" + format + "(NO_REPO)"
 	}
 	// If repoName is empty, still checks to get the details
 	var repoNames []string
@@ -1317,14 +1318,14 @@ func isOrphanedBlob(contents string, blobId string, db *sql.DB) string {
 	query := genAssetBlobUnionQuery("asset_id, path", "blob_ref LIKE '%"+blobIdLike+"' LIMIT 1", repoNames, format)
 	if len(query) == 0 { // Mainly for unit test
 		h.Log("WARN", fmt.Sprintf("query is empty for blobId: %s and tableName: %s", blobId, tableName))
-		return "UNKNOWN1:" + repoName + "/" + format
+		return "UNKNOWN1:" + repoName + "|" + format
 	}
 	// This query can take longer, so using larger slowMs not showing too many WARNs
 	slowMs := int64(1000)
 	rows := lib.Query(query, db, slowMs)
 	if rows == nil { // Mainly for unit test
 		h.Log("WARN", "rows is nil for query: "+query)
-		return "UNKNOWN2:" + repoName + "/" + format
+		return "UNKNOWN2:" + repoName + "|" + format
 	}
 	defer rows.Close()
 	var cols []string
@@ -1345,8 +1346,10 @@ func isOrphanedBlob(contents string, blobId string, db *sql.DB) string {
 			if !common.NoExtraChk {
 				// At this line, it's no longer orphan as the DB record exists, so it's ok to 'return'
 				pathInDb := vals[2].(string)
-				if len(blobName) == 0 || blobName != pathInDb {
-					return "MISMATCH_NAME:" + blobName + "/" + pathInDb
+				// blobName can contain `\`, so need to remove `\` for the comparison.
+				blobName_non_espcaped := strings.ReplaceAll(blobName, `\`, "")
+				if len(blobName) == 0 || blobName_non_espcaped != pathInDb {
+					return "MISMATCH_NAME:" + blobName_non_espcaped + "|" + pathInDb
 				}
 			}
 		}
@@ -1355,7 +1358,7 @@ func isOrphanedBlob(contents string, blobId string, db *sql.DB) string {
 	}
 	if noRows {
 		h.Log("WARN", fmt.Sprintf("Orphaned Blob Found:%s for repo:%s, format:%s", blobId, repoName, format))
-		return "ORPHAN:" + repoName + "/" + format
+		return "ORPHAN:" + repoName + "|" + format
 	}
 	return ""
 }
