@@ -550,8 +550,9 @@ function t_system() {
         local _maxMemory="$(rg '"maxMemory"\s*:\s*(\d+)' "${_sysinfo_json}" --no-filename -o -r '$1' | sort | tail -n1)"
         if [ ${_maxMemory:-0} -lt 3221225472 ]; then
             _head "WARN" "maxMemory (heap|Xmx) might be too low (if docker/pod: NEXUS-35218, if Windows, NEXUS-47278)"
-        elif [ ${_maxMemory:-0} -gt 31000000000 ]; then
-            _head "WARN" "maxMemory (heap|Xmx) might be too large https://confluence.atlassian.com/jirakb/do-not-use-heap-sizes-between-32-gb-and-47-gb-in-jira-compressed-oops-1167745277.html"
+        elif [ ${_maxMemory:-0} -gt 34000000000 ] && [ ${_maxMemory:-0} -lt 51000000000 ]; then
+            _head "ERROR" "maxMemory (heap|Xmx) might be too large https://confluence.atlassian.com/jirakb/do-not-use-heap-sizes-between-32-gb-and-47-gb-in-jira-compressed-oops-1167745277.html"
+            # From 3.90, may see many org.sonatype.nexus.selfhosted.internal.jvm.MemoryMonitor
         fi
         if _rg -q '(DOCKER_TYPE|"SONATYPE_INTERNAL_HOST_SYSTEM"\s*:\s*"Docker"|"container"\s*:\s*"oci")' "${_sysinfo_json}"; then
             _head "WARN" "Might be installed on DOCKER"
@@ -559,8 +560,14 @@ function t_system() {
         if _rg -q 'KUBERNETES_' "${_sysinfo_json}"; then
             _head "WARN" "Might be installed on KUBERNETES (shouldn't use H2/OrientDB)"
         fi
+        if _rg 'PROFIL\SENABLED' "${_sysinfo_json}"; then
+            _head "WARN" "Might be some profiling enabled (can consume more memory)"
+        fi
+        _test_template "$(rg 'AWS_WEB_IDENTITY_TOKEN_FILE' "${_sysinfo_json}")" "WARN" "'file.encoding' or 'sun.jnu.encoding' might not be UTF (eg: on Windows)"
         if _rg -q 'AWS_WEB_IDENTITY_TOKEN_FILE' "${_sysinfo_json}"; then
-            _head "WARN" "Connection pool shut down due to https://github.com/aws/aws-sdk-java-v2/issues/4386 (116043)"
+            if _test_template "$(_rg "Exception: Connection pool shut down" -A30 -g "${_NXRM_LOG}" -g "${_NXIQ_LOG}" | rg -w "awssdk")" "WARN" "AWS_WEB_IDENTITY_TOKEN_FILE might cause connection pool shut down due to"; then
+                _head "INFO" "AWS_WEB_IDENTITY_TOKEN_FILE may cause connection pool shut down due to https://github.com/aws/aws-sdk-java-v2/issues/4386 (116043)"
+            fi
         fi
         # TODO: if no _sysinfo_json, check _jmx_json
         _test_template "$(rg '"(file.encoding|sun.jnu.encoding)" *: *"' "${_sysinfo_json}" | rg -v -w 'UTF')" "WARN" "'file.encoding' or 'sun.jnu.encoding' might not be UTF (eg: on Windows)"
@@ -625,6 +632,8 @@ function t_pg_config() {
     else
         _level="WARN"
     fi
+    _test_template "$(rg -i "^\s*['\"]?synchronous_standby_names:\s?\S+" ${_pg_cfg_glob})" "WARN" "Synchronous replication might be used. Check synchronous_standby_names in \"${_pg_cfg_glob}\". Make sure \"synchronous_commit: local\"" "If '*', it waits at least one standby is acknowledged \"SELECT client_addr, application_name, state, sync_state FROM pg_stat_replication;\""
+
     _test_template "$(rg --no-filename -i "^\s*['\"]?(max_connections|effective_cache_size|shared_buffers|work_mem|maintenance_work_mem|synchronous_standby_names)\b" ${_pg_cfg_glob})" "${_level}" "Please review DB configs" "https://help.sonatype.com/en/advanced-database-memory-tuning.html"
 }
 function t_mounts() {

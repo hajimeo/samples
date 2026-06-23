@@ -1027,7 +1027,7 @@ function f_splitTopNetstat() {
     done
 }
 
-#f_splitNetstats script-20241025085904002.log
+#f_splitNetstats script-*002.log
 function f_splitNetstats() {
     local _file="$1"
     local _out_dir="${2:-"./netstats"}"
@@ -1071,6 +1071,7 @@ function f_splitNetstats() {
             mv "${_fpath}" "${_out_dir%/}/netstat_${_n1}.out"
         fi
     done
+    echo "# Please run: f_check_netstat \"netstats/netstat_0*\""
 }
 # Extract threads from some stdout log or jvm.log
 #curl -o /usr/local/bin/echolines -L https://github.com/hajimeo/samples/raw/master/misc/echolines_$(uname)_$(uname -m);
@@ -1147,6 +1148,7 @@ function f_splitScriptLog() {
             f_splitTopNetstat ./tops_netstats.txt >/dev/null
         else
             echo "# Please run: f_splitTopNetstat ./tops_netstats.txt" >&2
+            echo "# Then run: f_check_topH \"top_netstat/top_0*\"; f_check_netstat \"top_netstat/netstat_0*\"" >&2
         fi
     fi
     if [ -d "./top_netstat" ]; then
@@ -1501,7 +1503,7 @@ function _threads_extra_check() {
         echo "## No file provided for _threads_extra_check" >&2
         return 1
     fi
-    rg '(DefaultTimelineIndexer|content_digest|findAssetByContentDigest|touchItemLastRequested|preClose0|sun\.security\.util\.MemoryCache|java\.lang\.Class\.forName|CachingDateFormatter|metrics\.health\.HealthCheck\.execute|WeakHashMap|userId\.toLowerCase|MessageDigest|UploadManagerImpl\.startUpload|UploadManagerImpl\.blobsByName|maybeTrimRepositories|getQuarantinedVersions|nonCatalogedVersions|getProxyDownloadNumbers|RepositoryManagerImpl.retrieveConfigurationByName|\.StorageFacetManagerImpl\.|OTransactionRealAbstract\.isIndexKeyMayDependOnRid|AptFacetImpl.put|componentMetadata|ensureGetUpload|OrientCommonQueryDataService|getWaivedFixed|AbstractOperationalSqlDAO\.getAll|NewestRiskService|acquireLock|com\.sonatype\.insight\.brain\.dataaccess\.policy\.PolicyViolationDAO\.getUnfixed|SearchTableStore\.searchComponents|GroupMemberMappingCache)' ${_file} | sort | uniq -c > /tmp/$FUNCNAME_$$.out || return $?
+    rg '(DefaultTimelineIndexer|content_digest|findAssetByContentDigest|touchItemLastRequested|preClose0|sun\.security\.util\.MemoryCache|java\.lang\.Class\.forName|CachingDateFormatter|metrics\.health\.HealthCheck\.execute|WeakHashMap|userId\.toLowerCase|MessageDigest|UploadManagerImpl\.startUpload|UploadManagerImpl\.blobsByName|maybeTrimRepositories|getQuarantinedVersions|nonCatalogedVersions|getProxyDownloadNumbers|RepositoryManagerImpl.retrieveConfigurationByName|\.StorageFacetManagerImpl\.|OTransactionRealAbstract\.isIndexKeyMayDependOnRid|AptFacetImpl.put|componentMetadata|ensureGetUpload|OrientCommonQueryDataService|getWaivedFixed|AbstractOperationalSqlDAO\.getAll|NewestRiskService|acquireLock|com\.sonatype\.insight\.brain\.dataaccess\.policy\.PolicyViolationDAO\.getUnfixed|SearchTableStore\.searchComponents|GroupMemberMappingCache|capability-sync-.+BLOCKED)' ${_file} | sort | uniq -c > /tmp/$FUNCNAME_$$.out || return $?
     if [ -s /tmp/$FUNCNAME_$$.out ]; then
         echo "## Counting:"
         echo "##    'DefaultTimelineIndexer' for NXRM2 System Feeds: timeline-plugin,"
@@ -1535,6 +1537,7 @@ function _threads_extra_check() {
         echo "##    'acquireLock' SELECT * FROM insight_brain_ods.lock WHERE lock_id = \$1 FOR UPDATE"
         echo "##    'SearchTableStore.searchComponents' NEXUS-43504"
         echo "##    'GroupMemberMappingCache' NEXUS-45400"
+        echo "##    'capability-sync-.+BLOCKED' NEXUS-51311"
         cat /tmp/$FUNCNAME_$$.out
         echo " "
     fi
@@ -1990,6 +1993,10 @@ function f_splitPerHour() {
     local _regex="${3}" # "^\"CLMSERVER-LOG --> \" ${_DATE_FORMAT}.\d\d"
     [ -z "${_regex}" ] && _regex="^${_DATE_FORMAT}.\d\d"
     _SPLIT_BY_REGEX_SORT="Y" f_splitByRegex "${_file}" "${_regex}" "${_dest_dir}"
+}
+function _remove_prefix() {
+    local _file="$1"
+    sed -i.bak -E 's/^"[^ ]+ --> " //g' "${_file}"
 }
 function f_splitPerHourReq() {
     local _file="$1"
