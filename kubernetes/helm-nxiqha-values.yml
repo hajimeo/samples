@@ -53,7 +53,7 @@ iq_server:
       path: "/var/tmp/share/sonatype/nxiqha"
   replicas: 1
   # Assuming the ID stays same (1000). TODO: not sure if clm-server dir is visible.
-  pvOwnershipOverride:  "find /sonatype-work/clm-cluster -mindepth 1 -maxdepth 3 -type d ! -user 1000 | xargs -P3 -I{} -t chown 1000:1000 {}"
+  pvOwnershipOverride:  "chown -v 1000:1000 /sonatype-work/clm-cluster/log/*-stderr.log; find /sonatype-work/clm-cluster -mindepth 1 -maxdepth 3 -type d ! -user 1000 | xargs -P3 -I{} -t chown 1000:1000 {}"
 
 # Load balancer (not using ingress)
 ingress:
