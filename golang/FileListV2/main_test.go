@@ -2,9 +2,11 @@ package main
 
 import (
 	"FileListV2/common"
-	"github.com/stretchr/testify/assert"
 	"os"
+	"strings"
 	"testing"
+
+	"github.com/stretchr/testify/assert"
 )
 
 func TestUsage(t *testing.T) {
@@ -83,4 +85,11 @@ func TestRxSelect(t *testing.T) {
 	maybeQuery = "SEELECT aaaaa FROM bbbb"
 	result = common.RxSelect.MatchString(maybeQuery)
 	assert.False(t, result, "Query should start with 'SELECT' and contain 'blob_id': \n"+maybeQuery)
+}
+
+func TestCheckEscapingBackSlashes(t *testing.T) {
+	blobName := `/v2/-/blobs/sha256\:6a0ac1617861a677b045b7ff8854\5213ec31c0ff0\8763195a70a\4a5adda577bb`
+	blobName_non_espcaped := strings.ReplaceAll(blobName, `\`, "")
+	assert.NotContains(t, blobName_non_espcaped, `\`, "Blob name should contain backslashes")
+	assert.Equal(t, blobName_non_espcaped, `/v2/-/blobs/sha256:6a0ac1617861a677b045b7ff88545213ec31c0ff08763195a70a4a5adda577bb`, "Blob name should match the expected value")
 }
