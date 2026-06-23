@@ -43,6 +43,7 @@ function f_prepare() {
                 _log "INFO" "Creating alias python3 -> python in this shell"
                 alias python3='python'
             fi
+        fi
     fi
     if ! type python3 &>/dev/null; then
         _log "WARN" "No python3 installed. You might want to install python3.7"
@@ -139,7 +140,7 @@ function f_setup_misc() {
     fi
 
     if [ -s $HOME/backup/bashrc ] && [ ! -f $HOME/.bashrc ]; then
-      ln -s $HOME/backup/bashrc $HOME/.bashrc
+      ln -s $HOME/backup/bashrc $HOME/.bashrc   # This may cause some permission issue if backup is Google drive
     fi
 }
 
@@ -266,6 +267,7 @@ EOF
     fi
 }
 
+#f_setup_python "https://pypi.org/"
 #f_setup_python "https://nxrm3helmha-k8s.standalone.localdomain/repository/pypi-proxy/" "${HOME%/}/.pyvenv_new"
 function f_setup_python() {
     local _pypi_proxy_url="$1"
