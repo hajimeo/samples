@@ -132,6 +132,11 @@ function main() {
     local _java="java"
     [ -d "${JAVA_HOME%/}" ] && _java="${JAVA_HOME%/}/bin/java"
     timeout ${_TIMEOUT:-30}s ${_java} -Dgroovy.classpath="${_GROOVY_CLASSPATH}" -jar "${_groovy_jar}" "$@"
+    local _rc=$?
+    if [ "${_rc}" -ne 0 ]; then
+        echo "ERROR: Groovy execution failed with ${_rc} (timeout=${_TIMEOUT:-30}s)" >&2
+    fi
+    return "${_rc}"
 }
 
 if [ -z "$1" ] || [ "$1" == "-h" ] || [ "$1" == "--help" ] || [ "$1" == "help" ]; then
