@@ -50,10 +50,10 @@ filelist2 -b "$BLOB_STORE"
 ### 2) Save results with concurrency
 
 ```bash
-filelist2 -b "$BLOB_STORE" -c 80 -s /tmp/filelist_under-path.tsv
+filelist2 -b "$BLOB_STORE" -c 4 -s /tmp/filelist_under-path.tsv
 ```
 
-Recommended `-c`: usually less than `(CPU / 2) * 10`, unless storage/network behavior suggests otherwise. For S3, `-c 1 -c2 8` can improve throughput in some environments.
+Recommended `-c`: usually less than `(CPU / 2)` for the *local* File type blob store. For slow blob store, such as NFS, S3, etc. this can be much higher.
 
 ### 3) List matching `.properties` lines
 
@@ -68,8 +68,9 @@ filelist2 -b "$BLOB_STORE" -pRx ",deleted=true" -P -c 10 -s /tmp/filelist_soft-d
 ```bash
 export AWS_ACCESS_KEY_ID="*******" AWS_SECRET_ACCESS_KEY="********" AWS_REGION="ap-southeast-2"
 
-filelist2 -b "s3://${AWS_BLOB_STORE_NAME}/filelist-test/content"
+filelist2 -b "s3://${AWS_BLOB_STORE_NAME}/filelist-test/content" -c 40
 ```
+NOTE: As AWS S3 is slower than File type, it’s recommended to use `-c {n}` to process faster.
 
 ### MinIO (S3-compatible)
 
@@ -84,8 +85,9 @@ filelist2 -b "s3://MinIO_bucket_name/prefix_name/content"
 ```bash
 export AZURE_STORAGE_ACCOUNT_NAME="********" AZURE_STORAGE_ACCOUNT_KEY="*********************"
 
-filelist2 -b "az://${AZURE_STORAGE_CONTAINER_NAME}/content"
+filelist2 -b "az://${AZURE_STORAGE_CONTAINER_NAME}/content" -c 40
 ```
+NOTE: As Azure Blob store is slower than File type, it’s recommended to use `-c {n}` to process faster.
 
 For Azure SDK debug logs:
 
@@ -196,6 +198,7 @@ Notes:
   - Reference: https://pkg.go.dev/github.com/lib/pq#hdr-Connection_String_Parameters
 - In newer Nexus versions, `originalLocation` behavior may change. If needed:
   - `-pRxExcl "(deleted=true|originalLocation)"`
+- Extra Check is enabled, unless `NoExtraChk` is used. This extra check may output more lines with MISMATCH_NAME.
 
 #### No blob-store access mode (comparing blob IDs in `-rF` and DB):
 
@@ -271,6 +274,7 @@ filelist2 -b "s3://apac-support-bucket/filelist-test/" \
   -PathStyle -P \
   -pRx "@Bucket.repo-name=raw-s3-hosted," \
   -pRxExcl ",(deleted=true|originalLocation=)" \
+  -c 20 \
   -H -s ./copied_blobs.tsv
 ```
 
@@ -286,6 +290,7 @@ filelist2 -b "s3://apac-support-bucket/filelist-test/" \
   -bTo "az://apac-support-bucket-filelist-test-copied/" \
   -P -pRx "@Bucket.repo-name=raw-s3-hosted," \
   -pRxExcl ",(deleted=true|originalLocation=)" \
+  -c 20 \
   -H -s ./copied_blobs.tsv
 
 # Validate copied blobs
