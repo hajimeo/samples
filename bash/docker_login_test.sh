@@ -2,16 +2,18 @@
 #docker_login "admin" "https://local.standalone.localdomain:18182/"
 #docker_login "admin" "https://nxrm3helmha-docker-k8s.standalone.localdomain/"
 #docker_login "" "http://localhost:8081/" "docker-proxy/library/hello-world:latest"
+#docker_login "" "http://localhost:8081/docker-hosted/" "oci-demo/demo:0.1.0"
 function docker_login() {
   local _userid="${1%%:*}"  # Empty if anonymous
   local _h="${2}"
   local _p="${3}"
   echo "# Accessing ${_h%/}/v2/ (expecting 401) ..."
   local _s="$(curl -D- -sSf -k -H "Accept: application/json" -L "${_h%/}/v2/" | grep 'WWW-Authenticate' | sed 's/.*service="\([^"]*\/v2\/\).*/\1/')"
-  echo "# Generating token from host:${_s} with userId:${_userid} ..."
   if [ -n "${_userid}" ];then
+      echo "# Generating token by accessing \"${_s:-"${_h%/}/v2/"}token?account=${_userid}&client_id=docker&offline_token=true&service=${_h%/}/v2/token\" ..."
     _TOKEN="$(curl -D/dev/stderr -sSf -k -u "$1" -L "${_s:-"${_h%/}/v2/"}token?account=${_userid}&client_id=docker&offline_token=true&service=${_h%/}/v2/token" | sed -E 's/.+"token":"([^"]+)".+/\1/')"
   else
+    echo "# Generating token by accessing \"${_s:-"${_h%/}/v2/"}token?scope=repository:${_p#/}:pull&service=${_s}\" ..."
     # TODO: Should use realm?
     _TOKEN="$(curl -D/dev/stderr -sSf -k -L "${_s:-"${_h%/}/v2/"}token" --get --data-urlencode "scope=repository:${_p#/}:pull&service=${_s}" | sed -E 's/.+"token":"([^"]+)".+/\1/')"
   fi
@@ -24,9 +26,9 @@ function docker_login() {
 
 
 
+cat <<'EOF'>/dev/null
 curl -D/dev/stderr -sSf -k -H "Authorization: Bearer ${_TOKEN}" -H "Accept: application/json" -k -L "http://localhost:8081/v2/docker-proxy/library/hello-world/manifests/latest"
 
-cat <<'EOF'>/dev/null
 # For anonymous (requres global anonymous, DockerToken, and forceBasicAuth=false)
 DEBU[0000] GET http://localhost:8081/v2/
 # scope=repository:docker-proxy/library/hello-world:pull&service=http://localhost:8081/repository/docker-proxy/v2/token
@@ -43,9 +45,6 @@ WWW-Authenticate: Bearer realm="http://localhost:8081/repository/docker-proxy/v2
 Content-Type: application/json
 Content-Length: 113
 
-
-EOF
-
 # Simple test. In case the Index is REGISTRY
 # curl -sS -I "https://localhost:12346/v2/" | grep 'WWW-Authenticate'
 #   WWW-Authenticate: Bearer realm="http://localhost:8081/v2/token",service="http://localhost:8081/v2/token"
@@ -54,3 +53,5 @@ _TOKEN="$(curl -D/dev/stderr -s "${realm}" --get --data-urlencode "scope=reposit
 curl -D/dev/stderr -sSf -k -H "Authorization: Bearer ${_TOKEN}" -H "Accept: application/json" -L "http://localhost:12345/v2/"
 
 # SELECT * FROM api_key_v2 WHERE username ='anonymous' and domain = 'DockerToken';
+
+EOF
