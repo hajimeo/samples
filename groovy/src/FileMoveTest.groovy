@@ -1,9 +1,14 @@
 #!/usr/bin/env groovy
-// BlobStoreMoveTest.groovy
-// Replicates FileBlobStore.tryCreate: write large file to /content/tmp/, then move to final path.
-// Run: groovy BlobStoreMoveTest.groovy {file_blobstore_path} {dummy_file_path}
+/**
+ * BlobStoreMoveTest.groovy
+ * Replicates FileBlobStore.tryCreate: write large file to /content/tmp/, then move to final path.
+ * Run: groovy BlobStoreMoveTest.groovy {file_blobstore_path} {dummy_file_path}
+ *
+ * To create a dummy file: dd if=/dev/zero of=./dummy-3g.bin bs=1024k count=3072
+ */
 
 import java.nio.file.*
+import java.security.MessageDigest
 
 def blobStoreRoot = args.length > 0 ? Path.of(args[0]) : null
 if (!blobStoreRoot || !Files.exists(blobStoreRoot)) {
@@ -29,6 +34,21 @@ def finalBlobPath = finalDir.resolve("${blobId}.bytes")
 Files.createDirectories(tmpDir)
 Files.createDirectories(finalDir)
 
+/**
+ * Compute SHA-256 without loading the entire file into memory.
+ */
+String sha256Hex(Path path) {
+    MessageDigest md = MessageDigest.getInstance("SHA-256")
+    byte[] buffer = new byte[1024 * 1024] // 1 MiB chunks
+    Files.newInputStream(path).withCloseable { is ->
+        int read
+        while ((read = is.read(buffer)) != -1) {
+            md.update(buffer, 0, read)
+        }
+    }
+    return md.digest().encodeHex().toString()
+}
+
 println "=== FileBlobStore move test ==="
 println "Blob store root : ${blobStoreRoot}"
 println "Source file     : ${dummyFilePath}"
@@ -42,8 +62,9 @@ def t0 = System.currentTimeMillis()
 Files.copy(dummyFilePath, tmpBlobPath, StandardCopyOption.REPLACE_EXISTING)
 def writeMs = System.currentTimeMillis() - t0
 def fileSize = Files.size(tmpBlobPath)
-def sha256 = java.security.MessageDigest.getInstance("SHA-256").digest(Files.readAllBytes(tmpBlobPath)).encodeHex().toString()
-println "    Done in ${writeMs} ms (${String.format('%.1f', fileSize / 1024.0 / 1024.0 / (writeMs / 1000.0))} MB/s)"
+def seconds = Math.max(writeMs / 1000.0, 0.001d) // avoid divide-by-zero on very fast copies
+def sha256 = sha256Hex(tmpBlobPath)
+println "    Done in ${writeMs} ms (${String.format('%.1f', fileSize / 1024.0 / 1024.0 / seconds)} MB/s)"
 println "    SHA-256: ${sha256}"
 println ""
 
@@ -65,7 +86,7 @@ println ""
 
 // --- Verify ---
 def finalSize = Files.size(finalBlobPath)
-def finalSha256 = java.security.MessageDigest.getInstance("SHA-256").digest(Files.readAllBytes(finalBlobPath)).encodeHex().toString()
+def finalSha256 = sha256Hex(finalBlobPath)
 println "Final file exists: ${Files.exists(finalBlobPath)}"
 println "Final file size  : ${finalSize} bytes (expected ${Files.size(dummyFilePath)})"
 println "Final file SHA-256: ${finalSha256} (expected ${sha256})"
