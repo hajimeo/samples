@@ -4,7 +4,7 @@
 #
 # NOTE: each function should be usable by just copying & pasting (no external function)
 #
-# Extra tips
+# Extra tips (from sonatype-work dir)
 #   jar -xvf ../nexus-3.79.1-04/bin/sonatype-nexus-repository-3.80.0-02.jar
 #   jar -cvf ../sonatype-nexus-repository-3.80.0-02_patched.jar ./*   # extracted_modified_files
 #   jar -uvf ./BOOT-INF/lib/nexus-repository-content-3.83.0-08.jar -C /Users/hosako/IdeaProjects/nexus-internal/components/nexus-repository-content/src/main/resources/ org/sonatype/nexus/repository/content/store/ComponentDAO.xml
