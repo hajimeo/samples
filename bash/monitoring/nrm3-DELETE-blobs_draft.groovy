@@ -61,6 +61,7 @@ def main(params) {
                 if (maybeAsset.isPresent()) {
                     def asset = maybeAsset.get()
                     if (!params.dryRun) {
+                        // TODO: this deleteAsset may not mark this asset as stale if already cached.
                         it.facet(org.sonatype.nexus.repository.content.maintenance.ContentMaintenanceFacet).deleteAsset(asset)
                     }
                     log.info("Deleted path:{}, blobRef:{} from repository {} (DryRun:{})", asset.path(), blobRefStr, it.name, params.dryRun)
