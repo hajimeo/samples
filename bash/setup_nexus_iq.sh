@@ -794,12 +794,15 @@ function f_create_testuser() {
         _log "INFO" "Created user '${_username}'"
     fi
     # shellcheck disable=SC2089
-    local _pay_load_common='"name":"test-role","description":"test_role_desc","permissionCategories":[{"displayName":"Administrator","permissions":[{"id":"VIEW_ROLES","displayName":"View","description":"All Roles","allowed":false},{"id":"ACCESS_AUDIT_LOG","displayName":"Access","description":"Audit Log","allowed":false}]},{"displayName":"IQ","permissions":[{"id":"MANAGE_PROPRIETARY","displayName":"Edit","description":"Proprietary Components","allowed":false},{"id":"CLAIM_COMPONENT","displayName":"Claim","description":"Components","allowed":false},{"id":"WRITE","displayName":"Edit","description":"IQ Elements","allowed":true},{"id":"READ","displayName":"View","description":"IQ Elements","allowed":true},{"id":"EDIT_ACCESS_CONTROL","displayName":"Edit","description":"Access Control","allowed":false},{"id":"EVALUATE_APPLICATION","displayName":"Evaluate","description":"Applications","allowed":false},{"id":"EVALUATE_COMPONENT","displayName":"Evaluate","description":"Individual Components","allowed":false},{"id":"ADD_APPLICATION","displayName":"Add","description":"Applications","allowed":true},{"id":"MANAGE_AUTOMATIC_APPLICATION_CREATION","displayName":"Manage","description":"Automatic Application Creation","allowed":false},{"id":"MANAGE_AUTOMATIC_SCM_CONFIGURATION","displayName":"Manage","description":"Automatic Source Control Configuration","allowed":false}]},{"displayName":"Remediation","permissions":[{"id":"WAIVE_POLICY_VIOLATIONS","displayName":"Waive","description":"Policy Violations","allowed":false},{"id":"CHANGE_LICENSES","displayName":"Change","description":"Licenses","allowed":false},{"id":"CHANGE_SECURITY_VULNERABILITIES","displayName":"Change","description":"Security Vulnerabilities","allowed":false},{"id":"LEGAL_REVIEWER","displayName":"Review","description":"Legal obligations for components licenses","allowed":false},{"id":"CREATE_PULL_REQUESTS","displayName":"Create","description":"Pull requests","allowed":false}]}]'
-    
-    if ! _curl "${_IQ_URL%/}/api/v2/roles" -H "Content-Type: application/json" -d '{"id":null,'${_pay_load_common}'}'; then
+    local _pay_load_common='"name":"test-role","description":"test_role_desc","permissionCategories":[{"displayName":"Administrator","permissions":[{"id":"VIEW_ROLES","displayName":"View","description":"All Roles","allowed":false},{"id":"ACCESS_AUDIT_LOG","displayName":"Access","description":"Audit Log","allowed":false}]},{"displayName":"IQ","permissions":[{"id":"MANAGE_PROPRIETARY","displayName":"Edit","description":"Proprietary Components","allowed":false},{"id":"CLAIM_COMPONENT","displayName":"Claim","description":"Components","allowed":false},{"id":"WRITE","displayName":"Edit","description":"IQ Elements","allowed":true},{"id":"READ","displayName":"View","description":"IQ Elements","allowed":true},{"id":"EDIT_ACCESS_CONTROL","displayName":"Edit","description":"Access Control","allowed":false},{"id":"EVALUATE_APPLICATION","displayName":"Evaluate","description":"Applications","allowed":true},{"id":"EVALUATE_COMPONENT","displayName":"Evaluate","description":"Individual Components","allowed":false},{"id":"ADD_APPLICATION","displayName":"Add","description":"Applications","allowed":true},{"id":"MANAGE_AUTOMATIC_APPLICATION_CREATION","displayName":"Manage","description":"Automatic Application Creation","allowed":false},{"id":"MANAGE_AUTOMATIC_SCM_CONFIGURATION","displayName":"Manage","description":"Automatic Source Control Configuration","allowed":false}]},{"displayName":"Remediation","permissions":[{"id":"WAIVE_POLICY_VIOLATIONS","displayName":"Waive","description":"Policy Violations","allowed":false},{"id":"CHANGE_LICENSES","displayName":"Change","description":"Licenses","allowed":false},{"id":"CHANGE_SECURITY_VULNERABILITIES","displayName":"Change","description":"Security Vulnerabilities","allowed":false},{"id":"LEGAL_REVIEWER","displayName":"Review","description":"Legal obligations for components licenses","allowed":false},{"id":"CREATE_PULL_REQUESTS","displayName":"Create","description":"Pull requests","allowed":false}]}]'
+    # The above uses single quotes, so writing to a file and then using curl -d@file is easier than using -d '...'
+    echo '{"id":null,'${_pay_load_common}'}' >${_TMP%/}/f_create_testuser_role_$$.json
+
+    if ! _curl "${_IQ_URL%/}/api/v2/roles" -H "Content-Type: application/json" -d@${_TMP%/}/f_create_testuser_role_$$.json; then
         _log "WARN" "'/api/v2/roles' API did not work. Trying old rest '/rest/security/roles' ..."
         # old IQ does not have role create/delete API
-        _apiS "/rest/security/roles" '{"builtIn":false,'${_pay_load_common}']}' || return $?
+        echo '{"builtIn":false,'${_pay_load_common}']}' >${_TMP%/}/f_create_testuser_role_rest_$$.json
+        _apiS "/rest/security/roles" -H "Content-Type: application/json" -d@${_TMP%/}/f_create_testuser_role_rest_$$.json || return $?
     fi
     _log "INFO" "Created role 'test-role'"
     if [ -n "${_apporg_name}" ]; then
@@ -1851,8 +1854,9 @@ function f_cli() {
     local _iq_cli_ver="${5:-${_IQ_CLI_VER}}"
     local _iq_cli_opt="${6:-${_IQ_CLI_OPT}}" # -D containerScannerMode=sonatype -D fileIncludes="**/package-lock.json"
     local _iq_cred="${7:-${_IQ_CRED:-"${_ADMIN_USER}:${_ADMIN_PWD}"}}"
-    local _simple_scan="${8:-"${_SIMPLE_SCAN:-"N"}"}" # Y: simple, N: full
-    local _use_docker="${9:-"${_USE_DOCKER}"}"
+    local _iq_org="${8-"${_IQ_ORG}"}"
+    local _simple_scan="${_SIMPLE_SCAN:-"N"}" # Y: simple, N: full
+    local _use_docker="${_USE_DOCKER}"
 
     _iq_url="$(_get_iq_url "${_iq_url}")" || return $?
     if [ -z "${_iq_cli_ver}" ]; then
@@ -1899,6 +1903,10 @@ function f_cli() {
         _cmd="docker run --name nexus-iq-cli_${_iq_cli_ver} sonatype/nexus-iq-cli:${_iq_cli_ver} /sonatype/evaluate"
     fi
     _cmd="${_cmd} -s ${_iq_url} -a \"${_iq_cred}\" -i ${_iq_app_id} -t ${_iq_stage} ${_iq_cli_opt}"
+    if [[ -n "${_iq_org}" ]]; then
+        local _org_int_id="$(_curl "${_IQ_URL%/}/api/v2/organizations" --get --data-urlencode "organizationName=${_iq_org}" | JSON_SEARCH_KEY="organizations.id" _sortjson)"
+        _cmd="${_cmd} -O \"${_org_int_id}\""
+    fi
     # NOTE: -X/--debug outputs to STDOUT
     #       Mac uses "TMPDIR" (and can't change), which is like java.io.tmpdir = /var/folders/ct/cc2rqp055svfq_cfsbvqpd1w0000gn/T/ + nexus-iq
     #       Newer IQ CLI removes scan-6947340794864341803.xml.gz (if no -k), so no point of changing the tmpdir...
