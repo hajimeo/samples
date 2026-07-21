@@ -2,7 +2,6 @@ import groovy.json.JsonSlurper
 import groovy.json.JsonOutput
 import org.sonatype.nexus.common.log.LogManager
 import org.sonatype.nexus.common.log.LoggerLevel
-import static org.sonatype.nexus.logging.task.TaskLoggingMarkers.TASK_LOG_ONLY
 
 
 def processRepository(final repository, final String filterCondition, final batchSize, final dryRun) {
@@ -26,22 +25,24 @@ def reindexFilteredComponents(
     long processed = 0;
     Collection<org.sonatype.nexus.repository.content.fluent.FluentComponent> components = filteredQuery.browse(batchSize, null);
     if (components.isEmpty()) {
-        log.info(TASK_LOG_ONLY, "No components matching filter in repository {}", repository.getName());
+        log.info("No components matching filter in repository {}", repository.getName());
         return 0;
     }
     def sqlSearchIndexService = container.lookup(org.sonatype.nexus.repository.search.sql.index.SqlSearchIndexService.class.name);
     while (!components.isEmpty()) {
         if (dryRun) {
-            log.info(TASK_LOG_ONLY, "Dry run: would re-index {} components in {}", components.size(), repository.getName());
+            components.each { component ->
+                log.info("Dry run: would re-index component: {} in repository: {}", component, repository.getName());
+            }
         } else {
             sqlSearchIndexService.indexBatch(components, repository);
         }
         processed += components.size();
-        log.info(TASK_LOG_ONLY, "Re-indexed {} components in {} (dryRun: {})", processed, repository.getName(), dryRun);
+        log.info("Re-indexed {} components in {} (dryRun: {})", processed, repository.getName(), dryRun);
         components = filteredQuery.browse(batchSize, components.nextContinuationToken());
     }
 
-    log.info(TASK_LOG_ONLY, "Completed re-indexing {} components for repository {}", processed, repository.getName());
+    log.info("Completed re-indexing {} components for repository {}", processed, repository.getName());
     return processed;
 }
 
@@ -71,14 +72,14 @@ def main(params) {
     try {
         repository.repositoryManager.browse().each { repo ->
             if (repo.name == params.repo_name) {
-                log.info(TASK_LOG_ONLY, 'Checking repository: {}, type: {}, format: {}', repo.name, repo.type.value, repo.format.value)
+                log.info('Checking repository: {}, type: {}, format: {}', repo.name, repo.type.value, repo.format.value)
                 processed = processRepository(repo, condition, batchSize, params.dryRun)
             }
         }
     }
     catch (Exception e) {
         log.warn('Exception details: {}', e.getMessage())
-        log.debug(TASK_LOG_ONLY, "{}", e.printStackTrace())
+        log.debug("{}", e.printStackTrace())
         if (params.dryRun) {    // If dryRun stops at the exception
             throw e
         }
