@@ -1,3 +1,12 @@
+# REQUIREMENTS:
+#   # recommend to run in a virtual environment
+#   pip install streamlit duckdb requests pandas #watchdog
+#
+# HOW TO RUN:
+#   1. Start Ollama with MODEL on OLLAMA_API_URL
+#   2. `cd` to the extracted support zip which has (nexus.log, clm-server.log, request.log, outbound-request.log, audit.log)
+#   3. Run this script: streamlit run python/support_app.py
+
 import streamlit as st
 import duckdb
 import requests
@@ -8,10 +17,11 @@ import pandas as pd
 # Ollama API is assumed to be running locally on port 11434
 MODEL = "qwen2.5-coder:7b"
 #MODEL = "gemma4:12b"
+OLLAMA_API_URL = "http://localhost:11434/api/generate"
 
 # 1. UI Configuration
-st.set_page_config(page_title="Local Support AI", layout="wide")
-st.title("🔍 Local Support AI Log Analytics")
+st.set_page_config(page_title="Local SupportZip AI", layout="wide")
+st.title("🔍 Local SupportZip AI Analytics")
 
 # Initialize DuckDB connection
 con = duckdb.connect(database=':memory:')
@@ -19,6 +29,7 @@ con = duckdb.connect(database=':memory:')
 # Sources: (path, category label)
 LOG_SOURCES = [
     ("./log/nexus.log", "application"),
+    ("./log/clm-server.log", "application"),
     ("./log/request.log", "request"),
     ("./log/outbound-request.log", "outbound"),
     ("./log/audit.log", "audit"),
@@ -43,13 +54,15 @@ def setup_log_views(con):
 
 try:
     setup_log_views(con)
-except Exception:
+except Exception as e:
+    # report error but continue; the user may not have logs yet
+    st.warning("Some log files are missing or could not be read. The AI assistant may have limited data: " + str(e))
     pass
 
 # 2. Local AI Query Generator (Ollama API)
 def ask_local_ai(user_prompt):
     """Asks Qwen2.5-Coder to translate a natural language question into DuckDB SQL."""
-    ollama_url = "http://localhost:11434/api/generate"
+    ollama_url = OLLAMA_API_URL
 
     # We guide the AI with a strict system prompt so it only returns valid SQL
     system_context = """
@@ -74,41 +87,51 @@ def ask_local_ai(user_prompt):
     except Exception as e:
         return f"Error connecting to Ollama: {str(e)}"
 
+def run_sql(sql):
+    """Executes SQL against DuckDB and renders the results/chart in the main panel."""
+    try:
+        df_result = con.execute(sql).df()
+
+        st.subheader("📊 Analysis Results")
+        st.dataframe(df_result, use_container_width=True)
+
+        # Dynamic Charting: If there's numerical data, show a chart automatically
+        if len(df_result.columns) >= 2 and df_result.dtypes.iloc[1] in ['int64', 'float64']:
+            st.subheader("📈 Visual Timeline / Metric Breakdowns")
+            st.line_chart(df_result.set_index(df_result.columns[0]))
+
+    except Exception as sql_error:
+        st.error(f"SQL Execution Failed: {str(sql_error)}")
+
 # 3. Sidebar Chat Interface (The "Support AI" Panel)
 st.sidebar.header("Ask AI Assistant")
-user_query = st.sidebar.text_area("Ask a question about your logs:", 
+user_query = st.sidebar.text_area("Ask a question about your logs:",
                                    placeholder="e.g., Show me the top 5 errors sorted by frequency")
 
+if "sql_editor" not in st.session_state:
+    st.session_state.sql_editor = ""
+
+run_now = False
 if st.sidebar.button("Analyze Logs"):
     if user_query:
         with st.spinner("AI is analyzing log structure and writing query..."):
-            # Step A: AI generates the SQL
             generated_sql = ask_local_ai(user_query)
-            
-            st.sidebar.subheader("Generated SQL Executed:")
-            st.sidebar.code(generated_sql, language="sql")
-            
-            # Step B: DuckDB executes the SQL on the raw files
             # Even though instructed to remove ```sql ... ```, some AI still returns it, so we clean it up
             if generated_sql.startswith("```sql"):
                 generated_sql = generated_sql.replace("```sql", "").replace("```", "").strip()
-
-            try:
-                df_result = con.execute(generated_sql).df()
-                
-                # Step C: Render results in the main web UI dashboard
-                st.subheader("📊 Analysis Results")
-                st.dataframe(df_result, use_container_width=True)
-                
-                # Dynamic Charting: If there's numerical data, show a chart automatically
-                if len(df_result.columns) >= 2 and df_result.dtypes.iloc[1] in ['int64', 'float64']:
-                    st.subheader("📈 Visual Timeline / Metric Breakdowns")
-                    st.line_chart(df_result.set_index(df_result.columns[0]))
-                    
-            except Exception as sql_error:
-                st.error(f"SQL Execution Failed: {str(sql_error)}")
+            st.session_state.sql_editor = generated_sql
+            run_now = True
     else:
         st.sidebar.warning("Please enter a question first.")
+
+st.sidebar.subheader("SQL Query (editable)")
+st.sidebar.text_area("Edit or write raw SQL, then run it:", key="sql_editor", height=150)
+
+if run_now or st.sidebar.button("Run SQL"):
+    if st.session_state.sql_editor.strip():
+        run_sql(st.session_state.sql_editor)
+    else:
+        st.sidebar.warning("Enter or generate a SQL query first.")
 
 # 4. Main Panel Static Analytics (Observe-style Health Overview)
 st.header("🌐 System Overview")
