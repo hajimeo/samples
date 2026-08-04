@@ -5,7 +5,7 @@
 # HOW TO RUN:
 #   1. Start Ollama with MODEL on OLLAMA_API_URL
 #   2. `cd` to the extracted support zip which has (nexus.log, clm-server.log, request.log, outbound-request.log, audit.log)
-#   3. Run this script: streamlit run python/support_app.py
+#   3. Run this script: streamlit run python/support_app.py --client.toolbarMode="viewer"
 
 import streamlit as st
 import duckdb
@@ -22,6 +22,17 @@ OLLAMA_API_URL = "http://localhost:11434/api/generate"
 # 1. UI Configuration
 st.set_page_config(page_title="Local SupportZip AI", layout="wide")
 st.title("🔍 Local SupportZip AI Analytics")
+# Hide the Streamlit "Deploy" button in the top-right corner
+st.markdown(
+    r"""
+    <style>
+    .stAppDeployButton {
+        visibility: hidden;
+    }
+    </style>
+    """,
+    unsafe_allow_html=True
+)
 
 # Initialize DuckDB connection
 con = duckdb.connect(database=':memory:')
