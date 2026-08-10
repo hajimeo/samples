@@ -8,9 +8,9 @@ USER="${NEXUS_USER:-"admin"}"
 PASS="${NEXUS_PASS:-"admin123"}"
 BASE="${NEXUS_HOST%/}/repository/${REPO}"
 
-# NOTE: Pick an existing blob digest from the registry to use in the manifest.
-SAMPLE_BLOB="55afa1ecc21d2bb5e5045f32dafee56272ffd89860bac26f6c32123439af26a4"
-#SAMPLE_BLOB="$(openssl rand -hex 32)" # This doesn't work and causes "blob unknown to registry"
+# NOTE: Pick an existing blob digest to avoid "blob unknown to registry" (not an existing application/vnd.docker.container.image.v1+json digest)
+SAMPLE_SHA256="55afa1ecc21d2bb5e5045f32dafee56272ffd89860bac26f6c32123439af26a4"
+#SAMPLE_SHA256="$(openssl rand -hex 32)" # This doesn't work and causes "blob unknown to registry"
 
 # --- 1. get a token, mirroring cosign's GET /v2/token ---
 echo "== requesting token ==" >&2
@@ -31,7 +31,16 @@ UPLOAD_LOC=$(curl -s -D - -o /dev/null -X POST \
 
 MANIFEST_FILE=$(mktemp)
 cat > "${MANIFEST_FILE}" << EOF
-{"schemaVersion":2,"mediaType":"application/vnd.oci.image.manifest.v1+json","config":{"mediaType":"application/vnd.oci.image.config.v1+json","digest":"sha256:${SAMPLE_BLOB}","size":0},"layers":[]}
+{
+  "schemaVersion": 2,
+  "mediaType": "application/vnd.oci.image.manifest.v1+json",
+  "config": {
+    "mediaType": "application/vnd.oci.image.config.v1+json",
+    "digest": "sha256:${SAMPLE_SHA256}",
+    "size": 611
+  },
+  "layers": []
+}
 EOF
 
 DIGEST_HEX=$(shasum -a 256 "${MANIFEST_FILE}" | awk '{print $1}')
@@ -40,15 +49,15 @@ echo "New tag:   ${NEW_TAG}" >&2
 
 # --- 4a. PUT using the dash form, exactly like the cosign log line ---
 echo "== PUT manifest via dash tag (mirrors captured request) ==" >&2
-if curl -s -i -X PUT \
+if curl -s -v -X PUT \
   -H "${AUTH_HEADER}" \
-  -H "Content-Type: application/vnd.oci.image.manifest.v1+json" \
+  -H "Content-Type: application/json" \
   --data-binary "@${MANIFEST_FILE}" \
   "${BASE}/v2/${IMAGE}/manifests/${NEW_TAG}"; then
   echo ""
   echo "PUT manifest via dash tag succeeded" >&2
-  #rm -v -f "${MANIFEST_FILE}"
-  cat "${MANIFEST_FILE}"
+  rm -v -f "${MANIFEST_FILE}"
+  #cat "${MANIFEST_FILE}"
 else
   echo ""
   echo "PUT manifest via dash tag failed" >&2
