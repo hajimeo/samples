@@ -238,12 +238,7 @@ function f_install_nexus3() {
         _upsert "${_prop}" "nexus.licenseFile" "${_license_path}" || return $?
     fi
     if _isYes "${_NEXUS_ENABLE_HA:-"${r_NEXUS_ENABLE_HA}"}"; then
-        _log "INFO" "For HA, 'nexus.datastore.clustered.enabled=true' and 'nexus.zero.downtime.enabled=true'"
-        _upsert "${_prop}" "nexus.datastore.clustered.enabled" "true" || return $?
-        _upsert "${_prop}" "nexus.zero.downtime.enabled" "true" || return $?
-        #TODO: This property does not change the nexus node name
-        local _cluster_name="$(basename "${_dirpath%/}")"   # assuming the directory name is unique
-        _upsert "${_prop}" "nexus.clustered.nodeName" "${_cluster_name}" || return $?
+        f_enable_ha "${_prop}" || return $?
     fi
     # optional
     _upsert "${_prop}" "nexus.security.randompassword" "false" || return $?
@@ -298,6 +293,27 @@ EOF
     _isYes "${_NEXUS_ENABLE_HA:-"${r_NEXUS_ENABLE_HA}"}" && _log "WARN" "Make sure 'blobs' use fullpath or symlinked"
 }
 
+function f_enable_ha() {
+    local _prop="${1}"
+    if [ -z "${_prop}" ]; then
+        if [ -f "./sonatype-work/nexus3/etc/nexus.properties" ]; then
+            _prop="./sonatype-work/nexus3/etc/nexus.properties"
+        else
+            _prop="$(find . -maxdepth 3 -type f -name 'nexus.properties' 2>/dev/null | sort -V | tail -n1)"
+        fi
+        if [ -z "${_prop}" ]; then
+            _log "ERROR" "Invalid nexus.properties path: ${_prop}"
+            return 1
+        fi
+    fi
+    _log "INFO" "Setting 'nexus.datastore.clustered.enabled=true' and 'nexus.zero.downtime.enabled=true' in ${_prop}"
+    _upsert "${_prop}" "nexus.datastore.clustered.enabled" "true" || return $?
+    _upsert "${_prop}" "nexus.zero.downtime.enabled" "true" || return $?
+    #TODO: This property does not change the nexus node name
+    #local _cluster_name="$(basename "${_dirpath%/}")"   # assuming the directory name is unique
+    #_upsert "${_prop}" "nexus.clustered.nodeName" "${_cluster_name}" || return $?
+}
+
 function f_uninstall_nexus3() {
     local __doc__="Uninstall NXRM3 by deleting database and directory"
     local _dirpath="${1}"
@@ -345,6 +361,7 @@ function f_setup_maven() {
     # add some data for xxxx-proxy
     # If NXRM2: _get_asset_NXRM2 "${_prefix}-proxy" "junit/junit/4.12/junit-4.12.jar"
     _ASYNC_CURL="Y" f_get_asset "${_prefix}-proxy" "org/sonatype/maven-policy-demo/1.0.0/maven-policy-demo-1.0.0.jar"
+    #_ASYNC_CURL="Y" f_get_asset "${_prefix}-proxy" "org/sonatype/maven-policy-demo/1.1.0/maven-policy-demo-1.1.0.jar"  # For Malware test
     _ASYNC_CURL="Y" f_get_asset "${_prefix}-proxy" "org/sonatype/maven-policy-demo/maven-metadata.xml"
     _ASYNC_CURL="Y" f_get_asset "${_prefix}-proxy" "junit/junit/4.12/junit-4.12.pom"
     # To use this jar later, not asynchronous
@@ -452,6 +469,7 @@ function f_setup_npm() {
     local _bs_name="${2:-"${r_BLOBSTORE_NAME:-"${_BLOBTORE_NAME}"}"}"
     local _ds_name="${3:-"${r_DATASTORE_NAME:-"${_DATASTORE_NAME}"}"}"
     local _source_nexus_url="${4:-"${r_SOURCE_NEXUS_URL:-"${_SOURCE_NEXUS_URL}"}"}"
+    local _with_name_protection="${5:-"${_NPM_WITH_NAME_PROTECTION:-"N"}"}"
     [ -z "${_bs_name}" ] && _bs_name="$(_get_blobstore_name)"
     [ -z "${_ds_name}" ] && _ds_name="$(_get_datastore_name)"
     local _extra_sto_opt="$(_get_extra_sto_opt "${_ds_name}")"
@@ -486,17 +504,18 @@ function f_setup_npm() {
     # If no xxxx-prop-hosted (proprietary | namespace confusion protection), create it (from 3.30)
     # https://help.sonatype.com/integrations/iq-server-and-repository-management/iq-server-and-nxrm-3.x/preventing-namespace-confusion
     # https://help.sonatype.com/iqserver/managing/policy-management/reference-policy-set-v6
-    if ! _is_repo_available "${_prefix}-prop-hosted"; then
+    if [[ "${_with_name_protection}" =~ ^[Yy] ]] && ! _is_repo_available "${_prefix}-prop-hosted"; then
         _apiS '{"action":"coreui_Repository","method":"create","data":[{"attributes":{"storage":{"blobStoreName":"'${_bs_name}'","writePolicy":"ALLOW","strictContentTypeValidation":true'${_extra_sto_opt}'},"component":{"proprietaryComponents":true},"cleanup":{"policyName":[]}},"name":"'${_prefix}'-prop-hosted","format":"","type":"","url":"","online":true,"recipe":"npm-hosted"}],"type":"rpc"}' # || return $? # this would fail if version is not 3.30
-    fi
-    if [ ! -s "${_TMP%/}/sonatype-policy-demo-1.0.0.tgz" ]; then
-        curl -sSf -o "${_TMP%/}/sonatype-policy-demo-1.0.0.tgz" -L "https://registry.npmjs.org/@sonatype/policy-demo/-/policy-demo-1.0.0.tgz"
-    fi
-    if [ -s "${_TMP%/}/sonatype-policy-demo-1.0.0.tgz" ]; then
-        _ASYNC_CURL="Y" f_upload_asset "${_prefix}-prop-hosted" -F "npm.asset=@${_TMP%/}/sonatype-policy-demo-1.0.0.tgz"
-        #f_iq_quarantine "npm-proxy"
-        # Need to delete 2.0.0 (normal) from npm-proxy and restart Nexus to start firewall.proprietary.name.sync ...
-        #curl -sSf -D- -o/dev/null -L "${_NEXUS_URL%/}/repository/npm-proxy/@sonatype/policy-demo/-/policy-demo-2.0.0.tgz"
+        # Populate a sample asset only when newly created
+        if [ ! -s "${_TMP%/}/sonatype-policy-demo-1.0.0.tgz" ]; then
+            curl -sSf -o "${_TMP%/}/sonatype-policy-demo-1.0.0.tgz" -L "https://registry.npmjs.org/@sonatype/policy-demo/-/policy-demo-1.0.0.tgz"
+        fi
+        if [ -s "${_TMP%/}/sonatype-policy-demo-1.0.0.tgz" ]; then
+            _ASYNC_CURL="Y" f_upload_asset "${_prefix}-prop-hosted" -F "npm.asset=@${_TMP%/}/sonatype-policy-demo-1.0.0.tgz"
+            #f_iq_quarantine "npm-proxy"
+            # Need to delete 2.0.0 (normal) from npm-proxy and restart Nexus to start firewall.proprietary.name.sync ...
+            #curl -sSf -D- -o/dev/null -L "${_NEXUS_URL%/}/repository/npm-proxy/@sonatype/policy-demo/-/policy-demo-2.0.0.tgz"
+        fi
     fi
 
     # If no xxxx-group, create it
@@ -506,7 +525,7 @@ function f_setup_npm() {
     fi
     # add some data for xxxx-group
     #f_get_asset "${_prefix}-group" "grunt/-/grunt-1.1.0.tgz"
-    _ASYNC_CURL="Y" f_get_asset "${_prefix}-group" "@sonatype/policy-demo"
+    f_get_asset "${_prefix}-group" "@sonatype/policy-demo"
 }
 
 function f_setup_nuget() {
@@ -704,6 +723,7 @@ function f_setup_docker() {
 }
 
 #_populate_docker_proxy_oras "" "m1mac.standalone.localdomain:15000"
+#oras pull -u "admin" -p "admin123" local.standalone.localdomain:18179/node:24-alpine3.24
 function _populate_docker_proxy_oras() {
     local _img_name="${1:-"alpine:3.7"}"    # To test OCI image: jenkins/jenkins:lts
     local _host_port="${2}"
@@ -718,6 +738,7 @@ function _populate_docker_proxy_oras() {
     oras pull --plain-http -u "${_usr}" -p "${_pwd}" ${_host_port%/}/${_img_name} -o /dev/null || return $?
 }
 
+#_populate_docker_hosted_oras "" "18181" &>${_TMP%/}/_populate_docker_hosted_oras.out &
 function _populate_docker_hosted_oras() {
     local _tag_to="${1}"
     local _host_port="${2}"
@@ -786,8 +807,14 @@ function _populate_docker_hosted() {
     #${_cmd} rmi ${_host_port}/${_tag_to} || return $?  # this leaves <none> images
 }
 
-#dd if=/dev/urandom of=./test_1MB_random.data bs=1024 count=1024
-#_docker_build "" "" "" "./test_1MB_random.data"
+# Example 5: Large docker file
+#   #dd if=/dev/urandom of=./test_1MB_random.data bs=1024 count=1024
+#   dd if=/dev/urandom of=./test_1GB_random.data bs=$((1024 * 1024)) count=1024
+#   _image_name="dummy-img-1gb"
+#   _docker_build "scratch" "${_image_name}:$(date +'%Y%m%d')" "" "./test_1GB_random.data"
+#   #docker inspect ${_image_name}:$(date +'%Y%m%d') | grep Size
+#   docker tag ${_image_name}:$(date +'%Y%m%d') local.standalone.localdomain:18182/${_image_name}:$(date +'%Y%m%d')
+#   docker push local.standalone.localdomain:18182/${_image_name}:$(date +'%Y%m%d')
 function _docker_build() {
     # NOTE: docker build -f does not work (bug?)
     local _base_img="${1:-"alpine:latest"}"    # dh1.standalone.localdomain:15000/alpine:3.7
@@ -825,7 +852,10 @@ function _docker_build() {
     fi
     echo -e "${_build_str}" > Dockerfile
 
-    _log "INFO" "Building image '${_tag_to}' from ${_build_dir} (${_TMP%/}/) ..."
+    _log "INFO" "Building image '${_tag_to}' from ${_build_dir} (${_TMP%/}/) with the below Dockerfile ..."
+    echo "-------------------------"
+    cat Dockerfile
+    echo "-------------------------"
     ${_cmd} build --rm -t ${_tag_to} .
     local _rc=$?
     cd -  && mv -v ${_build_dir} ${_TMP%/}/
@@ -840,7 +870,7 @@ function f_setup_yum() {
     local _prefix="${1:-"yum"}"
     local _bs_name="${2:-"${r_BLOBSTORE_NAME:-"${_BLOBTORE_NAME}"}"}"
     local _ds_name="${3:-"${r_DATASTORE_NAME:-"${_DATASTORE_NAME}"}"}"
-    local _yum_upload_path="${_YUM_UPLOAD_PATH:-"8/os/x86_64/Packages"}"
+    local _yum_upload_path="${_YUM_UPLOAD_PATH:-"Packages"}"
     [ -z "${_bs_name}" ] && _bs_name="$(_get_blobstore_name)"
     [ -z "${_ds_name}" ] && _ds_name="$(_get_datastore_name)"
     local _extra_sto_opt="$(_get_extra_sto_opt "${_ds_name}")"
@@ -851,14 +881,14 @@ function f_setup_yum() {
         # http://mirror.centos.org/centos/ is dead
         #sed -i 's/mirrorlist/#mirrorlist/g' /etc/yum.repos.d/CentOS-*
         #sed -i 's|#baseurl=http://mirror.centos.org|baseurl=http://vault.centos.org|g' /etc/yum.repos.d/CentOS-*
-        _apiS '{"action":"coreui_Repository","method":"create","data":[{"attributes":{"proxy":{"remoteUrl":"https://vault.centos.org/","contentMaxAge":1440,"metadataMaxAge":1440},"httpclient":{"blocked":false,"autoBlock":true},"storage":{"blobStoreName":"'${_bs_name}'","strictContentTypeValidation":true'${_extra_sto_opt}'},"negativeCache":{"enabled":true,"timeToLive":1440},"cleanup":{"policyName":[]}},"name":"'${_prefix}'-proxy","format":"","type":"","url":"","online":true,"routingRuleId":"","authEnabled":false,"httpRequestSettings":false,"recipe":"yum-proxy"}],"type":"rpc"}' || return $?
+        _apiS '{"action":"coreui_Repository","method":"create","data":[{"attributes":{"proxy":{"remoteUrl":"https://vault.centos.org/8.5.2111/BaseOS/x86_64/os/","contentMaxAge":1440,"metadataMaxAge":1440},"httpclient":{"blocked":false,"autoBlock":true},"storage":{"blobStoreName":"'${_bs_name}'","strictContentTypeValidation":true'${_extra_sto_opt}'},"negativeCache":{"enabled":true,"timeToLive":1440},"cleanup":{"policyName":[]}},"name":"'${_prefix}'-proxy","format":"","type":"","url":"","online":true,"routingRuleId":"","authEnabled":false,"httpRequestSettings":false,"recipe":"yum-proxy"}],"type":"rpc"}' || return $?
     fi
     # Add some data for xxxx-proxy (Ubuntu has "yum" command)
     # NOTE: using 'yum' command is a bit too slow, so not using at this moment, but how to
     #   _echo_yum_repo_file "${_prefix}-proxy" > /etc/yum.repos.d/nexus-yum-test.repo
     #   yum --disablerepo="*" --enablerepo="nexusrepo-test" install --downloadonly --downloaddir=${_TMP%/} dos2unix
-    f_get_asset "${_prefix}-proxy" "7.9.2009/os/x86_64/Packages/dos2unix-6.0.3-7.el7.x86_64.rpm" "${_TMP%/}/dos2unix-6.0.3-7.el7.x86_64.rpm"
-    f_get_asset "${_prefix}-proxy" "7.9.2009/os/x86_64/repodata/repomd.xml"
+    f_get_asset "${_prefix}-proxy" "Packages/dos2unix-7.4.0-3.el8.x86_64.rpm" "${_TMP%/}/dos2unix-7.4.0-3.el8.x86_64.rpm"
+    f_get_asset "${_prefix}-proxy" "repodata/repomd.xml"
 
     # This site is no longer working
     #if ! _is_repo_available "${_prefix}-epel-proxy"; then
@@ -880,8 +910,8 @@ function f_setup_yum() {
         _upload_file="$(find -L ${_TMP%/} -type f -size +1k -name "*.rpm" 2>/dev/null | head -n1)"
     fi
     if [ ! -s "${_upload_file}" ]; then
-        if curl -sSf -L -o ${_TMP%/}/aether-api-1.13.1-13.el7.noarch.rpm "https://vault.centos.org/7.9.2009/os/x86_64/Packages/aether-api-1.13.1-13.el7.noarch.rpm"; then
-            _upload_file=${_TMP%/}/aether-api-1.13.1-13.el7.noarch.rpm
+        if curl -sSf -L -o ${_TMP%/}/centos-gpg-keys-8-3.el8.noarch.rpm "https://vault.centos.org/8.5.2111/BaseOS/x86_64/os/Packages/centos-gpg-keys-8-3.el8.noarch.rpm"; then
+            _upload_file=${_TMP%/}/centos-gpg-keys-8-3.el8.noarch.rpm
         fi
     fi
     if [ -s "${_upload_file}" ]; then
@@ -889,6 +919,7 @@ function f_setup_yum() {
         #curl -D/dev/stderr -u admin:admin123 "${_NEXUS_URL%/}/repository/${_prefix}-hosted/Packages/" -T ${_upload_file}
         _ASYNC_CURL="Y" f_upload_asset "${_prefix}-hosted" -F "yum.asset=@${_upload_file}" -F "yum.asset.filename=$(basename ${_upload_file})" -F "yum.directory=${_yum_upload_path%/}"
     fi
+    f_get_asset "${_prefix}-hosted" "repodata/repomd.xml"
     #curl -u 'admin:admin123' --upload-file /etc/pki/rpm-gpg/RPM-GPG-KEY-pmanager ${r_NEXUS_URL%/}/repository/yum-hosted/RPM-GPG-KEY-pmanager
 
     # If no xxxx-group, create it
@@ -896,11 +927,9 @@ function f_setup_yum() {
         _apiS '{"action":"coreui_Repository","method":"create","data":[{"attributes":{"storage":{"blobStoreName":"'${_bs_name}'","strictContentTypeValidation":true'${_extra_sto_opt}'},"group":{"memberNames":["'${_prefix}'-hosted","'${_prefix}'-proxy"]}},"name":"'${_prefix}'-group","format":"","type":"","url":"","online":true,"recipe":"yum-group"}],"type":"rpc"}' || return $?
     fi
     # add some data for xxxx-group
-    #f_get_asset "${_prefix}-group" "8/os/x86_64/Packages/$(basename ${_upload_file})"
-    #f_get_asset "${_prefix}-hosted" "8/os/x86_64/repodata/repomd.xml"
-    #f_get_asset "${_prefix}-proxy" "8/os/x86_64/repodata/repomd.xml"
-    # This can be very slow ...
-    _ASYNC_CURL="Y" f_get_asset "${_prefix}-group" "8/os/x86_64/repodata/repomd.xml"
+    #f_get_asset "${_prefix}-group" "Packages/$(basename ${_upload_file})"
+    # This can be very slow, but as the last command in the function, not using '_ASYNC_CURL="Y"'
+    f_get_asset "${_prefix}-group" "repodata/repomd.xml"
 }
 function _rpm_build() {
     # https://stackoverflow.com/questions/880227/what-is-the-minimum-i-have-to-do-to-create-an-rpm-file
@@ -1524,15 +1553,32 @@ function f_setup_composer() {
     local _extra_sto_opt=""
     [ -z "${_bs_name}" ] && _bs_name="$(_get_blobstore_name)"
     [ -z "${_ds_name}" ] && _ds_name="$(_get_datastore_name)"
-    [ -n "${_ds_name}" ] && _extra_sto_opt=',"dataStoreName":"'${_ds_name}'"'
+    local _extra_sto_opt="$(_get_extra_sto_opt "${_ds_name}")"
     if ! _is_repo_available "${_prefix}-proxy"; then
         # https://packagist.org is deprecated from Feb 2025
-        _apiS '{"action":"coreui_Repository","method":"create","data":[{"attributes":{"proxy":{"remoteUrl":"https://repo.packagist.org","contentMaxAge":1440,"metadataMaxAge":1440},"replication":{"preemptivePullEnabled":false},"httpclient":{"blocked":false,"autoBlock":true,"connection":{"useTrustStore":false}},"storage":{"dataStoreName":"nexus","blobStoreName":"'${_bs_name}'","strictContentTypeValidation":true'${_extra_sto_opt}'},"negativeCache":{"enabled":true,"timeToLive":1440},"cleanup":{"policyName":[]}},"name":"'${_prefix}'-proxy","format":"","type":"","url":"","online":true,"routingRuleId":"","authEnabled":false,"httpRequestSettings":false,"recipe":"composer-proxy"}],"type":"rpc"}' || return $?
+        _apiS '{"action":"coreui_Repository","method":"create","data":[{"attributes":{"proxy":{"remoteUrl":"https://repo.packagist.org","contentMaxAge":1440,"metadataMaxAge":1440},"replication":{"preemptivePullEnabled":false},"httpclient":{"blocked":false,"autoBlock":true,"connection":{"useTrustStore":false}},"storage":{"blobStoreName":"'${_bs_name}'","strictContentTypeValidation":true'${_extra_sto_opt}'},"negativeCache":{"enabled":true,"timeToLive":1440},"cleanup":{"policyName":[]}},"name":"'${_prefix}'-proxy","format":"","type":"","url":"","online":true,"routingRuleId":"","authEnabled":false,"httpRequestSettings":false,"recipe":"composer-proxy"}],"type":"rpc"}' || return $?
     fi
     echo "To test:
     curl -sSf -D- ${_NEXUS_URL%/}/repository/${_prefix}-proxy/packages.json"
 }
 
+function f_setup_terraform() {
+    local __doc__="Create Terraform Proxy repository (v3.88+)"
+    local _prefix="${1:-"terraform"}"
+    local _bs_name="${2:-"${r_BLOBSTORE_NAME:-"${_BLOBTORE_NAME}"}"}"
+    local _ds_name="${3:-"${r_DATASTORE_NAME:-"${_DATASTORE_NAME}"}"}"
+    [ -z "${_bs_name}" ] && _bs_name="$(_get_blobstore_name)"
+    [ -z "${_ds_name}" ] && _ds_name="$(_get_datastore_name)"
+    local _extra_sto_opt="$(_get_extra_sto_opt "${_ds_name}")"
+    if ! _is_repo_available "${_prefix}-proxy"; then
+        # https://packagist.org is deprecated from Feb 2025
+        _apiS '{"action":"coreui_Repository","method":"create","data":[{"attributes":{"proxy":{"remoteUrl":"https://registry.terraform.io","preserveEncodedCharacters":false,"contentMaxAge":-1,"metadataMaxAge":1440},"replication":{"preemptivePullEnabled":false},"httpclient":{"blocked":false,"autoBlock":true,"connection":{"useTrustStore":false}},"storage":{"blobStoreName":"'${_bs_name}'","strictContentTypeValidation":true'${_extra_sto_opt}'},"negativeCache":{"enabled":true,"timeToLive":1440},"cleanup":{"policyName":[]}},"name":"'${_prefix}'-proxy","format":"","type":"","url":"","online":true,"routingRuleId":"","authEnabled":false,"httpRequestSettings":false,"recipe":"terraform-proxy"}],"type":"rpc"}' || return $?
+    fi
+    echo "To test:
+    curl -sSf -D- ${_NEXUS_URL%/}/repository/${_prefix}-proxy/.well-known/terraform.json"
+}
+
+# NOTE: the Raw format should be the end of f_setup_{format} functions. Add new format in the above of f_setup_raw().
 #curl -D- -sSf -u 'admin:admin123' "http://localhost:8081/service/rest/v1/repositories/raw/hosted" -H "Content-Type: application/json" -d '{"name":"raw-hosted","online":true,"storage":{"blobStoreName":"default","strictContentTypeValidation":false,"writePolicy":"ALLOW"}}'
 #curl -D- -sSf -u 'admin:admin123' "http://localhost:8081/repository/raw-hosted/test/test.txt" -T <(echo 'test')
 function f_setup_raw() {
@@ -1706,11 +1752,15 @@ function f_reencrypt() {
     }
 EOF
     fi
-    _upsert ${_work_dir%/}/etc/nexus.properties "nexus.secrets.file" "${_key_path}" || return $?
-    _log "INFO" "Restart required to apply the new secrets."
+    _upsert "${_work_dir%/}/etc/nexus.properties" "nexus.secrets.file" "${_key_path}" || return $?
+    _log "INFO" "${_work_dir%/}/etc/nexus.properties now has nexus.secrets.file=${_key_path}"
+    _log "INFO" "Restart required to apply the new secrets, then:"
 cat << EOF
+----
 curl -u "${_ADMIN_USER}" "${_NEXUS_URL%/}/service/rest/v1/secrets/encryption/re-encrypt" -X PUT -H 'accept:application/json' -H 'Content-Type: application/json' -d '{"secretKeyId":"${_id:-"__KEY_ID__"}"}'
+----
 EOF
+    echo "     Then monitor ${_work_dir%/}/log/tasks/security.secrets.re-encrypt-*.log for progress and completion."
 }
 
 function f_ui_settings() {
@@ -1961,7 +2011,11 @@ function f_create_google_blobstore() {
         _apiS '{"action":"coreui_Repository","method":"create","data":[{"attributes":{"storage":{"blobStoreName":"'${_bs_name}'","writePolicy":"ALLOW","strictContentTypeValidation":false'$(_get_extra_sto_opt)'},"cleanup":{"policyName":[]}},"name":"raw-gs-hosted","format":"","type":"","url":"","online":true,"recipe":"raw-hosted"}],"type":"rpc"}' || return $?
         _log "INFO" "Created raw-gs-hosted"
     fi
-    _log "TODO" "Google CLI command examples"
+    _log "INFO" "Google CLI command examples
+    gcloud auth activate-service-account --key-file=\${GOOGLE_ACCOUNT_KEY_FILE}
+    #gcloud config get-value account    # To verify the account
+    gcloud storage ls gs://${_bucket}
+    "
 }
 
 function f_create_group_blobstore() {
@@ -2091,7 +2145,7 @@ function _get_asset() {
     local _user="${5:-"${r_ADMIN_USER:-"${_ADMIN_USER}"}"}"
     local _pwd="${6:-"${r_ADMIN_PWD:-"${_ADMIN_PWD}"}"}"
     if [[ "${_NO_DATA}" =~ ^[yY] ]]; then
-        _log "INFO" "_NO_DATA is set so no action."; return 0
+        _log "INFO" "_NO_DATA is set so no action for /repository/${_repo%/}/${_path#/}"; return 0
     fi
     if [ -d "${_out_path}" ]; then
         _out_path="${_out_path%/}/$(basename ${_path})"
@@ -2731,6 +2785,20 @@ function f_enable_quarantines() {
     done
 }
 
+function f_enable_usertoken() {
+    local _enabled="${1:-"true"}"
+    f_api "/service/rest/v1/security/user-tokens" "{\"enabled\":${_enabled},\"expirationEnabled\":false,\"expirationDays\":30,\"protectContent\":false}" "PUT" || return $?
+}
+
+function f_enable_anonymous() {
+    local _enabled="${1:-"true"}"
+    f_api "/service/rest/internal/ui/anonymous-settings" "{\"enabled\":${_enabled},\"userId\":\"anonymous\",\"realmName\":\"NexusAuthorizingRealm\"}" "PUT" || return $?
+}
+
+function f_disable_ssrf() {
+    f_api "/service/rest/v1/security/ssrf-protection" "{\"enabled\":false}" "PUT" || return $?
+}
+
 #f_create_cleanup_policy "1dayold" "" "" "1"
 #f_create_cleanup_policy "maven2-del-all" ".+" "maven2"
 function f_create_cleanup_policy() {
@@ -2752,6 +2820,7 @@ function f_create_cleanup_policy() {
 #f_api "/service/rest/internal/cleanup-policies" "{\"name\":\"maven2-without-sort\",\"notes\":null,\"format\":\"maven2\",\"criteriaLastBlobUpdated\":1,\"criteriaReleaseType\":\"RELEASES\",\"retain\":\"10\"}"
 
 # To restrict DELETE for npm logout
+#f_create_csel "maven2-browse" "format == 'maven2' and path =^ '/'" "*" "*" "browse,read"
 #f_create_csel "npm-logout" "format == 'npm' and path =^ '/-/user/token/'" "npm-hosted" "npm" "delete,read"
 #f_create_csel "docker-login" "path == '/v2/'" "*" "docker" "read"
 #f_create_csel "docker-path-workaround" "path == '/v2/' or path =^ '/v2/token'" "*" "docker" "read"
@@ -2805,12 +2874,16 @@ function f_create_csel() {
 function f_create_testuser() {
     local __doc__="Create/add a test user with a test role"
     local _userid="${1:-"testuser"}"
-    local _privs="${2-"\"nx-repository-view-*-*-add\",\"nx-repository-view-*-*-browse\",\"nx-repository-view-*-*-edit\",\"nx-repository-view-*-*-read\",\"nx-search-read\",\"nx-component-upload\",\"nx-usertoken-current\",\"nx-apikey-all\",\"nx-tags-all\""}"
-    local _role="${3-"test-role"}"
+    local _privs="${2-"\"nx-repository-view-*-*-add\",\"nx-repository-view-*-*-browse\",\"nx-repository-view-*-*-edit\",\"nx-repository-view-*-*-read\",\"nx-repository-view-*-*-delete\",\"nx-search-read\",\"nx-component-upload\",\"nx-usertoken-current\",\"nx-apikey-all\",\"nx-tags-all\""}"
+    local _role="${3}"
     # NOTE: nx-usertoken-current does not work with OSS because no User Token.
     #       nx-apikey-all is needed for Nuget AP key.
-    if [ -n "${_privs}" ] && [ -n "${_role}" ]; then
-        f_api "/service/rest/v1/security/roles" "{\"id\":\"${_role}\",\"name\":\"${_role} name\",\"description\":\"${_role} desc\",\"privileges\":[${_privs}],\"roles\":[]}"
+    if [ -n "${_privs}" ]; then
+        if [ -z "${_role}" ]; then
+            _role="test-role"
+            _log "INFO" "Using \"${_role}\" as role name ..."
+        fi
+        f_api "/service/rest/v1/security/roles" "{\"id\":\"${_role}\",\"name\":\"${_role} name\",\"description\":\"${_role} desc\",\"privileges\":[${_privs}],\"roles\":[]}" # may fail with 400 if already exists
     fi
     _apiS '{"action":"coreui_User","method":"create","data":[{"userId":"'${_userid}'","version":"","firstName":"test","lastName":"user","email":"'${_userid}'@example.com","status":"active","roles":["'${_role:-"nx-anonymous"}'"],"password":"'${_userid}'"}],"type":"rpc"}'
 }
@@ -2946,7 +3019,7 @@ To check the installation, run 'oras version' or 'oras help'.
 EOF
 }
 
-function f_upload_dummy_with_oras() {
+function f_upload_dummy_docker_with_oras() {
     local __doc__="Upload a dummy file with ORAS to test registry or proxy"
     local _registry="${1:-"localhost:8081/docker-hosted"}"  # Registory which doesn't requre authentication.
     local _dist_tag="${2}"
@@ -2956,9 +3029,33 @@ function f_upload_dummy_with_oras() {
         _dist_tag="$(echo "${_src_registry}" | sed -E 's@.*/([^/:]+:[^/:]+)$@\1@')"
         _log "INFO" "Using \"${_dist_tag}\" as dist tag ..."; sleep 1
     fi
+    local _src_image="$(basename "${_src_registry%:*}")"
+    local _src_tag="${_src_registry##*:}"
+    if [ -s "${_TMP%/}/${_src_image}:${_src_tag}" ]; then
+        _log "INFO" "Reusing ${_TMP%/}/${_src_image}:${_src_tag} ..."
+    else
+        oras cp --to-oci-layout --to-plain-http ${_src_registry} ${_TMP%/}/${_src_image}:${_src_tag}
+        _log "INFO" "Saved ${_src_registry} to ${_TMP%/}/${_src_image}:${_src_tag}"
+    fi
     #oras login -u "${_ADMIN_USER}" -p "${_ADMIN_PWD}" --plain-http ${_registry} || return $?
-    oras cp --to-username "${_ADMIN_USER}" --to-password "${_ADMIN_PWD}" --to-plain-http ${_src_registry} ${_registry%/}/${_dist_tag:-"alpine-test:3.7"} || return $?
-    _log "INFO" "Uploaded hello-text:v1 to ${_registry%/}/hello-text:v1"
+    #oras cp --to-username "${_ADMIN_USER}" --to-password "${_ADMIN_PWD}" --to-plain-http ${_src_registry} ${_registry%/}/${_dist_tag} || return $?
+    #oras tag --oci-layout-path ${_TMP%/}/${_src_image}_${_src_tag} ${_src_image}:${_src_tag} ${_dist_tag} || return $?
+    oras cp --to-username "${_ADMIN_USER}" --to-password "${_ADMIN_PWD}" --from-oci-layout ${_TMP%/}/${_src_image}:${_src_tag} --to-plain-http ${_registry%/}/${_dist_tag} || return $?
+    _log "INFO" "Uploaded ${_dist_tag} to ${_registry%/}/${_dist_tag}"
+}
+
+# TODO: PUT is not working because of 0 content length (which is for POST), and can't kill on Mac
+function f_start_dummy_webhook_responder() {
+    local __doc__="Nexus image has 'nc'"
+    local _port="${1:-"2222"}"
+    local _http_status="${2:-"200 OK"}" # 400 Bad Request
+    local _content_length="${3:-"0"}"
+    _log "INFO" "Starting dummy webhook responder on port ${_port} with HTTP status ${_http_status} and content length ${_content_length} ..."
+    while true; do
+        local _last_mod="$(type gdate &>/dev/null && gdate --rfc-2822 || date --rfc-2822)"
+        echo -e "HTTP/1.1 ${_http_status}\nDate: $(type gdate &>/dev/null && gdate --rfc-2822 || date --rfc-2822)\nServer: ncWeb\nLast-Modified: ${_last_mod}\nContent-Length: ${_content_length}\n\n" | nc -v -v -n -l ${_port} || break
+        echo -e "\n"
+    done
 }
 
 #_URL_REGEX="sonatype.com" _DEBUG2="Y" _REPL_CERT="Y" f_start_forward_proxy
@@ -3533,9 +3630,6 @@ function f_upload_dummy_raw() {
     local _file_path="${3}" # From
     local _usr="${4:-"${_ADMIN_USER}"}"
     local _pwd="${5:-"${_ADMIN_PWD}"}"
-    if [ -z "${_file_path}" ] && [ -z "${_repo_path}" ]; then
-        _log "ERROR" "Please specify existing _file_path or _repo_path" ; return 1
-    fi
     if [ -z "${_file_path}" ]; then
         echo "test at $(date +'%Y-%m-%d %H:%M:%S')" > ${_TMP%/}/${FUNCNAME[0]}_$$.txt || return $?
         _file_path="${_TMP%/}/${FUNCNAME[0]}_$$.txt"
@@ -3551,6 +3645,8 @@ function f_upload_dummy_raw() {
     curl -sf -u "${_usr}:${_pwd}" -w '%{http_code} '${_file_path}' (%{time_total}s)\n' -T ${_file_path} -L -k "${_NEXUS_URL%/}/repository/${_repo_name}/${_repo_path#/}"
 }
 
+#dd if=/dev/urandom of=./test_random.data bs=1024 count=100
+#_DUMMY_FILE_PATH="./test_random.data" _FILE_PREFIX="/swrel/WSW_Internal_Release/EEBU_SW_REL/MXDRIVER/LINUX/concurrent" f_upload_dummies_raw
 function f_upload_dummies_raw() {
     local __doc__="Upload text files into raw hosted repository by using f_upload_dummies"
     local _repo_name="${1:-"raw-hosted"}"
@@ -3562,6 +3658,7 @@ function f_upload_dummies_raw() {
     local _sub_dir_depth="${7:-"${_SUB_DIR_DEPTH:-3}"}"
     local _usr="${8:-"${_ADMIN_USER}"}"
     local _pwd="${9:-"${_ADMIN_PWD}"}"
+    local _bandwidth="${_BANDWIDTH}"  # to control curl bandwidth e.g. 1024K with --limit-rate
 
     local _repo_path="${_NEXUS_URL%/}/repository/${_repo_name}/${_upload_dir#/}"
     local _seq_start="${_SEQ_START:-1}"
@@ -3578,7 +3675,10 @@ function f_upload_dummies_raw() {
     fi
 
     # -T<(echo "aaa") may not work with old bash, also somehow some of files become 0 byte, so creating a file
-    echo "test at $(date +'%Y-%m-%d %H:%M:%S')" > ${_TMP%/}/${FUNCNAME[0]}_$$.txt || return $?
+    if [ -z "${_DUMMY_FILE_PATH}" ] || [ ! -s "${_DUMMY_FILE_PATH}" ]; then
+        echo "test at $(date +'%Y-%m-%d %H:%M:%S')" > ${_TMP%/}/${FUNCNAME[0]}_$$.txt || return $?
+        _DUMMY_FILE_PATH="${_TMP%/}/${FUNCNAME[0]}_$$.txt"
+    fi
 
     for i in $(eval "${_seq}"); do
         if [ -z "${_file_prefix}" ]; then
@@ -3590,12 +3690,12 @@ function f_upload_dummies_raw() {
                     _final_prefix="${_final_prefix}test_subdir${_k}/"
                 done
             fi
-            _final_prefix="${_final_prefix}test_"
+            _final_prefix="${_final_prefix#/}test_"
         else
-            _final_prefix="${_file_prefix}"
+            _final_prefix="${_file_prefix#/}"
         fi
         echo "${_final_prefix}${i}${_file_suffix}"
-    done | xargs -I{} -P${_parallel} curl -sf -u "${_usr}:${_pwd}" -w '%{http_code} '${_upload_dir%/}/'{} (%{time_total}s)\n' -T ${_TMP%/}/${FUNCNAME[0]}_$$.txt -L -k "${_repo_path%/}/{}"
+    done | xargs -I{} -P${_parallel} curl --limit-rate ${_bandwidth:-"1024K"} -sf -u "${_usr}:${_pwd}" -w '%{http_code} '${_upload_dir%/}/'{} (%{time_total}s)\n' -T ${_DUMMY_FILE_PATH} -L -k "${_repo_path%/}/{}"
     # NOTE: xargs only stops if exit code is 255
 }
 
@@ -3692,7 +3792,7 @@ function f_deploy_maven() {
 
 # Example of uploading 100 versions 9 concurrency (total 900 + 10)
 : <<'EOF'
-# test first (if 400, might be due to Deployment policy)
+# test first (if 400 HTTP status, might be due to Deployment policy)
 f_upload_dummies_maven "maven-hosted" "10" "3" "setup.nexus3.repos0" "dummy0"
 for g in {1..3}; do
   for a in {1..3}; do
@@ -3724,6 +3824,7 @@ function f_upload_dummies_maven() {
         local _bs_name="$(_get_blobstore_name)"
         local _extra_sto_opt="$(_get_extra_sto_opt "${_ds_name}")"
         _apiS '{"action":"coreui_Repository","method":"create","data":[{"attributes":{"maven":{"versionPolicy":"RELEASE","layoutPolicy":"STRICT"},"storage":{"blobStoreName":"'${_bs_name}'","writePolicy":"ALLOW","strictContentTypeValidation":true'${_extra_sto_opt}'},"cleanup":{"policyName":[]}},"name":"'${_repo_name}'","format":"","type":"","url":"","online":true,"recipe":"maven2-hosted"}],"type":"rpc"}' || return $?
+        _log "INFO" "Created ${_repo_name}"
     fi
 
     # _SEQ_START is for continuing
@@ -3736,6 +3837,7 @@ function f_upload_dummies_maven() {
 
     # The below 'export' does not work with Mac's bash...
     #export -f f_upload_asset
+    _log "INFO" "Uploading ${_how_many_vers} versions of ${_g}:${_a}${_ver_sfx} into ${_repo_name} with ${_parallel} concurrency ..."
     for i in $(eval "${_seq}"); do
       echo "$i${_ver_sfx}"
     done | xargs -I{} -P${_parallel} curl -sf -u "${_usr}:${_pwd}" -w "%{http_code} ${_g}:${_a}:{} (%{time_total}s)\n" -H "accept: application/json" -H "Content-Type: multipart/form-data" -X POST -k "${_NEXUS_URL%/}/service/rest/v1/components?repository=${_repo_name}" -F maven2.groupId=${_g} -F maven2.artifactId=${_a} -F maven2.version={} -F maven2.asset1=@${_TMP%/}/dummy.jar -F maven2.asset1.extension=jar -F maven2.generate-pom=true
@@ -3923,10 +4025,14 @@ function _update_npm_tgz() {
     rm -rf ${_tmpdir%/}
 }
 
+# Test how pypi group merge the index file
+#   echo "dummy file to change sha256 checksum" > ${_TMP%/}/dummy.txt
+#   export _PYPI_EXTRA_FILE=${_TMP%/}/dummy.txt
+#   _SEQ_START=7 f_upload_dummies_pypi "pypi-hosted2"
 function f_upload_dummies_pypi() {
     local __doc__="Upload dummy tgz into npm hosted repository"
     local _repo_name="${1:-"pypi-hosted"}"
-    local _how_many="${2:-"10"}"
+    local _how_many="${2:-"5"}" # As this one is slow, using 5 instead of 10 for default
     local _dummy_pkg_name="${3:-"dummypypiproject"}"    # Do not use `-`
 
     local _seq_start="${_SEQ_START:-1}"
@@ -3950,9 +4056,14 @@ function f_upload_dummy_pypi() {
     local _new_name="${2:-"mydummyproject"}"  # Default project name if not specified
     local _new_ver="${3:-"0.0.1"}"  # Default version if not specified
     local _tmpbase="${4:-"${_TMP%/}"}"
+    local _extra_file="${5-"${_PYPI_EXTRA_FILE}"}"  # If set, the extra file will be uploaded as well
 
     if [ -z "$VIRTUAL_ENV" ]; then
         _log "ERROR" "Please activate a Python virtual environment with 'build' package"
+        return 1
+    fi
+    if ! python3 -c "import build"; then
+        _log "ERROR" "Please install 'build' package in the active Python3 environment"
         return 1
     fi
 
@@ -3971,6 +4082,9 @@ function f_upload_dummy_pypi() {
     local _tmpdir="${_tmpbase%/}/${FUNCNAME[0]}_$$"
     mkdir -p ${_tmpdir%/} || return $?
     tar -xf "${_TMP%/}/pypi-sampleproject.tgz" -C "${_tmpdir%/}" || return $?
+    if [ -n "${_extra_file}" ] && [ -s "${_extra_file}" ]; then
+        cp -v "${_extra_file}" "${_tmpdir%/}/sampleproject/" || return $?
+    fi
     local _uploading_file="$(_build_pypi_project "${_tmpdir%/}/sampleproject" "${_new_name}" "${_new_ver}")" || return $?
     if [ -z "${_uploading_file}" ]; then
         _log "ERROR" "Failed to update the pypi project with ${_tmpdir}, ${_new_name}, ${_new_ver}"
@@ -4159,7 +4273,6 @@ function f_upload_dummies_docker() {
     done 2>${_TMP%/}/${FUNCNAME[0]}_$$.err
     _log "INFO" "Completed. May want to run 'f_gen_delete_dummy_docker_images \"${_host_port}\"' to remove dummy images."
 }
-
 function f_gen_delete_dummy_docker_images() {
     local _image_name_part="${1:-"dummy[0-9]+"}"
     local _host_port="${2:-"local.standalone.localdomain.*"}"
@@ -4171,6 +4284,45 @@ function f_gen_delete_dummy_docker_images() {
         echo "${_cmd} rmi -f ${_img}"
     done
     echo "docker system prune -f"
+}
+
+function f_upload_dummies_docker_with_oras() {
+    local __doc__="Upload dummy docker images into docker hosted repository with ORAS"
+    local _host_port="${1:-"localhost:8081/docker-hosted"}"
+    local _how_many="${2:-"10"}"    # this number * _parallel is the actual number of images
+    local _parallel="${3:-"1"}"
+    local _image_name="${4:-"${_IMAGE_NAME}"}"  # To create multiple tags under *one* image. If empty, dummy${i}-${j}
+    local _src_registry="${5:-"docker.io/library/alpine:3.7"}"
+    local _tag_prefix="${6:-"${_DOCKER_TAG_PFX:-"tag-"}"}"
+    local _usr="${7:-"${_ADMIN_USER}"}"
+    local _pwd="${8:-"${_ADMIN_PWD}"}"
+
+    local _seq_start="${_SEQ_START:-1}"
+    local _seq_end="$((${_seq_start} + ${_how_many} - 1))"
+    local _seq="seq ${_seq_start} ${_seq_end}"
+    local _count=0
+    for i in $(eval "${_seq}"); do
+        if [ $((_count + _parallel)) -gt ${_how_many} ]; then
+            _partial=$((_how_many - _count))
+            _log "INFO" "Changed parallel from ${_parallel} to ${_partial} to not exceed total of ${_how_many}"
+        fi
+        for j in $(eval "seq 1 ${_parallel}"); do
+            local _img="dummy${i}-${j}:${_tag_prefix}$(date +'%H%M%S')"
+            if [ -n "${_image_name}" ]; then
+                _img="${_image_name}:${_tag_prefix}${i}-${j}-$(date +'%H%M%S')"
+            fi
+            _log "INFO" "Executing 'f_upload_dummy_docker_with_oras "${_host_port}"  "${_img}" "${_src_registry}"' ..."
+            f_upload_dummy_docker_with_oras "${_host_port}"  "${_img}" "${_src_registry}" &> ${_TMP%/}/${FUNCNAME[0]}_$$_${i}_${j}.out &
+            if [ ${_count} -ge ${_how_many} ]; then
+                break
+            fi
+        done
+        wait
+        if [ ${_count} -ge ${_how_many} ]; then
+            break
+        fi
+    done 2>${_TMP%/}/${FUNCNAME[0]}_$$.err
+    _log "INFO" "Completed. (${_TMP%/}/${FUNCNAME[0]}_$$.err)"
 }
 
 function f_upload_dummies_helm() {
@@ -4270,13 +4422,15 @@ function f_upload_dummy_yum_build() {
 }
 
 # This can be used for populating not only local hosted and a yum-proxy with 'vault' and _YUM_REMOTE_URL
+# _YUM_DUMMY_UPLOAD_SLEEP=55 _YUM_DUMMY_UPLOAD_PARALLEL=1 to test automatic.yum.metadata.rebuild
 function f_upload_dummies_yum() {
     local __doc__="Upload rpms from vault.centos.org or 'rpmbuild' command or using same rpm but different path"
     local _repo_name="${1:-"yum-hosted"}"
     local _how_many="${2:-"10"}"
     local _pkg_name="${3}"      # used with grep -E "\b${_pkg_name}\b"
-    local _parallel="${4:-"5"}" # Only for "build" and "path" methods
+    local _parallel="${4:-"${_YUM_DUMMY_UPLOAD_PARALLEL:-5}"}" # Only for "build" and "path" methods
     local _upload_method="${5-"${_YUM_DUMMY_UPLOAD_METHOD:-"path"}"}"  # "path" (no need yum/rpm commands) or "build" or "vault"
+    local _upload_sleep="${6-"${_YUM_DUMMY_UPLOAD_SLEEP:-1}"}"  # Sleep duration between uploads
 
     local _seq_start="${_SEQ_START:-1}"
     local _seq_end="$((${_seq_start} + ${_how_many} - 1))"
@@ -4310,7 +4464,10 @@ function f_upload_dummies_yum() {
             curl -sSf -w "Download: %{http_code} ${_name} (%{time_total} secs, %{size_download} bytes)\n" "${_url}" -o ${_tmpdir%/}/${_name} || continue
             curl -sSf -w "Upload  : %{http_code} ${_name} (%{time_total} secs, %{size_download} bytes)\n" -T ${_tmpdir%/}/${_name} -u "${_ADMIN_USER}:${_ADMIN_PWD}" "${_repo_url%/}/${_yum_upload_path%/}/Packages/${_name}" || return $?
             rm -f ${_tmpdir%/}/${_name}
-            #sleep 60
+            if [ "${_upload_sleep}" -gt 1 ]; then
+                _log "INFO" "Sleeping ${_upload_sleep} seconds before next upload ..."
+            fi
+            sleep ${_upload_sleep:-1}
             #curl -sSf -w "Download: %{http_code} ${_YUM_GROUP_REPO} repomd.xml (%{time_total} secs, %{size_download} bytes)\n" -o/dev/null "${_NEXUS_URL%/}/repository/${_YUM_GROUP_REPO}/${_yum_upload_path%/}/repodata/repomd.xml"
         done
     elif [[ "${_upload_method}" =~ ^[bB] ]]; then
@@ -4324,7 +4481,10 @@ function f_upload_dummies_yum() {
                 f_upload_dummy_yum_build "${_repo_name}" "${_pkg_name:-"dummy-rpm${_current_num}"}" "0.0.${i}" "1" &    # &> ${_TMP%/}/${FUNCNAME[0]}_$$_${i}.out
                 _current_num=$(( _current_num + 1 ))
             done
-            sleep 1
+            if [ "${_upload_sleep}" -gt 1 ]; then
+                _log "INFO" "Sleeping ${_upload_sleep} seconds before next upload ..."
+            fi
+            sleep ${_upload_sleep:-1}
             wait
             if [ "${_current_num}" -gt "${_seq_end}" ]; then
                 _log "INFO" "All ${_how_many} rpm(s) uploaded (current:${_current_num} -gt ${_seq_end})"
@@ -4346,7 +4506,10 @@ function f_upload_dummies_yum() {
                 fi
                 _ASYNC_CURL="N" f_upload_asset "${_repo_name}" -F yum.asset=@${_upload_file} -F yum.asset.filename=${_pkg_name:-"test-rpm"}-9.9.9-1.noarch.rpm -F yum.directory=dummy/os/path${_current_num}/Packages &
             done
-            sleep 1
+            if [ "${_upload_sleep}" -gt 1 ]; then
+                _log "INFO" "Sleeping ${_upload_sleep} seconds before next upload ..."
+            fi
+            sleep ${_upload_sleep:-1}
             wait
             if [ "${_current_num}" -gt "${_seq_end}" ]; then
                 break
@@ -4412,11 +4575,11 @@ function f_delete_asset() {
     done
     echo "Deleted ${_line_num} assets"
 }
-#f_get_all_assets "raw-group" "downloadUrl" "" "q=dummies"
-function f_get_all_assets() {
+#f_get_attr_all_assets "raw-group" "downloadUrl" "" "q=dummies"
+function f_get_attr_all_assets() {
     local __doc__="Get/List all assets but only one attribute from one repository with Search REST API (require correct search index)"
     local _repo="$1"
-    local _attr="${2:-"id"}"    # or "downloadUrl"
+    local _attr="${2:-"downloadUrl"}"    # Usually "id" or "downloadUrl"
     local _max_loop="${3:-200}" # 50 * 200 = 10000 max
     local _search_criteria="${4}"    # or "downloadUrl"
     rm -f ${_TMP%/}/${FUNCNAME[0]}_*.out || return $?
@@ -4455,8 +4618,11 @@ function f_check_all_assets() {
     local _parallel="${2:-"3"}"
     local _usr="${3:-"${_ADMIN_USER}"}"
     local _pwd="${4:-"${_ADMIN_PWD}"}"
-
-    local _all_asset_file="$(f_get_all_assets "${_repo}" "downloadUrl")" || return $?
+    if [ -z "${_repo}" ]; then
+        _log "ERROR" "Repository name is required"
+        return 1
+    fi
+    local _all_asset_file="$(f_get_attr_all_assets "${_repo}" "downloadUrl")" || return $?
     local _line_num="$(cat "${_all_asset_file}" | wc -l | tr -d '[:space:]')"
     # TODO: should use sed
     cat "${_all_asset_file}" | while read -r _l; do
@@ -4476,7 +4642,7 @@ function f_delete_all_assets() {
     local _pwd="${6:-"${_ADMIN_PWD}"}"
     local _nexus_url="${7:-"${r_NEXUS_URL:-"${_NEXUS_URL}"}"}"
 
-    local _all_asset_file="$(f_get_all_assets "${_repo}" "id" "${_max_loop}")" || return $?
+    local _all_asset_file="$(f_get_attr_all_assets "${_repo}" "id" "${_max_loop}")" || return $?
     local _line_num="$(cat "${_all_asset_file}" | wc -l | tr -d '[:space:]')"
     if [[ ! "${_force}" =~ ^[yY] ]]; then
         read -p "Are you sure to delete all (${_line_num}) assets?: " "_yes"
