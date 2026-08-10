@@ -1,5 +1,6 @@
 /*
-Doing same as org.sonatype.nexus.blobstore.VolumeChapterLocationStrategy#location and java.lang.String.hashCode
+Doing same as org.sonatype.nexus.blobstore.VolumeChapterLocationStrategy#location + java.lang.String.hashCode,
+ and org.sonatype.nexus.blobstore.DateBasedLocationStrategy#location (blobCreationTime)
 
 To build: GO_SKIP_TESTS=Y goBuild ./blobpath.go
 */
