@@ -87,7 +87,7 @@ _DEBUG=false
 #mv -f -v ./config.yml{,.tmp} && tar -xvf $HOME/.nexus_executable_cache/nexus-iq-server-1.195.0-01-bundle.tar.gz && cp -p -v ./config.yml{.tmp,}
 function f_install_iq() {
     local __doc__="Install specific IQ version (to recreate sonatype-work and DB, _RECREATE_ALL=Y)"
-    local _ver="${1}" # 'latest'
+    local _ver="${1:-"latest"}"
     local _dbname="${2}"
     local _dbusr="${3:-"nexus"}" # Specifying default as do not want to create many users/roles
     local _dbpwd="${4:-"${_dbusr}123"}"
@@ -95,13 +95,6 @@ function f_install_iq() {
     local _dirpath="${6}"                     # If not specified, create a new dir under current dir
     local _download_dir="${7}"
     local _starting="${_NEXUS_START}"
-    if [ -z "${_ver}" ] || [ "${_ver}" == "latest" ]; then
-        local _location="$(curl -sSf -I "https://download.sonatype.com/clm/server/latest.tar.gz" | grep -i '^location:')"
-        if [[ "${_location}" =~ nexus-iq-server-([0-9.]+-[0-9]+)-bundle.tar.gz ]]; then
-            _ver="${BASH_REMATCH[1]}"
-        fi
-    fi
-    [ -z "${_ver}" ] && return 1
     if [ -z "${_port}" ]; then
         _port="$(_find_port "8070" "" "^8071$")"
         [ -z "${_port}" ] && return 1
@@ -132,15 +125,9 @@ function f_install_iq() {
         _RECREATE_DB="Y"
     fi
 
-    # This function sets _LICENSE_PATH
-    local _tgz_ver="${_ver}"
-    [[ "${_ver}" =~ ^1\.[0-9]+\.[0-9]+$ ]] && _tgz_ver="${_ver}-*"
-    _prepare_install "${_dirpath}" "https://download.sonatype.com/clm/server/nexus-iq-server-${_tgz_ver}-bundle.tar.gz" || return $?
-    local _license_path="${_LICENSE_PATH}"
-
-    local _jar_file="$(find ${_dirpath%/} -maxdepth 2 -type f -name 'nexus-iq-server*.jar' 2>/dev/null | sort -V | tail -n1)"
+    local _jar_file="$(_download_installer "${_ver}" "${_dirpath}" "${_download_dir}")" || return $?
     [ -z "${_jar_file}" ] && return 11
-    local _cfg_file="$(find ${_dirpath%/} -maxdepth 2 -type f -name 'config.yml' 2>/dev/null | sort -V | tail -n1)"
+    local _cfg_file="$(find ${_dirpath%/} -maxdepth 3 -type f -name 'config.yml' 2>/dev/null | sort -V | tail -n1)"
     [ -z "${_cfg_file}" ] && return 12
 
     if [ ! -f "${_cfg_file}.orig" ]; then
@@ -150,6 +137,7 @@ function f_install_iq() {
     if [[ "${_CLM_STAGING}" =~ ^[yY] ]]; then
         grep -qE '^hdsUrl:' "${_cfg_file}" || echo -e "hdsUrl: https://clm-staging.sonatype.com/\n$(cat "${_cfg_file}")" >"${_cfg_file}"
     fi
+    local _license_path="${_LICENSE_PATH}"
     grep -qE '^licenseFile' "${_cfg_file}" || echo -e "licenseFile: ${_license_path%/}\n$(cat "${_cfg_file}")" >"${_cfg_file}"
     grep -qE '^\s*port: 8070' "${_cfg_file}" && sed -i.tmp 's/port: 8070/port: '${_port}'/g' "${_cfg_file}"
     grep -qE '^\s*port: 8071' "${_cfg_file}" && sed -i.tmp 's/port: 8071/port: '$((${_port} + 1))'/g' "${_cfg_file}"
@@ -180,6 +168,64 @@ function f_install_iq() {
             fi
         fi
     fi
+}
+
+function f_upgrade_this_iq() {
+    local __doc__="Upgrade this IQ version ('this' means starting this function from the extracted nexus-iq-server-<version> dir)"
+    local _ver="${1}" # 'latest'
+    local _download_dir="${2}"
+
+    _download_installer "${_ver}" "." "${_download_dir}" "Y" || return $?
+}
+
+function _download_installer() {
+    local _ver="${1}" # If 'latest', _filename=latest.tgz
+    local _dirpath="${2}" # If not specified, create a new dir under current dir
+    local _download_dir="${3}"
+    local _force_extract="${4}"
+
+    local _tgz_ver="${_ver}"
+    [[ "${_ver}" =~ ^1\.[0-9]+\.[0-9]+$ ]] && _tgz_ver="${_ver}-*"
+    local _filename="nexus-iq-server-${_tgz_ver}-bundle.tar.gz"
+    # NOTE: from v205, now the final url includes architecture.
+    if [[ "${_ver}" =~ ^1\.(20[5-9]|2[1-9]) ]]; then
+        # Currently only `linux` no `darwin` tgz, and as this script is for Bash, using `linux`.
+        #https://download.sonatype.com/clm/server/nexus-iq-server-1.205.0-03-linux-x86_64.tgz
+        #https://download.sonatype.com/clm/server/nexus-iq-server-1.205.0-03-linux-aarch_64.tgz
+        local _arch="$(uname -m)"
+        if [ "${_arch}" == "arm64" ]; then
+            _arch="aarch_64"
+        fi
+        _filename="nexus-iq-server-${_tgz_ver}-linux-${_arch}.tgz"
+    elif [ -z "${_ver}" ] || [ "${_ver}" == "latest" ]; then
+        _filename="latest.tgz"
+        if [ -z "${_download_dir}" ]; then
+            _download_dir="${_TMP%/}/nxiq_latest_$$"
+        fi
+        # If the file already exists and newer than 1 days, reuse it. Otherwise, deleting it will re-download the latest.tgz
+        if [ -s "${_download_dir%/}/${_filename}" ] && [ -n "$(find "${_download_dir%/}/${_filename}" -mtime -1)" ]; then
+            _log "INFO" "Using ${_download_dir%/}/${_filename} as it is newer than 1 day"
+        else
+            if [ -d "${_download_dir%/}" ]; then
+                rm -v -f "${_download_dir%/}/*"
+            fi
+        fi
+    fi
+
+    if [ -n "${_download_dir}" ] && [ ! -d "${_download_dir%/}" ]; then
+        mkdir -v -p "${_download_dir%/}" || return $?
+    fi
+
+    # This function sets _LICENSE_PATH
+    _prepare_install "${_dirpath}" "https://download.sonatype.com/clm/server/${_filename}" "" "${_download_dir}" "${_force_extract}" || return $?
+
+    # NOT good way but most of the time works.
+    local _jar_file="$(find ${_dirpath%/} -maxdepth 3 -type f -name "insight-brain-service-*.jar" 2>/dev/null | sort -V | tail -n1)"
+    if [ -z "${_jar_file}" ]; then
+        # Older than v205
+        _jar_file="$(find ${_dirpath%/} -maxdepth 3 -type f -name "nexus-iq-server-*.jar" 2>/dev/null | sort -V | tail -n1)"
+    fi
+    echo "${_jar_file}"
 }
 
 ### Database related
@@ -441,10 +487,12 @@ function _gen_comp_ids(){
 #f_api_comp_details "pkg:maven/log4j/log4j@1.2.12?type=jar"
 #f_api_comp_details '{"packageUrl":"pkg:npm/@accordproject/concerto-analysis@3.24.1"}'
 #f_api_comp_details '{"packageUrl":"pkg:pypi/ruff@0.15.5?extension=whl&qualifier=py3-none-macosx_11_0_arm64"}'
+#f_api_comp_details '{"packageUrl":"pkg:golang/golang.org/x/crypto@v0.54.0"}'
 #f_api_comp_details 'b0e4da108211e81700433e167ced88e6296b1def'
 #f_api_comp_details 'ipaddr.js : 2.3.0' # assuming npm
+#f_api_comp_details 'pkg:npm/%40asyncapi/specs@v6.11.2' # assuming npm
 function f_api_comp_details() {
-    local __doc__="Call Component Details API https://help.sonatype.com/iqserver/automating/rest-apis/component-details-rest-api---v2"
+    local __doc__="Call Component Details API https://help.sonatype.com/en/component-details-rest-api.html"
     local _component_identifier="$1"
     local _comp_id="$(_gen_comp_id "${_component_identifier}")" || return $?
     [ -z "${_comp_id}" ] && return 11
@@ -455,6 +503,8 @@ function f_api_comp_details() {
 
 #f_api_comp_versions '{"format":"maven","coordinates":{"artifactId":"tomcat-util","groupId":"tomcat"}}'
 #f_api_comp_versions '{"format":"golang","coordinates":{"name":"github.com/alecthomas/participle"}}'
+#f_api_comp_versions '{"format":"golang","coordinates":{"name":"github.com/alecthomas/participle"}}'
+#f_api_comp_versions '{"packageUrl":"pkg:npm/%40asyncapi/specs"}'
 function f_api_comp_versions() {
     local __doc__="Call Component Versions API https://help.sonatype.com/iqserver/automating/rest-apis/component-versions-rest-api---v2"
     local _component_identifier_without_ver="$1"
@@ -801,8 +851,8 @@ function f_create_testuser() {
     if ! _curl "${_IQ_URL%/}/api/v2/roles" -H "Content-Type: application/json" -d@${_TMP%/}/f_create_testuser_role_$$.json; then
         _log "WARN" "'/api/v2/roles' API did not work. Trying old rest '/rest/security/roles' ..."
         # old IQ does not have role create/delete API
-        echo '{"builtIn":false,'${_pay_load_common}']}' >${_TMP%/}/f_create_testuser_role_rest_$$.json
-        _apiS "/rest/security/roles" -H "Content-Type: application/json" -d@${_TMP%/}/f_create_testuser_role_rest_$$.json || return $?
+        echo '{"builtIn":false,'${_pay_load_common}'}' >${_TMP%/}/f_create_testuser_role_rest_$$.json
+        _apiS "/rest/security/roles" ${_TMP%/}/f_create_testuser_role_rest_$$.json || return $?
     fi
     _log "INFO" "Created role 'test-role'"
     if [ -n "${_apporg_name}" ]; then
@@ -829,9 +879,9 @@ function f_setup_https() {
     local _fqdn="$(hostname -f)"
     [[ "${_IQ_URL}" =~ https?://([^:/]+) ]] && _fqdn="${BASH_REMATCH[1]}"
 
-    local _jar_file="$(find "${_base_dir%/}" -maxdepth 2 -type f -name 'nexus-iq-server*.jar' 2>/dev/null | sort -V | tail -n1)"
+    local _jar_file="$(find "${_base_dir%/}" -maxdepth 3 -type f -name 'nexus-iq-server*.jar' -o -name 'insight-brain-service*-server.jar' 2>/dev/null | sort -V | tail -n1)"
     [ -z "${_jar_file}" ] && return 11
-    local _cfg_file="$(find "${_base_dir%/}" -maxdepth 2 -type f -name 'config.yml' 2>/dev/null | sort -V | tail -n1)"
+    local _cfg_file="$(find "${_base_dir%/}" -maxdepth 3 -type f -name 'config.yml' 2>/dev/null | sort -V | tail -n1)"
     [ -z "${_cfg_file}" ] && return 12
 
     # If never started no "sonatype-work/clm-server"
@@ -1851,7 +1901,7 @@ function f_cli() {
     local _iq_app_id="${2:-${_IQ_APP_ID:-"sandbox-application"}}" # f_api_create_app to create
     local _iq_stage="${3:-${_IQ_STAGE:-"build"}}"                 #develop|build|stage-release|release|operate
     local _iq_url="${4:-${_IQ_URL}}"
-    local _iq_cli_ver="${5:-${_IQ_CLI_VER}}"
+    local _iq_cli_ver="${5:-${_IQ_CLI_VER}}"    # 2.13.0-01
     local _iq_cli_opt="${6:-${_IQ_CLI_OPT}}" # -D containerScannerMode=sonatype -D fileIncludes="**/package-lock.json"
     local _iq_cred="${7:-${_IQ_CRED:-"${_ADMIN_USER}:${_ADMIN_PWD}"}}"
     local _iq_org="${8-"${_IQ_ORG}"}"
@@ -1869,9 +1919,9 @@ function f_cli() {
 
     if [[ ! "${_use_docker}" =~ ^[yY] ]]; then
         local _iq_cli_jar="${_IQ_CLI_JAR:-"$HOME/.nexus_executable_cache/nexus-iq-cli-${_iq_cli_ver}.jar"}"
-        local _cli_dir="$(dirname "${_iq_cli_jar}")"
         if [ ! -s "${_iq_cli_jar}" ]; then
             #local _tmp_iq_cli_jar="$(find ${_WORK_DIR%/}/sonatype -name 'nexus-iq-cli*.jar' 2>/dev/null | sort -r | head -n1)"
+            local _cli_dir="$(dirname "${_iq_cli_jar}")"
             [ ! -d "${_cli_dir}" ] && mkdir -p "${_cli_dir}"
             local _get_latest=true
             if [[ "${_iq_cli_ver}" =~ ^1\.1([0-7]|8[0-5]) ]]; then
@@ -1881,24 +1931,33 @@ function f_cli() {
                     fi
                 fi
             fi
+
             if ${_get_latest}; then
-                local _cli_filename="$(curl -s -I -L "https://download.sonatype.com/clm/scanner/latest.jar" | grep -o "nexus-iq-cli-.*\.jar")"
-                _iq_cli_jar="$HOME/.nexus_executable_cache/${_cli_filename}"
-                if [ ! -s "${_iq_cli_jar}" ]; then
-                    _log "INFO" "Downloading the latest.jar (${_cli_filename})"
+                #local _cli_filename="$(curl -s -I -L "https://download.sonatype.com/clm/scanner/latest.jar" | grep -o "nexus-iq-cli-.*\.jar")"
+                # The above no longer works because of the download.sonatype.com side change, and it doesn't return 'Last-Modified'...
+                local _content_length="$(curl -s -I -L "https://download.sonatype.com/clm/scanner/latest.jar" | grep -i "Content-Length" | awk '{print $2}' | tr -d '\r')"
+                _iq_cli_jar="$HOME/.nexus_executable_cache/latest.jar"
+                # If _iq_cli_jar size is same as the content-length and newer than 40 days, no need to download. NOTE: can't use `stat` as it doesn't work on Mac
+                if [ -s "${_iq_cli_jar}" ] && [ "$(ls -l "${_iq_cli_jar}" | awk '{print $5}')" == "${_content_length}" ] && [ -n "$(find "${_iq_cli_jar}" -mtime -40)" ]; then
+                    _log "INFO" "Using ${_iq_cli_jar} as it is newer than 40 days and same size (${_content_length}) as the latest.jar"
+                else
                     curl -f -L "https://download.sonatype.com/clm/scanner/latest.jar" -o "${_iq_cli_jar}" || return $?
+                    jar -xf "${_iq_cli_jar}" META-INF/MANIFEST.MF || return $?
+                    _iq_cli_ver="$(grep -i "Implementation-Version" META-INF/MANIFEST.MF | awk '{print $2}' | tr -d '\r')"
+                    cp -v "${_iq_cli_jar}" "${_cli_dir%/}/nexus-iq-cli-${_iq_cli_ver}.jar"
+                    #_iq_cli_jar="${_cli_dir%/}/nexus-iq-cli-${_iq_cli_ver}.jar"
+                    rm -rf META-INF/MANIFEST.MF
                 fi
             fi
-        fi
-    else
-        if [[ ! "${_iq_cli_ver}" =~ ^1\.1([0-7]|8[0-5]) ]]; then
-            # TODO: from 186, cli uses different version number
-            _iq_cli_ver="latest"
         fi
     fi
 
     local _cmd="${_java} -jar ${_iq_cli_jar}"
     if [[ "${_use_docker}" =~ ^[yY] ]]; then
+        if [[ ! "${_iq_cli_ver}" =~ ^1\.1([0-7]|8[0-5]) ]]; then
+            # Older than 186, cli uses different version number so just using latest for now
+            _iq_cli_ver="latest"
+        fi
         # TODO: need to add -v some_dir:/target, and also SSLHandshakeException: PKIX path building failed
         _cmd="docker run --name nexus-iq-cli_${_iq_cli_ver} sonatype/nexus-iq-cli:${_iq_cli_ver} /sonatype/evaluate"
     fi
@@ -1992,8 +2051,10 @@ function _apiS() {
     local _stdout_when_err=""
     if [ "${_data:0:5}" == "file=" ]; then
         _cmd="${_cmd} -F ${_data}"
+    elif [ -s "${_data}" ]; then
+        _cmd="${_cmd} -d @${_data}"
     elif [ -n "${_data}" ] && [ "${_data:0:1}" != "{" ]; then
-        _cmd="${_cmd} -H 'Content-Type: text/plain' --d ${_data}" # TODO: should use quotes?
+        _cmd="${_cmd} -H 'Content-Type: text/plain' -d ${_data}" # TODO: should use quotes?
     elif [ -n "${_data}" ]; then
         _cmd="${_cmd} -H 'Content-Type: application/json' --data-raw '${_data}'"
     fi
@@ -2012,6 +2073,7 @@ function _get_iq_url() {
             fi
         fi
         if curl -m1 -f -s -I "${_iq_url%/}/" &>/dev/null; then
+            echo "# Using \"${_url}\" as IQ URL" >&2
             echo "${_iq_url%/}/"
             return
         fi
@@ -2019,6 +2081,7 @@ function _get_iq_url() {
     # if curl is failing, silently replacing with
     echo "${_IQ_TEST_URLS}" | sed "s/ /\n/g" | while read -r _url; do
         if [ "${_iq_url%/}" != "${_url%/}" ] && curl -m1 -f -s -I "${_url%/}/" &>/dev/null; then
+            echo "# Using \"${_url}\" as IQ URL" >&2
             echo "${_url%/}/"
             # 'return' from while just exit from the loop?
             break
