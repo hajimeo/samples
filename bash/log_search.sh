@@ -791,18 +791,25 @@ FLUSH PRIVILEGES;"
 #Slow GCs:   rg '^\[(20\d\d-\d\d-\d\d.\d\d:\d\d).+ Real=([^0]+)\.' -o -r '$1 $2' gc.2025-08-26_05-41-49.log.0 | bar_chart.py -A
 # Generate chart for one specific class size (should check count?)
 #rg '(^20\d\d.\d\d.\d\d.+Class Histogram \(before full gc\)|org.sonatype.nexus.repository.content.store.AssetBlobData)' gc.2023-01-13_09-12-22.log.0 | paste - - | rg '^(\d\d\d\d.\d\d.\d\d.\d\d:\d\d:\d\d\.\d\d\d).+ (\d+)\s+org.sonatype.nexus.repository.content.store.AssetBlobData' -o -r '$1 $2' | bar_chart.py -A
+#rg '2026-07-08T12:37:5\S+ GC\S+\s+\d:\s+\d+\s+\d{6,}' ./log/gc.2026-*.log
 #f_gc_overview gc.2021-10-30_15-03-15.log.0.current.gz "" "M" "2021-12-28.0[5678]:\d\d:\d\d.\d+"
 function f_gc_overview() {
     local __doc__="Generate elapsed and Heap usage with CSV format (probably works with only G1GC)"
     local _file="$1"
     local _saveTo="$2"
     local _size="${3:-"M"}"
+    local _unit="s"
     local _datetime_filter="${4:-"${_DATE_FORMAT}.\\d\\d:\\d\\d:\\d\\d.?\\d*"}"
     [ -z "${_saveTo}" ] && _saveTo="$(basename ${_file%.*}).csv"
     # TODO: ([0-9.]+) secs does not work with PrintClassHistogramBeforeFullGC
     if rg 'Class Histogram' -q ${_file}; then
-        rg -z "(^20\d\d-\d\d-\d\d.+(GC pause|Full GC).+$|Heap:\s*[^\]]+|\[Times: .+real=.+$)" -o ${_file} | rg '(GC pause|Full GC)' -A2 | rg -v -- '--' | paste - - - > /tmp/${FUNCNAME[0]}.tmp || return $?
-        rg "^(${_datetime_filter}).+(GC pause[^,]+|Full GC.+?\)).+Heap:\s*([0-9.]+)${_size}[\(\)0-9.KMG ]+->\s*([0-9.]+)${_size}.+ real=([0-9.]+) secs.+" -o -r '"${1}",${5},${3},${4},"${2}"' /tmp/${FUNCNAME[0]}.tmp > "${_saveTo}" || return $?
+        rg -z "(^20\d\d-\d\d-\d\d.+(GC pause|Full GC).+$|Heap:\s*[^\]]+|\[Times: .+real=.+$)" -o ${_file} | rg '(GC pause|Full GC)' -A2 | rg -v -- '--' | paste - - - > /tmp/${FUNCNAME[0]}.tmp
+        if [ -s "/tmp/${FUNCNAME[0]}.tmp" ]; then
+            rg "^(${_datetime_filter}).+(GC pause[^,]+|Full GC.+?\)).+Heap:\s*([0-9.]+)${_size}[\(\)0-9.KMG ]+->\s*([0-9.]+)${_size}.+ real=([0-9.]+) secs.+" -o -r '"${1}",${5},${3},${4},"${2}"' /tmp/${FUNCNAME[0]}.tmp > "${_saveTo}" || return $?
+        else
+            rg -z "^\[?(${_datetime_filter}).+(Pause \S+) .+ ([^${_size} ]+)${_size}->([^${_size} ]+)${_size}.+\s+(\S+)ms$" -o -r '"$1",$5,$3,$4,"$2"' ${_file} > "${_saveTo}" || return $?
+            _unit="ms"
+        fi
     else
         if rg '^\s*\[Times:' -q ${_file}; then
             # TODO: this is not working as too many 'Times':
@@ -814,13 +821,13 @@ function f_gc_overview() {
             rg "^(${_datetime_filter}).+(GC pause[^,]+|Full GC[^,]+).* ([0-9.]+) secs.+Heap:\s*([0-9.]+)${_size}[\(\)0-9.KMG ]+->\s*([0-9.]+)${_size}" -o -r '"${1}",${3},${4},${5},"${2}"' /tmp/${FUNCNAME[0]}.tmp
          fi > "${_saveTo}" || return $?
     fi
-    head -n1 "${_saveTo}" | rg -q '^date_time' || echo "date_time,elapsed_secs,heap_before_${_size},heap_after_${_size},gc_type
+    head -n1 "${_saveTo}" | rg -q '^date_time' || echo "date_time,elapsed_${_unit},heap_before_${_size},heap_after_${_size},gc_type
 $(cat "${_saveTo}")" > ${_saveTo}
     echo "# Full GCs"
-    rg "^\"(${_DATE_FORMAT}.\d\d:\d).+Full GC" -o -r '$1' ${_saveTo} | bar_chart.py
+    rg "^\"(${_DATE_FORMAT}.\d\d:\d).+(Full GC|Pause Full)" -o -r '$1' ${_saveTo} | bar_chart.py
     echo "# All GCs"
-    rg "^\"(${_DATE_FORMAT}.\d\d)" -o -r '$1' ${_saveTo} | bar_chart.py
-    ls -l /tmp/${FUNCNAME[0]}.tmp ${_saveTo}
+    rg "^\"(${_DATE_FORMAT}.\d\d:\d)" -o -r '$1' ${_saveTo} | bar_chart.py
+    ls -l ${_saveTo}
     #df = ju.q(\"SELECT date_time,elapsed_secs,heap_before_M,heap_after_M from t_gc WHERE gc_type like 'Full GC%'\")"
 }
 
