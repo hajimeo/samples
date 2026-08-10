@@ -153,6 +153,7 @@ function _get_iq_url() {
 #
 # To start Nexus with customer's database, _CUSTOM_DNS will use the dummy DNS server and also update the DB.
 #   _LOG_LEVEL="DEBUG" _NO_RM3_START_SQLS="Y" _CUSTOM_DNS="$(hostname -f)" nxrmStart
+#   TODO: _LOG_LEVEL does not work properly with 3.94, only during startup.
 #   TODO: If the blob store uses absolute path, need to change the path
 #   TODO: Update the notification emai in the tasks (and something else?)
 alias rmStart="nxrmStart"
@@ -169,14 +170,22 @@ function nxrmStart() {
     local _mode="${4}" # if NXRM2, not 'run' but 'console'
     #local _java_opts=${@:2}
     _base_dir="$(realpath "${_base_dir}")"
-    local _debug_opts="-Xrunjdwp:transport=dt_socket,server=y,address=5005,suspend=${_SUSPEND:-"n"}"
+    local _debug_port=5005
+    local _debug_port_2nd=$((_debug_port+100))
     # If the debug port is NOT in use (can't check with curl as not http/https)
-    if ! lsof -ti:5005 -sTCP:LISTEN; then
-        if [ -n "${_java_opts}" ]; then
-            _java_opts="${_java_opts} ${_debug_opts}"
+    if lsof -nPi:${_debug_port} | grep -q -w "127.0.0.1:${_debug_port}"; then    # Mac's lsof doesn't work with -sTCP:LISTEN
+        if lsof -ti:${_debug_port_2nd} | grep -q -w "127.0.0.1:${_debug_port_2nd}"; then
+            echo "WARN: Debug port ${_debug_port} and ${_debug_port_2nd} are in use, so not enabling debug mode"; sleep 3;
         else
-            _java_opts="${_debug_opts}"
+            _debug_port=${_debug_port_2nd}
+            echo "WARN: Debug port ${_debug_port} is in use, so using ${_debug_port_2nd} instead"; sleep 3;
         fi
+    fi
+    local _debug_opts="-Xrunjdwp:transport=dt_socket,server=y,address=${_debug_port},suspend=${_SUSPEND:-"n"}"
+    if [ -n "${_java_opts}" ]; then
+        _java_opts="${_java_opts} ${_debug_opts}"
+    else
+        _java_opts="${_debug_opts}"
     fi
 
     #_java_opts="${_java_opts} -XX:+PrintGCDetails -XX:+PrintGCDateStamps -XX:+PrintGCCause -XX:+PrintClassHistogramAfterFullGC -XX:+UseGCLogFileRotation -XX:NumberOfGCLogFiles=10 -XX:GCLogFileSize=100M -Xloggc:/tmp/rm-gc_%p_%t.log"
@@ -365,11 +374,12 @@ function _updateNexusProps() {
     # NOTE: this would not work if elasticsearch directory is empty
     #       or if upgraded from older than 3.39 due to https://sonatype.atlassian.net/browse/NEXUS-31285
     grep -qE '^#?nexus.elasticsearch.autoRebuild' "${_cfg_file}" || echo "nexus.elasticsearch.autoRebuild=false" >> "${_cfg_file}"
+    # The below is used by SearchUpdateTaskManager, which also checks `search_index_outdated` in {fmt}_content_repository's attributes column
     grep -qE '^#?nexus.search.updateIndexesOnStartup.enabled' "${_cfg_file}" || echo "nexus.search.updateIndexesOnStartup.enabled=false" >> "${_cfg_file}"
     grep -qE '^#?nexus.assetBlobCleanupTask.blobCreatedDelayMinute' "${_cfg_file}" || echo "nexus.assetBlobCleanupTask.blobCreatedDelayMinute=0" >> "${_cfg_file}"
     grep -qE '^#?nexus.blobstore.get.retryDelayMs' "${_cfg_file}" || echo "nexus.blobstore.get.retryDelayMs=1" >> "${_cfg_file}"    # NEXUS-48573
-    grep -qE '^#?nexus.jwt.expiry' "${_cfg_file}" || echo "nexus.jwt.expiry=28800" >> "${_cfg_file}"    # NEXUS-43312 (only HA though)
-    #grep -qE '^#?nexus.analytics.enabled' "${_cfg_file}" || echo "nexus.analytics.enabled=false" >> "${_cfg_file}" # Many version stops starting
+    # NOTE: disabling analytics may fail to start on several versions, but if not disabled, shutting down becomes slow
+    grep -qE '^#?nexus.analytics.enabled' "${_cfg_file}" || echo "nexus.analytics.enabled=false" >> "${_cfg_file}"
     # No longer works from 3.83
     #grep -qE '^#?nexus.malware.risk.enabled' "${_cfg_file}" || echo "nexus.malware.risk.enabled=false" >> "${_cfg_file}"
     #grep -qE '^#?nexus.malware.risk.on.disk.enabled' "${_cfg_file}" || echo "nexus.malware.risk.on.disk.enabled=false" >> "${_cfg_file}"
@@ -391,7 +401,11 @@ function _updateNexusProps() {
 
     # From 3.86
     grep -qE '^#?nexus.security.oauth2.enabled' "${_cfg_file}" || echo "nexus.security.oauth2.enabled=true" >> "${_cfg_file}" # PR14446
-    grep -qE '^#?nexus.jwt.enabled' "${_cfg_file}" || echo "nexus.jwt.enabled=true" >> "${_cfg_file}" # PR14446
+    # If postgresql, append the below, but currently checking `nexus.datastore.enabled=true`
+    if grep -qE '^nexus.datastore.enabled=true' "${_cfg_file}"; then
+        grep -qE '^#?nexus.jwt.enabled' "${_cfg_file}" || echo "nexus.jwt.enabled=true" >> "${_cfg_file}"   # PR14446
+        grep -qE '^#?nexus.jwt.expiry' "${_cfg_file}" || echo "nexus.jwt.expiry=28800" >> "${_cfg_file}"    # NEXUS-43312 (only HA though)
+    fi
     # From probably 3.88
     grep -qE '^#?nexus.reconcile.task.enabled' "${_cfg_file}" || echo "nexus.reconcile.task.enabled=true" >> "${_cfg_file}" # PR14446
 
@@ -434,26 +448,37 @@ function _find_app_port() {
     local _current_port="${1}"
     local _checking_port="${2:-"8081"}"
     local _up_to="${3:-4}"
+    local _start_from="${4:-0}"
+    local _skip_regex="${5}"
     local _port=""
 
-    # If the current port is using totally different port, not finding alternative port
-    if [ -n "${_current_port}" ] && [ ${_current_port} -gt $((_checking_port + _up_to)) ]; then
+    # If the current port is using totally different port (out of the range), not finding alternative port
+    if [ -n "${_current_port}" ] && [ ${_current_port} -gt $((_checking_port + _start_from + _up_to)) ]; then
         echo "WARN: the port is customised, so not changing (${_current_port})" >&2;
         return 0
     fi
 
-    # If no port specified, checking if the _checking_port to _up_to is available
-    for _i in $(seq 0 ${_up_to}); do
-        _p=$((_checking_port + _i))
-        # Mac's netstat is too different, and lsof may not be available, but curl needs http or https
-        if ! lsof -ti:${_p} -sTCP:LISTEN &>/dev/null; then
-            _port="${_p}"
-            break
-        fi
-    done
+    if ! lsof -ti:${_checking_port} -sTCP:LISTEN &>/dev/null; then
+        _port="${_checking_port}"
+    else
+        # If no port specified, checking if the _checking_port to _up_to is available
+        for _i in $(seq ${_start_from} ${_up_to}); do
+            _p=$((_checking_port + _i))
+            # Mac's netstat is too different, and lsof may not be available, but curl needs http or https
+            if ! lsof -ti:${_p} -sTCP:LISTEN &>/dev/null; then
+                if [ -n "${_skip_regex}" ] && [[ "${_p}" =~ ${_skip_regex} ]]; then
+                    continue
+                fi
+                _port="${_p}"
+                break
+            fi
+        done
+    fi
+
     if [ -z "${_port}" ] && [ -n "${_current_port}" ]; then
+        # If couldn't find the port and if the current port is not in use, using the current port
         if ! lsof -ti:${_current_port} -sTCP:LISTEN &>/dev/null; then
-            _port="${_p}"
+            _port="${_current_port}"
         fi
     fi
 
@@ -660,22 +685,27 @@ function nxrmDocker() {
 # _H2_WEB=Y iqStart
 function iqStart() {
     local _base_dir="${1:-"."}"
-    local _java_opts="${2-"-agentlib:jdwp=transport=dt_socket,server=y,address=5006,suspend=${_SUSPEND:-"n"}"}"
+    local _java_opts="${2-"-XX:ActiveProcessorCount=2 -Xmx4g -agentlib:jdwp=transport=dt_socket,server=y,address=5006,suspend=${_SUSPEND:-"n"}"}"
     local _h2_jar="${3:-"$HOME/IdeaProjects/libs/h2-1.4.196.jar"}"
     local _loader_jar="${4:-"$HOME/IdeaProjects/product-support-nexus-tools/nexustools/src/nexustools/booter/support-zip-loader-v2.jar"}"
     #local _java_opts=${@:2}
+    local _java_opts_common="${_JAVA_OPTS_COMMON-"-XX:ActiveProcessorCount=2 -Xmx4g"}"
+    #_java_opts_common="${_java_opts_common} -XX:+PrintGCDetails -XX:+PrintGCDateStamps -XX:+PrintGCCause -XX:+PrintClassHistogramAfterFullGC -XX:+UseGCLogFileRotation -XX:NumberOfGCLogFiles=10 -XX:GCLogFileSize=100M -Xloggc:/tmp/iq-gc_%p_%t.log"
 
     local _jar_file="$(find -L "${_base_dir%/}" -maxdepth 2 -type f -name 'nexus-iq-server*.jar' 2>/dev/null | sort -V | tail -n1)"
+    if [ -z "${_jar_file}" ]; then
+        _jar_file="$(find -L "${_base_dir%/}" -maxdepth 3 -type f -name 'insight-brain-service*.jar' 2>/dev/null | sort -V | tail -n1)"
+    fi
     [ -z "${_jar_file}" ] && return 11
-    local _cfg_file="$(find -L "${_base_dir%/}" -maxdepth 2 -type f -name 'spt-boot.yml' 2>/dev/null | sort -V | tail -n1)"
+    local _cfg_file="$(find -L "${_base_dir%/}" -maxdepth 3 -type f -name 'spt-boot.yml' 2>/dev/null | sort -V | tail -n1)"
+    # If customised yml file is not found, try to find config.yml and update it with some default values
     if [ -z "${_cfg_file}" ]; then
-        _cfg_file="$(find -L "${_base_dir%/}" -maxdepth 2 -type f -name 'config.yml' 2>/dev/null | sort -V | tail -n1)"
+        _cfg_file="$(find -L "${_base_dir%/}" -maxdepth 3 -type f -name 'config.yml' 2>/dev/null | sort -V | tail -n1)"
         [ -z "${_cfg_file}" ] && return 12
         local _work_dir="$(sed -n -E 's/sonatypeWork[[:space:]]*:[[:space:]]*(.+)/\1/p' "${_cfg_file}")"
         local _license="$(ls -1t /var/tmp/share/sonatype/*.lic 2>/dev/null | head -n1)"
         [ -z "${_license}" ] && [ -s "${HOME%/}/.nexus_executable_cache/nexus.lic" ] && _license="${HOME%/}/.nexus_executable_cache/nexus.lic"
         [ -s "${_license}" ] && _java_opts="${_java_opts} -Ddw.licenseFile=${_license}"
-        #_java_opts="${_java_opts} -XX:+PrintGCDetails -XX:+PrintGCDateStamps -XX:+PrintGCCause -XX:+PrintClassHistogramAfterFullGC -XX:+UseGCLogFileRotation -XX:NumberOfGCLogFiles=10 -XX:GCLogFileSize=100M -Xloggc:/tmp/iq-gc_%p_%t.log"
 
         # TODO: From v138, most of configs need to use API: https://help.sonatype.com/iqserver/automating/rest-apis/configuration-rest-api---v2
         # 'com.sonatype.insight.brain.migration.SimpleConfigurationMigrator - hdsUrl, enableDefaultPasswordWarning is now configured using the REST API. The configuration in the config.yml or via system properties is obsolete.'
@@ -686,7 +716,45 @@ function iqStart() {
         grep -qE '^enableDefaultPasswordWarning:' "${_cfg_file}" || echo -e "enableDefaultPasswordWarning: false\n$(cat "${_cfg_file}")" > "${_cfg_file}"
         grep -qE '^baseUrl:' "${_cfg_file}" || echo -e "baseUrl: http://$(hostname -f):8070/\n$(cat "${_cfg_file}")" > "${_cfg_file}"
 
-        grep -qE '^\s*port: 8443$' "${_cfg_file}" && sed -i'.tmp' 's/port: 8443/port: 8470/g' "${_cfg_file}"
+        # TODO: this section is not perfect. Assuming a space after 'port:'. If the port has been changed, it will not be found.
+        # Need to check admin port 8071 first
+        local _no_default_port=false
+        if grep -qE '^\s+port: 8071$' "${_cfg_file}"; then
+            local _port="$(_find_app_port "" "8071" "" "100")"
+            if [ "${_port}" != "8071" ]; then
+                echo "WARN: Changing IQ *ADMIN* port to *** '${_port}' *** from 8071 !!" >&2; sleep 3;
+                sed -i'.tmp' 's/port: 8071/port: '${_port}'/g' "${_cfg_file}"
+            fi
+        else
+            echo "WARN: No IQ *ADMIN* port 8071 found in ${_cfg_file}" >&2
+            _no_default_port=true
+        fi
+        if grep -qE '^\s+port: 8070$' "${_cfg_file}"; then
+            local _port="$(_find_app_port "" "8070" "" "100" "(8071|8171)")"
+            if [ "${_port}" != "8070" ]; then
+                echo "WARN: Changing IQ port to *** '${_port}' *** from 8070 !!" >&2; sleep 3;
+                sed -i'.tmp' 's/port: 8070/port: '${_port}'/g' "${_cfg_file}"
+            fi
+        else
+            echo "WARN: No IQ port 8070 found in ${_cfg_file}" >&2
+            _no_default_port=true
+        fi
+        # IQ default might be 8443, but would like to use 8470 is default
+        grep -qE '^\s+port: 8443$' "${_cfg_file}" && sed -i'.tmp' 's/port: 8443/port: 8470/g' "${_cfg_file}"
+        if grep -qE '^\s+port: 8470$' "${_cfg_file}"; then
+            local _port="$(_find_app_port "" "8470" "" "100" "(8471|8571)")"
+            if [ "${_port}" != "8470" ]; then
+                echo "WARN: Changing IQ port to *** '${_port}' *** from 8470 !!" >&2; sleep 3;
+                sed -i'.tmp' 's/port: 8470/port: '${_port}'/g' "${_cfg_file}"
+            fi
+        else
+            echo "WARN: No IQ port 8470 found in ${_cfg_file}" >&2
+            _no_default_port=true
+        fi
+        if ${_no_default_port}; then
+            grep -E '^\s+port:\s*' "${_cfg_file}"; sleep 3;
+        fi
+
         grep -qE '^\s*threshold:\s*INFO$' "${_cfg_file}" && sed -i'.tmp' 's/threshold: INFO/threshold: ALL/g' "${_cfg_file}"
         grep -qE '^\s*level:\s*(DEBUG|TRACE)$' "${_cfg_file}" || sed -i'.tmp' -E 's/level: .+/level: DEBUG/g' "${_cfg_file}"
         if ! grep -qE '^\s+"?com.sonatype.insight.policy.violation' "${_cfg_file}"; then
@@ -705,7 +773,7 @@ $(sed -n "/^  loggers:/,\$p" ${_cfg_file} | grep -v '^  loggers:')" > "${_cfg_fi
 
     [ "${_base_dir}" != "." ] && cd "${_base_dir}"
     if [[ "${_java_opts}" =~ agentlib:jdwp ]] && [[ "${JAVA_TOOL_OPTIONS}" =~ agentlib:jdwp ]]; then
-        echo "Unsetting JAVA_TOOL_OPTIONS = ${JAVA_TOOL_OPTIONS}"
+        echo "WARN: Unsetting JAVA_TOOL_OPTIONS = ${JAVA_TOOL_OPTIONS}"; sleep 3
         unset JAVA_TOOL_OPTIONS
     fi
 
@@ -717,6 +785,7 @@ $(sed -n "/^  loggers:/,\$p" ${_cfg_file} | grep -v '^  loggers:')" > "${_cfg_fi
         # TODO: it stopped working with 127.0.0.1
         _java_opts="${_java_opts} -Dsun.net.spi.nameservice.nameservers=${_CUSTOM_DNS} -Dsun.net.spi.nameservice.provider.1=dns,sun"
         # NOTE: below does not work for SCM due to the change added in INT-5729
+        #       https://help.sonatype.com/en/http-proxy-server-configuration-rest-api.html
         _java_opts="${_java_opts} -Dhttp.proxyHost=non-existing-hostname -Dhttp.proxyPort=8800 -Dhttp.nonProxyHosts=\"*.sonatype.com\""
 
         local _console=""
@@ -749,17 +818,21 @@ $(sed -n "/^  loggers:/,\$p" ${_cfg_file} | grep -v '^  loggers:')" > "${_cfg_fi
         _iqStartSQLs | eval "${_console}" || return $?
     fi
 
+    if [ -n "${_java_opts_common}" ]; then
+        _java_opts="${_java_opts_common} ${_java_opts}"
+    fi
+
     local _cmd="${_java} ${_java_opts} -Dfile.encoding=UTF-8 -Dsun.jnu.encoding=UTF-8 -jar \"${_jar_file}\" server \"${_cfg_file}\""
     if [[ "${_H2_WEB}" =~ [yY] ]] && ! grep -q '^database:' ${_cfg_file} && [ -s "${_h2_jar}" ] && [ -s "${_loader_jar}" ]; then
         _cmd="${_java} ${_java_opts} -cp ${_jar_file}:${_h2_jar}:${_loader_jar} com.sonatype.insight.brain.supportloader.StartIqWithH2 ${_cfg_file}"
     fi
     echo "${_cmd}"; sleep 2
     eval "${_cmd} 2>/tmp/iq-server.err" | tee /tmp/iq-server.out
-    if [ ${PIPESTATUS[0]} -ne 0 ]; then
-        echo "WARN: May need 'export JAVA_HOME=${JAVA_HOME_17}'"
-        return ${PIPESTATUS[0]}
-    fi
-    [ "${_base_dir}" != "." ] && cd -
+    #if [ ${PIPESTATUS[0]} -ne 0 ]; then
+    #    echo "WARN: May need 'export JAVA_HOME=${JAVA_HOME_17}' (${PIPESTATUS[0]})"
+    #    return ${PIPESTATUS[0]}
+    #fi
+    #[ "${_base_dir}" != "." ] && cd -
 }
 function _iqStartSQLs() {
 #UPDATE insight_brain_ods.source_control SET remediation_pull_requests_enabled = false, status_checks_enabled = false, pull_request_commenting_enabled = false, source_control_evaluations_enabled = false;
