@@ -300,14 +300,13 @@ function f_setup_python() {
     #pip --disable-pip-version-check list -o --format=json ${_i_opt} | python -c 'import sys,json;js=json.load(sys.stdin);[print(o["name"]+"=="+o["version"]) for o in js]' > /tmp/requirements.txt && python3 -m pip install -U ${_i_opt} -r /tmp/requirements.txt
     #pip --disable-pip-version-check freeze --local | grep -v '^\-e' | cut -d = -f 1  | xargs -n1 pip install -U
 
-
-    # My favourite/essential python packages (except jupyter and pandas related)
+    ## My favourite/essential python packages (except jupyter and pandas related)
     python3 -m pip install -U ${_i_opt} wheel lxml xmltodict pyyaml markdown memory_profiler
     #   %load_ext memory_profiler
     #   %mprun -f al.etl al.analyse_logs()
     python3 -m pip install -U ${_i_opt} pyjq 2>/dev/null # TODO: as of this typing, this fails against python 3.8 (3.7 looks OK)
 
-    # Important packages (Jupyter and pandas)
+    ## Important packages (Jupyter and pandas)
     # TODO: Autocomplete doesn't work with Lab and NB if different version is used. @see https://github.com/ipython/ipython/issues/11530
     #python3 -m pip install -U ${_i_opt} ipython==7.1.1 || return $?  #prettytable==0.7.2
     python3 -m pip install -U ${_i_opt} ipython || return $?  #prettytable==0.7.2
@@ -315,7 +314,6 @@ function f_setup_python() {
     python3 -m pip install -U ${_i_opt} jupyter jupyterlab pandas dfsql --log /tmp/pip_$$.log || return $?   #ipython
     python3 -m pip install -U ${_i_opt} pandasai langchain-ollama --log /tmp/pip_$$.log
     # Reinstall: python3 -m pip uninstall -y jupyterlab && python3 -m pip install jupyterlab
-
     # Must-have packages. NOTE: Initially I thought pandasql looked good but it's actually using sqlite, and slow, and doesn't look like maintained any more.
     python3 -m pip install -U ${_i_opt} jupyter_kernel_gateway sqlalchemy ipython-sql pivottablejs matplotlib --log /tmp/pip_$$.log
     python3 -m pip install -U ${_i_opt} psycopg2-binary --log /tmp/pip_$$.log
@@ -344,17 +342,20 @@ function f_setup_python() {
     #python3 -m pip install ${_i_opt} jupyterlab_templates
     #jupyter labextension install jupyterlab_templates && jupyter serverextension enable --py jupyterlab_templates
 
-    # For SASL test
+    ## For SASL test
     #_install libsasl2-dev
     #python3 -m pip install ${_i_opt} sasl thrift thrift-sasl PyHive
 
-    # JDBC wrapper. "0.6.3" is for using Java 1.8 also this requires GCC
+    ## JDBC wrapper. "0.6.3" is for using Java 1.8 also this requires GCC
     #python3 -m pip install ${_i_opt} JPype1==0.6.3 JayDeBeApi
     # For Google BigQuery (actually one of below)
     #python3 -m pip install ${_i_opt} google-cloud-bigquery pandas-gbq
 
-    # Google Bard/Gemini API
+    ## Google Bard/Gemini API
     #python3 -m pip install ${_i_opt} google-cloud-bigquery pandas-gbqpython
+
+    ## LLM/AI related packages
+    python3 -m pip install ${_i_opt} ollama anthropic pydantic
 
     _log "INFO" "Customising Jupyter with f_jupyter_util..."
     f_jupyter_util
