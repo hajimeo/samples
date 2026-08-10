@@ -55,7 +55,7 @@ iq_server:
   # NOTE: uid:gid is 1000:1000 if RHEL, 1001:1001 if alpine (securityContext didn't work because of `/sonatype-work/clm-server`)
   #       Appended `id` in the end of the command so that even it fails, the last return code becomes 0
   # Dry-run: find /sonatype-work/clm-cluster -mindepth 1 -maxdepth 3 -name trash -prune -o -type d ! -user 1001 -print | time xargs -P3 -I{} -t find {} ! -user 1001;
-  pvOwnershipOverride:  "chown -c 1000:1000 /sonatype-work/clm-cluster;chown -c 1000:1000 /sonatype-work/clm-cluster/log/*stderr.log;find /sonatype-work/clm-cluster -mindepth 1 -maxdepth 3 -name trash -prune -o -type d ! -user 1000 | xargs -P3 -I{} -t chown -Rc 1000:1000 {}; id"
+  pvOwnershipOverride:  "chown -c 1000:1000 /sonatype-work/clm-cluster;chown -c 1000:1000 /sonatype-work/clm-cluster/log/*stderr.log;find /sonatype-work/clm-cluster -mindepth 1 -maxdepth 5 -name trash -prune -o -type d ! -user 1000 | xargs -P3 -I{} -t chown -c 1000:1000 {}; id"
 
 # Load balancer (not using ingress)
 ingress:
