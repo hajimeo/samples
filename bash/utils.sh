@@ -826,6 +826,7 @@ function _prepare_install() {
     local _url="$2"
     local _license_path="${3}"
     local _download_dir="${4}"
+    local _force_extract="${5:-"${_FORCE_EXTRACT}"}"
 
     local _tgz_name="$(basename "${_url}")"
     if [ -z "${_download_dir%/}" ]; then
@@ -835,11 +836,18 @@ function _prepare_install() {
             _download_dir="${_SHARE_DIR%/}/sonatype"
         fi
     fi
+    if [ -n "${_download_dir%/}" ] && [ ! -d "${_download_dir%/}" ]; then
+        mkdir -p "${_download_dir%/}" || return $?
+    fi
     local _tgz="${_download_dir:-"."}/${_tgz_name}"
     # Check if ${_extract_path} is empty directory
     if [ -d "${_extract_path}" ] && [ -n "$(ls -A ${_extract_path})" ]; then
-        echo "WARN ${_extract_path} is not empty, so not extracting ${_tgz}"
-        return
+        if _isYes "${_force_extract}"; then
+            echo "WARN ${_extract_path} is not empty, but force extracting ${_tgz}"
+        else
+            echo "INFO ${_extract_path} is not empty, so not extracting ${_tgz}"
+            return
+        fi
     fi
     # In case the path contains wildcards
     local _local_tgz="$(ls -1 ${_tgz} | tail -n1)"
@@ -850,7 +858,7 @@ function _prepare_install() {
         [ -s "/tmp/${_tgz_name}" ] || return 101
         mv -v -f /tmp/${_tgz_name} ${_tgz} || return $?
     elif [ "${_local_tgz}" != "${_tgz}" ]; then
-        echo "Extracting ${_local_tgz} ..."
+        echo "File ${_local_tgz} exists."
         _tgz="${_local_tgz}"
     fi
     mkdir -v -p "${_extract_path}" || return $?
