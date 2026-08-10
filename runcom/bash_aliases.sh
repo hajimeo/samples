@@ -67,6 +67,7 @@ alias codeNexus='codium -r . $HOME/IdeaProjects/nexus-internal'
 alias codeIQ='codium -r . $HOME/IdeaProjects/insight-brain'
 alias opencode-cli='/Applications/OpenCode.app/Contents/MacOS/opencode-cli'
 alias opencode='/Applications/OpenCode.app/Contents/MacOS/OpenCode'
+alias chatgpt='open -a ChatGPT'
 function pdf2md() {
     local _pdf="${1}"
     local _md="${2:-"${_pdf%.*}.md"}"
@@ -134,7 +135,7 @@ function git_search() {
 
 ## Python ##############################################################################################################
 #pip tends to cause a lot of issue and using -m is safer
-alias pip='python -m pip'
+alias pip='python3 -m pip'
 #virtualenv -p python3 $HOME/.pyvenv
 function pyvTest() {
     local _dir="${1:-".venv"}"
@@ -160,7 +161,7 @@ alias utc2int='python3 -c "import sys,time,dateutil.parser;from datetime import 
 alias int2utc='python3 -c "import sys,datetime;print(datetime.datetime.fromtimestamp(int(sys.argv[1][0:10]), tz=datetime.timezone.utc).isoformat())"'
 alias dec2hex='printf "%x\n"'
 alias hex2dec='printf "%d\n"'
-#alias python_i_with_pandas='python -i <(echo "import sys,json;import pandas as pd;f=open(sys.argv[1]);jd=json.load(f);df=pd.DataFrame(jd);")'   # Start python interactive after loading json object in 'df' (pandas dataframe)
+#alias python_i_with_pandas='python3 -i <(echo "import sys,json;import pandas as pd;f=open(sys.argv[1]);jd=json.load(f);df=pd.DataFrame(jd);")'   # Start python interactive after loading json object in 'df' (pandas dataframe)
 alias python_i_with_pd_json='python3 -i <(echo "import sys,json;import pandas as pd;df=pd.read_json(sys.argv[1]);print(df)")' # to convert list/dict pdf.values.tolist()
 alias python_i_with_pd_csv='python3 -i <(echo "import sys;import pandas as pd;df=pd.read_csv(sys.argv[1],escapechar=\"\\\\\", index_col=False);print(df)")'
 alias python_i_with_json='python3 -i <(echo "import sys,json;js=json.load(open(sys.argv[1]));print(\"js\");")'
@@ -168,7 +169,7 @@ alias json2csv='python3 -c "import sys,json;import pandas as pd;pdf=pd.read_json
 # Read xml file, then convert to dict, then print json
 alias xml2json='python3 -c "import sys,xmltodict,json;print(json.dumps(xmltodict.parse(open(sys.argv[1]).read()), indent=4, sort_keys=True))"'
 # simplest json pretty print
-alias pjt='sed "s/,$//" | while read -r _l;do echo "${_l}" | python -m json.tool; done'
+alias pjt='sed "s/,$//" | while read -r _l || [ -n "$_l" ];do echo "${_l}" | python3 -m json.tool; done'
 # this one is from a *JSON* file
 #alias prettyjson='python3 -c "import sys,json;print(json.dumps(json.load(open(sys.argv[1])), indent=4, sort_keys=True))"'
 # echo "json like string" | prettyjson
@@ -181,7 +182,7 @@ alias prettyxml='python3 -c "import sys;from lxml import etree;t=etree.fromstrin
 # TODO: find with sys.argv[2] (no ".//"), then output as string
 alias xml_get='python3 -c "import sys;from lxml import etree;t=etree.parse(sys.argv[1]);r=t.getroot();print(r.find(sys.argv[2],namespaces=r.nsmap))"'
 # Search with 2nd arg and output the path(s)
-alias xml_path='python -c "import sys,pprint;from lxml import etree;t=etree.parse(sys.argv[1]);r=t.getroot();pprint.pprint([t.getelementpath(x) for x in r.findall(\".//\"+sys.argv[2],namespaces=r.nsmap)])"'
+alias xml_path='python3 -c "import sys,pprint;from lxml import etree;t=etree.parse(sys.argv[1]);r=t.getroot();pprint.pprint([t.getelementpath(x) for x in r.findall(\".//\"+sys.argv[2],namespaces=r.nsmap)])"'
 # Strip XML / HTML to get text. NOTE: using sys.stdin.read. (TODO: maybe </br> without new line should add new line)
 alias strip_tags='python3 -c "import sys,html,re;rx=re.compile(r\"<[^>]+>\");print(html.unescape(rx.sub(\"\",sys.argv[1] if len(sys.argv) > 1 else sys.stdin.read().strip())))"'
 alias escape4json='python3 -c "import sys,json;print(json.dumps(sys.argv[1] if len(sys.argv) > 1 else sys.stdin.read().strip()))"'
@@ -200,7 +201,7 @@ alias samurai='java -Xmx4g -jar $HOME/Apps/samurali/samurai.jar &>/tmp/samurai.o
 alias tda='java -Xmx4g -jar $HOME/Apps/tda-bin-2.4/tda.jar &>/tmp/tda.out &' #https://github.com/irockel/tda/releases/latest
 alias gcviewer='java -Xmx4g -jar $HOME/Apps/gcviewer-1.37-SNAPSHOT.jar'      # &>/tmp/gcviewer.out & # Mac can't stop this so not put in background
 alias gitbucket='java -jar gitbucket.war &> /tmp/gitbucket.out &'            #https://github.com/gitbucket/gitbucket/releases/download/4.34.0/gitbucket.war
-#alias groovyi='JAVA_HOME="$JAVA_HOME_17" groovysh -e ":set interpreterMode true"'
+alias groovyi='JAVA_HOME="$JAVA_HOME_25" groovysh -e ":set interpreterMode true"'
 alias jenkins='${JAVA_HOME_17%/}/bin/java -Djava.util.logging.config.file=$HOME/Apps/jenkins-logging.properties -jar $HOME/Apps/jenkins.war' #curl -o $HOME/Apps/jenkins.war -L https://get.jenkins.io/war-stable/2.426.3/jenkins.war
 # http (but https fails) + reverse proxy server https://www.mock-server.com/mock_server/getting_started.html
 alias mockserver='java -jar $HOME/Apps/mockserver-netty.jar'                                      #curl -o $HOME/Apps/mockserver-netty.jar -L https://search.maven.org/remotecontent?filepath=org/mock-server/mockserver-netty/5.11.1/mockserver-netty-5.11.1-jar-with-dependencies.jar
@@ -324,7 +325,7 @@ if [ -d $HOME/IdeaProjects/work/bash ]; then
     alias logIq="pyvN;$HOME/IdeaProjects/work/bash/log_tests_nxiq.sh && srcIq"
     alias instSona="source $HOME/IdeaProjects/work/bash/install_sonatype.sh"
 fi
-#alias xmldiff="python $HOME/IdeaProjects/samples/python/xml_parser.py" # this is for Hadoop xml files
+#alias xmldiff="python3 $HOME/IdeaProjects/samples/python/xml_parser.py" # this is for Hadoop xml files
 
 if type echolines &>/dev/null; then
     alias line_duration='ELAPSED_REGEX="^\d\d\d\d-\d\d-\d\d.(\d\d:\d\d:\d\d.\d\d\d)" ASCII_DISABLED=Y echolines "" "^\d\d\d\d-\d\d-\d\d.\d\d:\d\d:\d\d.\d\d\d" "^\d\d\d\d-\d\d-\d\d.\d\d:\d\d:\d\d.\d\d\d" | rg "^#\s*([^\|]+)\|\s*([^\|]+)\|\s*([^\|]+)" -o -r "\"\$1\",\"\$2\",\$3"'
@@ -334,7 +335,7 @@ fi
 ## Chrome aliases for Mac (URL needs to be IP as hostname wouldn't be resolvable on remote) ###########################
 #alias shib-local='open -na "Google Chrome" --args --user-data-dir=$HOME/.chromep/local --proxy-server=socks5://localhost:28081'
 #alias shib-dh1='open -na "Google Chrome" --args --user-data-dir=$HOME/.chromep/dh1 --proxy-server=socks5://dh1:28081 http://192.168.1.31:4200/webuser/'
-alias chrome='open -na "Google Chrome"' # use the default profile
+alias chrome-def='open -na "Google Chrome" --args --user-data-dir="$HOME/Library/Application Support/Google/Chrome" --profile-directory="Default"'
 alias chrome-work='open -na "Google Chrome" --args --user-data-dir=$HOME/.chromep/work'
 alias chrome-dh1='open -na "Google Chrome" --args --user-data-dir=$HOME/.chromep/dh1 --proxy-server=http://dh1:28080'
 alias k8s-dh1='open -na "Google Chrome" --args --user-data-dir=$HOME/.chromep/k8s-dh1 --proxy-server=socks5://dh1:38081'
@@ -351,12 +352,16 @@ alias goose-app='open -na "Goose"'
 # Slack API Search
 [ -s $HOME/IdeaProjects/samples/python/SimpleWebServer.py ] && alias slackS="pyvN && cd $HOME/IdeaProjects/samples/python/ && python3 ./SimpleWebServer.py &> /tmp/SimpleWebServer.out &"
 # up to python 3.11
-alias smtpdemo='python -m smtpd -n -c DebuggingServer localhost:2500'
+alias smtpdemo='python3 -m smtpd -n -c DebuggingServer localhost:2500'
 if [ -s "${HOME%/}/.mcps.json" ]; then
     #go install github.com/mark3labs/mcphost@latest    # NOTE: this is deprecated and replaced by Kit
     alias mcp-cli='mcphost -m ollama:gemma4:12b-it-qat --config '${HOME%/}/.mcps.json
     #go install github.com/mark3labs/kit/cmd/kit@latest
     alias kit-cli='kit -m ollama/gemma4:12b-it-qat --max-tokens 524288 --config '${HOME%/}/.mcps.json
+fi
+if [ -s "$HOME/IdeaProjects/samples/python/support_app.py" ]; then
+    alias support-app="source $HOME/.venv_support/bin/activate && streamlit run $HOME/IdeaProjects/samples/python/support_app.py --client.toolbarMode=\"viewer\" --server.maxUploadSize=6000"
+    # TODO:  --server.maxUploadSize=6000 is not working to avoid "Invalid Input Error: File './log/request.log' size (5.7 GiB) exceeds maximum allowed file (3.9 GiB)"
 fi
 
 
@@ -593,7 +598,7 @@ except yaml.YAMLError as e:
 }
 # surprisingly it's not easy to trim|remove all newlines with bash
 function rmnewline() {
-    python -c 'import sys
+    python3 -c 'import sys
 for l in sys.stdin:
    sys.stdout.write(l.rstrip("\n"))'
 }
@@ -639,7 +644,7 @@ function prettify() {
     #local _oneline="${3:-Y}"
     #[[ "${_oneline}" =~ ^[yY] ]] && _str="$(echo "${_str}" | tr -d '\n')"
     # TODO: convert to pyparsing (or think about some good regex)
-    python -c "import sys
+    python3 -c "import sys
 s = '''${_str}''';n = 0;p = '${_pad}';f = False;
 if len(s) == 0:
     for l in sys.stdin:
@@ -837,6 +842,9 @@ function pgStatus() {
         pg_ctl -D ${_pg_data} ${_cmd}
     fi || return $?
     export PGDATA="${_pg_data}"
+    if [ -d "${_pg_data}" ]; then
+        du -sh ${_pg_data%/} 2>/dev/null
+    fi
     # To connect: psql template1
     # If 'The data directory was initialized by PostgreSQL version', then brew postgresql-upgrade-database
     # and also check postgresql.conf : listen_addresses
@@ -967,7 +975,7 @@ function cleanOldDBs() {
     #${_find} ${_test_dir%/}/* -type d -mtime +2 -empty -print -delete
     echo "# DELETE statements for Not updated databases and above databases:" >&2
     #psql -d template1 -tAc "SELECT 'DROP DATABASE '||datname||';    -- '||pg_database_size(datname)||' bytes' FROM pg_stat_database WHERE datname NOT IN ('', 'template0', 'template1', 'postgres', CURRENT_USER) AND stats_reset < (now() - interval '60 days') ORDER BY stats_reset"
-    psql -d template1 -tAc "SELECT 'DROP DATABASE '||datname||';    -- '||pg_database_size(datname)||' bytes' FROM pg_stat_database WHERE datname ilike 'to_be_deleted_%' ORDER BY datname"
+    psql -d template1 -tAc "SELECT 'DROP DATABASE \"'||datname||'\";    -- '||pg_database_size(datname)||' bytes' FROM pg_stat_database WHERE datname ilike 'to_be_deleted_%' ORDER BY datname"
     #psql -tAc "SELECT datname FROM pg_database WHERE datname LIKE 'to_be_deleted_%'" | while read -r _db; do psql -d template1 -c "DROP DATABASE ${_db}" || break; done
     echo "" >&2
     echo "# Top 10 large databases" >&2
@@ -980,7 +988,7 @@ function listLargeDirs() {
     local _n="${2:-"20"}"
     local _du="du"
     type gdu &>/dev/null && _du="gdu"
-    ${_du} -ahx -d1 ${_src} | sort -hr | head -n "${_n}" | while read -r _size_dir; do
+    ${_du} -ahx -d1 ${_src} | sort -hr | rg '^\s*[0-9\.]+G\s' | head -n "${_n}" | while read -r _size_dir; do
         if [[ "${_size_dir}" =~ ^[[:space:]]*([0-9\.]+G)[[:space:]]+(.+)/([^/]+) ]]; then
             local _size="${BASH_REMATCH[1]}"
             local _parent_dir="${BASH_REMATCH[2]}"
@@ -1187,7 +1195,7 @@ function backupC() {
     if [ "Darwin" = "$(uname)" ]; then
         if type gdu &>/dev/null; then
             #gdu -Shx ${_src} | sort -h | tail -n40
-            listLargeDirs "${_src}" 20
+            listLargeDirs "${_src}"
         else
             echo "# mdfind 'kMDItemFSSize > 209715200 && kMDItemContentModificationDate < \$time.now(-2419200)' | LC_ALL=C sort" >&2 # -onlyin "${_src}"
             mdfind 'kMDItemFSSize > 209715200 && kMDItemContentModificationDate < $time.now(-2419200)' | LC_ALL=C sort | rg -v -w 'cases_local' | while read -r _l; do ls -lh "${_l}"; done | sort -k5 -h | tail -n40
@@ -1423,27 +1431,38 @@ EOF
 }
 
 function startCommonUtils() {
-    local _with_localai="${1:-"Y"}"
+    local _with_localai="${1:-"n"}"
     local _with_mlx="${2:-"n"}"
+    local _with_iq="${3:-"n"}"
     pgStatus start
     #tabby_start
     slackS
     #chrome-work
     #open -na "Google Chrome"
 
+    #screen -dmS claude-mcp bash -c "cd /Users/hosako/Documents/cases && claude mcp serve -d --verbose"
+
+    if [[ "${_with_iq}" =~ ^[yY] ]] && [ -d "$HOME/Documents/tests/nxiq_latest_nxiqlatest" ]; then
+        echo "# Starting Nexus IQ Server from $HOME/Documents/tests/nxiq_latest_nxiqlatest" >&2
+        cd $HOME/Documents/tests/nxiq_latest_nxiqlatest
+        ${JAVA_HOME_25%/}/bin/java -XX:ActiveProcessorCount=2 -Xmx4g -jar ./nexus-iq-server-1.*.jar server ./config.yml >/tmp/nxiq_latest_nxiqlatest.log 2>&1 &
+        sleep 3
+        tail /tmp/nxiq_latest_nxiqlatest.log
+    fi
+
+    # This part is not specific to local AI
+    source $HOME/.pyvenv/bin/activate || return $?
+    if [ -s "$HOME/.mcps.json" ]; then
+        # This is for Open WebUI as it doesn't support stdio for MCP
+        echo "# Starting mcpo (127.0.0.1:48000) with config $HOME/.mcps.json" >&2
+        #pip install mcpo
+        mcpo --host 127.0.0.1 --port 48000 --config $HOME/.mcps.json &>/tmp/mcpo.log &
+        sleep 1
+        tail /tmp/mcpo.log
+    fi
+
     # Currently not starting ollama by default
     if [[ "${_with_localai}" =~ ^[yY] ]]; then
-        source $HOME/.pyvenv/bin/activate || return $?
-
-        if [ -s "$HOME/.mcps.json" ]; then
-            # This is for Open WebUI as it doesn't support stdio for MCP
-            echo "# Starting mcpo (127.0.0.1:48000) with config $HOME/.mcps.json" >&2
-            #pip install mcpo
-            mcpo --host 127.0.0.1 --port 48000 --config $HOME/.mcps.json &>/tmp/mcpo.log &
-            sleep 1
-            tail /tmp/mcpo.log
-        fi
-
         #if type uvx &>/dev/null; then
         #    echo "# Starting open-terminal (127.0.0.1:48001)" >&2
         #    uvx open-terminal run --host 127.0.0.1 --port 48001 --cwd $HOME/Documents/cases --api-key admin123 &>/tmp/uvx_open-terminal.log &
@@ -1467,7 +1486,7 @@ function startCommonUtils() {
         fi
 
         if type ollama &>/dev/null; then
-            OLLAMA_NO_CLOUD="1" OLLAMA_FLASH_ATTENTION="1" OLLAMA_KV_CACHE_TYPE="q8_0" ollama serve &>/tmp/ollama.log &
+            OLLAMA_NO_CLOUD="1" OLLAMA_FLASH_ATTENTION="1" OLLAMA_KV_CACHE_TYPE="q8_0" OLLAMA_NUM_PARALLEL="2" ollama serve &>/tmp/ollama.log &
             sleep 3
             tail $HOME/.ollama/logs/server.log
             ollama list
