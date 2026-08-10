@@ -8,6 +8,10 @@
 #   jar -xvf ../nexus-3.79.1-04/bin/sonatype-nexus-repository-3.80.0-02.jar
 #   jar -cvf ../sonatype-nexus-repository-3.80.0-02_patched.jar ./*   # extracted_modified_files
 #   jar -uvf ./BOOT-INF/lib/nexus-repository-content-3.83.0-08.jar -C /Users/hosako/IdeaProjects/nexus-internal/components/nexus-repository-content/src/main/resources/ org/sonatype/nexus/repository/content/store/ComponentDAO.xml
+#
+# Manual mvn compile example:
+#   JAVA_HOME="${JAVA_HOME_25}" mvn -s $HOME/IdeaProjects/m2_settings.xml -Dmaven.test.skip=true clean package #-U
+#   f_update_spring_jar "/path/to/sonatype-nexus-repository-3.93.2-01.jar" /path/to/compiled/nexus-search-sql-3.93.2-01.jar
 
 # Location to store downloaded JDK
 _JAVA_DIR="${_JAVA_DIR:-"/var/tmp/share/java"}"
@@ -129,6 +133,29 @@ function f_update_jar() {
     return 0
 }
 
+function f_update_spring_jar() {
+    local _spring_jar="${1}"
+    local _lib_jar="${2}"   # ./BOOT-INF/lib/xxxxx.jar
+
+    if [ ! -s "${_spring_jar}.orig" ]; then
+        cp -v -p "${_spring_jar}" "${_spring_jar}.orig" || exit $?
+    else
+        echo "# Backup file ${_spring_jar}.orig already exists. Skipping backup." >&2
+    fi
+    # If _lib_jar does not contain BOOT-INF/lib, this function should fail
+    if [[ "${_lib_jar}" != */BOOT-INF/lib/* ]]; then
+        echo "WARN: ${_lib_jar} is not under BOOT-INF/lib. Please check the jar file path." >&2
+        local _tmp_dir="$(mktemp -d)" || return $?
+        if [ ! -d "${_tmp_dir%/}/BOOT-INF/lib" ]; then
+           mkdir -p "${_tmp_dir%/}/BOOT-INF/lib" || return $?
+        fi
+        cp -v -p "${_lib_jar}" "${_tmp_dir%/}/BOOT-INF/lib/" || return $?
+        _lib_jar="${_tmp_dir%/}/BOOT-INF/lib/$(basename "${_lib_jar}")"
+    fi
+    local _c_dir="$(dirname "$(dirname "$(dirname "${_lib_jar}")")")"
+    jar -u0vf ${_spring_jar} -C ${_c_dir%/} BOOT-INF/lib/$(basename "${_lib_jar}") || return $?
+}
+
 function f_extract_and_update_classpath() {
     local _spring_jar="${1}"
     local _extract_dir="${2}"
@@ -194,7 +221,7 @@ main() {
         echo "# Listing jar files which contains ${_class_name}${_CLASS_EXT} in ${_extract_dir%/}/BOOT-INF/lib ..." >&2
         f_jargrep "${_class_name}${_CLASS_EXT}" "${_extract_dir%/}/BOOT-INF/lib"
         echo "Please pick a jar file from above, and re-run the script:
-    $0 '$1' '$2' '<jar path from above>' '$4' '$5'"
+    $0 '$1' '$2' '<jar path from above>' '$4' '$5'" >&2
         return
     fi
 
@@ -210,17 +237,11 @@ main() {
 
     # If _JAR_FILEPATH is given, updating the jar
     if [ -n "${_lib_jar}" ] && [ -e "${_lib_jar}" ] && [ -n "${_class_name}" ]; then
-        f_update_jar "${_lib_jar}" "${_class_name}" || exit $?
-        if [ ! -s "${_spring_jar}.orig" ]; then
-            cp -v -p "${_spring_jar}" "${_spring_jar}.orig" || exit $?
-        else
-            echo "# Backup file ${_spring_jar}.orig already exists. Skipping backup." >&2
-        fi
-        local _c_dir="$(dirname "$(dirname "$(dirname "${_lib_jar}")")")"
-        jar -u0vf ${_spring_jar} -C ${_c_dir%/} BOOT-INF/lib/$(basename "${_lib_jar}") || return $?
-        echo "Completed! Please restart the process (${_c_dir%/})"
+        f_update_jar "${_lib_jar}" "${_class_name}" || return $?
+        f_update_spring_jar "${_spring_jar}" "${_lib_jar}" || return $?
+        echo "Completed! Please restart the process." >&2
     else
-        echo "ERROR: No jar filepath or class name to update (${_c_dir%/})"
+        echo "ERROR: No jar filepath or class name to update." >&2
         return 1
     fi
 }
