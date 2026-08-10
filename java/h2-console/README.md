@@ -27,7 +27,7 @@ java -Xmx16g -Dh2Opts="<H2 options to overwrite default>" -jar ./h2-console.jar 
 # Batch processing
 echo "SQL SELECT statement" | java -jar ./h2-console.jar <DB file path> [<H2 options>]
 
-# Pagenation for extreamly large result set
+# Pagenation for extreamly large result set (NOTE: _ROWID_ is automatically included)
 echo "<*SIMPLE* SELECT statement which returns so many rows>" | java -Dpaging=10000 -jar h2-console.jar <DB file path> [<H2 options>]
 ```
 #### Change output format
