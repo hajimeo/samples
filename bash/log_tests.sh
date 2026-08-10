@@ -435,6 +435,16 @@ function e_requests() {
         _LOG "WARN" "Not converting '${_req_log_path:-"empty"}' to CSV (and agg_requests_count_hour_api) because no ${_REQUEST_LOG:-"request.log"} or larger than _LOG_THRESHOLD_BYTES:${_LOG_THRESHOLD_BYTES} * 10"
     fi
 }
+function e_audits() {
+    local _audit_log_path="$1"
+    if [ -z "${_audit_log_path}" ]; then
+        _rg '"domain":"[^"]+", *"type":"[^"]+"' -o -g "${_AUDIT_LOG}" #--no-filename
+    else
+        [ ! -s "${_audit_log_path}" ] && return 1
+        _rg '"domain":"[^"]+", *"type":"[^"]+"' -o "${_audit_log_path}"
+    fi | sort | uniq -c > ${_FILTERED_DATA_DIR%/}/log_audit_domain_type_count.out
+    # TODO: add more audit log aggregation commands
+}
 function e_threads() {
     f_threads "info/threads.txt" "" "" "_threads" "Y" &>${_FILTERED_DATA_DIR%/}/f_threads.out
 }
@@ -452,9 +462,13 @@ function r_configs() {
 }
 function r_audits() {
     local _n="${1:-"20"}"
-    _head "AUDIT" "Top ${_n} 'domain','type' from ${_AUDIT_LOG}"
+    if [ ! -s "${_FILTERED_DATA_DIR%/}/log_audit_domain_type_count.out" ]; then
+        _head "INFO" "No ${_FILTERED_DATA_DIR%/}/log_audit_domain_type_count.out"
+        return
+    fi
+    _head "AUDIT" "Top ${_n} 'domain','type' from ${_FILTERED_DATA_DIR%/}/log_audit_domain_type_count.out"
     echo '```'
-    _rg --no-filename '"domain":"[^"]+", *"type":"[^"]+"' -o -g "${_AUDIT_LOG}" | sort | uniq -c | sort -nr | head -n ${_n}
+    cat ${_FILTERED_DATA_DIR%/}/log_audit_domain_type_count.out | sort -nr | head -n ${_n}
     echo "NOTE: taskblockedevent would mean another task is running (dupe tasks?)."
     echo "      repositorymetadataupdatedevent (NXRM) and governance.repository.quarantine (IQ) could be quarantine."
     echo '```'
@@ -501,12 +515,6 @@ function t_basic() {
         _rg -l "TRUNCATE" -g '*.log' -g '*.json'
         echo '```'
     fi
-    if ! find . -maxdepth 5 -type f -name sysinfo.json | grep -q 'sysinfo.json'; then
-        _head "ERROR" "No 'sysinfo.json' under $(realpath .) with maxdepth 5"
-    fi
-    if ! find . -maxdepth 5 -type f -name jmx.json | grep -q 'jmx.json'; then
-        _head "ERROR" "No 'jmx.json' under $(realpath .) with maxdepth 5 (NEXUS-44017)"
-    fi
 }
 function t_system() {
     if [ -s "${_FILTERED_DATA_DIR%/}/extracted_configs.md" ]; then
@@ -543,7 +551,7 @@ function t_system() {
             fi
         fi
     else
-        _head "WARN" "No jmx.json found"
+        _head "ERROR" "No jmx.json found (NEXUS-44017? Check 'nexus.analytics.system_information' in metrics.json)"
     fi
 
     if [ -s "${_sysinfo_json}" ]; then
@@ -572,69 +580,72 @@ function t_system() {
         # TODO: if no _sysinfo_json, check _jmx_json
         _test_template "$(rg '"(file.encoding|sun.jnu.encoding)" *: *"' "${_sysinfo_json}" | rg -v -w 'UTF')" "WARN" "'file.encoding' or 'sun.jnu.encoding' might not be UTF (eg: on Windows)"
     else
-        _head "WARN" "No sysinfo.json found"
+        _head "ERROR" "No sysinfo.json found"
     fi
 }
 function t_pg_config() {
-    local _pg_cfg_glob="${1:-"dbFileInfo.txt"}"
+    local _pg_cfg="${1:-"dbFileInfo.txt"}"
     local _excl_regex="${2-"\\\s*[:=]\\\s*"}"   #\",\"[^\"]+\",
-    if [ ! -s "${_pg_cfg_glob}" ]; then
-        _pg_cfg_glob="$(_find "${_pg_cfg_glob}")"
+    if [ ! -s "${_pg_cfg}" ]; then
+        _pg_cfg="$(_find "${_pg_cfg}")"
     fi
-    if [ ! -s "${_pg_cfg_glob}" ]; then
-        _head "WARN" "No db Info file: ${_pg_cfg_glob} found"
+    if [ ! -s "${_pg_cfg}" ]; then
+        _head "WARN" "No db Info file: ${_pg_cfg} found"
         return 1
     fi
     local _level="INFO"
-    local _max_connections="$(rg --no-filename -i '^["]?max_connections\b[^0-9]*([0-9]+)' -o -r '$1' "${_pg_cfg_glob}")"
+    local _max_connections="$(rg --no-filename -i '^["]?max_connections\b[^0-9]*([0-9]+)' -o -r '$1' "${_pg_cfg}")"
     if [ -n "${_max_connections}" ]; then
         if [ ${_max_connections:-0} -lt 105 ]; then
-            _head "ERROR" "max_connections (${_max_connections}) in \"${_pg_cfg_glob}\" is too small"
+            _head "ERROR" "max_connections (${_max_connections}) in \"${_pg_cfg}\" is too small"
         elif [ ${_max_connections:-0} -lt 200 ]; then
-            _head "WARN" "max_connections (${_max_connections}) in \"${_pg_cfg_glob}\" might be too small"
+            _head "WARN" "max_connections (${_max_connections}) in \"${_pg_cfg}\" might be too small"
         elif [ ${_max_connections:-0} -gt 1000 ]; then
             # ideally would like to check if HA.
-            _head "WARN" "max_connections (${_max_connections}) in \"${_pg_cfg_glob}\" might be too large (check work_mem)"
+            _head "WARN" "max_connections (${_max_connections}) in \"${_pg_cfg}\" might be too large (check work_mem)"
         fi
     else
         _level="WARN"
     fi
-    local _effective_cache_size="$(_search_size_in_bytes "^[\"]?effective_cache_size\b" "${_pg_cfg_glob}")"
+    # NOTE: effective_cache_size is used by the query planner as hint, so may not be as important as shared_buffers
+    local _effective_cache_size="$(_search_size_in_bytes "^[\"]?effective_cache_size\b" "${_pg_cfg}")"
     if [ -n "${_effective_cache_size}" ]; then
         local _effective_cache_size_hf=$(_human_friendly "${_effective_cache_size}" "0")
         if [ ${_effective_cache_size:-0} -lt $((2 * 1024 * 1024 * 1024)) ]; then
-            _head "ERROR" "effective_cache_size (${_effective_cache_size_hf}) in \"${_pg_cfg_glob}\" is too small"
+            _head "ERROR" "effective_cache_size (${_effective_cache_size_hf}) in \"${_pg_cfg}\" is too small"
         elif [ ${_effective_cache_size:-0} -lt $((4 * 1024 * 1024 * 1024)) ]; then
-            _head "WARN" "effective_cache_size (${_effective_cache_size_hf}) in \"${_pg_cfg_glob}\" might be too small"
+            _head "WARN" "effective_cache_size (${_effective_cache_size_hf}) in \"${_pg_cfg}\" might be too small"
         fi
     else
         _level="WARN"
     fi
-    local _shared_buffers="$(_search_size_in_bytes "^[\"]?shared_buffers\b" "${_pg_cfg_glob}")"
+    local _shared_buffers="$(_search_size_in_bytes "^[\"]?shared_buffers\b" "${_pg_cfg}")"
     if [ -n "${_shared_buffers}" ]; then
         local _shared_buffers_hf=$(_human_friendly "${_shared_buffers}" "0")
         if [ ${_shared_buffers:-0} -lt $((1 * 1024 * 1024 * 1024)) ]; then
-            _head "ERROR" "shared_buffers (${_shared_buffers_hf}) in \"${_pg_cfg_glob}\" is too small"
+            _head "ERROR" "shared_buffers (${_shared_buffers_hf}) in \"${_pg_cfg}\" is too small"
         elif [ ${_shared_buffers:-0} -lt $((2 * 1024 * 1024 * 1024)) ]; then
-            _head "WARN" "shared_buffers (${_shared_buffers_hf}) in \"${_pg_cfg_glob}\" might be too small"
+            _head "WARN" "shared_buffers (${_shared_buffers_hf}) in \"${_pg_cfg}\" might be too small"
         fi
     else
         _level="WARN"
     fi
-    local _work_mem="$(_search_size_in_bytes "^[\"]?work_mem\b" "${_pg_cfg_glob}")"
+    local _work_mem="$(_search_size_in_bytes "^[\"]?work_mem\b" "${_pg_cfg}")"
     if [ -n "${_work_mem}" ]; then
         local _work_mem_hf=$(_human_friendly "${_work_mem}" "0")
         if [ ${_work_mem:-0} -lt $((2 * 1024 * 1024)) ]; then
-            _head "ERROR" "work_mem (${_work_mem_hf}) in \"${_pg_cfg_glob}\" is too small"
+            _head "ERROR" "work_mem (${_work_mem_hf}) in \"${_pg_cfg}\" is too small"
         elif [ ${_work_mem:-0} -lt $((4 * 1024 * 1024)) ]; then
-            _head "WARN" "work_mem (${_work_mem_hf}) in \"${_pg_cfg_glob}\" might be too small"
+            _head "WARN" "work_mem (${_work_mem_hf}) in \"${_pg_cfg}\" might be too small"
         fi
     else
         _level="WARN"
     fi
-    _test_template "$(rg -i "^\s*['\"]?synchronous_standby_names:\s?\S+" ${_pg_cfg_glob})" "WARN" "Synchronous replication might be used. Check synchronous_standby_names in \"${_pg_cfg_glob}\". Make sure \"synchronous_commit: local\"" "If '*', it waits at least one standby is acknowledged \"SELECT client_addr, application_name, state, sync_state FROM pg_stat_replication;\""
+    if ! _test_template "$(rg -i "^\s*['\"]?synchronous_standby_names:\s?\S+" ${_pg_cfg})" "WARN" "Synchronous replication might be used. Check synchronous_standby_names in \"${_pg_cfg}\". Make sure \"synchronous_commit: local\"" "If '*', it waits at least one standby is acknowledged \"SELECT client_addr, application_name, state, sync_state FROM pg_stat_replication;\""; then
+        _code "$(rg -i "^\s*['\"]?synchronous_commit:\s?\S+" ${_pg_cfg})" "" ""
+    fi
 
-    _test_template "$(rg --no-filename -i "^\s*['\"]?(max_connections|effective_cache_size|shared_buffers|work_mem|maintenance_work_mem|synchronous_standby_names)\b" ${_pg_cfg_glob})" "${_level}" "Please review DB configs" "https://help.sonatype.com/en/advanced-database-memory-tuning.html"
+    _test_template "$(rg --no-filename -i "^\s*['\"]?(max_connections|effective_cache_size|shared_buffers|work_mem|maintenance_work_mem|synchronous_standby_names)\b" ${_pg_cfg})" "${_level}" "Please review DB configs" "https://help.sonatype.com/en/advanced-database-memory-tuning.html"
 }
 function t_mounts() {
     _basic_check "" "${_FILTERED_DATA_DIR%/}/system-filestores.json" || return
@@ -681,7 +692,9 @@ for key in fsDicts['system-filestores']:
 function t_oome() {
     # audit.log can contains `attribute.changes` which contains large test and some Nuget package mentions OutOfMemoryError
     # Should also check 'PSQLException: Ran out of memory retrieving query results'?
-    _test_template "$(_RG_MAX_FILESIZE="6G" _rg 'java.lang.OutOfMemoryError:.+' -m1 -B1 -g "${_NXRM_LOG}" -g "${_NXIQ_LOG}" | sort | uniq)" "ERROR" "OutOfMemoryError detected from '${_NXRM_LOG}' or '${_NXIQ_LOG}' (Xms is too small?)"
+    if ! _test_template "$(_RG_MAX_FILESIZE="6G" _rg 'java.lang.OutOfMemoryError:.+' -m1 -B1 -A5 -g "${_NXRM_LOG}" -g "${_NXIQ_LOG}")" "ERROR" "OutOfMemoryError detected from '${_NXRM_LOG}' or '${_NXIQ_LOG}' (Xms is too small?)"; then
+        _test_template "$(_rg 'readAllBytes' -w -m1 -B1 -g "${_NXRM_LOG}" -g "${_NXIQ_LOG}")" "WARN" "'readAllBytes' found in '${_NXRM_LOG}' or '${_NXIQ_LOG}' (might be OutOfMemoryError if large file)" # CLM-28756
+    fi
 }
 function t_sofe() {
     _test_template "$(_RG_MAX_FILESIZE="6G" _rg 'java.lang.StackOverflowError:.+' -m1 -B1 -g "${_LOG_GLOB}" | rg -vw '(jvm.log|audit*log*)' | sort | uniq)" "ERROR" "StackOverflowError detected from ${_LOG_GLOB}"
