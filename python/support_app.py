@@ -50,14 +50,21 @@ def setup_log_views(con):
     """Creates a unified `logs` view over the categorized log files, one row per line."""
     union_parts = []
     for path, category in LOG_SOURCES:
+        # it seems read_text has 4GB limit, so changed to read_csv but not tested yet.
         union_parts.append(f"""
             SELECT
                 line,
                 '{category}' AS category,
                 filename AS source_file
-            FROM (
-                SELECT UNNEST(str_split(content, chr(10))) AS line, filename
-                FROM read_text('{path}')
+            FROM read_csv(
+                '{path}',
+                columns={{'line': 'VARCHAR'}},
+                sep='\\x01',
+                quote='',
+                escape='',
+                header=false,
+                filename=true,
+                strict_mode=false
             )
             WHERE line != ''
         """)
@@ -169,4 +176,5 @@ except Exception as e:
         "`./log/request.log` and `./log/outbound-request.log` (request/outbound), "
         "and `./log/audit.log` (audit) to populate the dashboards."
     )
-
+    st.error(f"Error reading logs or creating views: {str(e)}")
+    st.exception(e)
