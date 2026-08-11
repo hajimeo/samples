@@ -1,11 +1,13 @@
 # REQUIREMENTS:
 #   # recommend to run in a virtual environment
-#   pip install streamlit duckdb requests pandas #watchdog
+#   pip install -U streamlit duckdb requests pandas #watchdog
 #
 # HOW TO RUN:
-#   1. Start Ollama with MODEL on OLLAMA_API_URL
+#   1. Start Ollama with AI_MODEL on AI_API_URL
 #   2. `cd` to the extracted support zip which has (nexus.log, clm-server.log, request.log, outbound-request.log, audit.log)
 #   3. Run this script: streamlit run python/support_app.py --client.toolbarMode="viewer"
+import os
+import re
 
 import streamlit as st
 import duckdb
@@ -14,14 +16,15 @@ import json
 import pandas as pd
 
 # 0. Model and API Configuration
-# Ollama API is assumed to be running locally on port 11434
-MODEL = "qwen2.5-coder:7b"
-#MODEL = "gemma4:12b"
-OLLAMA_API_URL = "http://localhost:11434/api/generate"
+# If the environment variable AI_API_URL is set, use it; otherwise default to localhost
+AI_API_URL = st.secrets.get("AI_API_URL", "http://localhost:11434/api/generate")
+AI_MODEL = st.secrets.get("AI_MODEL", "qwen2.5-coder:7b") # "gemma4:12b"
 
-# 1. UI Configuration
-st.set_page_config(page_title="Local SupportZip AI", layout="wide")
-st.title("🔍 Local SupportZip AI Analytics")
+# 1. UI Configuration/customization
+st.set_page_config(page_title="Local SupportZip Analyzer", layout="wide")
+st.title("🔍 Local SupportZip Analyzer")
+st.text("API URL: {}, Model: {}".format(AI_API_URL, AI_MODEL))
+
 # Hide the Streamlit "Deploy" button in the top-right corner
 st.markdown(
     r"""
@@ -37,19 +40,38 @@ st.markdown(
 # Initialize DuckDB connection
 con = duckdb.connect(database=':memory:')
 
-# Sources: (path, category label)
-LOG_SOURCES = [
-    ("./log/nexus.log", "application"),
-    ("./log/clm-server.log", "application"),
-    ("./log/request.log", "request"),
-    ("./log/outbound-request.log", "outbound"),
-    ("./log/audit.log", "audit"),
-]
+# Default Log sources are matching all files under the current directory or `./log/` directory, and file name ends with `.log` or `.log.gz`
+# This can be overridden by LOG_APP_REGEX environment variable, which should be a regex pattern matching the log file paths to include.
+LOG_APP_REGEX = st.secrets.get("LOG_APP_REGEX", "(nexus|clm-server).*(log|log.gz)$")    # category `application`
+LOG_REQ_REGEX = st.secrets.get("LOG_REQ_REGEX", "request.*(log|log.gz)$")               # category `request`
+LOG_OUTBOUND_REGEX = st.secrets.get("LOG_OUTBOUND_REGEX", "outbound-request.*(log|log.gz)$")    # category `outbound`
+LOG_AUDIT_REGEX = st.secrets.get("LOG_AUDIT_REGEX", "audit.*(log|log.gz)$")             # category `audit`
+
+LOG_CATEGORY_REGEXES = {
+    "application": LOG_APP_REGEX,
+    "request": LOG_REQ_REGEX,
+    "outbound": LOG_OUTBOUND_REGEX,
+    "audit": LOG_AUDIT_REGEX,
+}
+
+def find_log_files():
+    """Walks the current directory and groups matching file paths by category."""
+    compiled = {category: re.compile(pattern) for category, pattern in LOG_CATEGORY_REGEXES.items()}
+    matches = {category: [] for category in LOG_CATEGORY_REGEXES}
+    for root, _, files in os.walk("."):
+        for fname in files:
+            path = os.path.join(root, fname)
+            for category, pattern in compiled.items():
+                if pattern.search(path):
+                    matches[category].append(path)
+    return matches
 
 def setup_log_views(con):
     """Creates a unified `logs` view over the categorized log files, one row per line."""
     union_parts = []
-    for path, category in LOG_SOURCES:
+    for category, paths in find_log_files().items():
+        if not paths:
+            continue
         # it seems read_text has 4GB limit, so changed to read_csv but not tested yet.
         union_parts.append(f"""
             SELECT
@@ -57,7 +79,7 @@ def setup_log_views(con):
                 '{category}' AS category,
                 filename AS source_file
             FROM read_csv(
-                '{path}',
+                {paths},
                 columns={{'line': 'VARCHAR'}},
                 sep='\\x01',
                 quote='',
@@ -68,6 +90,9 @@ def setup_log_views(con):
             )
             WHERE line != ''
         """)
+    if not union_parts:
+        raise Exception("No log files found matching the configured LOG_*_REGEX patterns.")
+    # Currently creating one large table contains all log lines....
     con.execute(f"CREATE OR REPLACE VIEW logs AS {' UNION ALL '.join(union_parts)}")
 
 try:
@@ -80,7 +105,7 @@ except Exception as e:
 # 2. Local AI Query Generator (Ollama API)
 def ask_local_ai(user_prompt):
     """Asks Qwen2.5-Coder to translate a natural language question into DuckDB SQL."""
-    ollama_url = OLLAMA_API_URL
+    ollama_url = AI_API_URL
 
     # We guide the AI with a strict system prompt so it only returns valid SQL
     system_context = """
@@ -94,7 +119,7 @@ def ask_local_ai(user_prompt):
     """
     
     payload = {
-        "model": MODEL,
+        "model": AI_MODEL,
         "prompt": f"{system_context}\n\nUser Question: {user_prompt}\n\nSQL Query:",
         "stream": False
     }
