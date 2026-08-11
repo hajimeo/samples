@@ -1,3 +1,4 @@
+# NOTE: this function does not work with jn_utils_v2.py
 import jn_utils as ju
 import get_json as gj
 import linecache, re, os, json
@@ -21,52 +22,52 @@ def _gen_regex_for_request_logs(filepath="request.log"):
     # @see: samples/bash/log_search.sh:f_request2csv()
     columns = ["clientHost", "l", "user", "date", "requestURL", "statusCode", "headerContentLength", "bytesSent",
                "elapsedTime", "headerUserAgent", "thread"]
-    partern_str = '^([^ ]+) ([^ ]+) ([^ ]+) \[([^\]]+)\] "([^"]*)" ([^ ]+) ([^ ]+) ([^ ]+) ([^ ]+) "([^"]*)" \[([^\]]+)\]'
+    partern_str = r'^([^ ]+) ([^ ]+) ([^ ]+) \[([^\]]+)\] "([^"]*)" ([^ ]+) ([^ ]+) ([^ ]+) ([^ ]+) "([^"]*)" \[([^\]]+)\]'
     if re.search(partern_str, checking_line):
         return (columns, partern_str)
 
     columns = ["clientHost", "l", "user", "date", "requestURL", "statusCode", "headerContentLength", "bytesSent",
                "elapsedTime", "headerUserAgent", "thread", "misc"]
-    partern_str = '^([^ ]+) ([^ ]+) ([^ ]+) \[([^\]]+)\] "([^"]*)" ([^ ]+) ([^ ]+) ([^ ]+) ([^ ]+) "([^"]*)" \[([^\]]+)\] (.+)'
+    partern_str = r'^([^ ]+) ([^ ]+) ([^ ]+) \[([^\]]+)\] "([^"]*)" ([^ ]+) ([^ ]+) ([^ ]+) ([^ ]+) "([^"]*)" \[([^\]]+)\] (.+)'
     if re.search(partern_str, checking_line):
         return (columns, partern_str)
 
     columns = ["clientHost", "l", "user", "date", "requestURL", "statusCode", "bytesSent", "elapsedTime",
                "headerUserAgent", "thread"]
-    partern_str = '^([^ ]+) ([^ ]+) ([^ ]+) \[([^\]]+)\] "([^"]*)" ([^ ]+) ([^ ]+) ([^ ]+) "([^"]*)" \[([^\]]+)\]'
+    partern_str = r'^([^ ]+) ([^ ]+) ([^ ]+) \[([^\]]+)\] "([^"]*)" ([^ ]+) ([^ ]+) ([^ ]+) "([^"]*)" \[([^\]]+)\]'
     if re.search(partern_str, checking_line):
         return (columns, partern_str)
 
     columns = ["clientHost", "l", "user", "date", "requestURL", "statusCode", "headerContentLength", "bytesSent",
                "elapsedTime", "headerUserAgent"]
-    partern_str = '^([^ ]+) ([^ ]+) ([^ ]+) \[([^\]]+)\] "([^"]*)" ([^ ]+) ([^ ]+) ([^ ]+) ([^ ]+) "([^"]*)"'
+    partern_str = r'^([^ ]+) ([^ ]+) ([^ ]+) \[([^\]]+)\] "([^"]*)" ([^ ]+) ([^ ]+) ([^ ]+) ([^ ]+) "([^"]*)"'
     if re.search(partern_str, checking_line):
         return (columns, partern_str)
 
     columns = ["clientHost", "l", "user", "date", "requestURL", "statusCode", "bytesSent", "elapsedTime",
                "headerUserAgent"]
-    partern_str = '^([^ ]+) ([^ ]+) ([^ ]+) \[([^\]]+)\] "([^"]*)" ([^ ]+) ([^ ]+) ([^ ]+) "([^"]+)'
+    partern_str = r'^([^ ]+) ([^ ]+) ([^ ]+) \[([^\]]+)\] "([^"]*)" ([^ ]+) ([^ ]+) ([^ ]+) "([^"]+)'
     if re.search(partern_str, checking_line):
         return (columns, partern_str)
 
     columns = ["clientHost", "l", "user", "date", "requestURL", "statusCode", "bytesSent", "elapsedTime"]
-    partern_str = '^([^ ]+) ([^ ]+) ([^ ]+) \[([^\]]+)\] "([^"]*)" ([^ ]+) ([^ ]+) ([0-9]+)'
+    partern_str = r'^([^ ]+) ([^ ]+) ([^ ]+) \[([^\]]+)\] "([^"]*)" ([^ ]+) ([^ ]+) ([0-9]+)'
     if re.search(partern_str, checking_line):
         return (columns, partern_str)
 
     columns = ["clientHost", "l", "user", "date", "requestURL", "statusCode", "bytesSent", "elapsedTime", "misc"]
-    partern_str = '^([^ ]+) ([^ ]+) ([^ ]+) \[([^\]]+)\] "([^"]*)" ([^ ]+) ([^ ]+) ([^ ]+) ([^ ]+)'
+    partern_str = r'^([^ ]+) ([^ ]+) ([^ ]+) \[([^\]]+)\] "([^"]*)" ([^ ]+) ([^ ]+) ([^ ]+) ([^ ]+)'
     if re.search(partern_str, checking_line):
         return (columns, partern_str)
 
     columns = ["clientHost", "l", "date", "requestURL", "statusCode", "bytesSent", "elapsedTime", "user", "misc"]
-    partern_str = '^([^ ]+) ([^ ]+) \[([^\]]+)\] "([^"]*)" http_status=([^ ]+) http_content_length=([^ ]+) latency=([^ ]+) user=([^ ]+) (.+)'
+    partern_str = r'^([^ ]+) ([^ ]+) \[([^\]]+)\] "([^"]*)" http_status=([^ ]+) http_content_length=([^ ]+) latency=([^ ]+) user=([^ ]+) (.+)'
     if re.search(partern_str, checking_line):
         return (columns, partern_str)
 
     # Nexus outbound-request.log
     columns = ["date", "user", "requestURL", "statusCode", "bytesSent", "elapsedTime", "misc"]
-    partern_str = '^\[([^\]]+)\] [^ ]+) "([^"]*)" ([^ ]+) ([^ ]+) ([^ ]+) ([^ ]+)'
+    partern_str = r'^\[([^\]]+)\] [^ ]+) "([^"]*)" ([^ ]+) ([^ ]+) ([^ ]+) ([^ ]+)'
     if re.search(partern_str, checking_line):
         return (columns, partern_str)
 
@@ -91,12 +92,12 @@ def _gen_regex_for_app_logs(filepath=""):
 
     # Default and in case can't be identified
     columns = ['date_time', 'loglevel', 'message']
-    partern_str = '^(\d\d\d\d-\d\d-\d\d.\d\d:\d\d:\d\d[.,0-9]*)[^ ]* +([^ ]+) +(.+)'
+    partern_str = r'^(\d\d\d\d-\d\d-\d\d.\d\d:\d\d:\d\d[.,0-9]*)[^ ]* +([^ ]+) +(.+)'
 
     checking_line = None
     for i in range(1, 100):  # 10 was not enough
         checking_line = linecache.getline(filepath, i)
-        if re.search('^(\d\d\d\d-\d\d-\d\d.\d\d:\d\d:\d\d)', checking_line):
+        if re.search(r'^(\d\d\d\d-\d\d-\d\d.\d\d:\d\d:\d\d)', checking_line):
             break
     if bool(checking_line) is False:
         ju._info("Could not determine columns and pattern_str. Using default.")
@@ -104,11 +105,11 @@ def _gen_regex_for_app_logs(filepath=""):
     ju._debug(checking_line)
 
     columns = ['date_time', 'loglevel', 'thread', 'node', 'user', 'class', 'message']
-    partern_str = '^(\d\d\d\d-\d\d-\d\d.\d\d:\d\d:\d\d[.,0-9]*)[^ ]* +([^ ]+) +\[([^]]+)\][^ ]* ([^ ]*) ([^ ]*) ([^ ]+) - (.*)'
+    partern_str = r'^(\d\d\d\d-\d\d-\d\d.\d\d:\d\d:\d\d[.,0-9]*)[^ ]* +([^ ]+) +\[([^]]+)\][^ ]* ([^ ]*) ([^ ]*) ([^ ]+) - (.*)'
     if re.search(partern_str, checking_line):
         return (columns, partern_str)
     columns = ['date_time', 'loglevel', 'thread', 'user', 'class', 'message']
-    partern_str = '^(\d\d\d\d-\d\d-\d\d.\d\d:\d\d:\d\d[.,0-9]*)[^ ]* +([^ ]+) +\[([^]]+)\][^ ]* ([^ ]*) ([^ ]+) - (.*)'
+    partern_str = r'^(\d\d\d\d-\d\d-\d\d.\d\d:\d\d:\d\d[.,0-9]*)[^ ]* +([^ ]+) +\[([^]]+)\][^ ]* ([^ ]*) ([^ ]+) - (.*)'
     if re.search(partern_str, checking_line):
         return (columns, partern_str)
     return (columns, partern_str)
@@ -126,7 +127,7 @@ def _gen_regex_for_hazel_health(sample):
     cols_tmp = re.findall(r'([^ ,]+)=', sample)
     # columns += list(map(lambda x: x.replace('.', '_'), cols_tmp))
     columns += cols_tmp
-    partern_str = '^\[([^\]]+)]:([^ ]+) \[([^\]]+)\] \[([^\]]+)\]'
+    partern_str = r'^\[([^\]]+)]:([^ ]+) \[([^\]]+)\] \[([^\]]+)\]'
     for c in cols_tmp:
         partern_str += " %s=([^, ]+)," % (c)
     partern_str += "?"
@@ -144,7 +145,7 @@ def _gen_regex_for_elastic_jvm(sample):
     cols_tmp = re.findall(r'([^ ,]+)=', sample)
     # columns += list(map(lambda x: x.replace('.', '_'), cols_tmp))
     columns += cols_tmp
-    partern_str = ' total \[([^]]+)\]/\[([^]]+)\], memory \[([^]]+)\]->\[([^]]+)\]/\[([^]]+)\]'
+    partern_str = r' total \[([^]]+)\]/\[([^]]+)\], memory \[([^]]+)\]->\[([^]]+)\]/\[([^]]+)\]'
     for c in cols_tmp:
         partern_str += " %s=([^, ]+)," % (c)
     partern_str += "?"
@@ -201,9 +202,9 @@ def request2table(filepath, tablename="t_request", max_file_size=(1024 * 1024 * 
         return False
     line_from = line_until = 0
     if bool(time_from_regex):
-        line_from = ju._linenumber(log_path, "\d\d/.../\d\d\d\d:" + time_from_regex)
+        line_from = ju._linenumber(log_path, r"\d\d/.../\d\d\d\d:" + time_from_regex)
     if bool(time_until_regex):
-        line_until = ju._linenumber(log_path, "\d\d/.../\d\d\d\d:" + time_until_regex)
+        line_until = ju._linenumber(log_path, r"\d\d/.../\d\d\d\d:" + time_until_regex)
     (col_names, line_matching) = _gen_regex_for_request_logs(log_path)
     rtn = ju.logs2table(log_path, tablename=tablename, line_beginning="^.",
                         col_names=col_names, line_matching=line_matching,
@@ -268,9 +269,9 @@ def applog2table(filepath, tablename="t_applog", max_file_size=(1024 * 1024 * 10
         return False
     line_from = line_until = 0
     if bool(time_from_regex):
-        line_from = ju._linenumber(log_path, "^\d\d\d\d-\d\d-\d\d " + time_from_regex)
+        line_from = ju._linenumber(log_path, r"^\d\d\d\d-\d\d-\d\d " + time_from_regex)
     if bool(time_until_regex):
-        line_until = ju._linenumber(log_path, "^\d\d\d\d-\d\d-\d\d " + time_until_regex)
+        line_until = ju._linenumber(log_path, r"^\d\d\d\d-\d\d-\d\d " + time_until_regex)
     (col_names, line_matching) = _gen_regex_for_app_logs(log_path)
     return ju.logs2table(log_path, tablename=tablename, col_names=col_names,
                          line_matching=line_matching, max_file_size=max_file_size,
@@ -304,7 +305,7 @@ def etl(path="", log_suffix=".log", dist="./_filtered", max_file_size=(1024 * 10
     :param log_suffix: To specify the YYYY-MM-DD.log.gz
     :param dist: Directory path to save the extracted data (default ./_filtered)
     :param max_file_size: Larger than this size will be skipped (default 100MB)
-    :param time_from_regex: Regex for 'time' for logs2table's line_from (eg "(0[5-9]|1[0-3]]):\d\d:\d\d")
+    :param time_from_regex: Regex for 'time' for logs2table's line_from (eg "(0[5-9]|1[0-3]]):\\d\\d:\\d\\d")
     :param time_until_regex: Regex for 'time' for logs2table's line_until
     :param add_startTime: In the table, add 'startedTime' from 'date_time' and 'elapsedTime'. Requires col_names
     :return: void
@@ -337,13 +338,13 @@ def etl(path="", log_suffix=".log", dist="./_filtered", max_file_size=(1024 * 10
             ju._SH_EXECUTABLE + " -c '%s[ -d \"%s\" ] && . /tmp/log_search.sh && f_audit2json \"\" \"%s\"'" % (
                 "cd %s;" % extracted_dir if extracted_dir else "", dist, dist))
         # system-filestores from sysinfo.json
-        _save_json("sysinfo\.json", "%s/system-filestores.json" % dist, "system-filestores")
+        _save_json(r"sysinfo\.json", "%s/system-filestores.json" % dist, "system-filestores")
         # extracting from DB export.json files
-        _save_json("config/export\.json", "%s/http_client.json" % dist, "records,@class=http_client", "@class",
+        _save_json(r"config/export\.json", "%s/http_client.json" % dist, "records,@class=http_client", "@class",
                    "connection,proxy")
-        _save_json("config/export\.json", "%s/db_repos.json" % dist, "records,@class=repository", "@class",
+        _save_json(r"config/export\.json", "%s/db_repos.json" % dist, "records,@class=repository", "@class",
                    "recipe_name,repository_name,online,attributes", True)
-        saml_config = _save_json("config/export\.json", "", "records,@class:saml", "@class",
+        saml_config = _save_json(r"config/export\.json", "", "records,@class:saml", "@class",
                                  "entityId,idpMetadata,mapping,keyStoreBytes,keyStorePassword", True)
         if bool(saml_config):
             db_saml_idp_metadata = ""
@@ -567,11 +568,11 @@ FROM t_log_elastic_monitor_jvm
         # Window function / partition doesn't work with sqlite installed by pip somehow
         query = """SELECT t_scan_start.thread, start_dt, end_dt,
   (STRFTIME('%s', end_dt) - STRFTIME('%s', start_dt)) as duration, duration_ms_str
-  FROM (SELECT thread, date_time as start_dt FROM t_iq_logs 
+  FROM (SELECT thread, date_time as start_dt FROM t_iq_logs
     WHERE thread like 'PolicyEvaluateService-%%' AND message like '%%Received %% scan for application%%'
       AND date_time >= (SELECT date_time FROM t_iq_logs WHERE thread = 'PolicyEvaluateService-0' ORDER BY date_time DESC LIMIT 1)) t_scan_start
-LEFT JOIN (SELECT thread, date_time as end_dt, UDF_REGEX('(\d+) ms\.', message, 1) as duration_ms_str 
-    FROM t_iq_logs 
+LEFT JOIN (SELECT thread, date_time as end_dt, UDF_REGEX('(\d+) ms\.', message, 1) as duration_ms_str
+    FROM t_iq_logs
     WHERE thread like 'PolicyEvaluateService-%%' AND message like '%%Evaluated policy for app public id%%') t_scan_end
   ON t_scan_start.thread = t_scan_end.thread and t_scan_start.start_dt < t_scan_end.end_dt
 ORDER BY start_dt"""
