@@ -3,10 +3,10 @@
 # Python Jupyter Notebook helper/utility functions
 # @author: hajime
 #
-# curl https://raw.githubusercontent.com/hajimeo/samples/master/python/jn_utils.py -o $HOME/IdeaProjects/samples/python/jn_utils.py
+# curl https://raw.githubusercontent.com/hajimeo/samples/master/python/jn_utils_v2.py -o $HOME/IdeaProjects/samples/python/jn_utils_v2.py
 #
 """
-jn_utils is Jupyter Notebook Utility script, which contains functions to convert text files to Pandas DataFrame or DB (DuckDB) tables.
+jn_utils (V2) is Jupyter Notebook Utility script, which contains functions to convert text files to Pandas DataFrame or DB (DuckDB) tables.
 To update this script, execute "ju.update()".
 
 == Pandas/Jupyter tips (which I often forget) ==================================
@@ -24,7 +24,7 @@ Convert one row to dict:
     row = df[:1].to_dict(orient='records')[0]
 Styling:
     https://pandas.pydata.org/pandas-docs/stable/user_guide/style.html
-Reload jn_utils.py after modifying the code (but anyway you lose loaded duckdb tables):
+Reload jn_utils_v2.py after modifying the code (but anyway you lose loaded duckdb tables):
     import importlib
     importlib.reload(ju)
 
@@ -246,7 +246,7 @@ def _get_filesize(file_path):
     os.stat(xxx).st_size and os.path.getsize(xxx) both fails if file path is wrong
     :param file_path: string of the file path
     :return: boolean or file size
-    >>> _get_filesize("jn_utils.py") > 0
+    >>> _get_filesize("jn_utils_v2.py") > 0
     True
     """
     try:
@@ -482,6 +482,9 @@ def json2df(filename, tablename=None, conn=None, chunksize=1000, if_exists='repl
             elif flatten is True:
                 _debug("flatten for %s ..." % (str(file_path)))
                 j_obj = json2dict(file_path=file_path, rtn_list_if_1=True)
+                # json_normalize needs a dict or a list of dicts; wrap plain scalars (eg. a list of strings)
+                if isinstance(j_obj, list) and any(not isinstance(i, dict) for i in j_obj):
+                    j_obj = [{"value": i} for i in j_obj]
                 try:
                     # 'fillna' is for workaround-ing "probably unsupported type." (because of N/a)
                     _df = pd.json_normalize(j_obj).fillna("")
@@ -2544,7 +2547,7 @@ def update_check(file=None, baseurl="https://raw.githubusercontent.com/hajimeo/s
     """
     (almost) Alias of update()
     Check if update is avaliable (actually checking file size only at this moment)
-    :param file: File path string. If empty, checks for this file (jn_utils.py)
+    :param file: File path string. If empty, checks for this file (jn_utils_v2.py)
     :param baseurl: Default is https://raw.githubusercontent.com/hajimeo/samples/master/python
     :return: If update available, True and output message in stderr
     >>> pass
@@ -2556,7 +2559,7 @@ def update(file=None, baseurl="https://raw.githubusercontent.com/hajimeo/samples
            force_update=False):
     """
     Update the specified file from internet
-    :param file: File path string. If empty, updates for this file (jn_utils.py)
+    :param file: File path string. If empty, updates for this file (jn_utils_v2.py)
     :param baseurl: Default is https://raw.githubusercontent.com/hajimeo/samples/master/python
     :param check_only: If True, do not update but check only
     :param force_update: Even if same size, replace the file
@@ -2606,7 +2609,7 @@ def help(func_name=None):
     :return: void
     >>> pass
     """
-    import jn_utils as ju
+    import jn_utils_v2 as ju
     if bool(func_name):
         m = getattr(ju, func_name, None)
         if callable(m) and hasattr(m, '__doc__') and len(str(m.__doc__)) > 0:
