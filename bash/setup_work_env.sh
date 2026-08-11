@@ -273,9 +273,9 @@ function f_setup_python() {
     local _pypi_proxy_url="$1"
     local _venv_path="${2-"${HOME%/}/.pyvenv"}"
     # Currently expecting anonymous is allowed.
-    local _i_opt=""
+    local _i_opt="--timeout 180"
     if _isUrl "${_pypi_proxy_url}" "Y" && [[ "${_pypi_proxy_url}" =~ ^https?://([^:/]+) ]]; then
-        _i_opt="-i ${_pypi_proxy_url%/}/simple --trusted-host ${BASH_REMATCH[1]}"
+        _i_opt="${_i_opt} -i ${_pypi_proxy_url%/}/simple --trusted-host ${BASH_REMATCH[1]}"
     fi
 
     if [ -n "${_venv_path}" ]; then
@@ -311,13 +311,13 @@ function f_setup_python() {
     #python3 -m pip install -U ${_i_opt} ipython==7.1.1 || return $?  #prettytable==0.7.2
     python3 -m pip install -U ${_i_opt} ipython || return $?  #prettytable==0.7.2
     #python3 -m pip install -U ${_i_opt} modin[ray] --log /tmp/pip_$$.log    # it's OK if fails
-    python3 -m pip install -U ${_i_opt} jupyter jupyterlab pandas dfsql --log /tmp/pip_$$.log || return $?   #ipython
-    python3 -m pip install -U ${_i_opt} pandasai langchain-ollama --log /tmp/pip_$$.log
+    python3 -m pip install -U ${_i_opt} jupyter jupyterlab pandas dfsql duckdb --log /tmp/pip_$$.log || return $?   #ipython
+    #python3 -m pip install -U ${_i_opt} pandasai langchain-ollama --log /tmp/pip_$$.log
     # Reinstall: python3 -m pip uninstall -y jupyterlab && python3 -m pip install jupyterlab
     # Must-have packages. NOTE: Initially I thought pandasql looked good but it's actually using sqlite, and slow, and doesn't look like maintained any more.
     python3 -m pip install -U ${_i_opt} jupyter_kernel_gateway sqlalchemy ipython-sql pivottablejs matplotlib --log /tmp/pip_$$.log
     python3 -m pip install -U ${_i_opt} psycopg2-binary --log /tmp/pip_$$.log
-    #python3 -m pip install -U ${_i_opt} jupyter-ai --log /tmp/pip_$$.log
+    python3 -m pip install -U ${_i_opt} jupyter-ai --log /tmp/pip_$$.log
     # pandas_profiling may fail to install. pixiedust works only with jupyter-notebook
     #python3 -m pip install -U ${_i_opt} pandas_profiling pixiedust --log /tmp/pip_$$.log
     #   import pandas_profiling as pdp
@@ -356,6 +356,7 @@ function f_setup_python() {
 
     ## LLM/AI related packages
     python3 -m pip install ${_i_opt} ollama anthropic pydantic
+    python3 -m pip install ${_i_opt} streamlit duckdb requests watchdog
 
     _log "INFO" "Customising Jupyter with f_jupyter_util..."
     f_jupyter_util
