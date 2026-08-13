@@ -6,6 +6,7 @@
 # Optional step (if didn't, generates self-signed CA automatically):
 	openssl genrsa -out "./proxy.key" 4096
 	openssl req -x509 -new -nodes -key "./proxy.key" -sha256 -days 3650 -out "./proxy.crt" -subj "/CN=My Proxy CA"
+	NOTE: If self-signed CA, you need to install the CA certificate into your OS or Java cacerts to avoid certificate errors.
 
 # Normal HTTP proxy (it works with https:// as well):
     httpproxy [--delay {sec} --bandwidth {Kbps} --debug --debug2]
