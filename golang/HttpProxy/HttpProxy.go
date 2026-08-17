@@ -14,13 +14,15 @@
 	curl -v --proxy localhost:8080 http://search.osakos.com/index.php
 	curl -v --proxy localhost:8080 https://search.osakos.com/index.php
 
-# HTTP proxy but replacing certificate:
+# HTTP proxy but replacing certificate (NOTE: cert used by proxy needs to be trusted by the client or OS)::
 	# NOTE: If no --key/--crt, automatically uses self-signed CA
 	httpproxy --replCert --debug [--crt <path to pem certificate> --key <path to key>]
+	# To use a CA signed self-certificate
+	httpproxy --replCert --debug --caCrt <path to root CA cert> --caKey <path to root CA key> [--commonName localhost --crt <path> --key <path>]
 	# Test (need -k as cert is replaced)
 	curl -v --proxy localhost:8080 -k https://search.osakos.com/index.php
 
-# TODO: HTTPS proxy with replacing certificate:
+# TODO: HTTPS proxy with replacing certificate (NOTE: cert used by proxy needs to be trusted by the client or OS):
 	# NOTE: If no --key/--crt, automatically uses self-signed CA
 	httpproxy --replCert --proto https --debug [--crt <path to pem certificate> --key <path to key>]
 	# Test (need --proxy-insecure and -k)
@@ -41,7 +43,6 @@ import (
 	"encoding/pem"
 	"flag"
 	"fmt"
-	"golang.org/x/time/rate"
 	"io"
 	"log"
 	"math/big"
@@ -55,6 +56,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"golang.org/x/time/rate"
 )
 
 var DelaySec int64
@@ -67,6 +70,9 @@ var ReplCert bool
 var GenCert bool
 var KeyPath string
 var CertPath string
+var CaCrtPath string
+var CaKeyPath string
+var CommonName string
 var CachePath string
 var Debug bool
 var Debug2 bool
@@ -333,7 +339,7 @@ func handleConnect(w http.ResponseWriter, req *http.Request) {
 		return
 	}
 
-	// TODO: Create a server-side TLS connection using a generated cert for the host
+	// Create a server-side TLS connection using a generated cert for the host
 	tlsCert, err := getCertForHost(host)
 	if err != nil {
 		out("ERROR: getCertForHost %s error: %v", host, err)
@@ -444,6 +450,39 @@ var (
 	}{m: make(map[string]*tls.Certificate)}
 )
 
+// generateLeafCert creates a leaf server certificate/key signed by the currently loaded caCert/caKey.
+func generateLeafCert(commonName string, sans []string) (certPEM, keyPEM []byte, err error) {
+	serial, _ := rand.Int(rand.Reader, big.NewInt(1<<62))
+	template := x509.Certificate{
+		SerialNumber: serial,
+		Subject:      pkix.Name{CommonName: commonName},
+		NotBefore:    time.Now(),
+		NotAfter:     time.Now().Add(365 * 24 * time.Hour),
+		KeyUsage:     x509.KeyUsageKeyEncipherment | x509.KeyUsageDigitalSignature,
+		ExtKeyUsage:  []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth},
+		DNSNames:     sans,
+	}
+
+	priv, err := rsa.GenerateKey(rand.Reader, 2048)
+	if err != nil {
+		return nil, nil, err
+	}
+	derBytes, err := x509.CreateCertificate(rand.Reader, &template, caCert, &priv.PublicKey, caKey)
+	if err != nil {
+		out("ERROR: x509.CreateCertificate %s error: %v", commonName, err)
+		return nil, nil, err
+	}
+	debug("Executed x509.CreateCertificate caCert: %v", caCert.Subject)
+
+	certPEM = pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: derBytes})
+	keyPEM = pem.EncodeToMemory(&pem.Block{Type: "RSA PRIVATE KEY", Bytes: x509.MarshalPKCS1PrivateKey(priv)})
+
+	out("Generated certificate PEM for %s", commonName)
+	out("Generated key PEM for %s", commonName)
+
+	return certPEM, keyPEM, nil
+}
+
 func getCertForHost(host string) (*tls.Certificate, error) {
 	certCache.Lock()
 	defer certCache.Unlock()
@@ -451,31 +490,11 @@ func getCertForHost(host string) (*tls.Certificate, error) {
 		return cert, nil
 	}
 
-	// TODO: Generate leaf certificate
-	serial, _ := rand.Int(rand.Reader, big.NewInt(1<<62))
-	template := x509.Certificate{
-		SerialNumber: serial,
-		Subject:      pkix.Name{CommonName: host}, // Request hostname
-		NotBefore:    time.Now(),
-		NotAfter:     time.Now().Add(365 * 24 * time.Hour),
-		KeyUsage:     x509.KeyUsageKeyEncipherment | x509.KeyUsageDigitalSignature,
-		ExtKeyUsage:  []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth},
-		DNSNames:     []string{strings.Split(host, ":")[0]},
-	}
-
-	priv, _ := rsa.GenerateKey(rand.Reader, 2048)
-	derBytes, err := x509.CreateCertificate(rand.Reader, &template, caCert, &priv.PublicKey, caKey)
+	hostname := strings.Split(host, ":")[0]
+	certPEM, keyPEM, err := generateLeafCert(hostname, []string{hostname})
 	if err != nil {
-		out("ERROR: x509.CreateCertificate %s error: %v", host, err)
 		return nil, err
 	}
-	debug("Executed x509.CreateCertificate caCert: %v", caCert.Subject)
-
-	certPEM := pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: derBytes})
-	keyPEM := pem.EncodeToMemory(&pem.Block{Type: "RSA PRIVATE KEY", Bytes: x509.MarshalPKCS1PrivateKey(priv)})
-
-	debug2("Generated certificate for %s:\n%s", host, certPEM)
-	debug2("Generated key for %s:\n%s", host, keyPEM)
 
 	cert, err := tls.X509KeyPair(certPEM, keyPEM)
 	if err != nil {
@@ -793,7 +812,10 @@ func main() {
 	flag.StringVar(&port, "port", "8080", "Listen port")
 	flag.StringVar(&KeyPath, "key", "", "path to key file. If empty, use a dummy self-signed certificate")
 	flag.StringVar(&CertPath, "crt", "", "path to pem certificate file for the key.")
-	flag.StringVar(&Proto, "proto", "http", "TODO: Proxy protocol (http or https)")
+	flag.StringVar(&CaCrtPath, "caCrt", "", "path to a root CA certificate used to generate the leaf server cert (plain https mode only)")
+	flag.StringVar(&CaKeyPath, "caKey", "", "path to the root CA's private key used to generate the leaf server cert (plain https mode only)")
+	flag.StringVar(&CommonName, "commonName", "localhost", "CommonName/SAN for the leaf server cert generated from --caCrt/--caKey")
+	flag.StringVar(&Proto, "proto", "http", "Proxy protocol (http or https)")
 	flag.BoolVar(&ReplCert, "replCert", false, "Replacing the certificate for https:// requests")
 	flag.BoolVar(&GenCert, "GenCert", false, "(Re)Generate a self-signed CA certificate")
 	flag.StringVar(&CachePath, "cache", "", "Cache directory path (default: OS temp dir)")
@@ -847,6 +869,36 @@ func main() {
 		}
 	}
 
+	// If CA Key/Cert is provided and if server key/cert is empty, generates the server proxy.crt/proxy.key.
+	if CaCrtPath != "" && CaKeyPath != "" {
+		loadCA(CaCrtPath, CaKeyPath)
+		if CertPath == "" {
+			CertPath = filepath.Join(CachePath, "proxy.crt")
+		}
+		if KeyPath == "" {
+			KeyPath = filepath.Join(CachePath, "proxy.key")
+		}
+
+		// Check if KeyPath already exists
+		if _, err := os.Stat(KeyPath); err == nil {
+			out("Reusing existing leaf server cert %s (key %s) even CA key/cert is provided", CertPath, KeyPath)
+		} else {
+			debug("Generating leaf server cert %s (key %s) signed by CA %s", CertPath, KeyPath, CaCrtPath)
+			certPEM, keyPEM, err := generateLeafCert(CommonName, []string{CommonName, "127.0.0.1"})
+			if err != nil {
+				log.Fatal("Failed to generate leaf server cert from CA:", err)
+			}
+			if err := os.WriteFile(CertPath, certPEM, 0644); err != nil {
+				log.Fatal("Failed to write generated leaf cert:", err)
+			}
+			if err := os.WriteFile(KeyPath, keyPEM, 0600); err != nil {
+				log.Fatal("Failed to write generated leaf key:", err)
+			}
+			out("Generated leaf server cert %s (key %s) signed by CA %s", CertPath, KeyPath, CaCrtPath)
+		}
+	}
+
+	// If ReplCert is true and KeyPath is still empty, generate a self-signed CA cert/key and save to CachePath
 	if ReplCert && len(KeyPath) == 0 {
 		KeyPath = filepath.Join(CachePath, "proxy.key")
 		CertPath = filepath.Join(CachePath, "proxy.crt")
@@ -874,19 +926,5 @@ func main() {
 	}
 
 	out("WARN: Starting HTTPS with %s, %s (may not work)", CertPath, KeyPath)
-	// To override TLS config to accept old versions and insecure skip verify
-	/*
-		tlsCert, err := tls.LoadX509KeyPair(CertPath, KeyPath)
-		if err != nil {
-			log.Fatal("Failed to load server certificate and key:", err)
-		}
-		tlsConfig := &tls.Config{
-			MinVersion:         tls.VersionTLS10, // VersionTLS13
-			InsecureSkipVerify: true,             // TODO: not sure if this is a good idea
-			Certificates:       []tls.Certificate{tlsCert},
-		}
-		server.TLSConfig = tlsConfig
-		log.Fatal(server.ListenAndServeTLS("", ""))
-	*/
 	log.Fatal(server.ListenAndServeTLS(CertPath, KeyPath))
 }
