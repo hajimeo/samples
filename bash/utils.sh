@@ -850,7 +850,7 @@ function _prepare_install() {
         fi
     fi
     # In case the path contains wildcards
-    local _local_tgz="$(ls -1 ${_tgz} | tail -n1)"
+    local _local_tgz="$(ls -1 ${_tgz} 2>/dev/null | tail -n1)"
     if [ -z "${_local_tgz}" ]; then
         # This will fail if it contains wildcards but it's ok
         echo "no ${_tgz}. Downloading from ${_url} ..."
