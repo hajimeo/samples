@@ -21,6 +21,7 @@
 	httpproxy --replCert --debug --caCrt <path to root CA cert> --caKey <path to root CA key> [--commonName localhost --crt <path> --key <path>]
 	# Test (need -k as cert is replaced)
 	curl -v --proxy localhost:8080 -k https://search.osakos.com/index.php
+	keytool -J-Dhttps.proxyHost=localhost -J-Dhttps.proxyPort=8080 -printcert -rfc -sslserver search.osakos.com:443 # should show two certs
 
 # TODO: HTTPS proxy with replacing certificate (NOTE: cert used by proxy needs to be trusted by the client or OS):
 	# NOTE: If no --key/--crt, automatically uses self-signed CA
@@ -442,39 +443,43 @@ func transfer(destination io.Writer, source io.ReadCloser, filename string) {
 }
 
 var (
-	caCert    *x509.Certificate
-	caKey     *rsa.PrivateKey
-	certCache = struct {
+	CaCert    *x509.Certificate
+	CaKey     *rsa.PrivateKey
+	CertCache = struct {
 		sync.Mutex
 		m map[string]*tls.Certificate
 	}{m: make(map[string]*tls.Certificate)}
 )
 
-// generateLeafCert creates a leaf server certificate/key signed by the currently loaded caCert/caKey.
+// Creates a leaf server certificate/key signed by the currently loaded CaCert/caKey.
 func generateLeafCert(commonName string, sans []string) (certPEM, keyPEM []byte, err error) {
 	serial, _ := rand.Int(rand.Reader, big.NewInt(1<<62))
 	template := x509.Certificate{
-		SerialNumber: serial,
-		Subject:      pkix.Name{CommonName: commonName},
-		NotBefore:    time.Now(),
-		NotAfter:     time.Now().Add(365 * 24 * time.Hour),
-		KeyUsage:     x509.KeyUsageKeyEncipherment | x509.KeyUsageDigitalSignature,
-		ExtKeyUsage:  []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth},
-		DNSNames:     sans,
+		SerialNumber:          serial,
+		Subject:               pkix.Name{CommonName: commonName},
+		NotBefore:             time.Now(),
+		NotAfter:              time.Now().Add(365 * 24 * time.Hour),
+		KeyUsage:              x509.KeyUsageKeyEncipherment | x509.KeyUsageDigitalSignature,
+		ExtKeyUsage:           []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth},
+		DNSNames:              sans,
+		IsCA:                  false,
+		BasicConstraintsValid: true,
 	}
 
 	priv, err := rsa.GenerateKey(rand.Reader, 2048)
 	if err != nil {
 		return nil, nil, err
 	}
-	derBytes, err := x509.CreateCertificate(rand.Reader, &template, caCert, &priv.PublicKey, caKey)
+	derBytes, err := x509.CreateCertificate(rand.Reader, &template, CaCert, &priv.PublicKey, CaKey)
 	if err != nil {
 		out("ERROR: x509.CreateCertificate %s error: %v", commonName, err)
 		return nil, nil, err
 	}
-	debug("Executed x509.CreateCertificate caCert: %v", caCert.Subject)
+	debug("Executed x509.CreateCertificate caCert: %v", CaCert.Subject)
 
 	certPEM = pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: derBytes})
+	// Include the signer (intermediate or root CA) alongside the leaf so clients get the full chain.
+	certPEM = append(certPEM, pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: CaCert.Raw})...)
 	keyPEM = pem.EncodeToMemory(&pem.Block{Type: "RSA PRIVATE KEY", Bytes: x509.MarshalPKCS1PrivateKey(priv)})
 
 	out("Generated certificate PEM for %s", commonName)
@@ -483,10 +488,41 @@ func generateLeafCert(commonName string, sans []string) (certPEM, keyPEM []byte,
 	return certPEM, keyPEM, nil
 }
 
+func generateIntermediateCert(commonName string, parentCert *x509.Certificate, parentKey *rsa.PrivateKey) (certPEM, keyPEM []byte, err error) {
+	serial, _ := rand.Int(rand.Reader, big.NewInt(1<<62))
+	template := x509.Certificate{
+		SerialNumber:          serial,
+		Subject:               pkix.Name{CommonName: commonName},
+		NotBefore:             time.Now(),
+		NotAfter:              time.Now().Add(3650 * 24 * time.Hour),
+		KeyUsage:              x509.KeyUsageCertSign | x509.KeyUsageCRLSign,
+		IsCA:                  true,
+		BasicConstraintsValid: true,
+		MaxPathLen:            0,
+		MaxPathLenZero:        true,
+	}
+
+	priv, err := rsa.GenerateKey(rand.Reader, 2048)
+	if err != nil {
+		return nil, nil, err
+	}
+	derBytes, err := x509.CreateCertificate(rand.Reader, &template, parentCert, &priv.PublicKey, parentKey)
+	if err != nil {
+		out("ERROR: x509.CreateCertificate (intermediate) %s error: %v", commonName, err)
+		return nil, nil, err
+	}
+
+	certPEM = pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: derBytes})
+	keyPEM = pem.EncodeToMemory(&pem.Block{Type: "RSA PRIVATE KEY", Bytes: x509.MarshalPKCS1PrivateKey(priv)})
+
+	out("Generated intermediate CA cert PEM for %s", commonName)
+	return certPEM, keyPEM, nil
+}
+
 func getCertForHost(host string) (*tls.Certificate, error) {
-	certCache.Lock()
-	defer certCache.Unlock()
-	if cert, ok := certCache.m[host]; ok {
+	CertCache.Lock()
+	defer CertCache.Unlock()
+	if cert, ok := CertCache.m[host]; ok {
 		return cert, nil
 	}
 
@@ -502,7 +538,7 @@ func getCertForHost(host string) (*tls.Certificate, error) {
 		return nil, err
 	}
 
-	certCache.m[host] = &cert
+	CertCache.m[host] = &cert
 	return &cert, nil
 }
 
@@ -591,7 +627,7 @@ func loadCA(certPath, keyPath string) {
 	if block == nil {
 		log.Fatal("Failed to decode CA cert PEM")
 	}
-	caCert, err = x509.ParseCertificate(block.Bytes)
+	CaCert, err = x509.ParseCertificate(block.Bytes)
 	if err != nil {
 		log.Fatal("Failed to parse CA cert:", err)
 	}
@@ -615,7 +651,7 @@ func loadCA(certPath, keyPath string) {
 	}
 
 	var ok bool
-	caKey, ok = parsedKey.(*rsa.PrivateKey)
+	CaKey, ok = parsedKey.(*rsa.PrivateKey)
 	if !ok {
 		log.Fatal("CA key is not RSA type")
 	}
@@ -812,9 +848,9 @@ func main() {
 	flag.StringVar(&port, "port", "8080", "Listen port")
 	flag.StringVar(&KeyPath, "key", "", "path to key file. If empty, use a dummy self-signed certificate")
 	flag.StringVar(&CertPath, "crt", "", "path to pem certificate file for the key.")
-	flag.StringVar(&CaCrtPath, "caCrt", "", "path to a root CA certificate used to generate the leaf server cert (plain https mode only)")
-	flag.StringVar(&CaKeyPath, "caKey", "", "path to the root CA's private key used to generate the leaf server cert (plain https mode only)")
-	flag.StringVar(&CommonName, "commonName", "localhost", "CommonName/SAN for the leaf server cert generated from --caCrt/--caKey")
+	flag.StringVar(&CaCrtPath, "caCrt", "", "path to a root CA certificate used to generate an intermediate CA cert (with --replCert) that signs per-host MITM leaf certs")
+	flag.StringVar(&CaKeyPath, "caKey", "", "path to the root CA's private key used to generate the intermediate CA cert")
+	flag.StringVar(&CommonName, "commonName", "localhost", "CommonName for the intermediate CA cert generated from --caCrt/--caKey")
 	flag.StringVar(&Proto, "proto", "http", "Proxy protocol (http or https)")
 	flag.BoolVar(&ReplCert, "replCert", false, "Replacing the certificate for https:// requests")
 	flag.BoolVar(&GenCert, "GenCert", false, "(Re)Generate a self-signed CA certificate")
@@ -870,8 +906,10 @@ func main() {
 	}
 
 	// If CA Key/Cert is provided and if server key/cert is empty, generates the server proxy.crt/proxy.key.
-	if CaCrtPath != "" && CaKeyPath != "" {
+	//isCaLoaded := false
+	if CaKeyPath != "" { // Not checking CaCrtPath != "" as if missing i want to fail with error in loadCA()
 		loadCA(CaCrtPath, CaKeyPath)
+		//isCaLoaded = true // If not loaded the above line causes fatal
 		if CertPath == "" {
 			CertPath = filepath.Join(CachePath, "proxy.crt")
 		}
@@ -881,20 +919,20 @@ func main() {
 
 		// Check if KeyPath already exists
 		if _, err := os.Stat(KeyPath); err == nil {
-			out("Reusing existing leaf server cert %s (key %s) even CA key/cert is provided", CertPath, KeyPath)
+			out("Reusing existing intermediate CA cert %s (key %s) even CA key/cert is provided", CertPath, KeyPath)
 		} else {
-			debug("Generating leaf server cert %s (key %s) signed by CA %s", CertPath, KeyPath, CaCrtPath)
-			certPEM, keyPEM, err := generateLeafCert(CommonName, []string{CommonName, "127.0.0.1"})
+			debug("Generating intermediate CA cert %s (key %s) signed by CA %s", CertPath, KeyPath, CaCrtPath)
+			certPEM, keyPEM, err := generateIntermediateCert(CommonName, CaCert, CaKey)
 			if err != nil {
-				log.Fatal("Failed to generate leaf server cert from CA:", err)
+				log.Fatal("Failed to generate intermediate CA cert from CA:", err)
 			}
 			if err := os.WriteFile(CertPath, certPEM, 0644); err != nil {
-				log.Fatal("Failed to write generated leaf cert:", err)
+				log.Fatal("Failed to write generated intermediate cert:", err)
 			}
 			if err := os.WriteFile(KeyPath, keyPEM, 0600); err != nil {
-				log.Fatal("Failed to write generated leaf key:", err)
+				log.Fatal("Failed to write generated intermediate key:", err)
 			}
-			out("Generated leaf server cert %s (key %s) signed by CA %s", CertPath, KeyPath, CaCrtPath)
+			out("Generated intermediate CA cert %s (key %s) signed by CA %s", CertPath, KeyPath, CaCrtPath)
 		}
 	}
 
@@ -911,12 +949,20 @@ func main() {
 	}
 
 	if ReplCert {
-		// Load CA cert and key for replacing certificate for HTTPS requests
+		// Load CA cert and key for replacing certificate for HTTPS requests. CertPath/KeyPath
+		// now hold the intermediate CA signed by the external root (if --caCrt/--caKey was
+		// given) or the self-signed root CA otherwise — either way, the correct MITM signer.
+		//if !isCaLoaded {
 		loadCA(CertPath, KeyPath)
+		//}
 		// Read CertPath data to show to user
-		certBytes, err := os.ReadFile(CertPath)
+		outputtingCertPath := CertPath
+		if CaCrtPath != "" {
+			outputtingCertPath = CaCrtPath
+		}
+		certBytes, err := os.ReadFile(outputtingCertPath)
 		if err != nil {
-			log.Fatal("Failed to read generated CA cert:", CertPath, err)
+			log.Fatal("Failed to read generated CA cert:", outputtingCertPath, err)
 		}
 		out("NOTE: Please make sure to trust the following certificate:\n%s", string(certBytes))
 	}

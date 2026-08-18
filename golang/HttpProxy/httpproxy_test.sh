@@ -33,9 +33,39 @@ function test_1_StartHttpProxyNormally() {
     return 0
 }
 
-function test_2_StartHttpProxyWithReplCert() {
+function test_2_1_StartHttpProxyWithReplCert() {
     local _port=38002
     _httpproxy "--port ${_port} --replCert" || return $?
+
+	# Need -k as cert is replaced
+	if curl -sSfv -o /dev/null --proxy localhost:${_port} https://www.google.com 2>"${_TMP%/}/${FUNCNAME[0]}_last.err"; then
+        _result "ERROR" "httpS request via localhost:${_port} should have failed but worked!"
+        echo "Check ${_TMP%/}/${FUNCNAME[0]}_last.err"
+        return 1
+    fi
+	if ! curl -sSfv -o "${_TMP%/}/${FUNCNAME[0]}_curl.out" --proxy localhost:${_port} -k https://www.google.com 2>"${_TMP%/}/${FUNCNAME[0]}_last.err"; then
+        _result "ERROR" "httpS request via localhost:${_port} with '-k' failed!"
+        echo "Check ${_TMP%/}/${FUNCNAME[0]}_last.err"
+        return 1
+    fi
+    if [ ! -s "${_TMP%/}/${FUNCNAME[0]}_curl.out" ]; then
+        _result "ERROR" "${_TMP%/}/${FUNCNAME[0]}_curl.out is empty!"
+        echo "Check ${_TMP%/}/${FUNCNAME[0]}_last.err"
+        return 1
+    fi
+
+    _result "OK" "${FUNCNAME[0]}"
+    return 0
+}
+
+function test_2_2_StartHttpProxyWithReplCert() {
+    local _port=38022
+    if [ ! -s "${MY_ROOT_CA_KEY_PATH}" ]; then
+        _result "SKIPPED" "${FUNCNAME[0]}: Not finding the CA cert."
+        return 0
+    fi
+    #httpproxy --replCert --debug --caCrt <path to root CA cert> --caKey <path to root CA key> [--commonName localhost --crt <path> --key <path>]
+    _httpproxy "--port ${_port} --replCert --caCrt ${MY_ROOT_CA_CRT_PATH} --caKey ${MY_ROOT_CA_KEY_PATH}" || return $?
 
 	# Need -k as cert is replaced
 	if curl -sSfv -o /dev/null --proxy localhost:${_port} https://www.google.com 2>"${_TMP%/}/${FUNCNAME[0]}_last.err"; then
@@ -88,7 +118,7 @@ function test_4_StartHttpProxyWithDelayWithRegex() {
 
 function test_5_StartHttpProxyWithBandwidthWithRegex() {
     local _port=38005
-    _httpproxy "--port ${_port} --bandwidth 5 --urlregex osakos" || return $?
+    _httpproxy "--port ${_port} --bandwidth 3 --urlregex osakos" || return $?
 
 	if curl -sSfv -o /dev/null -m 3 --proxy localhost:${_port} http://search.osakos.com/index.php 2>"${_TMP%/}/${FUNCNAME[0]}_last.err"; then
         _result "ERROR" "http request via localhost:${_port} with -m3 should have failed but worked!"
