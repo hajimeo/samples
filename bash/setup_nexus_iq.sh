@@ -127,7 +127,8 @@ function f_install_iq() {
 
     local _jar_file="$(_download_installer "${_ver}" "${_dirpath}" "${_download_dir}")" || return $?
     [ -z "${_jar_file}" ] && return 11
-    local _cfg_file="$(find ${_dirpath%/} -maxdepth 3 -type f -name 'config.yml' 2>/dev/null | sort -V | tail -n1)"
+    local _cfg_file="./config.yml"
+    [ ! -s "${_cfg_file}" ] && _cfg_file="$(find ${_dirpath%/} -maxdepth 3 -type f -name 'config.yml' 2>/dev/null | sort -V | tail -n1)"
     [ -z "${_cfg_file}" ] && return 12
 
     if [ ! -f "${_cfg_file}.orig" ]; then
@@ -219,6 +220,20 @@ function _download_installer() {
     # This function sets _LICENSE_PATH
     _prepare_install "${_dirpath}" "https://download.sonatype.com/clm/server/${_filename}" "" "${_download_dir}" "${_force_extract}" || return $?
 
+    if [ -d "${HOME%/}/.nexus_executable_cache" ]; then
+        local _dist_filename="$(basename "${_filename}")"
+        if [ "${_filename}" == "latest.tgz" ]; then
+            local _new_filename_base="$(basename "$(find ${_dirpath%/} -maxdepth 1 -type d -name "nexus-iq-server-*" 2>/dev/null | sort -V | tail -n1)")"
+            if [ -z "${_new_filename_base}" ]; then
+                _log "WARN" "Failed to find nexus-iq-server-* dir under ${_dirpath%/}"
+                _dist_filename=""
+            else
+                _dist_filename="${_new_filename_base}.tgz"
+            fi
+        fi
+        cp -v -p "${_download_dir%/}/${_filename}" "${HOME%/}/.nexus_executable_cache/${_dist_filename}"
+    fi
+
     # NOT good way but most of the time works.
     local _jar_file="$(find ${_dirpath%/} -maxdepth 3 -type f -name "insight-brain-service-*.jar" 2>/dev/null | sort -V | tail -n1)"
     if [ -z "${_jar_file}" ]; then
@@ -248,7 +263,8 @@ function _update_db_config() {
     local _dbpwd="${4:-"${_dbusr}123"}"
     local _dpport="${5:-"5432"}"
     local _dirpath="${6:-"."}"
-    [ -z "${_cfg_file}" ] && _cfg_file="$(find ${_dirpath%/} -maxdepth 2 -type f -name 'config.yml' 2>/dev/null | sort -V | tail -n1)"
+    [ -z "${_cfg_file}" ] && _cfg_file="./config.yml"
+    [ ! -s "${_cfg_file}" ] && _cfg_file="$(find ${_dirpath%/} -maxdepth 3 -type f -name 'config.yml' 2>/dev/null | sort -V | tail -n1)"
     [ -z "${_cfg_file}" ] && return 12
 
     cat <<EOF >"${_cfg_file}"
@@ -881,7 +897,8 @@ function f_setup_https() {
 
     local _jar_file="$(find "${_base_dir%/}" -maxdepth 3 -type f -name 'nexus-iq-server*.jar' -o -name 'insight-brain-service*-server.jar' 2>/dev/null | sort -V | tail -n1)"
     [ -z "${_jar_file}" ] && return 11
-    local _cfg_file="$(find "${_base_dir%/}" -maxdepth 3 -type f -name 'config.yml' 2>/dev/null | sort -V | tail -n1)"
+    local _cfg_file="./config.yml"
+    [ ! -s "${_cfg_file}" ] && _cfg_file="$(find ${_base_dir%/} -maxdepth 3 -type f -name 'config.yml' 2>/dev/null | sort -V | tail -n1)"
     [ -z "${_cfg_file}" ] && return 12
 
     # If never started no "sonatype-work/clm-server"
@@ -988,7 +1005,7 @@ function f_setup_saml_simplesaml() {
         echo "Please execute 'f_start_saml_server \"\" \"\" \"${_IQ_URL%/}/api/v2/config/saml/metadata\"'" >&2
         return 1
     fi
-    if ! _curl "${_IQ_URL%/}/api/v2/config/saml" -X PUT -F identityProviderXml=@${_idp_metadata} -F samlConfiguration="{\"identityProviderName\":\"${_name}\",\"entityId\":\"${_IQ_URL%/}/api/v2/config/saml/metadata\",\"usernameAttributeName\":\"uid\",\"firstNameAttributeName\":\"givenName\",\"lastNameAttributeName\":\"sn\",\"emailAttributeName\":\"eduPersonPrincipalName\",\"groupsAttributeName\":\"eduPersonAffiliation\",\"validateResponseSignature\":false,\"validateAssertionSignature\":false}"; then
+    if ! _curl "${_IQ_URL%/}/api/v2/config/saml" -X PUT -F identityProviderXml=@${_idp_metadata} -F samlConfiguration="{\"identityProviderName\":\"${_name}\",\"entityId\":\"${_IQ_URL%/}/api/v2/config/saml/metadata\",\"usernameAttributeName\":\"uid\",\"firstNameAttributeName\":\"givenName\",\"lastNameAttributeName\":\"sn\",\"emailAttributeName\":\"eduPersonPrincipalName\",\"groupsAttributeName\":\"Groups\",\"validateResponseSignature\":false,\"validateAssertionSignature\":false}"; then
         echo "If SAML is already configured, please try 'DELETE /api/v2/config/saml' first."
         return 1
     fi
@@ -1801,7 +1818,8 @@ function f_psql() {
     local _query="${1}" # Use '%FMT%'
     local _workingDirectory="${2:-"."}"
     local _psql_opts="${3-"${_PSQL_OPTS}"}" # -tAF,
-    local _cfg_file="$(find ${_workingDirectory%/} -maxdepth 2 -type f -name 'config.yml' 2>/dev/null | sort -V | tail -n1)"
+    local _cfg_file="./config.yml"
+    [ ! -s "${_cfg_file}" ] && _cfg_file="$(find ${_workingDirectory%/} -maxdepth 3 -type f -name 'config.yml' 2>/dev/null | sort -V | tail -n1)"
     _export_postgres_config "${_cfg_file}" || return $?
     local _cmd="psql -h ${_DBHOST} -p ${_DBPORT:-"5432"} -U ${_DBUSER} -d ${_DBNAME}"
     if [ -z "${_query}" ]; then
@@ -1818,7 +1836,8 @@ function f_backup_postgresql() {
     local __doc__="Export the database from PostgreSQL (for testing upgrade)"
     local _exportTo="${1:-"./fullbackup_db_$(date +"%Y%m%d%H%M%S").sql.gz"}"
     local _workingDirectory="${2:-"."}"
-    local _cfg_file="$(find ${_workingDirectory%/} -maxdepth 2 -type f -name 'config.yml' 2>/dev/null | sort -V | tail -n1)"
+    local _cfg_file="./config.yml"
+    [ ! -s "${_cfg_file}" ] && _cfg_file="$(find ${_workingDirectory%/} -maxdepth 3 -type f -name 'config.yml' 2>/dev/null | sort -V | tail -n1)"
     _export_postgres_config "${_cfg_file}" || return $?
     PGGSSENCMODE=disable pg_dump -h ${_DBHOST} -p ${_DBPORT:-"5432"} -U ${_DBUSER} -d ${_DBNAME} -c -O -Z 6 -f "${_exportTo}" || return $?
     ls -l "${_exportTo}"
