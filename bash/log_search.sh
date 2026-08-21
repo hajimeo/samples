@@ -1396,7 +1396,7 @@ function f_threads_cpu_elapsed() {  # Java 17 only
     done
 }
 function f_analyse_multiple_dumps() {
-    local _individual_thread_dir="${1:-"."}"
+    local _individual_thread_dir="${1:-"./_threads"}"
     local _running_thread_search_re="${2-".sonatype."}"
     local _times="${3:-"3"}"
     # NOTE: This function should try using f_thread_*.out files
@@ -1451,6 +1451,10 @@ function f_analyse_multiple_dumps() {
     rg "Locked ownable synchronizers:" -l -g '*runnable*' ${_individual_thread_dir%/} | while read -r _f; do
         rg -H -c '^\s+- <0x' ${_f} | rg -v ":[1-2]$"
     done | sort -t":" -k1,1 -k2,2r
+    echo " "
+
+    echo "## Too many 'owned by' (top 5 and more than 10)"
+    rg -w 'owned by' --no-filename ${_individual_thread_dir%/} | sort | uniq -c | sort -nr | rg '^\s*\d\d+\s+' | head -n5
     echo " "
 
     echo "### May also want to use the below (need double-quotes):
@@ -2276,17 +2280,6 @@ function _human_friendly() {
         _result="$(bc <<<"scale=${_scale};${_result} / 1024") KB"
     fi
     echo "${_result}"
-}
-
-function _human_friendly_todo() {
-    # TODO: Too slow
-    local _num=$1
-    # NOTE: requires jn_utils.py in PYTHON_PATH (for python3)
-    # language=Python
-    echo "${_num}" | python3 -c "import sys, json
-import jn_utils as ju
-print(ju._human_readable_num(sys.stdin.read()))
-"
 }
 
 function _py3i_pipe() {
