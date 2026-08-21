@@ -68,6 +68,7 @@ alias codeIQ='codium -r . $HOME/IdeaProjects/insight-brain'
 alias opencode-cli='/Applications/OpenCode.app/Contents/MacOS/opencode-cli'
 alias opencode='/Applications/OpenCode.app/Contents/MacOS/OpenCode'
 alias chatgpt='open -a ChatGPT'
+alias gpt='open -a ChatGPT .'
 function pdf2md() {
     local _pdf="${1}"
     local _md="${2:-"${_pdf%.*}.md"}"
@@ -186,8 +187,8 @@ alias xml_path='python3 -c "import sys,pprint;from lxml import etree;t=etree.par
 # Strip XML / HTML to get text. NOTE: using sys.stdin.read. (TODO: maybe </br> without new line should add new line)
 alias strip_tags='python3 -c "import sys,html,re;rx=re.compile(r\"<[^>]+>\");print(html.unescape(rx.sub(\"\",sys.argv[1] if len(sys.argv) > 1 else sys.stdin.read().strip())))"'
 alias escape4json='python3 -c "import sys,json;print(json.dumps(sys.argv[1] if len(sys.argv) > 1 else sys.stdin.read().strip()))"'
-alias jp='pyvN && jupyter-lab --AiExtension.allowed_providers=ollama &> /tmp/jupyter-lab.out' # not using & as I tend to forget to stop
-alias jn='pyvN && jupyter-notebook &> /tmp/jupyter-notebook.out'
+alias jp='pyv && jupyter-lab --AiExtension.allowed_providers=ollama &> /tmp/jupyter-lab.out' # not using & as I tend to forget to stop
+alias jn='pyv && jupyter-notebook &> /tmp/jupyter-notebook.out'
 # php -S 0.0.0.0:7999
 alias startWeb='python3 -m http.server' # specify port (default:8000) if python2: python -m SimpleHTTPServer 8000
 
@@ -201,7 +202,8 @@ alias samurai='java -Xmx4g -jar $HOME/Apps/samurali/samurai.jar &>/tmp/samurai.o
 alias tda='java -Xmx4g -jar $HOME/Apps/tda-bin-2.4/tda.jar &>/tmp/tda.out &' #https://github.com/irockel/tda/releases/latest
 alias gcviewer='java -Xmx4g -jar $HOME/Apps/gcviewer-1.37-SNAPSHOT.jar'      # &>/tmp/gcviewer.out & # Mac can't stop this so not put in background
 alias gitbucket='java -jar gitbucket.war &> /tmp/gitbucket.out &'            #https://github.com/gitbucket/gitbucket/releases/download/4.34.0/gitbucket.war
-alias groovyi='JAVA_HOME="$JAVA_HOME_25" groovysh -e ":set interpreterMode true"'
+#alias groovyi='groovysh -e ":set interpreterMode true"'
+alias groovyi='JAVA_HOME="$JAVA_HOME_25" groovysh'
 alias jenkins='${JAVA_HOME_17%/}/bin/java -Djava.util.logging.config.file=$HOME/Apps/jenkins-logging.properties -jar $HOME/Apps/jenkins.war' #curl -o $HOME/Apps/jenkins.war -L https://get.jenkins.io/war-stable/2.426.3/jenkins.war
 # http (but https fails) + reverse proxy server https://www.mock-server.com/mock_server/getting_started.html
 alias mockserver='java -jar $HOME/Apps/mockserver-netty.jar'                                      #curl -o $HOME/Apps/mockserver-netty.jar -L https://search.maven.org/remotecontent?filepath=org/mock-server/mockserver-netty/5.11.1/mockserver-netty-5.11.1-jar-with-dependencies.jar
@@ -343,7 +345,7 @@ alias hblog='open -na "Google Chrome" --args --user-data-dir=$HOME/.chromep/haji
 #alias geminiWeb='open -na "Google Chrome" --args --app="https://gemini.google.com/u/1/app"'
 alias geminiWeb='open -na "Google Chrome" --args --user-data-dir=$HOME/.chromep/work --app="https://gemini.google.com/"'
 alias kapaWeb='open -na "Google Chrome" --args --user-data-dir=$HOME/.chromep/work --app="https://chat.kapa.ai/dadecd3d-2984-46d3-9c6b-09df9a67668c"'
-alias goose-app='open -na "Goose"'
+alias goose-app='/Applications/Goose.app/Contents/MacOS/Goose . &>/tmp/goose_$$.out & echo "Goose started. Log: /tmp/goose_$$.out" >&2'
 # pretending windows chrome on Linux
 #alias winchrome='/opt/google/chrome/chrome --user-data-dir=$HOME/.chromep --proxy-server=socks5://localhost:38081  --user-agent="Mozilla/5.0 (Windows NT 10.0; WOW64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/88.0.4324.96 Safari/537.36"'
 
@@ -1451,7 +1453,7 @@ function startCommonUtils() {
     fi
 
     # This part is not specific to local AI
-    source $HOME/.pyvenv/bin/activate || return $?
+    source $HOME/.pyvenv_new/bin/activate || return $?
     if [ -s "$HOME/.mcps.json" ]; then
         # This is for Open WebUI as it doesn't support stdio for MCP
         echo "# Starting mcpo (127.0.0.1:48000) with config $HOME/.mcps.json" >&2
@@ -1472,7 +1474,7 @@ function startCommonUtils() {
 
         if [[ "${_with_mlx}" =~ ^[yY] ]]; then
             # NOTE: Currently vllm-mlx does not work with CodeX app, but as this function is for Open WebUI, starting.
-            #       Not checking ' && type $HOME/.pyvenv/bin/vllm-mlx &>/dev/null' as it should fail with error
+            #       Not checking ' && type $HOME/.pyvenv_new/bin/vllm-mlx &>/dev/null' as it should fail with error
             #       Using https://huggingface.co/mlx-community/gemma-4-12B-it-qat-4bit
             vllm-mlx serve mlx-community/gemma-4-12B-it-qat-4bit \
                 --enable-auto-tool-choice \
@@ -1496,7 +1498,7 @@ function startCommonUtils() {
 
         # NOTE: If pandasai or jupyterlab-ai, no webUI required
         #       Also, not starting this because I'm using Open WebUI app
-        #if  [ -s "$HOME/.pyvenv/bin/open-webui" ]; then
+        #if  [ -s "$HOME/.pyvenv_new/bin/open-webui" ]; then
         #    open-webui serve --host 127.0.0.1 --port 48080 &>/tmp/open-webui.log &
         #fi
     fi
