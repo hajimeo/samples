@@ -267,8 +267,9 @@ EOF
     fi
 }
 
-#f_setup_python "https://pypi.org/"
+#f_setup_python "https://pypi.org/" "${HOME%/}/.pyvenv_3.12"
 #f_setup_python "https://nxrm3helmha-k8s.standalone.localdomain/repository/pypi-proxy/" "${HOME%/}/.pyvenv_new"
+# To troubleshooot: pip show {package}
 function f_setup_python() {
     local _pypi_proxy_url="$1"
     local _venv_path="${2-"${HOME%/}/.pyvenv"}"
@@ -305,25 +306,29 @@ function f_setup_python() {
     #   %load_ext memory_profiler
     #   %mprun -f al.etl al.analyse_logs()
     python3 -m pip install -U ${_i_opt} pyjq 2>/dev/null # TODO: as of this typing, this fails against python 3.8 (3.7 looks OK)
+    python3 -m pip install -U ${_i_opt} pandas duckdb sqlalchemy matplotlib 2>/dev/null # TODO: as of this typing, this fails against python 3.8 (3.7 looks OK)
 
     ## Important packages (Jupyter and pandas)
     # TODO: Autocomplete doesn't work with Lab and NB if different version is used. @see https://github.com/ipython/ipython/issues/11530
     #python3 -m pip install -U ${_i_opt} ipython==7.1.1 || return $?  #prettytable==0.7.2
-    python3 -m pip install -U ${_i_opt} ipython || return $?  #prettytable==0.7.2
+    #python3 -m pip install -U ${_i_opt} ipython || return $?  #prettytable==0.7.2
     #python3 -m pip install -U ${_i_opt} modin[ray] --log /tmp/pip_$$.log    # it's OK if fails
-    python3 -m pip install -U ${_i_opt} jupyter jupyterlab pandas dfsql duckdb --log /tmp/pip_$$.log || return $?   #ipython
+    #python3 -m pip install -U ${_i_opt} jupyter jupyterlab --log /tmp/pip_$$.log || return $?   #ipython
     #python3 -m pip install -U ${_i_opt} pandasai langchain-ollama --log /tmp/pip_$$.log
+    python3 -m pip install -U ${_i_opt} jupyterlab "jupyter-ai[all]" --log /tmp/pip_$$.log
     # Reinstall: python3 -m pip uninstall -y jupyterlab && python3 -m pip install jupyterlab
     # Must-have packages. NOTE: Initially I thought pandasql looked good but it's actually using sqlite, and slow, and doesn't look like maintained any more.
-    python3 -m pip install -U ${_i_opt} jupyter_kernel_gateway sqlalchemy ipython-sql pivottablejs matplotlib --log /tmp/pip_$$.log
-    python3 -m pip install -U ${_i_opt} psycopg2-binary --log /tmp/pip_$$.log
-    python3 -m pip install -U ${_i_opt} jupyter-ai --log /tmp/pip_$$.log
+    #python3 -m pip install -U ${_i_opt} jupyter_kernel_gateway ipython-sql pivottablejs --log /tmp/pip_$$.log
+    #python3 -m pip install -U ${_i_opt} psycopg2-binary --log /tmp/pip_$$.log
+    # as of today, the below may need first
+    #python3 -m pip install -U ${_i_opt} "litellm==1.82.6" "langchain-core>=1.4.7,<2.0.0"
+    python3 -m pip install -U ${_i_opt} jupyter-ai-jupyternaut --log /tmp/pip_$$.log    #This installs jupyter-server-mcp
     # pandas_profiling may fail to install. pixiedust works only with jupyter-notebook
     #python3 -m pip install -U ${_i_opt} pandas_profiling pixiedust --log /tmp/pip_$$.log
     #   import pandas_profiling as pdp
     #   pdp.ProfileReport(df)
     # NOTE: In case I might use jupyter notebook, still installing this
-    python3 -m pip install -U ${_i_opt} bash_kernel --log /tmp/pip_$$.log && python3 -m bash_kernel.install
+    #python3 -m pip install -U ${_i_opt} bash_kernel --log /tmp/pip_$$.log && python3 -m bash_kernel.install
     # For Spark etc., BeakerX http://beakerx.com/ NOTE: this works with only python3
     #python3 -m pip install -U ${_i_opt} beakerx && beakerx-install
 
@@ -356,7 +361,10 @@ function f_setup_python() {
 
     ## LLM/AI related packages
     python3 -m pip install ${_i_opt} ollama anthropic pydantic
-    python3 -m pip install ${_i_opt} streamlit duckdb requests watchdog
+    python3 -m pip install ${_i_opt} streamlit requests watchdog
+
+    _log "INFO" "Jupyter extension list"
+    jupyter server extension list
 
     _log "INFO" "Customising Jupyter with f_jupyter_util..."
     f_jupyter_util
@@ -370,6 +378,7 @@ function f_jupyter_util() {
     fi
     # If not local test, would like to always overwrite ...
     _check_update "${_dir%/}/jn_utils.py" "${_DOWNLOAD_FROM_BASE%/}/python/" "Y" || return $?
+    _check_update "${_dir%/}/jn_utils_v2.py" "${_DOWNLOAD_FROM_BASE%/}/python/" "Y" || return $?
     _check_update "${_dir%/}/get_json.py" "${_DOWNLOAD_FROM_BASE%/}/python/" "Y" || return $?
     _check_update "${_dir%/}/analyse_logs.py" "${_DOWNLOAD_FROM_BASE%/}/python/" "Y" || return $?
 
@@ -409,6 +418,8 @@ import pandas as pd
 import get_json as gj
 import jn_utils as ju
 import analyse_logs as al
+import jn_utils_v2 as juV2
+import analyse_logs_v2 as alV2
 get_ipython().run_line_magic("matplotlib", "inline")
 EOF
 }
