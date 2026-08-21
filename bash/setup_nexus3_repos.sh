@@ -810,11 +810,11 @@ function _populate_docker_hosted() {
 # Example 5: Large docker file
 #   #dd if=/dev/urandom of=./test_1MB_random.data bs=1024 count=1024
 #   dd if=/dev/urandom of=./test_1GB_random.data bs=$((1024 * 1024)) count=1024
-#   _image_name="dummy-img-1gb"
-#   _docker_build "scratch" "${_image_name}:$(date +'%Y%m%d')" "" "./test_1GB_random.data"
-#   #docker inspect ${_image_name}:$(date +'%Y%m%d') | grep Size
-#   docker tag ${_image_name}:$(date +'%Y%m%d') local.standalone.localdomain:18182/${_image_name}:$(date +'%Y%m%d')
-#   docker push local.standalone.localdomain:18182/${_image_name}:$(date +'%Y%m%d')
+#   _image_prefix="dummy-img-1gb"
+#   _docker_build "scratch" "${_image_prefix}:$(date +'%Y%m%d')" "" "./test_1GB_random.data"
+#   #docker inspect ${_image_prefix}:$(date +'%Y%m%d') | grep Size
+#   docker tag ${_image_prefix}:$(date +'%Y%m%d') local.standalone.localdomain:18182/${_image_prefix}:$(date +'%Y%m%d')
+#   docker push local.standalone.localdomain:18182/${_image_prefix}:$(date +'%Y%m%d')
 function _docker_build() {
     # NOTE: docker build -f does not work (bug?)
     local _base_img="${1:-"alpine:latest"}"    # dh1.standalone.localdomain:15000/alpine:3.7
@@ -2360,10 +2360,10 @@ function p_client_container() {
     local _image_tag="${3:-"fedora:41"}"
     local _cmd="${4:-"${r_DOCKER_CMD:-"docker"}"}"
 
-    local _image_name="${_name}:latest"
-    local _existing_id="`${_cmd} images -q ${_image_name}`"
+    local _image_prefix="${_name}:latest"
+    local _existing_id="`${_cmd} images -q ${_image_prefix}`"
     if [ -n "${_existing_id}" ]; then
-        _log "INFO" "Image ${_image_name} (${_existing_id}) already exists. Running / Starting a container..."
+        _log "INFO" "Image ${_image_prefix} (${_existing_id}) already exists. Running / Starting a container..."
     else
         local _build_dir="./${FUNCNAME[0]}_$$"
         if [ ! -d "${_build_dir}" ]; then
@@ -2393,8 +2393,8 @@ function p_client_container() {
         _log "DEBUG" "$(cat ${_dockerfile})"
 
         cd ${_build_dir} || return $?
-        _log "INFO" "Building ${_image_name} ... (outputs:${_LOG_FILE_PATH:-"/dev/null"})"
-        ${_cmd} build --rm -t ${_image_name} . 2>&1 >>${_LOG_FILE_PATH:-"/dev/null"} || return $?
+        _log "INFO" "Building ${_image_prefix} ... (outputs:${_LOG_FILE_PATH:-"/dev/null"})"
+        ${_cmd} build --rm -t ${_image_prefix} . 2>&1 >>${_LOG_FILE_PATH:-"/dev/null"} || return $?
         cd -
         if [ -n "${_build_dir}" ] && [ -d "${_build_dir}" ]; then
             rm -rf ${_build_dir}
@@ -2410,7 +2410,7 @@ function p_client_container() {
     [ -n "${_DOCKER_NETWORK_NAME}" ] && _ext_opts="--network=${_DOCKER_NETWORK_NAME} ${_ext_opts}"
     _log "INFO" "Running or Starting '${_name}'"
     # TODO: not right way to use 3rd and 4th arguments. Also if two IPs are configured, below might update /etc/hosts with 2nd IP.
-    _docker_run_or_start "${_name}" "${_ext_opts}" "${_image_name} /sbin/init" "${_cmd}" || return $?
+    _docker_run_or_start "${_name}" "${_ext_opts}" "${_image_prefix} /sbin/init" "${_cmd}" || return $?
     _container_add_NIC "${_name}" "bridge" "Y" "${_cmd}"
 
     # Try updating /etc/resolv.conf of the container
@@ -3058,6 +3058,7 @@ function f_start_dummy_webhook_responder() {
     done
 }
 
+#_PROXY_KEY=$HOME/IdeaProjects/samples/golang/HttpProxy/proxy.key _PROXY_CERT=$HOME/IdeaProjects/samples/golang/HttpProxy/proxy.crt _REPL_CERT="Y" f_start_forward_proxy
 #_URL_REGEX="sonatype.com" _DEBUG2="Y" _REPL_CERT="Y" f_start_forward_proxy
 function f_start_forward_proxy() {
     local __doc__="Setup and start simple HTTP/HTTPS/forward proxy server"
@@ -3066,8 +3067,8 @@ function f_start_forward_proxy() {
     local _repl_cert="${3:-"${_REPL_CERT}"}"
     local _debug="${4-"${_repl_cert}"}"
     local _url_regex="${5-"${_PROXY_INCLDE_REGEX}"}"
-    local _key="${6}"
-    local _cert="${7}"
+    local _key="${6:-"${_PROXY_KEY}"}"
+    local _cert="${7:-"${_PROXY_CERT}"}"
     local _debug2="${8-"${_DEBUG2}"}"
 
     if [ ! -d "${_install_dir%/}" ]; then
@@ -3088,9 +3089,9 @@ function f_start_forward_proxy() {
 
     if [[ "${_repl_cert}" =~ ^(y|Y) ]]; then
         if [ -z "${_key}" ] || [ -z "${_cert}" ]; then
-            _cmd="${_cmd} --replCert" # --proto https
+            _cmd="${_cmd} --replCert --cache ${_install_dir}" # --proto https
         else
-            _cmd="${_cmd} --replCert --key ${_key} --pem ${_cert}"
+            _cmd="${_cmd} --replCert --key ${_key} --crt ${_cert}"
         fi
     fi
 
@@ -3125,14 +3126,15 @@ function f_setup_forward_proxy() {
         elif [ -s "${_SHARE_DIR%/}/httpproxy/proxy.crt" ]; then
             _proxy_ca_cert="${_SHARE_DIR%/}/httpproxy/proxy.crt"
         fi
-
-        _log "INFO" "No proxy CA cert provided but ${_proxy_ca_cert} exists. Using this ..."
-        sleep 1
     fi
-    if [ -s "${_proxy_ca_cert}" ]; then
-        _log "INFO" "Trusting proxy CA cert ${_proxy_ca_cert} ..."
-        f_api "/service/rest/v1/security/ssl/truststore" "$(cat "${_proxy_ca_cert}")"
+    if [ ! -s "${_proxy_ca_cert}" ]; then
+        _log "WARN" "No proxy CA cert specified. Skipping trusting proxy CA cert by using '/service/rest/v1/security/ssl/truststore' ..."
+        _log "INFO" "Please manually configure from ${_NEXUS_URL%/}/#admin/security/sslcertificates"
+        _log "INFO" "The certificate can be found from ${_TMP%/}/httpproxy_\$\$.log"
+        return 0
     fi
+    _log "INFO" "Trusting proxy CA cert ${_proxy_ca_cert} ..."
+    f_api "/service/rest/v1/security/ssl/truststore" "$(cat "${_proxy_ca_cert}")"
 }
 
 function _install_reverse_proxy() {
@@ -3307,7 +3309,7 @@ function f_setup_saml_simplesaml() {
     f_put_realms "SamlRealm"
     # Escaping \n on Mac is complicated so just removing new lines
     local _idp_meta_str="$(cat "${_idp_metadata}" | sed 's/^[ \t]*//;s/[ \t]*$//;s/\"/\\"/g' | tr -d '\n')"
-    if ! f_api "/service/rest/v1/security/saml" "{\"entityId\":\"${_entityId}\",\"idpMetadata\":\"${_idp_meta_str}\",\"usernameAttribute\":\"uid\",\"firstNameAttribute\":\"givenName\",\"lastNameAttribute\":\"sn\",\"emailAttribute\":\"eduPersonPrincipalName\",\"groupsAttribute\":\"eduPersonAffiliation\",\"validateResponseSignature\":false,\"validateAssertionSignature\":false}" "PUT"; then
+    if ! f_api "/service/rest/v1/security/saml" "{\"entityId\":\"${_entityId}\",\"idpMetadata\":\"${_idp_meta_str}\",\"usernameAttribute\":\"uid\",\"firstNameAttribute\":\"givenName\",\"lastNameAttribute\":\"sn\",\"emailAttribute\":\"eduPersonPrincipalName\",\"groupsAttribute\":\"Groups\",\"validateResponseSignature\":false,\"validateAssertionSignature\":false}" "PUT"; then
         echo "If SAML is already configured, please try 'f_api /service/rest/v1/security/saml \"\" DELETE' first."
         return 1
     fi
@@ -4234,7 +4236,7 @@ function f_upload_dummies_docker() {
     local _host_port="${1}"
     local _how_many="${2:-"10"}"    # this number * _parallel is the actual number of images
     local _parallel="${3:-"1"}"
-    local _image_name="${4:-"${_IMAGE_NAME}"}"  # To create multiple tags under *one* image. If empty, dummy${i}-${j}
+    local _image_prefix="${4:-"${_IMAGE_NAME}"}"  # To create multiple tags under *one* image. If empty, dummy${i}-${j}
     local _base_img="${5:-"${_BASE_IMG:-"alpine:latest"}"}"    # "redhat/ubi9:9.4-1181"
     local _tag_prefix="${6:-"${_DOCKER_TAG_PFX:-"tag-"}"}"
     local _usr="${7:-"${_ADMIN_USER}"}"
@@ -4256,8 +4258,8 @@ function f_upload_dummies_docker() {
         fi
         for j in $(eval "seq 1 ${_parallel}"); do
             local _img="dummy${i}-${j}:${_tag_prefix}$(date +'%H%M%S')"
-            if [ -n "${_image_name}" ]; then
-                _img="${_image_name}:${_tag_prefix}${i}-${j}-$(date +'%H%M%S')"
+            if [ -n "${_image_prefix}" ]; then
+                _img="${_image_prefix}:${_tag_prefix}${i}-${j}-$(date +'%H%M%S')"
             fi
             _log "INFO" "Populating ${_host_port} with ${_img} / base image: ${_base_img} ..."
             (_DOCKER_NO_LOGIN="Y" _populate_docker_hosted "${_base_img}" "${_host_port}" "${_img}" &> ${_TMP%/}/${FUNCNAME[0]}_$$_${i}_${j}.out && echo "[$(date +'%H:%M:%S')] INFO Pushing dummy image '${_img}' (${_base_img}) to ${_host_port} completed" || echo "[$(date +'%H:%M:%S')] WARN '_DOCKER_NO_LOGIN="Y" _populate_docker_hosted "${_base_img}" "${_host_port}" "${_img}"' failed") &
@@ -4288,12 +4290,12 @@ function f_gen_delete_dummy_docker_images() {
 
 function f_upload_dummies_docker_with_oras() {
     local __doc__="Upload dummy docker images into docker hosted repository with ORAS"
-    local _host_port="${1:-"localhost:8081/docker-hosted"}"
+    local _host_port="${1:-"localhost:18181"}" # If path based, localhost:8081/docker-hosted
     local _how_many="${2:-"10"}"    # this number * _parallel is the actual number of images
-    local _parallel="${3:-"1"}"
-    local _image_name="${4:-"${_IMAGE_NAME}"}"  # To create multiple tags under *one* image. If empty, dummy${i}-${j}
+    local _parallel="${3:-"3"}"     # Also used in the tag
+    local _image_prefix="${4:-"${_IMAGE_NAME:-"dummy"}"}"  # To create multiple tags under *one* image. If empty, dummy${i}-${j}
     local _src_registry="${5:-"docker.io/library/alpine:3.7"}"
-    local _tag_prefix="${6:-"${_DOCKER_TAG_PFX:-"tag-"}"}"
+    local _tag_prefix="${6:-"${_DOCKER_TAG_PFX:-"tag"}"}"
     local _usr="${7:-"${_ADMIN_USER}"}"
     local _pwd="${8:-"${_ADMIN_PWD}"}"
 
@@ -4307,12 +4309,10 @@ function f_upload_dummies_docker_with_oras() {
             _log "INFO" "Changed parallel from ${_parallel} to ${_partial} to not exceed total of ${_how_many}"
         fi
         for j in $(eval "seq 1 ${_parallel}"); do
-            local _img="dummy${i}-${j}:${_tag_prefix}$(date +'%H%M%S')"
-            if [ -n "${_image_name}" ]; then
-                _img="${_image_name}:${_tag_prefix}${i}-${j}-$(date +'%H%M%S')"
-            fi
-            _log "INFO" "Executing 'f_upload_dummy_docker_with_oras "${_host_port}"  "${_img}" "${_src_registry}"' ..."
-            f_upload_dummy_docker_with_oras "${_host_port}"  "${_img}" "${_src_registry}" &> ${_TMP%/}/${FUNCNAME[0]}_$$_${i}_${j}.out &
+            _count=$((_count + 1))
+            local _img="${_image_prefix}-${i}:${_tag_prefix}-${j}"
+            echo "# Executing 'f_upload_dummy_docker_with_oras "${_host_port}"  "${_img}" "${_src_registry}"' ..."
+            f_upload_dummy_docker_with_oras "${_host_port}"  "${_img}" "${_src_registry}" &> ${_TMP%/}/${FUNCNAME[0]}_$$_${_count}.out &
             if [ ${_count} -ge ${_how_many} ]; then
                 break
             fi
