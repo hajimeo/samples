@@ -697,7 +697,10 @@ function iqStart() {
         _jar_file="$(find -L "${_base_dir%/}" -maxdepth 3 -type f -name 'insight-brain-service*.jar' 2>/dev/null | sort -V | tail -n1)"
     fi
     [ -z "${_jar_file}" ] && return 11
-    local _cfg_file="$(find -L "${_base_dir%/}" -maxdepth 3 -type f -name 'spt-boot.yml' 2>/dev/null | sort -V | tail -n1)"
+    local _cfg_file="./config.yml"
+    if [ ! -s "${_cfg_file}" ]; then
+        _cfg_file="$(find -L "${_base_dir%/}" -maxdepth 3 -type f -name 'spt-boot.yml' 2>/dev/null | sort -V | tail -n1)"
+    fi
     # If customised yml file is not found, try to find config.yml and update it with some default values
     if [ -z "${_cfg_file}" ]; then
         _cfg_file="$(find -L "${_base_dir%/}" -maxdepth 3 -type f -name 'config.yml' 2>/dev/null | sort -V | tail -n1)"
