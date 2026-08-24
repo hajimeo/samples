@@ -6,6 +6,7 @@
 #   1. Start Ollama with AI_MODEL on AI_API_URL
 #   2. `cd` to the extracted support zip which has (nexus.log, clm-server.log, request.log, outbound-request.log, audit.log)
 #   3. Run this script: streamlit run python/support_app.py --client.toolbarMode="viewer"
+import gzip
 import os
 import re
 
@@ -102,6 +103,139 @@ except Exception as e:
     st.warning("Some log files are missing or could not be read. The AI assistant may have limited data: " + str(e))
     pass
 
+# Column layouts + regexes for nexus.log/clm-server.log and request.log/outbound-request.log,
+# so the AI can query real columns instead of regex-parsing the raw `line` itself.
+# Ported from python/support-app/jn_utils_v2.py (_gen_regex_for_app_logs / _gen_regex_for_request_logs)
+# so this script stays a single file with no extra dependency.
+APP_SUPERSET_COLUMNS = ["date_time", "loglevel", "thread", "node", "user", "class", "message"]
+APP_LOG_PATTERNS = [
+    (["date_time", "loglevel", "thread", "node", "user", "class", "message"],
+     r'^(\d\d\d\d-\d\d-\d\d.\d\d:\d\d:\d\d[.,0-9]*)[^ ]* +([^ ]+) +\[([^]]+)\][^ ]* ([^ ]*) ([^ ]*) ([^ ]+) - (.*)'),
+    (["date_time", "loglevel", "thread", "user", "class", "message"],
+     r'^(\d\d\d\d-\d\d-\d\d.\d\d:\d\d:\d\d[.,0-9]*)[^ ]* +([^ ]+) +\[([^]]+)\][^ ]* ([^ ]*) ([^ ]+) - (.*)'),
+]
+APP_LOG_DEFAULT = (["date_time", "loglevel", "message"],
+                    r'^(\d\d\d\d-\d\d-\d\d.\d\d:\d\d:\d\d[.,0-9]*)[^ ]* +([^ ]+) +(.+)')
+
+REQUEST_SUPERSET_COLUMNS = ["clientHost", "l", "user", "date", "requestURL", "statusCode", "headerContentLength",
+                            "bytesSent", "elapsedTime", "headerUserAgent", "thread", "misc"]
+REQUEST_LOG_PATTERNS = [
+    (["clientHost", "l", "user", "date", "requestURL", "statusCode", "headerContentLength", "bytesSent",
+      "elapsedTime", "headerUserAgent", "thread"],
+     r'^([^ ]+) ([^ ]+) ([^ ]+) \[([^\]]+)\] "([^"]*)" ([^ ]+) ([^ ]+) ([^ ]+) ([^ ]+) "([^"]*)" \[([^\]]+)\]'),
+    (["clientHost", "l", "user", "date", "requestURL", "statusCode", "headerContentLength", "bytesSent",
+      "elapsedTime", "headerUserAgent", "thread", "misc"],
+     r'^([^ ]+) ([^ ]+) ([^ ]+) \[([^\]]+)\] "([^"]*)" ([^ ]+) ([^ ]+) ([^ ]+) ([^ ]+) "([^"]*)" \[([^\]]+)\] (.+)'),
+    (["clientHost", "l", "user", "date", "requestURL", "statusCode", "bytesSent", "elapsedTime", "headerUserAgent",
+      "thread"],
+     r'^([^ ]+) ([^ ]+) ([^ ]+) \[([^\]]+)\] "([^"]*)" ([^ ]+) ([^ ]+) ([^ ]+) "([^"]*)" \[([^\]]+)\]'),
+    (["clientHost", "l", "user", "date", "requestURL", "statusCode", "headerContentLength", "bytesSent",
+      "elapsedTime", "headerUserAgent"],
+     r'^([^ ]+) ([^ ]+) ([^ ]+) \[([^\]]+)\] "([^"]*)" ([^ ]+) ([^ ]+) ([^ ]+) ([^ ]+) "([^"]*)"'),
+    (["clientHost", "l", "user", "date", "requestURL", "statusCode", "bytesSent", "elapsedTime", "headerUserAgent"],
+     r'^([^ ]+) ([^ ]+) ([^ ]+) \[([^\]]+)\] "([^"]*)" ([^ ]+) ([^ ]+) ([^ ]+) "([^"]+)'),
+    (["clientHost", "l", "user", "date", "requestURL", "statusCode", "bytesSent", "elapsedTime", "misc"],
+     r'^([^ ]+) ([^ ]+) ([^ ]+) \[([^\]]+)\] "([^"]*)" ([^ ]+) ([^ ]+) ([^ ]+) ([^ ]+)'),
+    (["clientHost", "l", "date", "requestURL", "statusCode", "bytesSent", "elapsedTime", "user", "misc"],
+     r'^([^ ]+) ([^ ]+) \[([^\]]+)\] "([^"]*)" http_status=([^ ]+) http_content_length=([^ ]+) latency=([^ ]+) user=([^ ]+) (.+)'),
+    # Nexus outbound-request.log
+    (["date", "user", "requestURL", "statusCode", "bytesSent", "elapsedTime", "misc"],
+     r'^\[([^\]]+)\] ([^ ]+) "([^"]*)" ([^ ]+) ([^ ]+) ([^ ]+) (.+)'),
+]
+REQUEST_LOG_DEFAULT = (["clientHost", "l", "user", "date", "requestURL", "statusCode", "bytesSent", "elapsedTime"],
+                        r'^([^ ]+) ([^ ]+) ([^ ]+) \[([^\]]+)\] "([^"]*)" ([^ ]+) ([^ ]+) ([0-9]+)')
+
+def _detect_log_pattern(filepath, candidates, default, line_filter=None, max_lines=200, max_checks=5):
+    """Reads a handful of sample lines from filepath and returns the (columns, pattern) of the first
+    candidate whose regex matches at least one of them; falls back to `default` if none match."""
+    opener = gzip.open if filepath.endswith(".gz") else open
+    checking_lines = []
+    try:
+        with opener(filepath, "rt", errors="ignore") as f:
+            for i, raw_line in enumerate(f):
+                if i >= max_lines or len(checking_lines) >= max_checks:
+                    break
+                candidate_line = raw_line.rstrip("\n")
+                if not candidate_line:
+                    continue
+                if line_filter is not None and not line_filter(candidate_line):
+                    continue
+                checking_lines.append(candidate_line)
+    except Exception:
+        return default
+    if not checking_lines:
+        return default
+    for columns, pattern in candidates:
+        if any(re.search(pattern, l) for l in checking_lines):
+            return columns, pattern
+    return default
+
+def _build_extract_sql(paths, pattern, columns, superset, category_label):
+    """Builds a SELECT that extracts `columns` from `line` via regexp_extract (as a named struct, since
+    DuckDB's integer-group form of regexp_extract only supports up to 9 groups), aligned to `superset`
+    (missing columns become NULL), plus a `matched` flag and the raw `line`/`source_file` as a fallback."""
+    select_cols = [(f"ext.{c} AS {c}" if c in columns else f"CAST(NULL AS VARCHAR) AS {c}") for c in superset]
+    names_list = "[" + ", ".join(f"'{c}'" for c in columns) + "]"
+    escaped_pattern = pattern.replace("'", "''")
+    return f"""
+        SELECT {', '.join(select_cols)}, matched, '{category_label}' AS category, source_file, line
+        FROM (
+            SELECT
+                line,
+                filename AS source_file,
+                regexp_extract(line, '{escaped_pattern}', {names_list}) AS ext,
+                regexp_matches(line, '{escaped_pattern}') AS matched
+            FROM read_csv(
+                {paths},
+                columns={{'line': 'VARCHAR'}},
+                sep='\\x01',
+                quote='',
+                escape='',
+                header=false,
+                filename=true,
+                strict_mode=false
+            )
+            WHERE line != ''
+        )
+    """
+
+def setup_typed_log_views(con, file_categories):
+    """Creates `application_logs` (nexus/clm-server) and `request_logs` (request/outbound-request) views
+    with real, typed columns extracted from `line`, instead of the AI having to regex the raw line itself.
+    Rows that don't match any known log format keep `matched=false` and their raw `line`."""
+
+    def is_app_log_line_start(line):
+        return re.match(r'^\d\d\d\d-\d\d-\d\d.\d\d:\d\d:\d\d', line) is not None
+
+    def build_view(view_name, categories, candidates, default, superset, numeric_cols, line_filter=None):
+        groups = {}  # (columns tuple, pattern, category) -> [paths]
+        for category in categories:
+            for path in file_categories.get(category, []):
+                columns, pattern = _detect_log_pattern(path, candidates, default, line_filter=line_filter)
+                groups.setdefault((tuple(columns), pattern, category), []).append(path)
+        if not groups:
+            return
+        union_parts = [_build_extract_sql(paths, pattern, list(columns), superset, category)
+                        for (columns, pattern, category), paths in groups.items()]
+        cast_cols = [(f"TRY_CAST({c} AS BIGINT) AS {c}" if c in numeric_cols else c) for c in superset]
+        inner_sql = " UNION ALL ".join(union_parts)
+        con.execute(f"""
+            CREATE OR REPLACE VIEW {view_name} AS
+            SELECT {', '.join(cast_cols)}, matched, category, source_file, line
+            FROM ({inner_sql})
+        """)
+
+    build_view("application_logs", ["application"], APP_LOG_PATTERNS, APP_LOG_DEFAULT, APP_SUPERSET_COLUMNS,
+               numeric_cols=set(), line_filter=is_app_log_line_start)
+    build_view("request_logs", ["request", "outbound"], REQUEST_LOG_PATTERNS, REQUEST_LOG_DEFAULT,
+               REQUEST_SUPERSET_COLUMNS, numeric_cols={"statusCode", "headerContentLength", "bytesSent", "elapsedTime"})
+
+try:
+    setup_typed_log_views(con, find_log_files())
+except Exception as e:
+    st.warning("Could not build typed application_logs/request_logs views. The AI assistant may have limited data: " + str(e))
+    pass
+
 # 2. Local AI Query Generator (Ollama API)
 def ask_local_ai(user_prompt):
     """Asks Qwen2.5-Coder to translate a natural language question into DuckDB SQL."""
@@ -110,10 +244,23 @@ def ask_local_ai(user_prompt):
     # We guide the AI with a strict system prompt so it only returns valid SQL
     system_context = """
     You are an expert data engineer translating questions into DuckDB SQL queries.
-    The user is querying a DuckDB view named `logs`, built from plain-text log files.
-    Columns: line (the raw log line text), category ('application', 'request', or 'audit'), source_file (originating file path).
-    'application' comes from nexus.log, 'request' comes from request.log/outbound-request.log, 'audit' comes from audit.log.
-    Query the `logs` view directly, e.g. `SELECT * FROM logs WHERE category = 'application'`.
+    Three views are available:
+
+    1. `logs` - every log line, raw text. Columns: line (raw log line text), category ('application', 'request', 'outbound', or 'audit'), source_file.
+       Use this for free-text search (e.g. `SELECT * FROM logs WHERE category = 'audit' AND line ILIKE '%password%'`).
+
+    2. `application_logs` - parsed nexus.log / clm-server.log lines. Columns: date_time, loglevel, thread, node, user, class, message,
+       matched (true if the line was successfully parsed into these columns), category, source_file, line (raw fallback).
+       Example: `SELECT date_time, class, message FROM application_logs WHERE loglevel = 'ERROR' ORDER BY date_time`
+
+    3. `request_logs` - parsed request.log / outbound-request.log lines. Columns: clientHost, l, user, date, requestURL, statusCode
+       (integer), headerContentLength (integer), bytesSent (integer), elapsedTime (integer, ms), headerUserAgent, thread, misc,
+       matched, category, source_file, line (raw fallback).
+       Example: `SELECT requestURL, AVG(elapsedTime) AS avg_ms FROM request_logs WHERE matched GROUP BY requestURL ORDER BY avg_ms DESC LIMIT 10`
+
+    Not every log line matches the known formats (multi-line stack traces, unusual banners, etc.) - for those rows in
+    application_logs/request_logs, matched=false and the typed columns are NULL; filter with `WHERE matched` when you only
+    want successfully parsed rows, or fall back to the `logs` view for full-text search across everything.
 
     CRITICAL: Return ONLY the raw SQL code block. Do not include markdown formatting like ```sql. Do not include explanations.
     """
