@@ -230,33 +230,31 @@ def setup_typed_log_views(con, file_categories):
     build_view("request_logs", ["request", "outbound"], REQUEST_LOG_PATTERNS, REQUEST_LOG_DEFAULT,
                REQUEST_SUPERSET_COLUMNS, numeric_cols={"statusCode", "headerContentLength", "bytesSent", "elapsedTime"})
 
-AUDIT_LOG_COLUMNS = {
-    "timestamp": "VARCHAR",
-    "nodeId": "VARCHAR",
-    "type": "VARCHAR",
-    "domain": "VARCHAR",
-    "initiator": "VARCHAR",
-    "context": "VARCHAR",
-    "attributes": "JSON",
-}
-
 def setup_audit_log_view(con, file_categories):
     """Creates an `audit_logs` view from audit.log / audit-YYYY-MM-DD.log.gz, which is newline-delimited JSON (ndjson).
-    Columns are pinned explicitly (rather than auto-inferred) because the nested `attributes` object's shape varies
-    per audit entry type; keeping it as JSON avoids schema-drift errors across rotated/gzipped files. Lines that
-    aren't valid JSON become a row with parsed=false and all typed columns NULL, so nothing is silently dropped."""
+    NXRM3 and IQ Server use different top-level shapes for this file (NXRM3: nodeId/initiator/context/attributes;
+    IQ: username/remoteIpAddress/userAgent/data), so rather than pinning one schema's columns (which would silently
+    lose the other product's fields), each line is kept as a single `json` column (DuckDB's native JSON type) via
+    read_json_objects - no schema inference, so nothing is dropped due to a shape mismatch. `timestamp`/`domain`/`type`
+    are pulled out as plain columns since both products use those same three key names; everything else (initiator vs.
+    username, attributes vs. data, etc.) should be reached via json_extract_string(json, '$.fieldName') on demand.
+    Lines that aren't valid JSON get json=NULL/parsed=false, so nothing is silently dropped."""
     paths = file_categories.get("audit", [])
     if not paths:
         return
-    columns_sql = "{" + ", ".join(f"'{c}': '{t}'" for c, t in AUDIT_LOG_COLUMNS.items()) + "}"
-    select_cols = ", ".join(AUDIT_LOG_COLUMNS.keys())
     con.execute(f"""
         CREATE OR REPLACE VIEW audit_logs AS
-        SELECT {select_cols}, timestamp IS NOT NULL AS parsed, 'audit' AS category, filename AS source_file
-        FROM read_json(
+        SELECT
+            json_extract_string(json, '$.timestamp') AS timestamp,
+            json_extract_string(json, '$.domain') AS domain,
+            json_extract_string(json, '$.type') AS type,
+            json,
+            json IS NOT NULL AS parsed,
+            'audit' AS category,
+            filename AS source_file
+        FROM read_json_objects(
             {paths},
             format='newline_delimited',
-            columns={columns_sql},
             ignore_errors=true,
             filename=true
         )
@@ -298,10 +296,12 @@ def ask_local_ai(user_prompt):
        matched, category, source_file, line (raw fallback).
        Example: `SELECT requestURL, AVG(elapsedTime) AS avg_ms FROM request_logs WHERE matched GROUP BY requestURL ORDER BY avg_ms DESC LIMIT 10`
 
-    4. `audit_logs` - parsed audit.log / audit-YYYY-MM-DD.log.gz entries (these are newline-delimited JSON, one audit event
-       per line). Columns: timestamp, nodeId, type (e.g. 'CREATED', 'UPDATED', 'DELETED'), domain (e.g. 'security.user',
-       'repository.config'), initiator (who/what triggered it), context, attributes (JSON blob with event-specific details,
-       e.g. use `json_extract_string(attributes, '$.id')`), parsed, category, source_file.
+    4. `audit_logs` - parsed audit.log / audit-YYYY-MM-DD.log.gz entries (newline-delimited JSON, one audit event per
+       line; NXRM3 and IQ Server use different field names for this file). Columns: timestamp, domain (e.g.
+       'security.user', 'governance.proprietary-components'), type (e.g. 'CREATED', 'UPDATED', 'add'), json (the full
+       raw JSON object for that line - use `json_extract_string(json, '$.fieldName')` for anything else, e.g.
+       '$.initiator'/'$.context'/'$.attributes' on NXRM3 or '$.username'/'$.remoteIpAddress'/'$.data' on IQ Server),
+       parsed, category, source_file.
        Example: `SELECT domain, type, COUNT(*) FROM audit_logs WHERE parsed GROUP BY domain, type ORDER BY 3 DESC`
 
     Not every log line matches the known formats (multi-line stack traces, unusual banners, non-JSON lines, etc.) - for
