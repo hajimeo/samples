@@ -377,7 +377,7 @@ def run_mcp_server(con):
         return LOG_SCHEMA_DESCRIPTION
 
     @app.tool()
-    def query_logs(prompt: str = None, sql: str = None) -> str:
+    def query_logs(prompt: str | None = None, sql: str | None = None) -> str:
         """Query the support-zip log views. Pass `sql` to run a DuckDB query directly, or `prompt` for a
         natural-language question (translated to SQL via the local model). Views: logs, application_logs,
         request_logs, audit_logs - see the logs://schema resource for their columns."""
