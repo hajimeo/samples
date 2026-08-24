@@ -408,6 +408,8 @@ function _updateNexusProps() {
     fi
     # From probably 3.88
     grep -qE '^#?nexus.reconcile.task.enabled' "${_cfg_file}" || echo "nexus.reconcile.task.enabled=true" >> "${_cfg_file}" # PR14446
+    # From 3.93.0. Added this to avoid 429 'Too many authentication attempts'
+    grep -qE '^#?nexus.auth.ratelimit.enabled' "${_cfg_file}" || echo "nexus.auth.ratelimit.enabled=false" >> "${_cfg_file}"
 
     # If no port specified, checking if the default port 8081 is available
     # If the port is specified and if it's not available, starting this Nexus should fail.
