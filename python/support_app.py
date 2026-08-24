@@ -9,6 +9,7 @@
 import gzip
 import os
 import re
+import tempfile
 
 import streamlit as st
 import duckdb
@@ -24,7 +25,6 @@ AI_MODEL = st.secrets.get("AI_MODEL", "qwen2.5-coder:7b") # "gemma4:12b"
 # 1. UI Configuration/customization
 st.set_page_config(page_title="Local SupportZip Analyzer", layout="wide")
 st.title("🔍 Local SupportZip Analyzer")
-st.text("API URL: {}, Model: {}".format(AI_API_URL, AI_MODEL))
 
 # Hide the Streamlit "Deploy" button in the top-right corner
 st.markdown(
@@ -55,6 +55,28 @@ LOG_CATEGORY_REGEXES = {
     "audit": LOG_AUDIT_REGEX,
 }
 
+# Where parsed views get cached as Parquet, so the (regex/JSON) parsing pass runs once instead of on every
+# query/Streamlit rerun, and repeat queries read from disk (with column pruning/predicate pushdown) instead
+# of holding every category fully materialized in memory at once.
+# Default location should be OS's temp dir (e.g. /tmp/ if Linux/Mac), but can be overridden by LOG_CACHE_DIR environment variable.
+LOG_CACHE_DIR = st.secrets.get("LOG_CACHE_DIR", os.path.join(tempfile.gettempdir(), "spt-app_db_cache"))
+
+def _is_cache_fresh(cache_file, source_paths):
+    """True if cache_file exists and is newer than every file in source_paths."""
+    if not os.path.isfile(cache_file):
+        return False
+    cache_mtime = os.path.getmtime(cache_file)
+    return all(os.path.getmtime(p) <= cache_mtime for p in source_paths if os.path.isfile(p))
+
+def materialize_view_via_parquet(con, view_name, select_sql, source_paths, cache_dir=LOG_CACHE_DIR):
+    """Runs `select_sql` once (unless a fresh cache already exists) and writes the result to a Parquet
+    file under cache_dir, then points `view_name` at that file via read_parquet."""
+    os.makedirs(cache_dir, exist_ok=True)
+    cache_file = os.path.join(cache_dir, f"{view_name}.parquet")
+    if not _is_cache_fresh(cache_file, source_paths):
+        con.execute(f"COPY ({select_sql}) TO '{cache_file}' (FORMAT PARQUET)")
+    con.execute(f"CREATE OR REPLACE VIEW {view_name} AS SELECT * FROM read_parquet('{cache_file}')")
+
 def find_log_files():
     """Walks the current directory and groups matching file paths by category."""
     compiled = {category: re.compile(pattern) for category, pattern in LOG_CATEGORY_REGEXES.items()}
@@ -67,12 +89,14 @@ def find_log_files():
                     matches[category].append(path)
     return matches
 
-def setup_log_views(con):
+def setup_log_views(con, file_categories):
     """Creates a unified `logs` view over the categorized log files, one row per line."""
     union_parts = []
-    for category, paths in find_log_files().items():
+    all_paths = []
+    for category, paths in file_categories.items():
         if not paths:
             continue
+        all_paths.extend(paths)
         # it seems read_text has 4GB limit, so changed to read_csv but not tested yet.
         union_parts.append(f"""
             SELECT
@@ -93,11 +117,12 @@ def setup_log_views(con):
         """)
     if not union_parts:
         raise Exception("No log files found matching the configured LOG_*_REGEX patterns.")
-    # Currently creating one large table contains all log lines....
-    con.execute(f"CREATE OR REPLACE VIEW logs AS {' UNION ALL '.join(union_parts)}")
+    materialize_view_via_parquet(con, "logs", " UNION ALL ".join(union_parts), all_paths)
+
+_matched_log_files = find_log_files()
 
 try:
-    setup_log_views(con)
+    setup_log_views(con, _matched_log_files)
 except Exception as e:
     # report error but continue; the user may not have logs yet
     st.warning("Some log files are missing or could not be read. The AI assistant may have limited data: " + str(e))
@@ -219,11 +244,9 @@ def setup_typed_log_views(con, file_categories):
                         for (columns, pattern, category), paths in groups.items()]
         cast_cols = [(f"TRY_CAST({c} AS BIGINT) AS {c}" if c in numeric_cols else c) for c in superset]
         inner_sql = " UNION ALL ".join(union_parts)
-        con.execute(f"""
-            CREATE OR REPLACE VIEW {view_name} AS
-            SELECT {', '.join(cast_cols)}, matched, category, source_file, line
-            FROM ({inner_sql})
-        """)
+        select_sql = f"SELECT {', '.join(cast_cols)}, matched, category, source_file, line FROM ({inner_sql})"
+        all_paths = [p for paths in groups.values() for p in paths]
+        materialize_view_via_parquet(con, view_name, select_sql, all_paths)
 
     build_view("application_logs", ["application"], APP_LOG_PATTERNS, APP_LOG_DEFAULT, APP_SUPERSET_COLUMNS,
                numeric_cols=set(), line_filter=is_app_log_line_start)
@@ -242,8 +265,7 @@ def setup_audit_log_view(con, file_categories):
     paths = file_categories.get("audit", [])
     if not paths:
         return
-    con.execute(f"""
-        CREATE OR REPLACE VIEW audit_logs AS
+    select_sql = f"""
         SELECT
             json_extract_string(json, '$.timestamp') AS timestamp,
             json_extract_string(json, '$.domain') AS domain,
@@ -258,9 +280,8 @@ def setup_audit_log_view(con, file_categories):
             ignore_errors=true,
             filename=true
         )
-    """)
-
-_matched_log_files = find_log_files()
+    """
+    materialize_view_via_parquet(con, "audit_logs", select_sql, paths)
 
 try:
     setup_typed_log_views(con, _matched_log_files)
@@ -383,8 +404,8 @@ try:
         total_errors = 0
 
     col1.metric("Total Logs Processed", f"{total_logs:,}")
-    col2.metric("Critical Anomalies Detected", f"{total_errors:,}", delta="-5% vs yesterday", delta_color="inverse")
-    col3.metric("Log Ingestion Engine", "DuckDB (In-Memory)")
+    col2.metric("ERROR count", f"{total_errors:,}")
+    col3.metric("Model used by: "+AI_API_URL, AI_MODEL)
 
     st.subheader("📂 Logs by Category")
     category_df = con.execute("SELECT category, COUNT(*) AS count FROM logs GROUP BY category ORDER BY category").df()
