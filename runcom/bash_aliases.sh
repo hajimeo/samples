@@ -1093,6 +1093,11 @@ function backupC() {
         cp -v -f $HOME/.bashrc $HOME/backup/bashrc || return $?
     fi
 
+    # If $HOME/.netrc is not a symlink, then copy to $HOME/backup/netrc (just in case, not copying if it's empty)
+    if [ -s "$HOME/.netrc" ] && [ -d "$HOME/backup" ] && [ ! -L "$HOME/.netrc" ]; then
+        cp -v -f $HOME/.netrc $HOME/backup/netrc || return $?
+    fi
+
     if [ -s "$HOME/.mcps.json" ] && [ -d "$HOME/backup" ]; then
         cp -v -f $HOME/.mcps.json $HOME/backup/mcps.json || return $?
     fi
