@@ -361,9 +361,9 @@ if [ -s "${HOME%/}/.mcps.json" ]; then
     #go install github.com/mark3labs/kit/cmd/kit@latest
     alias kit-cli='kit -m ollama/gemma4:12b-it-qat --max-tokens 524288 --config '${HOME%/}/.mcps.json
 fi
-if [ -s "$HOME/IdeaProjects/samples/python/support_app.py" ]; then
-    alias support-app="source $HOME/.venv_support/bin/activate && streamlit run $HOME/IdeaProjects/samples/python/support_app.py --client.toolbarMode=\"viewer\" --server.maxUploadSize=6000"
-    # TODO:  --server.maxUploadSize=6000 is not working to avoid "Invalid Input Error: File './log/request.log' size (5.7 GiB) exceeds maximum allowed file (3.9 GiB)"
+if [ -s "$HOME/IdeaProjects/samples/python/support-app/support_app.py" ]; then
+    alias spt-app="source $HOME/.venv_support/bin/activate && streamlit run $HOME/IdeaProjects/samples/python/support-app/support_app.py --client.toolbarMode=\"viewer\""
+    alias spt-app-client="source $HOME/.venv_support/bin/activate && streamlit run $HOME/IdeaProjects/samples/python/support-app/support_app.py --client.toolbarMode=\"viewer\""
 fi
 
 
