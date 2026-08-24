@@ -44,7 +44,7 @@ con = duckdb.connect(database=':memory:')
 # Default Log sources are matching all files under the current directory or `./log/` directory, and file name ends with `.log` or `.log.gz`
 # This can be overridden by LOG_APP_REGEX environment variable, which should be a regex pattern matching the log file paths to include.
 LOG_APP_REGEX = st.secrets.get("LOG_APP_REGEX", "(nexus|clm-server).*(log|log.gz)$")    # category `application`
-LOG_REQ_REGEX = st.secrets.get("LOG_REQ_REGEX", "request.*(log|log.gz)$")               # category `request`
+LOG_REQ_REGEX = st.secrets.get("LOG_REQ_REGEX", "(?<!outbound-)request.*(log|log.gz)$")  # category `request`
 LOG_OUTBOUND_REGEX = st.secrets.get("LOG_OUTBOUND_REGEX", "outbound-request.*(log|log.gz)$")    # category `outbound`
 LOG_AUDIT_REGEX = st.secrets.get("LOG_AUDIT_REGEX", "audit.*(log|log.gz)$")             # category `audit`
 
@@ -230,10 +230,50 @@ def setup_typed_log_views(con, file_categories):
     build_view("request_logs", ["request", "outbound"], REQUEST_LOG_PATTERNS, REQUEST_LOG_DEFAULT,
                REQUEST_SUPERSET_COLUMNS, numeric_cols={"statusCode", "headerContentLength", "bytesSent", "elapsedTime"})
 
+AUDIT_LOG_COLUMNS = {
+    "timestamp": "VARCHAR",
+    "nodeId": "VARCHAR",
+    "type": "VARCHAR",
+    "domain": "VARCHAR",
+    "initiator": "VARCHAR",
+    "context": "VARCHAR",
+    "attributes": "JSON",
+}
+
+def setup_audit_log_view(con, file_categories):
+    """Creates an `audit_logs` view from audit.log / audit-YYYY-MM-DD.log.gz, which is newline-delimited JSON (ndjson).
+    Columns are pinned explicitly (rather than auto-inferred) because the nested `attributes` object's shape varies
+    per audit entry type; keeping it as JSON avoids schema-drift errors across rotated/gzipped files. Lines that
+    aren't valid JSON become a row with parsed=false and all typed columns NULL, so nothing is silently dropped."""
+    paths = file_categories.get("audit", [])
+    if not paths:
+        return
+    columns_sql = "{" + ", ".join(f"'{c}': '{t}'" for c, t in AUDIT_LOG_COLUMNS.items()) + "}"
+    select_cols = ", ".join(AUDIT_LOG_COLUMNS.keys())
+    con.execute(f"""
+        CREATE OR REPLACE VIEW audit_logs AS
+        SELECT {select_cols}, timestamp IS NOT NULL AS parsed, 'audit' AS category, filename AS source_file
+        FROM read_json(
+            {paths},
+            format='newline_delimited',
+            columns={columns_sql},
+            ignore_errors=true,
+            filename=true
+        )
+    """)
+
+_matched_log_files = find_log_files()
+
 try:
-    setup_typed_log_views(con, find_log_files())
+    setup_typed_log_views(con, _matched_log_files)
 except Exception as e:
     st.warning("Could not build typed application_logs/request_logs views. The AI assistant may have limited data: " + str(e))
+    pass
+
+try:
+    setup_audit_log_view(con, _matched_log_files)
+except Exception as e:
+    st.warning("Could not build typed audit_logs view. The AI assistant may have limited data: " + str(e))
     pass
 
 # 2. Local AI Query Generator (Ollama API)
@@ -244,7 +284,7 @@ def ask_local_ai(user_prompt):
     # We guide the AI with a strict system prompt so it only returns valid SQL
     system_context = """
     You are an expert data engineer translating questions into DuckDB SQL queries.
-    Three views are available:
+    Four views are available:
 
     1. `logs` - every log line, raw text. Columns: line (raw log line text), category ('application', 'request', 'outbound', or 'audit'), source_file.
        Use this for free-text search (e.g. `SELECT * FROM logs WHERE category = 'audit' AND line ILIKE '%password%'`).
@@ -258,9 +298,15 @@ def ask_local_ai(user_prompt):
        matched, category, source_file, line (raw fallback).
        Example: `SELECT requestURL, AVG(elapsedTime) AS avg_ms FROM request_logs WHERE matched GROUP BY requestURL ORDER BY avg_ms DESC LIMIT 10`
 
-    Not every log line matches the known formats (multi-line stack traces, unusual banners, etc.) - for those rows in
-    application_logs/request_logs, matched=false and the typed columns are NULL; filter with `WHERE matched` when you only
-    want successfully parsed rows, or fall back to the `logs` view for full-text search across everything.
+    4. `audit_logs` - parsed audit.log / audit-YYYY-MM-DD.log.gz entries (these are newline-delimited JSON, one audit event
+       per line). Columns: timestamp, nodeId, type (e.g. 'CREATED', 'UPDATED', 'DELETED'), domain (e.g. 'security.user',
+       'repository.config'), initiator (who/what triggered it), context, attributes (JSON blob with event-specific details,
+       e.g. use `json_extract_string(attributes, '$.id')`), parsed, category, source_file.
+       Example: `SELECT domain, type, COUNT(*) FROM audit_logs WHERE parsed GROUP BY domain, type ORDER BY 3 DESC`
+
+    Not every log line matches the known formats (multi-line stack traces, unusual banners, non-JSON lines, etc.) - for
+    those rows, matched/parsed=false and the typed columns are NULL; filter with `WHERE matched`/`WHERE parsed` when you
+    only want successfully parsed rows, or fall back to the `logs` view for full-text search across everything.
 
     CRITICAL: Return ONLY the raw SQL code block. Do not include markdown formatting like ```sql. Do not include explanations.
     """
@@ -330,7 +376,11 @@ col1, col2, col3 = st.columns(3)
 try:
     # Use DuckDB to quickly populate high-level dashboard metrics from the categorized logs
     total_logs = con.execute("SELECT COUNT(*) FROM logs").fetchone()[0]
-    total_errors = con.execute("SELECT COUNT(*) FROM logs WHERE lower(line) LIKE '%error%'").fetchone()[0]
+    try:
+        # application_logs may not exist if no nexus.log/clm-server.log was found
+        total_errors = con.execute("SELECT COUNT(*) FROM application_logs WHERE loglevel = 'ERROR'").fetchone()[0]
+    except Exception:
+        total_errors = 0
 
     col1.metric("Total Logs Processed", f"{total_logs:,}")
     col2.metric("Critical Anomalies Detected", f"{total_errors:,}", delta="-5% vs yesterday", delta_color="inverse")
