@@ -1,52 +1,51 @@
 # REQUIREMENTS:
 #   # recommend to run in a virtual environment
-#   pip install -U streamlit duckdb requests pandas #watchdog
+#   pip install -U streamlit duckdb requests "mcp[cli]<2" #watchdog
 #
-# HOW TO RUN:
+# HOW TO RUN (Streamlit UI):
 #   1. Start Ollama with AI_MODEL on AI_API_URL
 #   2. `cd` to the extracted support zip which has (nexus.log, clm-server.log, request.log, outbound-request.log, audit.log)
 #   3. Run this script: streamlit run python/support_app.py --client.toolbarMode="viewer"
+#
+# HOW TO RUN (MCP server, Streamable HTTP - for an AI agent instead of a human):
+#   1. `cd` to the extracted support zip (same as above)
+#   2. python python/support_app.py --mcp   # optional: MCP_HOST / MCP_PORT env vars, default 127.0.0.1:8931
 import gzip
 import os
 import re
+import sys
 import tempfile
 
 import streamlit as st
 import duckdb
 import requests
-import json
-import pandas as pd
+
+MCP_MODE = "--mcp" in sys.argv[1:]
+
+def _config(key, default):
+    """Config lookup that works with or without a running Streamlit context (MCP mode has none)."""
+    return os.environ.get(key, default)
+
+def _warn(msg):
+    """Reports a non-fatal setup problem to the console always, and to the Streamlit UI when running there."""
+    print("WARNING: " + msg)
+    if not MCP_MODE:
+        st.warning(msg)
 
 # 0. Model and API Configuration
 # If the environment variable AI_API_URL is set, use it; otherwise default to localhost
-AI_API_URL = st.secrets.get("AI_API_URL", "http://localhost:11434/api/generate")
-AI_MODEL = st.secrets.get("AI_MODEL", "qwen2.5-coder:7b") # "gemma4:12b"
-
-# 1. UI Configuration/customization
-st.set_page_config(page_title="Local SupportZip Analyzer", layout="wide")
-st.title("🔍 Local SupportZip Analyzer")
-
-# Hide the Streamlit "Deploy" button in the top-right corner
-st.markdown(
-    r"""
-    <style>
-    .stAppDeployButton {
-        visibility: hidden;
-    }
-    </style>
-    """,
-    unsafe_allow_html=True
-)
+AI_API_URL = _config("AI_API_URL", "http://localhost:11434/api/generate")
+AI_MODEL = _config("AI_MODEL", "qwen2.5-coder:7b") # "gemma4:12b"
 
 # Initialize DuckDB connection
 con = duckdb.connect(database=':memory:')
 
 # Default Log sources are matching all files under the current directory or `./log/` directory, and file name ends with `.log` or `.log.gz`
 # This can be overridden by LOG_APP_REGEX environment variable, which should be a regex pattern matching the log file paths to include.
-LOG_APP_REGEX = st.secrets.get("LOG_APP_REGEX", "(nexus|clm-server).*(log|log.gz)$")    # category `application`
-LOG_REQ_REGEX = st.secrets.get("LOG_REQ_REGEX", "(?<!outbound-)request.*(log|log.gz)$")  # category `request`
-LOG_OUTBOUND_REGEX = st.secrets.get("LOG_OUTBOUND_REGEX", "outbound-request.*(log|log.gz)$")    # category `outbound`
-LOG_AUDIT_REGEX = st.secrets.get("LOG_AUDIT_REGEX", "audit.*(log|log.gz)$")             # category `audit`
+LOG_APP_REGEX = _config("LOG_APP_REGEX", "(nexus|clm-server).*(log|log.gz)$")    # category `application`
+LOG_REQ_REGEX = _config("LOG_REQ_REGEX", "(?<!outbound-)request.*(log|log.gz)$")  # category `request`
+LOG_OUTBOUND_REGEX = _config("LOG_OUTBOUND_REGEX", "outbound-request.*(log|log.gz)$")    # category `outbound`
+LOG_AUDIT_REGEX = _config("LOG_AUDIT_REGEX", "audit.*(log|log.gz)$")             # category `audit`
 
 LOG_CATEGORY_REGEXES = {
     "application": LOG_APP_REGEX,
@@ -56,10 +55,10 @@ LOG_CATEGORY_REGEXES = {
 }
 
 # Where parsed views get cached as Parquet, so the (regex/JSON) parsing pass runs once instead of on every
-# query/Streamlit rerun, and repeat queries read from disk (with column pruning/predicate pushdown) instead
-# of holding every category fully materialized in memory at once.
-# Default location should be OS's temp dir (e.g. /tmp/ if Linux/Mac), but can be overridden by LOG_CACHE_DIR environment variable.
-LOG_CACHE_DIR = st.secrets.get("LOG_CACHE_DIR", os.path.join(tempfile.gettempdir(), "spt-app_db_cache"))
+# query/Streamlit rerun (or MCP server restart), and repeat queries read from disk (with column pruning/predicate
+# pushdown) instead of holding every category fully materialized in memory at once.
+# Default location should be current directory. Can't be shared with other directories as the cache would conflict.
+LOG_CACHE_DIR = _config("LOG_CACHE_DIR", "./__spt-app_db_cache")
 
 def _is_cache_fresh(cache_file, source_paths):
     """True if cache_file exists and is newer than every file in source_paths."""
@@ -125,8 +124,7 @@ try:
     setup_log_views(con, _matched_log_files)
 except Exception as e:
     # report error but continue; the user may not have logs yet
-    st.warning("Some log files are missing or could not be read. The AI assistant may have limited data: " + str(e))
-    pass
+    _warn("Some log files are missing or could not be read. The AI assistant may have limited data: " + str(e))
 
 # Column layouts + regexes for nexus.log/clm-server.log and request.log/outbound-request.log,
 # so the AI can query real columns instead of regex-parsing the raw `line` itself.
@@ -286,14 +284,42 @@ def setup_audit_log_view(con, file_categories):
 try:
     setup_typed_log_views(con, _matched_log_files)
 except Exception as e:
-    st.warning("Could not build typed application_logs/request_logs views. The AI assistant may have limited data: " + str(e))
-    pass
+    _warn("Could not build typed application_logs/request_logs views. The AI assistant may have limited data: " + str(e))
 
 try:
     setup_audit_log_view(con, _matched_log_files)
 except Exception as e:
-    st.warning("Could not build typed audit_logs view. The AI assistant may have limited data: " + str(e))
-    pass
+    _warn("Could not build typed audit_logs view. The AI assistant may have limited data: " + str(e))
+
+# Schema description shared between the AI system prompt (ask_local_ai) and the MCP `logs://schema` resource,
+# so the two never drift apart.
+LOG_SCHEMA_DESCRIPTION = """
+Four views are available:
+
+1. `logs` - every log line, raw text. Columns: line (raw log line text), category ('application', 'request', 'outbound', or 'audit'), source_file.
+   Use this for free-text search (e.g. `SELECT * FROM logs WHERE category = 'audit' AND line ILIKE '%password%'`).
+
+2. `application_logs` - parsed nexus.log / clm-server.log lines. Columns: date_time, loglevel, thread, node, user, class, message,
+   matched (true if the line was successfully parsed into these columns), category, source_file, line (raw fallback).
+   Example: `SELECT date_time, class, message FROM application_logs WHERE loglevel = 'ERROR' ORDER BY date_time`
+
+3. `request_logs` - parsed request.log / outbound-request.log lines. Columns: clientHost, l, user, date, requestURL, statusCode
+   (integer), headerContentLength (integer), bytesSent (integer), elapsedTime (integer, ms), headerUserAgent, thread, misc,
+   matched, category, source_file, line (raw fallback).
+   Example: `SELECT requestURL, AVG(elapsedTime) AS avg_ms FROM request_logs WHERE matched GROUP BY requestURL ORDER BY avg_ms DESC LIMIT 10`
+
+4. `audit_logs` - parsed audit.log / audit-YYYY-MM-DD.log.gz entries (newline-delimited JSON, one audit event per
+   line; NXRM3 and IQ Server use different field names for this file). Columns: timestamp, domain (e.g.
+   'security.user', 'governance.proprietary-components'), type (e.g. 'CREATED', 'UPDATED', 'add'), json (the full
+   raw JSON object for that line - use `json_extract_string(json, '$.fieldName')` for anything else, e.g.
+   '$.initiator'/'$.context'/'$.attributes' on NXRM3 or '$.username'/'$.remoteIpAddress'/'$.data' on IQ Server),
+   parsed, category, source_file.
+   Example: `SELECT domain, type, COUNT(*) FROM audit_logs WHERE parsed GROUP BY domain, type ORDER BY 3 DESC`
+
+Not every log line matches the known formats (multi-line stack traces, unusual banners, non-JSON lines, etc.) - for
+those rows, matched/parsed=false and the typed columns are NULL; filter with `WHERE matched`/`WHERE parsed` when you
+only want successfully parsed rows, or fall back to the `logs` view for full-text search across everything.
+""".strip()
 
 # 2. Local AI Query Generator (Ollama API)
 def ask_local_ai(user_prompt):
@@ -301,43 +327,19 @@ def ask_local_ai(user_prompt):
     ollama_url = AI_API_URL
 
     # We guide the AI with a strict system prompt so it only returns valid SQL
-    system_context = """
+    system_context = f"""
     You are an expert data engineer translating questions into DuckDB SQL queries.
-    Four views are available:
-
-    1. `logs` - every log line, raw text. Columns: line (raw log line text), category ('application', 'request', 'outbound', or 'audit'), source_file.
-       Use this for free-text search (e.g. `SELECT * FROM logs WHERE category = 'audit' AND line ILIKE '%password%'`).
-
-    2. `application_logs` - parsed nexus.log / clm-server.log lines. Columns: date_time, loglevel, thread, node, user, class, message,
-       matched (true if the line was successfully parsed into these columns), category, source_file, line (raw fallback).
-       Example: `SELECT date_time, class, message FROM application_logs WHERE loglevel = 'ERROR' ORDER BY date_time`
-
-    3. `request_logs` - parsed request.log / outbound-request.log lines. Columns: clientHost, l, user, date, requestURL, statusCode
-       (integer), headerContentLength (integer), bytesSent (integer), elapsedTime (integer, ms), headerUserAgent, thread, misc,
-       matched, category, source_file, line (raw fallback).
-       Example: `SELECT requestURL, AVG(elapsedTime) AS avg_ms FROM request_logs WHERE matched GROUP BY requestURL ORDER BY avg_ms DESC LIMIT 10`
-
-    4. `audit_logs` - parsed audit.log / audit-YYYY-MM-DD.log.gz entries (newline-delimited JSON, one audit event per
-       line; NXRM3 and IQ Server use different field names for this file). Columns: timestamp, domain (e.g.
-       'security.user', 'governance.proprietary-components'), type (e.g. 'CREATED', 'UPDATED', 'add'), json (the full
-       raw JSON object for that line - use `json_extract_string(json, '$.fieldName')` for anything else, e.g.
-       '$.initiator'/'$.context'/'$.attributes' on NXRM3 or '$.username'/'$.remoteIpAddress'/'$.data' on IQ Server),
-       parsed, category, source_file.
-       Example: `SELECT domain, type, COUNT(*) FROM audit_logs WHERE parsed GROUP BY domain, type ORDER BY 3 DESC`
-
-    Not every log line matches the known formats (multi-line stack traces, unusual banners, non-JSON lines, etc.) - for
-    those rows, matched/parsed=false and the typed columns are NULL; filter with `WHERE matched`/`WHERE parsed` when you
-    only want successfully parsed rows, or fall back to the `logs` view for full-text search across everything.
+    {LOG_SCHEMA_DESCRIPTION}
 
     CRITICAL: Return ONLY the raw SQL code block. Do not include markdown formatting like ```sql. Do not include explanations.
     """
-    
+
     payload = {
         "model": AI_MODEL,
         "prompt": f"{system_context}\n\nUser Question: {user_prompt}\n\nSQL Query:",
         "stream": False
     }
-    
+
     try:
         response = requests.post(ollama_url, json=payload)
         return response.json()['response'].strip()
@@ -360,64 +362,124 @@ def run_sql(sql):
     except Exception as sql_error:
         st.error(f"SQL Execution Failed: {str(sql_error)}")
 
-# 3. Sidebar Chat Interface (The "Support AI" Panel)
-st.sidebar.header("Ask AI Assistant")
-user_query = st.sidebar.text_area("Ask a question about your logs:",
-                                   placeholder="e.g., Show me the top 5 errors sorted by frequency")
+def run_mcp_server(con):
+    """Runs this same log database as an MCP server (Streamable HTTP) instead of the Streamlit UI, so an AI
+    agent can query it directly. One long-lived process keeps `con` and the cached views warm, so repeat
+    tool calls have no per-call startup cost."""
+    from mcp.server.fastmcp import FastMCP
 
-if "sql_editor" not in st.session_state:
-    st.session_state.sql_editor = ""
+    host = _config("MCP_HOST", "127.0.0.1")
+    port = int(_config("MCP_PORT", "8931"))
+    app = FastMCP("nexus-support-log-analyzer", host=host, port=port)
 
-run_now = False
-if st.sidebar.button("Analyze Logs"):
-    if user_query:
-        with st.spinner("AI is analyzing log structure and writing query..."):
-            generated_sql = ask_local_ai(user_query)
-            # Even though instructed to remove ```sql ... ```, some AI still returns it, so we clean it up
-            if generated_sql.startswith("```sql"):
-                generated_sql = generated_sql.replace("```sql", "").replace("```", "").strip()
-            st.session_state.sql_editor = generated_sql
-            run_now = True
-    else:
-        st.sidebar.warning("Please enter a question first.")
+    @app.resource("logs://schema")
+    def schema() -> str:
+        return LOG_SCHEMA_DESCRIPTION
 
-st.sidebar.subheader("SQL Query (editable)")
-st.sidebar.text_area("Edit or write raw SQL, then run it:", key="sql_editor", height=150)
+    @app.tool()
+    def query_logs(prompt: str = None, sql: str = None) -> str:
+        """Query the support-zip log views. Pass `sql` to run a DuckDB query directly, or `prompt` for a
+        natural-language question (translated to SQL via the local model). Views: logs, application_logs,
+        request_logs, audit_logs - see the logs://schema resource for their columns."""
+        if not sql:
+            if not prompt:
+                return "ERROR: provide `sql` or `prompt`."
+            sql = ask_local_ai(prompt)
+            if sql.startswith("```sql"):
+                sql = sql.replace("```sql", "").replace("```", "").strip()
+        try:
+            cur = con.execute(f"SELECT * FROM ({sql}) LIMIT 501")
+            cols = [d[0] for d in cur.description]
+            rows = cur.fetchall()
+            truncated = len(rows) > 500
+            rows = rows[:500]
+            lines = [f"SQL: {sql}", f"rows: {len(rows)}" + (" (truncated at 500)" if truncated else "")]
+            lines.append(" | ".join(cols))
+            lines.extend(" | ".join("" if v is None else str(v) for v in r) for r in rows)
+            return "\n".join(lines)
+        except Exception as e:
+            return f"SQL ERROR: {e}"
 
-if run_now or st.sidebar.button("Run SQL"):
-    if st.session_state.sql_editor.strip():
-        run_sql(st.session_state.sql_editor)
-    else:
-        st.sidebar.warning("Enter or generate a SQL query first.")
+    print(f"Starting MCP server (Streamable HTTP) on http://{host}:{port}/mcp ...")
+    app.run(transport="streamable-http")
 
-# 4. Main Panel Static Analytics (Observe-style Health Overview)
-st.header("🌐 System Overview")
-col1, col2, col3 = st.columns(3)
+if MCP_MODE:
+    run_mcp_server(con)
+else:
+    # 1. UI Configuration/customization
+    st.set_page_config(page_title="Local SupportZip Analyzer", layout="wide")
+    st.title("🔍 Local SupportZip Analyzer")
 
-try:
-    # Use DuckDB to quickly populate high-level dashboard metrics from the categorized logs
-    total_logs = con.execute("SELECT COUNT(*) FROM logs").fetchone()[0]
-    try:
-        # application_logs may not exist if no nexus.log/clm-server.log was found
-        total_errors = con.execute("SELECT COUNT(*) FROM application_logs WHERE loglevel = 'ERROR'").fetchone()[0]
-    except Exception:
-        total_errors = 0
-
-    col1.metric("Total Logs Processed", f"{total_logs:,}")
-    col2.metric("ERROR count", f"{total_errors:,}")
-    col3.metric("Model used by: "+AI_API_URL, AI_MODEL)
-
-    st.subheader("📂 Logs by Category")
-    category_df = con.execute("SELECT category, COUNT(*) AS count FROM logs GROUP BY category ORDER BY category").df()
-    st.bar_chart(category_df.set_index("category"))
-except Exception as e:
-    col1.metric("Total Logs Processed", "0")
-    col2.metric("Critical Anomalies Detected", "0")
-    col3.metric("Log Ingestion Engine", "DuckDB (Waiting for logs)")
-    st.info(
-        "Place your log files at `./log/nexus.log` (application), "
-        "`./log/request.log` and `./log/outbound-request.log` (request/outbound), "
-        "and `./log/audit.log` (audit) to populate the dashboards."
+    # Hide the Streamlit "Deploy" button in the top-right corner
+    st.markdown(
+        r"""
+        <style>
+        .stAppDeployButton {
+            visibility: hidden;
+        }
+        </style>
+        """,
+        unsafe_allow_html=True
     )
-    st.error(f"Error reading logs or creating views: {str(e)}")
-    st.exception(e)
+
+    # 3. Sidebar Chat Interface (The "Support AI" Panel)
+    st.sidebar.header("Ask AI Assistant")
+    user_query = st.sidebar.text_area("Ask a question about your logs:",
+                                       placeholder="e.g., Show me the top 5 errors sorted by frequency")
+
+    if "sql_editor" not in st.session_state:
+        st.session_state.sql_editor = ""
+
+    run_now = False
+    if st.sidebar.button("Analyze Logs"):
+        if user_query:
+            with st.spinner("AI is analyzing log structure and writing query..."):
+                generated_sql = ask_local_ai(user_query)
+                # Even though instructed to remove ```sql ... ```, some AI still returns it, so we clean it up
+                if generated_sql.startswith("```sql"):
+                    generated_sql = generated_sql.replace("```sql", "").replace("```", "").strip()
+                st.session_state.sql_editor = generated_sql
+                run_now = True
+        else:
+            st.sidebar.warning("Please enter a question first.")
+
+    st.sidebar.subheader("SQL Query (editable)")
+    st.sidebar.text_area("Edit or write raw SQL, then run it:", key="sql_editor", height=150)
+
+    if run_now or st.sidebar.button("Run SQL"):
+        if st.session_state.sql_editor.strip():
+            run_sql(st.session_state.sql_editor)
+        else:
+            st.sidebar.warning("Enter or generate a SQL query first.")
+
+    # 4. Main Panel Static Analytics (Observe-style Health Overview)
+    st.header("🌐 System Overview")
+    col1, col2, col3 = st.columns(3)
+
+    try:
+        # Use DuckDB to quickly populate high-level dashboard metrics from the categorized logs
+        total_logs = con.execute("SELECT COUNT(*) FROM logs").fetchone()[0]
+        try:
+            # application_logs may not exist if no nexus.log/clm-server.log was found
+            total_errors = con.execute("SELECT COUNT(*) FROM application_logs WHERE loglevel = 'ERROR'").fetchone()[0]
+        except Exception:
+            total_errors = 0
+
+        col1.metric("Total Logs Processed", f"{total_logs:,}")
+        col2.metric("ERROR count", f"{total_errors:,}")
+        col3.metric("Model used by: "+AI_API_URL, AI_MODEL)
+
+        st.subheader("📂 Logs by Category")
+        category_df = con.execute("SELECT category, COUNT(*) AS count FROM logs GROUP BY category ORDER BY category").df()
+        st.bar_chart(category_df.set_index("category"))
+    except Exception as e:
+        col1.metric("Total Logs Processed", "0")
+        col2.metric("Critical Anomalies Detected", "0")
+        col3.metric("Log Ingestion Engine", "DuckDB (Waiting for logs)")
+        st.info(
+            "Place your log files at `./log/nexus.log` (application), "
+            "`./log/request.log` and `./log/outbound-request.log` (request/outbound), "
+            "and `./log/audit.log` (audit) to populate the dashboards."
+        )
+        st.error(f"Error reading logs or creating views: {str(e)}")
+        st.exception(e)
