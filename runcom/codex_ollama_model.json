@@ -1,0 +1,27 @@
+{
+  "models": [
+    {
+      "base_instructions": "",
+      "context_window": 256000,
+      "default_verbosity": "low",
+      "display_name": "qwen3.5:9b-mlx",
+      "experimental_supported_tools": [],
+      "input_modalities": [
+        "text"
+      ],
+      "priority": 0,
+      "shell_type": "default",
+      "slug": "qwen3.5:9b-mlx",
+      "support_verbosity": true,
+      "supported_in_api": true,
+      "supported_reasoning_levels": [],
+      "supports_parallel_tool_calls": false,
+      "supports_reasoning_summaries": false,
+      "truncation_policy": {
+        "limit": 10000,
+        "mode": "bytes"
+      },
+      "visibility": "list"
+    }
+  ]
+}

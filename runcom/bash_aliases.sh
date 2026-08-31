@@ -345,9 +345,17 @@ alias hblog='open -na "Google Chrome" --args --user-data-dir=$HOME/.chromep/haji
 #alias geminiWeb='open -na "Google Chrome" --args --app="https://gemini.google.com/u/1/app"'
 alias geminiWeb='open -na "Google Chrome" --args --user-data-dir=$HOME/.chromep/work --app="https://gemini.google.com/"'
 alias kapaWeb='open -na "Google Chrome" --args --user-data-dir=$HOME/.chromep/work --app="https://chat.kapa.ai/dadecd3d-2984-46d3-9c6b-09df9a67668c"'
-alias goose-app='/Applications/Goose.app/Contents/MacOS/Goose . &>/tmp/goose_$$.out & echo "Goose started. Log: /tmp/goose_$$.out" >&2'
 # pretending windows chrome on Linux
 #alias winchrome='/opt/google/chrome/chrome --user-data-dir=$HOME/.chromep --proxy-server=socks5://localhost:38081  --user-agent="Mozilla/5.0 (Windows NT 10.0; WOW64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/88.0.4324.96 Safari/537.36"'
+
+## AI related
+alias goose-app='/Applications/Goose.app/Contents/MacOS/Goose . &>/tmp/goose_$$.out & echo "Goose started. Log: /tmp/goose_$$.out" >&2'
+alias claude-m5='ANTHROPIC_AUTH_TOKEN=ollama ANTHROPIC_API_KEY="" ANTHROPIC_BASE_URL="${AI_LOCAL_URL_BASE%/}" claude --model ${AI_DEFAULT_MODEL}'   #CLAUDE_CODE_MAX_CONTEXT_TOKENS=32768
+#alias claude-investigate='claude "Investigate this ticket"'
+#alias claude-local='ANTHROPIC_AUTH_TOKEN=ollama ANTHROPIC_API_KEY="" ANTHROPIC_BASE_URL="http://localhost:11434" CLAUDE_CODE_MAX_CONTEXT_TOKENS=32768 claude --model gemma4:e4b-mlx'
+# Ollama generates .codex/model.json, which contains model names (also .codex/ollama-launch.config.toml)
+alias codex-m5='codex --profile remote-ollama -c model_provider="remote-ollama" -c model_providers.ollama-launch.name="Ollama" -c model_providers.ollama-launch.base_url="${AI_LOCAL_URL_BASE%/}/v1/" -c model_providers.ollama-launch.wire_api="responses" -c model_catalog_json="$HOME/IdeaProjects/samples/runcom/codex_ollama_model.json" -m ${AI_DEFAULT_MODEL}'
+#node /opt/homebrew/bin/codex --profile ollama-launch -c model_provider="ollama-launch" -c model_providers.ollama-launch.name="Ollama" -c model_providers.ollama-launch.base_url="http://127.0.0.1:11434/v1/" -c model_providers.ollama-launch.wire_api="responses" -c model_catalog_json="/Users/hosako/.codex/model.json" -m gemma4:e4b-mlx
 
 
 ## Work specific aliases ############################################################################################3
@@ -1466,6 +1474,13 @@ function startCommonUtils() {
         mcpo --host 127.0.0.1 --port 48000 --config $HOME/.mcps.json &>/tmp/mcpo.log &
         sleep 1
         tail /tmp/mcpo.log
+    fi
+
+    if type apfel &>/dev/null; then
+        echo "# Starting apfel on port 11435" >&2
+        apfel --serve --port 11435 &>/tmp/apfel.out &
+        sleep 1
+        tail /tmp/apfel.out
     fi
 
     # Currently not starting ollama by default
