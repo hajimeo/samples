@@ -1,4 +1,8 @@
 #!/usr/bin/env bash
+# NOTE: if rsync is required (no tar unfortunately):
+#   curl -L "https://github.com/ryanwoodsmall/static-binaries/raw/refs/heads/master/x86_64/rsync" -O
+
+
 function usage() {
     cat <<EOS
 $(basename "$BASH_SOURCE") contains functions which are:
@@ -204,7 +208,10 @@ function f_blob_search() {
     local __doc__="Search blob store properties files with regex"
     local _content_dir="${1:-"."}"          # /var/tmp/share/sonatype/blobs/default/content
     local _regex="${2:-"\bdeleted=true\b"}" # (?s)(?=.*?repo-name=npm-(proxy|group)\b)(?=.*?blob-name=lodash\b).*
-    find ${_content_dir%/} -maxdepth 1 -type d -name 'vol-*' -print0 | xargs -0 -I {} -P4 -t grep -IRslPz --include='*.properties' "${_regex}" {}
+    # NOTE: grep in busybox does not have -I or -P or -z
+    #find ${_content_dir%/}/vol-* -mindepth 1 -maxdepth 1 -type d -print0 | xargs -0 -I {} -P4 -t grep -IRslPz --include='*.properties' "${_regex}" {}
+    find ${_content_dir%/}/vol-* -mindepth 1 -maxdepth 1 -type d -print0 | xargs -0 -P4 -I _D_ find _D_ -type f -name '*.properties' -exec grep -l "${_regex}" {} +
+    find ${_content_dir%/}/20?? -mindepth 2 -maxdepth 2 -type d -print0 | xargs -0 -P4 -I _D_ find _D_ -type f -name '*.properties' -exec grep -l "${_regex}" {} +
 }
 # | tee result.out; sed 's/properties/bytes/g' result.out > result.bytes.out; tar -czvf test.tgz -T <(cat result.out result.bytes.out)
 # TODO: utilise 'blobpath' command
@@ -214,6 +221,27 @@ function f_find_blob_by_path_and_repo() {
     local _path="${2}"
     local _repo="${3}"
     rg -g '*.properties' "^@BlobStore.blob-name=${_path}$" ${_content_dir%/}/vol-* -l | xargs -I{} rg -l --files-without-match 'deleted=true' {} | xargs -I{} rg "^@Bucket.repo-name=${_repo}$" {} -l
+}
+
+function f_copy_blobs_between_file_blob_stores() {
+    #Simpler version of https://support.sonatype.com/hc/en-us/articles/47920144489619-PoC-Copy-blobs-between-Nexus-instances-and-across-different-blob-store-types
+    local _regex="${1}" #@Bucket.repo-name=(docker-hosted|docker-proxy)$
+    local _src_bs_no_content="${2}"
+    local _dist_bs_no_content="${3}"
+    local _dry_run="${4:-"y"}"
+    # -z is added in case one of path is mounted from a remote server, -v is for seeing skipping message
+    local _rsync_options="-v -z -P -a --ignore-existing --files-from=/tmp/rsync-list.out"
+    [[ "${_dry_run}" =~ ^[yY] ]] && _rsync_options="${_rsync_options} -n"
+
+    find ${_src_bs_no_content}/content/vol-* -mindepth 1 -maxdepth 1 -type d -print0 | xargs -0 -P4 -I _D_ find _D_ -type f -name '*.properties' -exec grep -l -E "${_regex}" {} + | tee /tmp/should_be_copied_properties.tmp
+    find ${_src_bs_no_content}/content/20?? -mindepth 2 -maxdepth 2 -type d -print0 | xargs -0 -P4 -I _D_ find _D_ -type f -name '*.properties' -exec grep -l -E "${_regex}" {} + | tee -a /tmp/should_be_copied_properties.tmp
+    # if the above file looks good, generates .bytes
+    sed -e 'p; s/\.properties$/.bytes/' /tmp/should_be_copied_properties.tmp > /tmp/rsync-list.tmp
+    # remove unnecessary path for rsync (--files-from= is easier with relative path)
+    sed -E 's|.+/content/|content/|g' /tmp/rsync-list.tmp > /tmp/rsync-list.out
+
+    # Make sure both paths end with '/'
+    rsync ${_rsync_options} "${_src_bs_no_content%/}/" "${_dist_bs_no_content%/}/"
 }
 
 # Not perfect
