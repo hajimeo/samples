@@ -184,7 +184,7 @@ MarkupSafe==3.0.3
 marshmallow==3.26.2
 matplotlib==3.11.1
 matplotlib-inline==0.2.2
-mcp==1.27.1
+mcp==1.29.0
 mcpo==0.0.20
 mdurl==0.1.2
 memory-profiler==0.61.0
@@ -313,7 +313,7 @@ standard-aifc==3.13.0
 standard-chunk==3.13.0
 standard-imghdr==3.13.0
 starlette==1.1.0
-streamlit==1.61.1
+streamlit==1.62.0
 sympy==1.14.0
 tabulate==0.10.0
 tenacity==9.1.4
