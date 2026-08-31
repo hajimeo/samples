@@ -824,9 +824,8 @@ function _prepare_install() {
     local __doc__="Prepare application installation. _LICENSE_PATH is also set."
     local _extract_path="$1"
     local _url="$2"
-    local _license_path="${3}"
-    local _download_dir="${4}"
-    local _force_extract="${5:-"${_FORCE_EXTRACT}"}"
+    local _download_dir="${3}"
+    local _force_extract="${4:-"${_FORCE_EXTRACT}"}"
 
     local _tgz_name="$(basename "${_url}")"
     if [ -z "${_download_dir%/}" ]; then
@@ -863,17 +862,21 @@ function _prepare_install() {
     fi
     mkdir -v -p "${_extract_path}" || return $?
     tar -C ${_extract_path%/} -xf ${_tgz} || return $?
+}
 
-    # NOTE: can't use 'echo' as there are other outputs in this function, so using export
-    if [ -f "${_license_path}" ]; then
-        export _LICENSE_PATH="${_license_path}"
-    elif [ ! -s "${_LICENSE_PATH}" ]; then
-        if [ -f "${HOME%/}/.nexus_executable_cache/license/nexus.lic" ]; then
-            export _LICENSE_PATH="${HOME%/}/.nexus_executable_cache/license/nexus.lic"
+function _export_license_path() {
+    local _license_path="$1"
+    if [ ! -s "${_license_path}" ]; then
+        if [ -s "${HOME%/}/.nexus_executable_cache/license/nexus.lic" ]; then
+            _license_path="${HOME%/}/.nexus_executable_cache/license/nexus.lic"
+        elif [ -s "${_WORK_DIR%/}/sonatype/sonatype-license.lic" ]; then
+            _license_path="${_WORK_DIR%/}/sonatype/sonatype-license.lic"
         else
-            export _LICENSE_PATH="$(find ${_SHARE_DIR%/}/sonatype -maxdepth 1 -name '*.lic' -print | head -n1)"
+            _license_path="$(find ${_SHARE_DIR%/}/sonatype -maxdepth 1 -name '*.lic' -print | head -n1)"
         fi
     fi
+    export _LICENSE_PATH="${_license_path}"
+    echo "${_license_path}"
 }
 
 function _upsert() {
