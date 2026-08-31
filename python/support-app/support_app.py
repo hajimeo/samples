@@ -10,42 +10,44 @@
 # HOW TO RUN (MCP server, Streamable HTTP - for an AI agent instead of a human):
 #   1. `cd` to the extracted support zip (same as above)
 #   2. python python/support_app.py --mcp   # optional: MCP_HOST / MCP_PORT env vars, default 127.0.0.1:8931
+#
+# HOW TO RUN (both at once):
+#   Set MCP_ENABLE=1 and run the Streamlit command above; the MCP server then also listens on
+#   MCP_HOST/MCP_PORT in a background thread of the same Streamlit process, sharing its DuckDB connection/cache.
+
 import gzip
 import os
 import re
 import sys
 import tempfile
+import threading
+from datetime import datetime, timezone
 
 import streamlit as st
 import duckdb
 import requests
 
+### Command arguments:
 MCP_MODE = "--mcp" in sys.argv[1:]
+
 
 def _config(key, default):
     """Config lookup that works with or without a running Streamlit context (MCP mode has none)."""
     return os.environ.get(key, default)
 
-def _warn(msg):
-    """Reports a non-fatal setup problem to the console always, and to the Streamlit UI when running there."""
-    print("WARNING: " + msg)
-    if not MCP_MODE:
-        st.warning(msg)
 
+### Global variables: #################################################################################
 # 0. Model and API Configuration
 # If the environment variable AI_API_URL is set, use it; otherwise default to localhost
 AI_API_URL = _config("AI_API_URL", "http://localhost:11434/api/generate")
-AI_MODEL = _config("AI_MODEL", "qwen2.5-coder:7b") # "gemma4:12b"
-
-# Initialize DuckDB connection
-con = duckdb.connect(database=':memory:')
+AI_MODEL = _config("AI_MODEL", "qwen2.5-coder:7b")  # "gemma4:12b"
 
 # Default Log sources are matching all files under the current directory or `./log/` directory, and file name ends with `.log` or `.log.gz`
 # This can be overridden by LOG_APP_REGEX environment variable, which should be a regex pattern matching the log file paths to include.
-LOG_APP_REGEX = _config("LOG_APP_REGEX", "(nexus|clm-server).*(log|log.gz)$")    # category `application`
+LOG_APP_REGEX = _config("LOG_APP_REGEX", "(nexus|clm-server).*(log|log.gz)$")  # category `application`
 LOG_REQ_REGEX = _config("LOG_REQ_REGEX", "(?<!outbound-)request.*(log|log.gz)$")  # category `request`
-LOG_OUTBOUND_REGEX = _config("LOG_OUTBOUND_REGEX", "outbound-request.*(log|log.gz)$")    # category `outbound`
-LOG_AUDIT_REGEX = _config("LOG_AUDIT_REGEX", "audit.*(log|log.gz)$")             # category `audit`
+LOG_OUTBOUND_REGEX = _config("LOG_OUTBOUND_REGEX", "outbound-request.*(log|log.gz)$")  # category `outbound`
+LOG_AUDIT_REGEX = _config("LOG_AUDIT_REGEX", "audit.*(log|log.gz)$")  # category `audit`
 
 LOG_CATEGORY_REGEXES = {
     "application": LOG_APP_REGEX,
@@ -58,7 +60,23 @@ LOG_CATEGORY_REGEXES = {
 # query/Streamlit rerun (or MCP server restart), and repeat queries read from disk (with column pruning/predicate
 # pushdown) instead of holding every category fully materialized in memory at once.
 # Default location should be current directory. Can't be shared with other directories as the cache would conflict.
-LOG_CACHE_DIR = _config("LOG_CACHE_DIR", "./__spt-app_db_cache")
+DB_CACHE_DIR = _config("DB_CACHE_DIR", os.path.join(tempfile.gettempdir(), "__spt-app_db_cache"))
+# Default should be OS's temp dir (e.g. /tmp/ if Linux, Mac, or %TEMP% if Windows)
+LOG_CACHE_DIR = _config("LOG_CACHE_DIR", os.path.join(tempfile.gettempdir(), "spt-app_log"))
+MCP_REQUEST_LOG_FILE = os.path.join(LOG_CACHE_DIR, "mcp_requests.log")
+########################################################################################################
+
+
+### Initialize DuckDB connection
+con = duckdb.connect(database=':memory:')
+
+
+def _warn(msg):
+    """Reports a non-fatal setup problem to the console always, and to the Streamlit UI when running there."""
+    print("WARNING: " + msg)
+    if not MCP_MODE:
+        st.warning(msg)
+
 
 def _is_cache_fresh(cache_file, source_paths):
     """True if cache_file exists and is newer than every file in source_paths."""
@@ -67,7 +85,8 @@ def _is_cache_fresh(cache_file, source_paths):
     cache_mtime = os.path.getmtime(cache_file)
     return all(os.path.getmtime(p) <= cache_mtime for p in source_paths if os.path.isfile(p))
 
-def materialize_view_via_parquet(con, view_name, select_sql, source_paths, cache_dir=LOG_CACHE_DIR):
+
+def materialize_view_via_parquet(con, view_name, select_sql, source_paths, cache_dir=DB_CACHE_DIR):
     """Runs `select_sql` once (unless a fresh cache already exists) and writes the result to a Parquet
     file under cache_dir, then points `view_name` at that file via read_parquet."""
     os.makedirs(cache_dir, exist_ok=True)
@@ -75,6 +94,7 @@ def materialize_view_via_parquet(con, view_name, select_sql, source_paths, cache
     if not _is_cache_fresh(cache_file, source_paths):
         con.execute(f"COPY ({select_sql}) TO '{cache_file}' (FORMAT PARQUET)")
     con.execute(f"CREATE OR REPLACE VIEW {view_name} AS SELECT * FROM read_parquet('{cache_file}')")
+
 
 def find_log_files():
     """Walks the current directory and groups matching file paths by category."""
@@ -87,6 +107,7 @@ def find_log_files():
                 if pattern.search(path):
                     matches[category].append(path)
     return matches
+
 
 def setup_log_views(con, file_categories):
     """Creates a unified `logs` view over the categorized log files, one row per line."""
@@ -118,6 +139,7 @@ def setup_log_views(con, file_categories):
         raise Exception("No log files found matching the configured LOG_*_REGEX patterns.")
     materialize_view_via_parquet(con, "logs", " UNION ALL ".join(union_parts), all_paths)
 
+
 _matched_log_files = find_log_files()
 
 try:
@@ -138,7 +160,7 @@ APP_LOG_PATTERNS = [
      r'^(\d\d\d\d-\d\d-\d\d.\d\d:\d\d:\d\d[.,0-9]*)[^ ]* +([^ ]+) +\[([^]]+)\][^ ]* ([^ ]*) ([^ ]+) - (.*)'),
 ]
 APP_LOG_DEFAULT = (["date_time", "loglevel", "message"],
-                    r'^(\d\d\d\d-\d\d-\d\d.\d\d:\d\d:\d\d[.,0-9]*)[^ ]* +([^ ]+) +(.+)')
+                   r'^(\d\d\d\d-\d\d-\d\d.\d\d:\d\d:\d\d[.,0-9]*)[^ ]* +([^ ]+) +(.+)')
 
 REQUEST_SUPERSET_COLUMNS = ["clientHost", "l", "user", "date", "requestURL", "statusCode", "headerContentLength",
                             "bytesSent", "elapsedTime", "headerUserAgent", "thread", "misc"]
@@ -166,7 +188,8 @@ REQUEST_LOG_PATTERNS = [
      r'^\[([^\]]+)\] ([^ ]+) "([^"]*)" ([^ ]+) ([^ ]+) ([^ ]+) (.+)'),
 ]
 REQUEST_LOG_DEFAULT = (["clientHost", "l", "user", "date", "requestURL", "statusCode", "bytesSent", "elapsedTime"],
-                        r'^([^ ]+) ([^ ]+) ([^ ]+) \[([^\]]+)\] "([^"]*)" ([^ ]+) ([^ ]+) ([0-9]+)')
+                       r'^([^ ]+) ([^ ]+) ([^ ]+) \[([^\]]+)\] "([^"]*)" ([^ ]+) ([^ ]+) ([0-9]+)')
+
 
 def _detect_log_pattern(filepath, candidates, default, line_filter=None, max_lines=200, max_checks=5):
     """Reads a handful of sample lines from filepath and returns the (columns, pattern) of the first
@@ -192,6 +215,7 @@ def _detect_log_pattern(filepath, candidates, default, line_filter=None, max_lin
         if any(re.search(pattern, l) for l in checking_lines):
             return columns, pattern
     return default
+
 
 def _build_extract_sql(paths, pattern, columns, superset, category_label):
     """Builds a SELECT that extracts `columns` from `line` via regexp_extract (as a named struct, since
@@ -222,6 +246,7 @@ def _build_extract_sql(paths, pattern, columns, superset, category_label):
         )
     """
 
+
 def setup_typed_log_views(con, file_categories):
     """Creates `application_logs` (nexus/clm-server) and `request_logs` (request/outbound-request) views
     with real, typed columns extracted from `line`, instead of the AI having to regex the raw line itself.
@@ -239,7 +264,7 @@ def setup_typed_log_views(con, file_categories):
         if not groups:
             return
         union_parts = [_build_extract_sql(paths, pattern, list(columns), superset, category)
-                        for (columns, pattern, category), paths in groups.items()]
+                       for (columns, pattern, category), paths in groups.items()]
         cast_cols = [(f"TRY_CAST({c} AS BIGINT) AS {c}" if c in numeric_cols else c) for c in superset]
         inner_sql = " UNION ALL ".join(union_parts)
         select_sql = f"SELECT {', '.join(cast_cols)}, matched, category, source_file, line FROM ({inner_sql})"
@@ -250,6 +275,7 @@ def setup_typed_log_views(con, file_categories):
                numeric_cols=set(), line_filter=is_app_log_line_start)
     build_view("request_logs", ["request", "outbound"], REQUEST_LOG_PATTERNS, REQUEST_LOG_DEFAULT,
                REQUEST_SUPERSET_COLUMNS, numeric_cols={"statusCode", "headerContentLength", "bytesSent", "elapsedTime"})
+
 
 def setup_audit_log_view(con, file_categories):
     """Creates an `audit_logs` view from audit.log / audit-YYYY-MM-DD.log.gz, which is newline-delimited JSON (ndjson).
@@ -281,10 +307,12 @@ def setup_audit_log_view(con, file_categories):
     """
     materialize_view_via_parquet(con, "audit_logs", select_sql, paths)
 
+
 try:
     setup_typed_log_views(con, _matched_log_files)
 except Exception as e:
-    _warn("Could not build typed application_logs/request_logs views. The AI assistant may have limited data: " + str(e))
+    _warn(
+        "Could not build typed application_logs/request_logs views. The AI assistant may have limited data: " + str(e))
 
 try:
     setup_audit_log_view(con, _matched_log_files)
@@ -321,6 +349,7 @@ those rows, matched/parsed=false and the typed columns are NULL; filter with `WH
 only want successfully parsed rows, or fall back to the `logs` view for full-text search across everything.
 """.strip()
 
+
 # 2. Local AI Query Generator (Ollama API)
 def ask_local_ai(user_prompt):
     """Asks Qwen2.5-Coder to translate a natural language question into DuckDB SQL."""
@@ -346,6 +375,7 @@ def ask_local_ai(user_prompt):
     except Exception as e:
         return f"Error connecting to Ollama: {str(e)}"
 
+
 def run_sql(sql):
     """Executes SQL against DuckDB and renders the results/chart in the main panel."""
     try:
@@ -361,6 +391,17 @@ def run_sql(sql):
 
     except Exception as sql_error:
         st.error(f"SQL Execution Failed: {str(sql_error)}")
+
+
+def _log_mcp_request(prompt, sql, summary):
+    """Appends one line per MCP `query_logs` call to MCP_REQUEST_LOG_FILE: timestamp, prompt (if any),
+    resolved SQL, and a short result summary (row count/truncated, or the error)."""
+    os.makedirs(LOG_CACHE_DIR, exist_ok=True)
+    timestamp = datetime.now(timezone.utc).isoformat()
+    prompt_part = f"prompt={prompt!r} " if prompt else ""
+    with open(MCP_REQUEST_LOG_FILE, "a") as f:
+        f.write(f"{timestamp} {prompt_part}sql={sql!r} {summary}\n")
+
 
 def run_mcp_server(con):
     """Runs this same log database as an MCP server (Streamable HTTP) instead of the Streamlit UI, so an AI
@@ -393,19 +434,35 @@ def run_mcp_server(con):
             rows = cur.fetchall()
             truncated = len(rows) > 500
             rows = rows[:500]
+            _log_mcp_request(prompt, sql, f"rows={len(rows)}" + (" (truncated at 500)" if truncated else ""))
             lines = [f"SQL: {sql}", f"rows: {len(rows)}" + (" (truncated at 500)" if truncated else "")]
             lines.append(" | ".join(cols))
             lines.extend(" | ".join("" if v is None else str(v) for v in r) for r in rows)
             return "\n".join(lines)
         except Exception as e:
+            _log_mcp_request(prompt, sql, f"ERROR: {e}")
             return f"SQL ERROR: {e}"
 
     print(f"Starting MCP server (Streamable HTTP) on http://{host}:{port}/mcp ...")
     app.run(transport="streamable-http")
 
+
+@st.cache_resource
+def start_mcp_server_background(_con):
+    """Runs run_mcp_server in a daemon thread so it can serve alongside the Streamlit UI in the
+    same process/DuckDB connection. @st.cache_resource ensures this only happens once per process,
+    since Streamlit re-executes the whole script on every rerun (widget click, etc.)."""
+    thread = threading.Thread(target=run_mcp_server, args=(_con,), daemon=True)
+    thread.start()
+    return thread
+
+
 if MCP_MODE:
     run_mcp_server(con)
 else:
+    if _config("MCP_ENABLE", ""):
+        start_mcp_server_background(con)
+
     # 1. UI Configuration/customization
     st.set_page_config(page_title="Local SupportZip Analyzer", layout="wide")
     st.title("🔍 Local SupportZip Analyzer")
@@ -422,10 +479,14 @@ else:
         unsafe_allow_html=True
     )
 
+    if _config("MCP_ENABLE", ""):
+        st.sidebar.caption(
+            f"🔌 MCP server also live at http://{_config('MCP_HOST', '127.0.0.1')}:{_config('MCP_PORT', '8931')}/mcp")
+
     # 3. Sidebar Chat Interface (The "Support AI" Panel)
     st.sidebar.header("Ask AI Assistant")
     user_query = st.sidebar.text_area("Ask a question about your logs:",
-                                       placeholder="e.g., Show me the top 5 errors sorted by frequency")
+                                      placeholder="e.g., Show me the top 5 errors sorted by frequency")
 
     if "sql_editor" not in st.session_state:
         st.session_state.sql_editor = ""
@@ -467,10 +528,11 @@ else:
 
         col1.metric("Total Logs Processed", f"{total_logs:,}")
         col2.metric("ERROR count", f"{total_errors:,}")
-        col3.metric("Model used by: "+AI_API_URL, AI_MODEL)
+        col3.metric("Model used by: " + AI_API_URL, AI_MODEL)
 
         st.subheader("📂 Logs by Category")
-        category_df = con.execute("SELECT category, COUNT(*) AS count FROM logs GROUP BY category ORDER BY category").df()
+        category_df = con.execute(
+            "SELECT category, COUNT(*) AS count FROM logs GROUP BY category ORDER BY category").df()
         st.bar_chart(category_df.set_index("category"))
     except Exception as e:
         col1.metric("Total Logs Processed", "0")
