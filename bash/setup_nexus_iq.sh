@@ -138,7 +138,12 @@ function f_install_iq() {
     if [[ "${_CLM_STAGING}" =~ ^[yY] ]]; then
         grep -qE '^hdsUrl:' "${_cfg_file}" || echo -e "hdsUrl: https://clm-staging.sonatype.com/\n$(cat "${_cfg_file}")" >"${_cfg_file}"
     fi
-    local _license_path="${_LICENSE_PATH}"
+    local _license_path="$(_export_license_path)"
+    if [ ! -s "${_license_path}" ]; then
+        _log "ERROR" "_LICENSE_PATH is not set or empty."
+        return 1
+    fi
+    [ ! -s "${_license_path}" ] && _log "WARN" "No license file found. Please set _LICENSE_PATH to your license file."
     grep -qE '^licenseFile' "${_cfg_file}" || echo -e "licenseFile: ${_license_path%/}\n$(cat "${_cfg_file}")" >"${_cfg_file}"
     grep -qE '^\s*port: 8070' "${_cfg_file}" && sed -i.tmp 's/port: 8070/port: '${_port}'/g' "${_cfg_file}"
     grep -qE '^\s*port: 8071' "${_cfg_file}" && sed -i.tmp 's/port: 8071/port: '$((${_port} + 1))'/g' "${_cfg_file}"
@@ -217,8 +222,8 @@ function _download_installer() {
         mkdir -v -p "${_download_dir%/}" || return $?
     fi
 
-    # This function sets _LICENSE_PATH
-    _prepare_install "${_dirpath}" "https://download.sonatype.com/clm/server/${_filename}" "" "${_download_dir}" "${_force_extract}" || return $?
+    # This function export _LICENSE_PATH
+    _prepare_install "${_dirpath}" "https://download.sonatype.com/clm/server/${_filename}" "${_download_dir}" "${_force_extract}" || return $?
 
     if [ -d "${HOME%/}/.nexus_executable_cache" ]; then
         local _dist_filename="$(basename "${_filename}")"
@@ -521,6 +526,7 @@ function f_api_comp_details() {
 #f_api_comp_versions '{"format":"golang","coordinates":{"name":"github.com/alecthomas/participle"}}'
 #f_api_comp_versions '{"format":"golang","coordinates":{"name":"github.com/alecthomas/participle"}}'
 #f_api_comp_versions '{"packageUrl":"pkg:npm/%40asyncapi/specs"}'
+#f_api_comp_versions '{"packageUrl":"pkg:conda/harfbuzz"}'
 function f_api_comp_versions() {
     local __doc__="Call Component Versions API https://help.sonatype.com/iqserver/automating/rest-apis/component-versions-rest-api---v2"
     local _component_identifier_without_ver="$1"

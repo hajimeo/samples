@@ -220,7 +220,7 @@ function f_install_nexus3() {
     fi
     # download-staging.sonatype.com
     _log "INFO" "Installing Nexus ${_ver} to ${_dirpath%/} with DB ${_dbname:-"H2"} (tgz: ${_tgz_name})"
-    _prepare_install "${_dirpath}" "https://download.sonatype.com/nexus/${_ver%%.*}/${_tgz_name}" "${r_NEXUS_LICENSE_FILE}" || return $?
+    _prepare_install "${_dirpath}" "https://download.sonatype.com/nexus/${_ver%%.*}/${_tgz_name}" || return $?
 
     if [ ! -d ${_dirpath%/}/sonatype-work/nexus3/etc/fabric ]; then
         mkdir -p ${_dirpath%/}/sonatype-work/nexus3/etc/fabric || return $?
@@ -231,7 +231,7 @@ function f_install_nexus3() {
     fi
 
     _upsert "${_prop}" "application-port" "${_port}" || return $?
-    local _license_path="${_LICENSE_PATH}"
+    local _license_path="$(_export_license_path "${r_NEXUS_LICENSE_FILE}")"
     if [ ! -s "${_license_path}" ]; then
         _log "WARN" "No license file provided: ${_license_path}"; sleep 3
     else
@@ -3024,6 +3024,9 @@ function f_upload_dummy_docker_with_oras() {
     local _registry="${1:-"localhost:8081/docker-hosted"}"  # Registory which doesn't requre authentication.
     local _dist_tag="${2}"
     local _src_registry="${3:-"docker.io/library/alpine:3.7"}"
+
+    f_install_oras || return $?
+
     if [ -z "${_dist_tag}" ]; then
         # Get from ${_src_registry}
         _dist_tag="$(echo "${_src_registry}" | sed -E 's@.*/([^/:]+:[^/:]+)$@\1@')"
@@ -4228,10 +4231,10 @@ function f_upload_dummies_rubygem() {
 }
 
 #_populate_docker_hosted alpine:latest "local.standalone.localdomain:18182" "tdsstreaming:0.24.0-KafkaConfluentCloudET.55-SNAPSHOT-1-1-104219"
-#_IMAGE_NAME="hyphentest" _DOCKER_TAG_PFX="226944e1c-" f_upload_dummies_docker "" "1"
-#_ADMIN_USER="testuser" _ADMIN_PWD="testuser" _IMAGE_NAME="pws-blueprint-test-suite/manual-tests/oci-build-recipe-test" f_upload_dummies_docker "" "2"
-#_IMAGE_NAME="path-based-test" f_upload_dummies_docker "${_NEXUS_DOCKER_HOSTNAME}:8443/docker-hosted" "1"
-function f_upload_dummies_docker() {
+#_IMAGE_NAME="hyphentest" _DOCKER_TAG_PFX="226944e1c-" f_upload_dummies_docker_legacy "" "1"
+#_ADMIN_USER="testuser" _ADMIN_PWD="testuser" _IMAGE_NAME="pws-blueprint-test-suite/manual-tests/oci-build-recipe-test" f_upload_dummies_docker_legacy "" "2"
+#_IMAGE_NAME="path-based-test" f_upload_dummies_docker_legacy "${_NEXUS_DOCKER_HOSTNAME}:8443/docker-hosted" "1"
+function f_upload_dummies_docker_legacy() {
     local __doc__="Upload dummy docker images into docker hosted repository (requires 'docker' command)"
     local _host_port="${1}"
     local _how_many="${2:-"10"}"    # this number * _parallel is the actual number of images
@@ -4288,7 +4291,7 @@ function f_gen_delete_dummy_docker_images() {
     echo "docker system prune -f"
 }
 
-function f_upload_dummies_docker_with_oras() {
+function f_upload_dummies_docker() {
     local __doc__="Upload dummy docker images into docker hosted repository with ORAS"
     local _host_port="${1:-"localhost:18181"}" # If path based, localhost:8081/docker-hosted
     local _how_many="${2:-"10"}"    # this number * _parallel is the actual number of images
@@ -4575,13 +4578,17 @@ function f_delete_asset() {
     done
     echo "Deleted ${_line_num} assets"
 }
+# To get only image tags download links (anonymous pull needed to be enabled for docker-hosted)
+#   result_out="$(f_get_attr_all_assets "docker-hosted" "downloadUrl" "Y")"
+#   cat "${result_out}" | sed 's@/docker-hosted/@/docker-hosted-proxy/@g' | xargs -I{} curl -sf -u "${_ADMIN_USER}:${_ADMIN_PWD}" -w '%{http_code} {} (%{time_total}s)\n' -L -k "{}" -o/dev/null
 #f_get_attr_all_assets "raw-group" "downloadUrl" "" "q=dummies"
 function f_get_attr_all_assets() {
     local __doc__="Get/List all assets but only one attribute from one repository with Search REST API (require correct search index)"
     local _repo="$1"
     local _attr="${2:-"downloadUrl"}"    # Usually "id" or "downloadUrl"
-    local _max_loop="${3:-200}" # 50 * 200 = 10000 max
+    local _value_only="${3}"
     local _search_criteria="${4}"    # or "downloadUrl"
+    local _max_loop="${5:-200}" # 50 * 200 = 10000 max
     rm -f ${_TMP%/}/${FUNCNAME[0]}_*.out || return $?
     local _path="/service/rest/v1/search/assets"
     local _query=""
@@ -4597,8 +4604,11 @@ function f_get_attr_all_assets() {
     cat /dev/null > ${_TMP%/}/${FUNCNAME[0]}_attr_$$.out
     for i in $(seq "1" "${_max_loop}"); do
         f_api "${_path}${_base_query}${_query}" > ${_TMP%/}/${FUNCNAME[0]}_$$.json || return $?
-        # TODO: should output only '"_attr":"_value_"'
-        grep -E '^            "'${_attr}'":' -h ${_TMP%/}/${FUNCNAME[0]}_$$.json | sort | uniq >> ${_TMP%/}/${FUNCNAME[0]}_attr_$$.out || return $?
+        if [[ "${_value_only}" =~ [yY] ]]; then
+            grep -E '^            "'${_attr}'":' -h ${_TMP%/}/${FUNCNAME[0]}_$$.json | sed -E 's@^.*"'${_attr}'":[[:space:]]*"([^"]+)".*$@\1@'
+        else
+            grep -E '^            "'${_attr}'":' -h ${_TMP%/}/${FUNCNAME[0]}_$$.json
+        fi | sort | uniq >> ${_TMP%/}/${FUNCNAME[0]}_attr_$$.out || return $?
         grep -qE '"continuationToken": *"[0-9a-f]+' ${_TMP%/}/${FUNCNAME[0]}_$$.json || break
         local _line_num="$(cat "${_TMP%/}/${FUNCNAME[0]}_attr_$$.out" | wc -l | tr -d '[:space:]')"
         _log "INFO" "Found ${_line_num} assets so far (${i})"
@@ -4642,7 +4652,7 @@ function f_delete_all_assets() {
     local _pwd="${6:-"${_ADMIN_PWD}"}"
     local _nexus_url="${7:-"${r_NEXUS_URL:-"${_NEXUS_URL}"}"}"
 
-    local _all_asset_file="$(f_get_attr_all_assets "${_repo}" "id" "${_max_loop}")" || return $?
+    local _all_asset_file="$(f_get_attr_all_assets "${_repo}" "id" "" "" "${_max_loop}")" || return $?
     local _line_num="$(cat "${_all_asset_file}" | wc -l | tr -d '[:space:]')"
     if [[ ! "${_force}" =~ ^[yY] ]]; then
         read -p "Are you sure to delete all (${_line_num}) assets?: " "_yes"
@@ -4657,7 +4667,6 @@ function f_delete_all_assets() {
     # To make this function faster, not using f_api "/service/rest/v1/assets/${BASH_REMATCH[1]}" "" "DELETE" (but now can't stop at the first error...)
     _log "INFO" "Deleted ${_line_num} assets. 'After waiting for 'nexus.assetBlobCleanupTask.blobCreatedDelayMinute', Cleanup unused <format> blobs from <datastore> task' (f_run_tasks_by_type \"assetBlob.cleanup\") needs to be run."
 }
-
 function f_staging_move_test() {
     local __doc__="To test staging move API with search and tag APIs"
     local _format="${1:-"raw"}"
@@ -4770,11 +4779,16 @@ function f_associate_tag() {
 function f_run_tasks_by_type() {
     local __doc__="Run/start multiple tasks by type (eg. 'assetBlob.cleanup')"
     local _task_type="$1"   #assetBlob.cleanup
+    local _check_status_only="$2"
     if [ -z "${_task_type}" ]; then
         f_api "/service/rest/v1/tasks"
         return $?
     fi
     f_api "/service/rest/v1/tasks?type=${_task_type}" > ${_TMP%/}/${FUNCNAME[0]}.json || return $?
+    if [[ "${_check_status_only}" =~ ^[yY] ]]; then
+        cat ${_TMP%/}/${FUNCNAME[0]}.json
+        return 0
+    fi
     cat ${_TMP%/}/${FUNCNAME[0]}.json | JSON_SEARCH_KEY="items.id" _sortjson | while read -r _id; do
         _log "INFO" "/service/rest/v1/tasks/${_id}/run"
         f_api "/service/rest/v1/tasks/${_id}/run" "" "POST" || return $?
@@ -4782,8 +4796,8 @@ function f_run_tasks_by_type() {
     done
 }
 
-function f_test_download() {
-    local __doc__="Test download with curl for checking performance"
+function f_test_download_speed() {
+    local __doc__="Test download speed with curl for checking performance"
     local _repo="${1:-"raw-hosted"}"
     local _work_dir="${2}"
     local _bs_name="${3}"
