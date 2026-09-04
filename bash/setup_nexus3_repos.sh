@@ -2060,6 +2060,12 @@ function f_iq_quarantine() {
     fi
     # To create IQ: Audit and Quarantine for this repository:
     if [ -n "${_repo_name}" ]; then
+        local _ver="$(_get_version)"
+        if [[ "${_ver}" =~ 3\.(9[4-9]|1[0-9][0-9]) ]]; then
+            _log "WARN" "(TODO) IQ Audit and Quarantine capability is deprecated in 3.94+."
+            _log "    " "Access: ${_NEXUS_URL%/}/#admin/repository/repositories:${_repo_name}"
+            return 1
+        fi
         _apiS '{"action":"capability_Capability","method":"create","data":[{"id":"NX.coreui.model.Capability-1","typeId":"firewall.audit","notes":"","enabled":true,"properties":{"repository":"'${_repo_name}'","quarantine":"true"}}],"type":"rpc"}' || return $?
         _log "INFO" "IQ: Audit and Quarantine for ${_repo_name} completed"
         _log "INFO" "If PCCS is required, change the config from ${_NEXUS_URL%/}/#admin/repository/repositories:${_repo_name}"
@@ -2156,7 +2162,13 @@ function _get_asset() {
         _curl="${_curl} -D ${_TMP%/}/_proxy_test_header_$$.out -o ${_out_path}"
     else
         cat /dev/null > ${_TMP%/}/_proxy_test_header_$$.out
-        _curl="${_curl} -I" # NOTE: this is NOT same as '-X HEAD'
+        local _ver="$(_get_version)"
+        if [[ "${_ver}" =~ 3\.(9[4-9]|1[0-9][0-9]) ]]; then
+            # Around 3.94, HEAD request may behave differently
+            _curl="${_curl} -D ${_TMP%/}/_proxy_test_header_$$.out -o /dev/null"
+        else
+            _curl="${_curl} -I" # NOTE: this is NOT same as '-X HEAD'
+        fi
     fi
     _curl="${_curl} -u ${_user}:${_pwd} -k \"${_base_url%/}/repository/${_repo%/}/${_path#/}\""
     if [[ "${_ASYNC_CURL}" =~ ^[yY] ]]; then
