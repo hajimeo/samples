@@ -39,8 +39,9 @@ def _config(key, default):
 ### Global variables: #################################################################################
 # 0. Model and API Configuration
 # If the environment variable AI_API_URL is set, use it; otherwise default to localhost
-AI_API_URL = _config("AI_API_URL", "http://localhost:11434/api/generate")
-AI_MODEL = _config("AI_MODEL", "qwen2.5-coder:7b")  # "gemma4:12b"
+#AI_API_URL = _config("AI_API_URL", "http://localhost:11434/api/generate")  # For Ollama
+AI_API_URL = _config("AI_API_URL", "http://localhost:11435/v1/chat/completions")
+AI_MODEL = _config("AI_MODEL", "apple-foundationmodel")  # "qwen2.5-coder:7b"
 
 # Default Log sources are matching all files under the current directory or `./log/` directory, and file name ends with `.log` or `.log.gz`
 # This can be overridden by LOG_APP_REGEX environment variable, which should be a regex pattern matching the log file paths to include.
@@ -353,7 +354,7 @@ only want successfully parsed rows, or fall back to the `logs` view for full-tex
 # 2. Local AI Query Generator (Ollama API)
 def ask_local_ai(user_prompt):
     """Asks Qwen2.5-Coder to translate a natural language question into DuckDB SQL."""
-    ollama_url = AI_API_URL
+    ai_api_url = AI_API_URL
 
     # We guide the AI with a strict system prompt so it only returns valid SQL
     system_context = f"""
@@ -370,10 +371,10 @@ def ask_local_ai(user_prompt):
     }
 
     try:
-        response = requests.post(ollama_url, json=payload)
+        response = requests.post(ai_api_url, json=payload)
         return response.json()['response'].strip()
     except Exception as e:
-        return f"Error connecting to Ollama: {str(e)}"
+        return f"Error connecting to AI API: {str(e)}"
 
 
 def run_sql(sql):
