@@ -350,7 +350,8 @@ alias kapaWeb='open -na "Google Chrome" --args --user-data-dir=$HOME/.chromep/wo
 
 ## AI related
 alias goose-app='/Applications/Goose.app/Contents/MacOS/Goose . &>/tmp/goose_$$.out & echo "Goose started. Log: /tmp/goose_$$.out" >&2'
-alias claude-m5='ANTHROPIC_AUTH_TOKEN=ollama ANTHROPIC_API_KEY="" ANTHROPIC_BASE_URL="${AI_LOCAL_URL_BASE%/}" claude --model ${AI_DEFAULT_MODEL}'   #CLAUDE_CODE_MAX_CONTEXT_TOKENS=32768
+alias claude-m5='ANTHROPIC_AUTH_TOKEN=ollama ANTHROPIC_API_KEY="" ANTHROPIC_BASE_URL="${AI_LOCAL_URL_BASE%/}" CLAUDE_CODE_MAX_CONTEXT_TOKENS=256000 claude --model ${AI_DEFAULT_MODEL}'
+alias claude-omlx='ANTHROPIC_BASE_URL="http://Hajimes-MacBookM5.local:8000" ANTHROPIC_AUTH_TOKEN="admin123" ANTHROPIC_DEFAULT_OPUS_MODEL="Qwen2.5-14B-Instruct-4bit" ANTHROPIC_DEFAULT_SONNET_MODEL="Qwen2.5-14B-Instruct-4bit" ANTHROPIC_DEFAULT_HAIKU_MODEL="Qwen2.5-14B-Instruct-4bit" API_TIMEOUT_MS=3000000 CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC=1 CLAUDE_CODE_DISABLE_UNKNOWN_MODEL_WINDOW_ENFORCEMENT=1 CLAUDE_CODE_MAX_CONTEXT_TOKENS=131072 claude --disallowedTools LSP --model Qwen2.5-14B-Instruct-4bit'
 #alias claude-investigate='claude "Investigate this ticket"'
 #alias claude-local='ANTHROPIC_AUTH_TOKEN=ollama ANTHROPIC_API_KEY="" ANTHROPIC_BASE_URL="http://localhost:11434" CLAUDE_CODE_MAX_CONTEXT_TOKENS=32768 claude --model gemma4:e4b-mlx'
 # Ollama generates .codex/model.json, which contains model names (also .codex/ollama-launch.config.toml)
@@ -1446,24 +1447,17 @@ EOF
 }
 
 function startCommonUtils() {
+    local __doc__="Not prefer to add many services, so this function is for starting common services"
     local _with_localai="${1:-"n"}"
     local _with_mlx="${2:-"n"}"
-    local _with_iq="${3:-"n"}"
     pgStatus start
     #tabby_start
     slackS
     #chrome-work
     #open -na "Google Chrome"
 
+    # Currently not in-use as seems not working.
     #screen -dmS claude-mcp bash -c "cd /Users/hosako/Documents/cases && claude mcp serve -d --verbose"
-
-    if [[ "${_with_iq}" =~ ^[yY] ]] && [ -d "$HOME/Documents/tests/nxiq_latest_nxiqlatest" ]; then
-        echo "# Starting Nexus IQ Server from $HOME/Documents/tests/nxiq_latest_nxiqlatest" >&2
-        cd $HOME/Documents/tests/nxiq_latest_nxiqlatest
-        ${JAVA_HOME_25%/}/bin/java -XX:ActiveProcessorCount=2 -Xmx4g -jar ./nexus-iq-server-1.*.jar server ./config.yml >/tmp/nxiq_latest_nxiqlatest.log 2>&1 &
-        sleep 3
-        tail /tmp/nxiq_latest_nxiqlatest.log
-    fi
 
     # This part is not specific to local AI
     source $HOME/.pyvenv_new/bin/activate || return $?
