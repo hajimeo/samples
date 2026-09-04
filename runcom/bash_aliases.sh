@@ -355,8 +355,10 @@ alias claude-omlx='ANTHROPIC_BASE_URL="http://Hajimes-MacBookM5.local:8000" ANTH
 #alias claude-investigate='claude "Investigate this ticket"'
 #alias claude-local='ANTHROPIC_AUTH_TOKEN=ollama ANTHROPIC_API_KEY="" ANTHROPIC_BASE_URL="http://localhost:11434" CLAUDE_CODE_MAX_CONTEXT_TOKENS=32768 claude --model gemma4:e4b-mlx'
 # Ollama generates .codex/model.json, which contains model names (also .codex/ollama-launch.config.toml)
-alias codex-m5='codex --profile remote-ollama -c model_provider="remote-ollama" -c model_providers.ollama-launch.name="Ollama" -c model_providers.ollama-launch.base_url="${AI_LOCAL_URL_BASE%/}/v1/" -c model_providers.ollama-launch.wire_api="responses" -c model_catalog_json="$HOME/IdeaProjects/samples/runcom/codex_ollama_model.json" -m ${AI_DEFAULT_MODEL}'
+alias codex-m5='codex --profile remote-ollama -c model_provider="remote-ollama" -c model_providers.ollama-launch.name="Ollama" -c model_providers.ollama-launch.base_url="${AI_LOCAL_URL_BASE%/}/v1/" -c model_providers.ollama-launch.wire_api="responses" -c model_catalog_json="$HOME/IdeaProjects/samples/runcom/codex_local_model.json" -m ${AI_DEFAULT_MODEL}'
 #node /opt/homebrew/bin/codex --profile ollama-launch -c model_provider="ollama-launch" -c model_providers.ollama-launch.name="Ollama" -c model_providers.ollama-launch.base_url="http://127.0.0.1:11434/v1/" -c model_providers.ollama-launch.wire_api="responses" -c model_catalog_json="/Users/hosako/.codex/model.json" -m gemma4:e4b-mlx
+alias codex-m5='codex --profile remote-ollama -c model_provider="remote-ollama" -c model_providers.ollama-launch.name="Ollama" -c model_providers.ollama-launch.base_url="${AI_LOCAL_URL_BASE%/}/v1/" -c model_providers.ollama-launch.wire_api="responses" -c model_catalog_json="$HOME/IdeaProjects/samples/runcom/codex_local_model.json" -m ${AI_DEFAULT_MODEL}'
+alias codex-omlx='OMLX_API_KEY="admin123" codex -c model_provider="omlx" -c model_providers.omlx.name="oMLX" -c model_providers.omlx.base_url="http://Hajimes-MacBookM5.local:8000/v1" -c model_providers.omlx.env_key="OMLX_API_KEY" -c model_catalog_json="$HOME/IdeaProjects/samples/runcom/codex_local_model.json" -m Qwen2.5-14B-Instruct-4bit'
 
 
 ## Work specific aliases ############################################################################################3
