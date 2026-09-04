@@ -14,6 +14,11 @@
 # HOW TO RUN (both at once):
 #   Set MCP_ENABLE=1 and run the Streamlit command above; the MCP server then also listens on
 #   MCP_HOST/MCP_PORT in a background thread of the same Streamlit process, sharing its DuckDB connection/cache.
+#
+# RESTRICTING TO A DATE RANGE:
+#   Set LOG_DATE_FROM and/or LOG_DATE_TO ("YYYY-MM-DD" or "YYYY-MM-DD HH:MM:SS") to exclude log lines
+#   outside that range from every view (logs, application_logs, request_logs, audit_logs). Lines whose
+#   timestamp can't be determined are always kept. Applies in both Streamlit and --mcp modes.
 
 import gzip
 import os
@@ -57,6 +62,76 @@ LOG_CATEGORY_REGEXES = {
     "audit": LOG_AUDIT_REGEX,
 }
 
+
+def _warn(msg):
+    """Reports a non-fatal setup problem to the console always, and to the Streamlit UI when running there."""
+    print("WARNING: " + msg)
+    if not MCP_MODE:
+        st.warning(msg)
+
+
+# Optional date-range restriction applied when building/caching every view below (raw `logs` included).
+# Format: "YYYY-MM-DD" or "YYYY-MM-DD HH:MM:SS", with an optional trailing "+HHMM"/"-HHMM" offset that is
+# accepted but stripped - comparisons are naive (matched against whatever offset the log lines themselves
+# use), so the offset is only useful for copy-pasting a timestamp straight out of a log line.
+_DATE_RE = re.compile(r'^(\d{4}-\d{2}-\d{2}(?:[ T]\d{2}:\d{2}:\d{2})?)(?: ?[+-]\d{2}:?\d{2})?$')
+
+
+def _validated_date_config(key):
+    value = _config(key, "").strip()
+    if not value:
+        return ""
+    m = _DATE_RE.match(value)
+    if not m:
+        _warn(f"{key}={value!r} is not a valid 'YYYY-MM-DD' or 'YYYY-MM-DD HH:MM:SS' date; ignoring it.")
+        return ""
+    return m.group(1)
+
+
+LOG_DATE_FROM = _validated_date_config("LOG_DATE_FROM")
+LOG_DATE_TO = _validated_date_config("LOG_DATE_TO")
+
+# Per-category regex to pull a timestamp substring out of a raw log line, plus the strptime format to
+# parse it with (None means the extracted substring is already ISO-ish and can be TRY_CAST to TIMESTAMP
+# directly, e.g. audit's JSON `timestamp` field).
+LOG_DATE_EXTRACT = {
+    "application": (r'^(\d\d\d\d-\d\d-\d\d.\d\d:\d\d:\d\d)', '%Y-%m-%d %H:%M:%S'),
+    "request": (r'\[(\d\d/\w\w\w/\d\d\d\d:\d\d:\d\d:\d\d)', '%d/%b/%Y:%H:%M:%S'),
+    "outbound": (r'^\[(\d\d/\w\w\w/\d\d\d\d:\d\d:\d\d:\d\d)', '%d/%b/%Y:%H:%M:%S'),
+    "audit": (r'"timestamp"\s*:\s*"([^"]+)"', None),
+}
+
+
+def _date_range_filter_sql(line_expr, category):
+    """SQL boolean expression restricting `line_expr` (a `line` column reference) to
+    [LOG_DATE_FROM, LOG_DATE_TO], or 'TRUE' if no range is configured or `category` has no known
+    date-extraction pattern. A line whose timestamp can't be extracted/parsed is always kept -
+    only lines with a successfully parsed timestamp outside the range are excluded."""
+    if not LOG_DATE_FROM and not LOG_DATE_TO:
+        return "TRUE"
+    pattern_fmt = LOG_DATE_EXTRACT.get(category)
+    if not pattern_fmt:
+        return "TRUE"
+    pattern, fmt = pattern_fmt
+    escaped_pattern = pattern.replace("'", "''")
+    extracted = f"regexp_extract({line_expr}, '{escaped_pattern}', 1)"
+    ts_expr = f"TRY_CAST({extracted} AS TIMESTAMP)" if fmt is None else f"try_strptime({extracted}, '{fmt}')"
+    bounds = []
+    if LOG_DATE_FROM:
+        bounds.append(f"{ts_expr} >= TIMESTAMP '{LOG_DATE_FROM}'")
+    if LOG_DATE_TO:
+        bounds.append(f"{ts_expr} <= TIMESTAMP '{LOG_DATE_TO}'")
+    return f"({ts_expr} IS NULL OR ({' AND '.join(bounds)}))"
+
+
+def _date_range_cache_suffix():
+    """Cache-busting suffix so changing LOG_DATE_FROM/LOG_DATE_TO between runs can't silently reuse a
+    Parquet cache that was built for a different (or no) date range."""
+    if not LOG_DATE_FROM and not LOG_DATE_TO:
+        return ""
+    key = f"__{LOG_DATE_FROM or 'any'}_{LOG_DATE_TO or 'any'}"
+    return re.sub(r'[^A-Za-z0-9_.-]', '-', key)
+
 # Where parsed views get cached as Parquet, so the (regex/JSON) parsing pass runs once instead of on every
 # query/Streamlit rerun (or MCP server restart), and repeat queries read from disk (with column pruning/predicate
 # pushdown) instead of holding every category fully materialized in memory at once.
@@ -72,13 +147,6 @@ MCP_REQUEST_LOG_FILE = os.path.join(LOG_CACHE_DIR, "mcp_requests.log")
 con = duckdb.connect(database=':memory:')
 
 
-def _warn(msg):
-    """Reports a non-fatal setup problem to the console always, and to the Streamlit UI when running there."""
-    print("WARNING: " + msg)
-    if not MCP_MODE:
-        st.warning(msg)
-
-
 def _is_cache_fresh(cache_file, source_paths):
     """True if cache_file exists and is newer than every file in source_paths."""
     if not os.path.isfile(cache_file):
@@ -91,7 +159,7 @@ def materialize_view_via_parquet(con, view_name, select_sql, source_paths, cache
     """Runs `select_sql` once (unless a fresh cache already exists) and writes the result to a Parquet
     file under cache_dir, then points `view_name` at that file via read_parquet."""
     os.makedirs(cache_dir, exist_ok=True)
-    cache_file = os.path.join(cache_dir, f"{view_name}.parquet")
+    cache_file = os.path.join(cache_dir, f"{view_name}{_date_range_cache_suffix()}.parquet")
     if not _is_cache_fresh(cache_file, source_paths):
         con.execute(f"COPY ({select_sql}) TO '{cache_file}' (FORMAT PARQUET)")
     con.execute(f"CREATE OR REPLACE VIEW {view_name} AS SELECT * FROM read_parquet('{cache_file}')")
@@ -134,7 +202,7 @@ def setup_log_views(con, file_categories):
                 filename=true,
                 strict_mode=false
             )
-            WHERE line != ''
+            WHERE line != '' AND {_date_range_filter_sql('line', category)}
         """)
     if not union_parts:
         raise Exception("No log files found matching the configured LOG_*_REGEX patterns.")
@@ -243,7 +311,7 @@ def _build_extract_sql(paths, pattern, columns, superset, category_label):
                 filename=true,
                 strict_mode=false
             )
-            WHERE line != ''
+            WHERE line != '' AND {_date_range_filter_sql('line', category_label)}
         )
     """
 
@@ -290,21 +358,33 @@ def setup_audit_log_view(con, file_categories):
     paths = file_categories.get("audit", [])
     if not paths:
         return
+    date_filter = "TRUE"
+    if LOG_DATE_FROM or LOG_DATE_TO:
+        ts_expr = "TRY_CAST(timestamp AS TIMESTAMP)"
+        bounds = []
+        if LOG_DATE_FROM:
+            bounds.append(f"{ts_expr} >= TIMESTAMP '{LOG_DATE_FROM}'")
+        if LOG_DATE_TO:
+            bounds.append(f"{ts_expr} <= TIMESTAMP '{LOG_DATE_TO}'")
+        date_filter = f"({ts_expr} IS NULL OR ({' AND '.join(bounds)}))"
     select_sql = f"""
-        SELECT
-            json_extract_string(json, '$.timestamp') AS timestamp,
-            json_extract_string(json, '$.domain') AS domain,
-            json_extract_string(json, '$.type') AS type,
-            json,
-            json IS NOT NULL AS parsed,
-            'audit' AS category,
-            filename AS source_file
-        FROM read_json_objects(
-            {paths},
-            format='newline_delimited',
-            ignore_errors=true,
-            filename=true
+        SELECT * FROM (
+            SELECT
+                json_extract_string(json, '$.timestamp') AS timestamp,
+                json_extract_string(json, '$.domain') AS domain,
+                json_extract_string(json, '$.type') AS type,
+                json,
+                json IS NOT NULL AS parsed,
+                'audit' AS category,
+                filename AS source_file
+            FROM read_json_objects(
+                {paths},
+                format='newline_delimited',
+                ignore_errors=true,
+                filename=true
+            )
         )
+        WHERE {date_filter}
     """
     materialize_view_via_parquet(con, "audit_logs", select_sql, paths)
 
@@ -349,6 +429,13 @@ Not every log line matches the known formats (multi-line stack traces, unusual b
 those rows, matched/parsed=false and the typed columns are NULL; filter with `WHERE matched`/`WHERE parsed` when you
 only want successfully parsed rows, or fall back to the `logs` view for full-text search across everything.
 """.strip()
+
+if LOG_DATE_FROM or LOG_DATE_TO:
+    LOG_SCHEMA_DESCRIPTION += (
+        f"\n\nAll views above are already restricted to the date range "
+        f"[{LOG_DATE_FROM or '(no start)'}, {LOG_DATE_TO or '(no end)'}] (lines with an unrecognized/unknown "
+        f"timestamp are kept) - no need to add your own date filter unless narrowing further within that range."
+    )
 
 
 # 2. Local AI Query Generator (Ollama API)
@@ -483,6 +570,9 @@ else:
     if _config("MCP_ENABLE", ""):
         st.sidebar.caption(
             f"🔌 MCP server also live at http://{_config('MCP_HOST', '127.0.0.1')}:{_config('MCP_PORT', '8931')}/mcp")
+
+    if LOG_DATE_FROM or LOG_DATE_TO:
+        st.sidebar.caption(f"📅 Date range: {LOG_DATE_FROM or '(start)'} .. {LOG_DATE_TO or '(end)'}")
 
     # 3. Sidebar Chat Interface (The "Support AI" Panel)
     st.sidebar.header("Ask AI Assistant")
