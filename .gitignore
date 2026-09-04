@@ -12,3 +12,4 @@ backup/*
 java/*.class
 java/*/target/*
 java/groovy/*.jar
+/nodejs/node_modules/
