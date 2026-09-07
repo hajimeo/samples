@@ -350,15 +350,17 @@ alias kapaWeb='open -na "Google Chrome" --args --user-data-dir=$HOME/.chromep/wo
 
 ## AI related
 alias goose-app='/Applications/Goose.app/Contents/MacOS/Goose . &>/tmp/goose_$$.out & echo "Goose started. Log: /tmp/goose_$$.out" >&2'
-alias claude-m5='ANTHROPIC_AUTH_TOKEN=ollama ANTHROPIC_API_KEY="" ANTHROPIC_BASE_URL="${AI_LOCAL_URL_BASE%/}" CLAUDE_CODE_MAX_CONTEXT_TOKENS=256000 claude --model ${AI_DEFAULT_MODEL}'
+#alias claude-m5='ANTHROPIC_AUTH_TOKEN=ollama ANTHROPIC_API_KEY="" ANTHROPIC_BASE_URL="${AI_LOCAL_URL_BASE%/}" CLAUDE_CODE_MAX_CONTEXT_TOKENS=256000 claude --model ${AI_DEFAULT_MODEL}'
 alias claude-omlx='ANTHROPIC_BASE_URL="http://Hajimes-MacBookM5.local:8000" ANTHROPIC_AUTH_TOKEN="admin123" ANTHROPIC_DEFAULT_OPUS_MODEL="Qwen2.5-14B-Instruct-4bit" ANTHROPIC_DEFAULT_SONNET_MODEL="Qwen2.5-14B-Instruct-4bit" ANTHROPIC_DEFAULT_HAIKU_MODEL="Qwen2.5-14B-Instruct-4bit" API_TIMEOUT_MS=3000000 CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC=1 CLAUDE_CODE_DISABLE_UNKNOWN_MODEL_WINDOW_ENFORCEMENT=1 CLAUDE_CODE_MAX_CONTEXT_TOKENS=131072 claude --disallowedTools LSP --model Qwen2.5-14B-Instruct-4bit'
 #alias claude-investigate='claude "Investigate this ticket"'
 #alias claude-local='ANTHROPIC_AUTH_TOKEN=ollama ANTHROPIC_API_KEY="" ANTHROPIC_BASE_URL="http://localhost:11434" CLAUDE_CODE_MAX_CONTEXT_TOKENS=32768 claude --model gemma4:e4b-mlx'
+
 # Ollama generates .codex/model.json, which contains model names (also .codex/ollama-launch.config.toml)
-alias codex-m5='codex --profile remote-ollama -c model_provider="remote-ollama" -c model_providers.ollama-launch.name="Ollama" -c model_providers.ollama-launch.base_url="${AI_LOCAL_URL_BASE%/}/v1/" -c model_providers.ollama-launch.wire_api="responses" -c model_catalog_json="$HOME/IdeaProjects/samples/runcom/codex_local_model.json" -m ${AI_DEFAULT_MODEL}'
-#node /opt/homebrew/bin/codex --profile ollama-launch -c model_provider="ollama-launch" -c model_providers.ollama-launch.name="Ollama" -c model_providers.ollama-launch.base_url="http://127.0.0.1:11434/v1/" -c model_providers.ollama-launch.wire_api="responses" -c model_catalog_json="/Users/hosako/.codex/model.json" -m gemma4:e4b-mlx
-alias codex-m5='codex --profile remote-ollama -c model_provider="remote-ollama" -c model_providers.ollama-launch.name="Ollama" -c model_providers.ollama-launch.base_url="${AI_LOCAL_URL_BASE%/}/v1/" -c model_providers.ollama-launch.wire_api="responses" -c model_catalog_json="$HOME/IdeaProjects/samples/runcom/codex_local_model.json" -m ${AI_DEFAULT_MODEL}'
+#alias codex-m5='codex --profile remote-ollama -c model_provider="remote-ollama" -c model_providers.ollama-launch.name="Ollama" -c model_providers.ollama-launch.base_url="${AI_LOCAL_URL_BASE%/}/v1/" -c model_providers.ollama-launch.wire_api="responses" -c model_catalog_json="$HOME/IdeaProjects/samples/runcom/codex_local_model.json" -m ${AI_DEFAULT_MODEL}'
 alias codex-omlx='OMLX_API_KEY="admin123" codex -c model_provider="omlx" -c model_providers.omlx.name="oMLX" -c model_providers.omlx.base_url="http://Hajimes-MacBookM5.local:8000/v1" -c model_providers.omlx.env_key="OMLX_API_KEY" -c model_catalog_json="$HOME/IdeaProjects/samples/runcom/codex_local_model.json" -m Qwen2.5-14B-Instruct-4bit'
+# Gemma mode somehow doesn't answer the question properly.
+#alias codex-omlx='OMLX_API_KEY="admin123" codex -c model_provider="omlx" -c model_providers.omlx.name="oMLX" -c model_providers.omlx.base_url="http://Hajimes-MacBookM5.local:8000/v1" -c model_providers.omlx.env_key="OMLX_API_KEY" -c model_catalog_json="$HOME/IdeaProjects/samples/runcom/codex_local_model.json" -m gemma-4-12B-4bit'
+alias codex-ticket='codex -m gpt-5.6-terra "Read the entire ticket json file and understand the history and the current status, then report what you are going to investigate (no actual investigation yet)"'
 
 
 ## Work specific aliases ############################################################################################3
@@ -374,7 +376,7 @@ if [ -s "${HOME%/}/.mcps.json" ]; then
 fi
 if [ -s "$HOME/IdeaProjects/samples/python/support-app/support_app.py" ]; then
     alias spt-app="source $HOME/.venv_support/bin/activate && streamlit run $HOME/IdeaProjects/samples/python/support-app/support_app.py --client.toolbarMode=\"viewer\""
-    alias spt-app-client="source $HOME/.venv_support/bin/activate && streamlit run $HOME/IdeaProjects/samples/python/support-app/support_app.py --client.toolbarMode=\"viewer\""
+    alias spt-app-client="source $HOME/.venv_support/bin/activate && streamlit run $HOME/IdeaProjects/samples/python/support-app/support_app.py"
 fi
 
 
@@ -1462,15 +1464,15 @@ function startCommonUtils() {
     #screen -dmS claude-mcp bash -c "cd /Users/hosako/Documents/cases && claude mcp serve -d --verbose"
 
     # This part is not specific to local AI
-    source $HOME/.pyvenv_new/bin/activate || return $?
-    if [ -s "$HOME/.mcps.json" ]; then
-        # This is for Open WebUI as it doesn't support stdio for MCP
-        echo "# Starting mcpo (127.0.0.1:48000) with config $HOME/.mcps.json" >&2
-        #pip install mcpo
-        mcpo --host 127.0.0.1 --port 48000 --config $HOME/.mcps.json &>/tmp/mcpo.log &
-        sleep 1
-        tail /tmp/mcpo.log
-    fi
+    #source $HOME/.pyvenv_new/bin/activate || return $?
+    #if [ -s "$HOME/.mcps.json" ]; then
+    #    # This is for Open WebUI as it doesn't support stdio for MCP
+    #    echo "# Starting mcpo (127.0.0.1:48000) with config $HOME/.mcps.json" >&2
+    #    #pip install mcpo
+    #    mcpo --host 127.0.0.1 --port 48000 --config $HOME/.mcps.json &>/tmp/mcpo.log &
+    #    sleep 1
+    #    tail /tmp/mcpo.log
+    #fi
 
     if type apfel &>/dev/null; then
         echo "# Starting apfel on port 11435" >&2
