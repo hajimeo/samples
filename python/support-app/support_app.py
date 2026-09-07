@@ -44,9 +44,8 @@ def _config(key, default):
 ### Global variables: #################################################################################
 # 0. Model and API Configuration
 # If the environment variable AI_API_URL is set, use it; otherwise default to localhost
-#AI_API_URL = _config("AI_API_URL", "http://localhost:11434/api/generate")  # For Ollama
-AI_API_URL = _config("AI_API_URL", "http://localhost:11435/v1/chat/completions")
-AI_MODEL = _config("AI_MODEL", "apple-foundationmodel")  # "qwen2.5-coder:7b"
+AI_API_URL = _config("AI_API_URL", "http://localhost:11435/v1/chat/completions")  # Ollama or any OpenAI-compatible server
+AI_MODEL = _config("AI_MODEL", "apple-foundationmodel")
 
 # Default Log sources are matching all files under the current directory or `./log/` directory, and file name ends with `.log` or `.log.gz`
 # This can be overridden by LOG_APP_REGEX environment variable, which should be a regex pattern matching the log file paths to include.
@@ -136,7 +135,7 @@ def _date_range_cache_suffix():
 # query/Streamlit rerun (or MCP server restart), and repeat queries read from disk (with column pruning/predicate
 # pushdown) instead of holding every category fully materialized in memory at once.
 # Default location should be current directory. Can't be shared with other directories as the cache would conflict.
-DB_CACHE_DIR = _config("DB_CACHE_DIR", os.path.join(tempfile.gettempdir(), "__spt-app_db_cache"))
+DB_CACHE_DIR = _config("DB_CACHE_DIR", os.path.join(".", "__spt-app_db_cache"))
 # Default should be OS's temp dir (e.g. /tmp/ if Linux, Mac, or %TEMP% if Windows)
 LOG_CACHE_DIR = _config("LOG_CACHE_DIR", os.path.join(tempfile.gettempdir(), "spt-app_log"))
 MCP_REQUEST_LOG_FILE = os.path.join(LOG_CACHE_DIR, "mcp_requests.log")
@@ -453,13 +452,16 @@ def ask_local_ai(user_prompt):
 
     payload = {
         "model": AI_MODEL,
-        "prompt": f"{system_context}\n\nUser Question: {user_prompt}\n\nSQL Query:",
+        "messages": [
+            {"role": "system", "content": system_context},
+            {"role": "user", "content": f"User Question: {user_prompt}\n\nSQL Query:"}
+        ],
         "stream": False
     }
 
     try:
         response = requests.post(ai_api_url, json=payload)
-        return response.json()['response'].strip()
+        return response.json()['choices'][0]['message']['content'].strip()
     except Exception as e:
         return f"Error connecting to AI API: {str(e)}"
 
@@ -576,14 +578,16 @@ else:
 
     # 3. Sidebar Chat Interface (The "Support AI" Panel)
     st.sidebar.header("Ask AI Assistant")
-    user_query = st.sidebar.text_area("Ask a question about your logs:",
-                                      placeholder="e.g., Show me the top 5 errors sorted by frequency")
+    with st.sidebar.form("ask_ai_form"):
+        user_query = st.text_area("Ask a question about your logs:",
+                                  placeholder="e.g., Show me the top 5 errors sorted by frequency")
+        analyze_clicked = st.form_submit_button("Analyze Logs")
 
     if "sql_editor" not in st.session_state:
         st.session_state.sql_editor = ""
 
     run_now = False
-    if st.sidebar.button("Analyze Logs"):
+    if analyze_clicked:
         if user_query:
             with st.spinner("AI is analyzing log structure and writing query..."):
                 generated_sql = ask_local_ai(user_query)
