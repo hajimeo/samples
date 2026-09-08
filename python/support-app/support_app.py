@@ -1,6 +1,8 @@
 # REQUIREMENTS:
-#   # recommend to run in a virtual environment
-#   pip install -U streamlit duckdb requests "mcp[cli]<2" #watchdog
+#   1. Python with the following packages installed; recommend to run in a virtual environment
+#       pip install -U streamlit duckdb requests "mcp[cli]<2" #watchdog
+#   2. Local (or remote) AI model that supports the OpenAI-compatible chat completions API.
+#      Default example is using `apfel --serve --port 11435`
 #
 # HOW TO RUN (Streamlit UI):
 #   1. Start Ollama with AI_MODEL on AI_API_URL
