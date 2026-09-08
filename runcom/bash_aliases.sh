@@ -905,6 +905,8 @@ function goBuild() {
     if [[ "${GO_SKIP_TESTS}" =~ ^[yY] ]]; then
         echo "# Skipping tests ..." >&2
     else
+        echo "# Starting 'go vet' at $(date)" >&2
+        go vet ./... || return $?
         echo "# Starting tests at $(date)" >&2
         # Saving into current directory
         go test -coverprofile=./coverage.out || return $?
