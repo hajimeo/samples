@@ -172,7 +172,7 @@ func setGlobals() {
 			panic("Currently -qRepos can't be used with -query")
 		}
 		common.QRepoNameList = strings.Split(common.QRepoNames, ",")
-		common.Query = genAssetBlobUnionQuery("r.name||':'||asset_id as api_id, path, blob_ref as blob_id", "", common.QRepoNameList, "")
+		common.Query = genAssetBlobUnionQuery("r.name||':'||asset_id as "+common.API_ID_COLUMN_NAME+", path, blob_ref as blob_id", "", common.QRepoNameList, "")
 		h.Log("DEBUG", fmt.Sprintf("Generated Query for -qRepos: %s = %s", common.QRepoNames, common.Query))
 		skipRxSelect = true
 	}
@@ -1440,17 +1440,22 @@ func main() {
 					panic(err)
 				}
 			}
-			h.Log("DEBUG", "Query result will be saving into "+common.BlobIDFIle)
+			h.Log("INFO", "Query result will be saving into "+common.BlobIDFIle)
 		} else {
 			// If the file is not empty, exiting
 			if info, err := os.Stat(common.BlobIDFIle); err == nil && info.Size() > 0 {
 				panic("Currently -query and -rF {non empty file} can't be used togather")
 			}
 			// This is not so intuitive to use `-rF` for saving the query result, but probably better than adding another flag
-			h.Log("INFO", "Query result will be *appending* into "+common.BlobIDFIle)
+			h.Log("INFO", "Query result will be *appended* into "+common.BlobIDFIle)
 		}
 		common.BlobIDFIleType = "DB" // assuming the query returns blobIDs (from blob_ref)
-		lib.GetRows(common.Query, db, common.BlobIDFIle, 200)
+		queryForLog := common.Query
+		if len([]rune(queryForLog)) > 80 {
+			queryForLog = string([]rune(queryForLog)[:80]) + "..."
+		}
+		lib.GetRows(common.Query, db, common.BlobIDFIle, common.SlowMS*300)
+		h.Log("INFO", "Completed query: "+queryForLog)
 	}
 
 	startMs := time.Now().UnixMilli()

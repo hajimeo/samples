@@ -22,6 +22,7 @@ const PROP_EXT = "." + PROPERTIES
 const BYTES = "bytes"
 const BYTES_EXT = "." + BYTES
 const SEP = "	" // Tab separator (should this be changeable?)
+const API_ID_COLUMN_NAME = "api_id"
 
 // Display / output related
 var NoHeader bool
