@@ -41,7 +41,7 @@ func TestGenAssetBlobUnionQuery_NoAssetTableNames_UsesDefaultAssetTables(t *test
 }
 
 func TestGenAssetBlobUnionQuery_WithColumns_UsesProvidedColumns(t *testing.T) {
-	columns := "a.asset_id, a.path"
+	columns := "r.name as repo_name, a.asset_id, a.path"
 	repoNames := []string{"repo1"}
 	result := genAssetBlobUnionQuery(columns, "", repoNames, "testfmt")
 	assert.Contains(t, result, "SELECT r.name as repo_name, a.asset_id, a.path")

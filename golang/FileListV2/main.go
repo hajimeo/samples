@@ -172,7 +172,7 @@ func setGlobals() {
 			panic("Currently -qRepos can't be used with -query")
 		}
 		common.QRepoNameList = strings.Split(common.QRepoNames, ",")
-		common.Query = genAssetBlobUnionQuery("path, blob_ref as blob_id", "", common.QRepoNameList, "")
+		common.Query = genAssetBlobUnionQuery("r.name||':'||asset_id as api_id, path, blob_ref as blob_id", "", common.QRepoNameList, "")
 		h.Log("DEBUG", fmt.Sprintf("Generated Query for -qRepos: %s = %s", common.QRepoNames, common.Query))
 		skipRxSelect = true
 	}
@@ -1222,7 +1222,7 @@ func getAssetTableNameFromRepo(repoName string) string {
 
 func genAssetBlobUnionQuery(columns string, afterWhere string, repos []string, format string) string {
 	if len(columns) == 0 {
-		columns = "a.repository_id, a.asset_id, a.path, a.kind, a.component_id, ab.blob_ref, ab.blob_size, ab.blob_created"
+		columns = "r.name as repo_name, a.repository_id, a.asset_id, a.path, a.kind, a.component_id, ab.blob_ref, ab.blob_size, ab.blob_created"
 	}
 
 	if !h.IsEmpty(afterWhere) && !common.RxAnd.MatchString(afterWhere) {
@@ -1241,7 +1241,7 @@ func genAssetBlobUnionQuery(columns string, afterWhere string, repos []string, f
 	for actualFmt, actualRepos := range formatRepoNames {
 		repoIn := `'` + strings.Join(actualRepos, `','`) + `'`
 		q := "WITH r AS (select r.name, cr.repository_id from " + actualFmt + "_content_repository cr join repository r on r.id = cr.config_repository_id WHERE r.name IN (" + repoIn + ")) "
-		q = q + "SELECT r.name as repo_name, " + columns
+		q = q + "SELECT " + columns
 		q = q + " FROM " + actualFmt + "_asset_blob ab"
 		// NOTE: Due to the performance concern, NOT using LEFT JOIN even though this script may find orphaned blobs when Cleanup unused asset blob tasks aren't run yet.
 		q = q + " JOIN " + actualFmt + "_asset a USING (asset_blob_id) JOIN r USING (repository_id)"
@@ -1326,7 +1326,7 @@ func isOrphanedBlob(contents string, blobId string, db *sql.DB) string {
 		blobIdLike = blobId + "%"
 	}
 	// Currently NOT utilising common.BsName as can't trust blob store name in blob_ref, and may not work with group blob stores
-	query := genAssetBlobUnionQuery("asset_id, path", "blob_ref LIKE '%"+blobIdLike+"' LIMIT 1", repoNames, format)
+	query := genAssetBlobUnionQuery("r.name as repo_name, asset_id, path", "blob_ref LIKE '%"+blobIdLike+"' LIMIT 1", repoNames, format)
 	if len(query) == 0 { // Mainly for unit test
 		h.Log("WARN", fmt.Sprintf("query is empty for blobId: %s and tableName: %s", blobId, tableName))
 		return "UNKNOWN1:" + repoName + "|" + format
