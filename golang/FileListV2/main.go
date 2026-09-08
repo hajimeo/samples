@@ -90,7 +90,7 @@ func setGlobals() {
 	flag.StringVar(&common.ModDateFromStr, "mDF", "", "File modification date in *UTC* with ISO format (from/since)")
 	flag.StringVar(&common.ModDateToStr, "mDT", "", "File modification date in *UTC* with ISO format (to/until/upto)")
 	flag.BoolVar(&common.BytesChk, "BytesChk", false, "Check if .bytes file exists. Also the .bytes mod time is used for -mDF/-mDT")
-	flag.BoolVar(&common.NoExtraChk, "NoExChk", false, "Do not perform extra checks such as the file size to improve performance")
+	flag.BoolVar(&common.NoExtraChk, "NoExtraChk", false, "Do not perform extra checks such as the file size to improve performance")
 
 	// Blob store specifics (AWS S3 / Azure related)
 	flag.IntVar(&common.MaxKeys, "m", 1000, "AWS S3: Integer value for Max Keys (<= 1000)")
@@ -213,7 +213,7 @@ func setGlobals() {
 		}
 
 		if len(common.BlobIDFIle) == 0 && (len(common.DelDateFromStr) == 0 && len(common.ModDateFromStr) == 0) {
-			panic("Currently -RDel requires -dF or -mF not to un-delete too many or unexpected files.")
+			panic("Currently -RDel requires -dDF or -mDF not to un-delete too many or unexpected files.")
 		}
 	}
 
@@ -259,6 +259,14 @@ func setGlobals() {
 	if common.Truth == "BS" || common.Truth == "DB" {
 		if len(common.BlobIDFIle) == 0 && len(common.Query) == 0 && (len(common.DbConnStr) == 0 || len(common.BaseDir) == 0) {
 			panic("-src requires -rF or -b with -db")
+		}
+		if common.Truth == "DB" && len(common.BlobIDFIle) == 0 && len(common.Query) == 0 {
+			// Unlike '-src BS' (which walks -b and checks each blob against the DB), '-src DB' (Dead
+			// blobs finder) needs to know which blob IDs to look for in the blob store, which only
+			// comes from -rF, or from -query/-qRepos (which populate BlobIDFIle). Without one of
+			// those, main() would otherwise silently fall back to a plain directory walk of -b and
+			// report "success" without ever checking the DB.
+			panic("-src DB requires -rF, or -query/-qRepos to provide the list of blob IDs to check against the blob store")
 		}
 		if common.Truth == "DB" || common.Truth == "BS" {
 			// If Dead Blobs finder mode, always check .bytes file (removing this will output unnecessary lines)
@@ -502,10 +510,10 @@ func genOutput(path string, bi bs_clients.BlobInfo, db *sql.DB) (string, error) 
 				deadErrMsg := ""
 				if bi.Error && bytesChkErr != nil {
 					h.Log("DEBUG", fmt.Sprintf("path:%s has error (missing) and missing bytes as well. Considering as DEAD blob.", path))
-					deadErrMsg = "DEAD_BLOB:missing properties/bytes"
+					deadErrMsg = "DEAD_BLOB:missing both"
 				} else if bi.Error {
 					h.Log("DEBUG", fmt.Sprintf("path:%s has error (missing). Considering as DEAD blob.", path))
-					deadErrMsg = "DEAD_BLOB:missing properties"
+					deadErrMsg = "DEAD_BLOB:missing props"
 				} else if bytesChkErr != nil {
 					h.Log("DEBUG", fmt.Sprintf("path:%s has no .bytes file. Considering as DEAD blob.", path))
 					deadErrMsg = "DEAD_BLOB:missing bytes"
@@ -633,6 +641,9 @@ func shouldSkipThisContents(sortedContents string) error {
 		}
 	}
 
+	// NOTE: common.RxExclBytes / common.RxInclBytes are currently always nil because the
+	// flags that would populate them (-bRx / -bRxNot) are not registered. See
+	// shouldSkipBecauseOfBytes below for the (unused, unimplemented) bytes-content check.
 	if common.RxExclBytes != nil {
 		if common.RxExclBytes.MatchString(sortedContents) {
 			return errors.New(fmt.Sprintf("Matched with the exclude regex: %s. Skipping.", common.RxExcl.String()))
@@ -955,7 +966,7 @@ func copyPathToBaseDir2(path string, writingPath string) string {
 	}
 
 	if !common.NoExtraChk {
-		toInfo, errD := Client.GetFileInfo(writingPath)
+		toInfo, errD := Client2.GetFileInfo(writingPath)
 		if errD != nil {
 			h.Log("ERROR", fmt.Sprintf("Getting destination file info for path:%s failed with %s", writingPath, errD))
 			return "ERROR_NO_DEST_INFO" + errSfx

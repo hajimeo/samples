@@ -221,11 +221,11 @@ cut -d '.' -f1 ./some_filelist_result.tsv | while read -r id; do tar -rvf /tmp/t
 filelist2 -b "$BLOB_STORE" \
   -db ./sonatype-work/nexus3/etc/fabric/nexus-store.properties \
   -c 10 \
-  -query "SELECT blob_ref as blob_id from raw_asset_blob ab join raw_asset a using (asset_blob_id) where repository_id IN (select cr.repository_id from raw_content_repository cr join repository r on r.id = cr.config_repository_id where r.name in ('raw-hosted'))" \
+  -query "SELECT blob_ref as blob_id from raw_asset_blob ab join raw_asset a using (asset_blob_id)" \
   -src DB -s /tmp/filelist_potentially_dead-blobs.tsv
 ```
-
-Alternative repo shortcut:
+NOTE: to check specific repositories, add `WHERE repository_id IN (select cr.repository_id from raw_content_repository cr join repository r on r.id = cr.config_repository_id where r.name in ('raw-hosted','raw-filestore-hosted'))` to the query.  
+Or, alternative repo shortcut:
 
 ```bash
 filelist2 -b "$BLOB_STORE" -db ./sonatype-work/nexus3/etc/fabric/nexus-store.properties -c 10 -qRepos "raw-hosted,raw-filestore-hosted" -src DB -s /tmp/filelist_potentially_dead-blobs.tsv

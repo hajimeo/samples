@@ -382,7 +382,9 @@ func (a *AzClient) GetFileInfo(name string) (BlobInfo, error) {
 	owner := ""
 
 	if blobItemProps.Metadata != nil {
-		owner = *blobItemProps.Metadata["owner"]
+		if ownerPtr, ok := blobItemProps.Metadata["owner"]; ok && ownerPtr != nil {
+			owner = *ownerPtr
+		}
 	}
 	blobInfo := BlobInfo{
 		Path:    name,

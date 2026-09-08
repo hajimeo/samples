@@ -14,6 +14,16 @@ import (
 	"time"
 )
 
+// escapeConnStrValue quotes a libpq keyword/value connection-string value so that
+// spaces, single quotes, or backslashes in it (eg. a username/password) can't
+// break the DSN or inject extra keyword=value pairs.
+// https://www.postgresql.org/docs/current/libpq-connect.html#LIBPQ-CONNSTRING
+func escapeConnStrValue(v string) string {
+	v = strings.ReplaceAll(v, `\`, `\\`)
+	v = strings.ReplaceAll(v, `'`, `\'`)
+	return "'" + v + "'"
+}
+
 func GenDbConnStrFromFile(filePath string) string {
 	props, _ := h.ReadPropertiesFile(filePath)
 	jdbcPtn := regexp.MustCompile(`jdbc:postgresql://([^/:]+):?(\d*)/([^?]+)\??(.*)`)
@@ -50,7 +60,7 @@ func GenDbConnStrFromFile(filePath string) string {
 	if len(props["password"]) == 0 {
 		props["password"] = h.GetEnv("PGPASSWORD", "")
 	}
-	connStr := fmt.Sprintf("host=%s port=%s user=%s password=%s dbname=%s%s", hostname, port, props["username"], props["password"], database, params)
+	connStr := fmt.Sprintf("host=%s port=%s user=%s password=%s dbname=%s%s", hostname, port, escapeConnStrValue(props["username"]), escapeConnStrValue(props["password"]), database, params)
 	h.Log("INFO", fmt.Sprintf("host=%s port=%s user=%s password=******** dbname=%s%s", hostname, port, props["username"], database, params))
 	return connStr
 }

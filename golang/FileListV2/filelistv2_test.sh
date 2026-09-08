@@ -2,23 +2,24 @@
 # Simple tests by just executing the commands and check the exit code.
 #
 # REQUIREMENTS:
-#   'filelist2' in the $PATH
-#   'blobpath' in the $PATH
+#   - 'filelist2' in the $PATH
+#   - 'blobpath' in the $PATH
 #       curl -o /usr/local/bin/blobpath -L "https://github.com/hajimeo/samples/raw/master/misc/blobpath_$(uname)_$(uname -m)"
 #       chmod a+x /usr/local/bin/blobpath
-#   rg (ripgrep)
-#   uuidgen
+#   - rg (ripgrep)
+#   - uuidgen
+#   - Running Nexus 3 instance with some data in the blob store (or S3/Azure blob store)
 #
 # HOW TO RUN EXAMPLE:
 #   cd ./NexusInstalledDir
 #   $HOME/IdeaProjects/samples/golang/FileListV2/filelistv2_test.sh [blobstore] [path/prefix]
 #
 # Prepare the test data using setup_nexus3_repos.sh:
-#   f_install_nexus3 3.77.1-01 filelistv2test
+#   f_install_nexus3 3.70.5-02 filelistv2test
 #   # After starting this Nexus, populate the data:
 #   _AUTO=true main
 #   f_upload_dummies_all_hosted
-#   #f_backup_postgresql_component
+#   f_backup_postgresql_component  # not full DB backup
 #   f_delete_all_assets
 #   #f_run_tasks_by_type "assetBlob.cleanup" # if Postgresql with nexus.assetBlobCleanupTask.blobCreatedDelayMinute=0
 #
@@ -26,7 +27,7 @@
 #   f_install_nexus3 3.84.1-01 filelistv2test2
 #   # After starting this Nexus, populate the data:
 #   f_upload_dummies_raw "" "1000"
-#   #f_backup_postgresql_component
+#   f_backup_postgresql_component   # not full DB backup
 #   f_delete_all_assets
 #   #f_run_tasks_by_type "assetBlob.cleanup" # if Postgresql with nexus.assetBlobCleanupTask.blobCreatedDelayMinute=0
 #

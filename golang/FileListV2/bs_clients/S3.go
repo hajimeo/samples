@@ -10,13 +10,6 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
-	"github.com/aws/aws-sdk-go-v2/aws"
-	"github.com/aws/aws-sdk-go-v2/config"
-	"github.com/aws/aws-sdk-go-v2/credentials"
-	"github.com/aws/aws-sdk-go-v2/service/s3"
-	"github.com/aws/aws-sdk-go-v2/service/s3/types"
-	h "github.com/hajimeo/samples/golang/helpers"
-	"github.com/pkg/errors"
 	"io"
 	"os"
 	"regexp"
@@ -25,6 +18,14 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/aws/aws-sdk-go-v2/aws"
+	"github.com/aws/aws-sdk-go-v2/config"
+	"github.com/aws/aws-sdk-go-v2/credentials"
+	"github.com/aws/aws-sdk-go-v2/service/s3"
+	"github.com/aws/aws-sdk-go-v2/service/s3/types"
+	h "github.com/hajimeo/samples/golang/helpers"
+	"github.com/pkg/errors"
 )
 
 type S3Client struct {
@@ -223,9 +224,12 @@ func (s *S3Client) WriteToPath(key string, contents string) error {
 	}
 	// if 'contents' contain 'deleted=true', then add tag
 	if common.RxDeleted.MatchString(contents) {
-		h.Log("DEBUG", fmt.Sprintf("Key: %s. Adding deletion marker tag", key))
-		// Currently do not care about the error. Also replaceTagInput() will log the warn.
-		_ = replaceTagInput(key, "deleted", "true", bucket)
+		h.Log("DEBUG", fmt.Sprintf("Key: %s. Adding deletion marker AWS S3 tag", key))
+		inputTag := replaceTagInput(key, "deleted", "true", bucket)
+		// Currently do not care about the error, just logging a WARN on failure.
+		if respTag, errTag := getS3Api(s.ClientNum).PutObjectTagging(context.TODO(), inputTag); errTag != nil {
+			h.Log("WARN", fmt.Sprintf("PutObjectTagging failed. Key: %s. Resp: %v, Error: %s", key, respTag, errTag.Error()))
+		}
 	}
 	return nil
 }

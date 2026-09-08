@@ -4,8 +4,6 @@ package lib
 import (
 	"FileListV2/common"
 	"fmt"
-	"github.com/google/uuid"
-	h "github.com/hajimeo/samples/golang/helpers"
 	"math"
 	"net/url"
 	"os"
@@ -15,6 +13,9 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/google/uuid"
+	h "github.com/hajimeo/samples/golang/helpers"
 )
 
 func GetSchema(uri string) string {
@@ -180,6 +181,7 @@ func ComputeSubDirs(path string, pathFilter string) (matchingDirs []string) {
 	path = strings.TrimSuffix(path, string(os.PathSeparator))
 	filterRegex := regexp.MustCompile(pathFilter)
 
+	// TODO: currently not considering when `vol-NN` is missing under the `content`.
 	if common.RxVolDir.MatchString(path) {
 		//h.Log("DEBUG", fmt.Sprintf("'vol-{n}' directory found: %s", path))
 		// Generate /vol-NN/chap-MM (01 to 47)
