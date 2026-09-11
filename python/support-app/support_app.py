@@ -98,7 +98,7 @@ LOG_DATE_TO = _validated_date_config("LOG_DATE_TO")
 
 # Size (per file) above which the user is asked whether to load the whole file or restrict to a
 # date/time range instead. Set via LOG_LARGE_FILE_THRESHOLD_MB env var (MB), default 100.
-LOG_LARGE_FILE_THRESHOLD_MB = int(_config("LOG_LARGE_FILE_THRESHOLD_MB", "10"))
+LOG_LARGE_FILE_THRESHOLD_MB = int(_config("LOG_LARGE_FILE_THRESHOLD_MB", "100"))
 
 # Per-category regex to pull a timestamp substring out of a raw log line, plus the strptime format to
 # parse it with (None means the extracted substring is already ISO-ish and can be TRY_CAST to TIMESTAMP
@@ -714,6 +714,13 @@ else:
                 continue  # view doesn't exist (e.g. no matching log files found for that category)
             with st.expander(f"`{view_name}` — {row_count:,} rows, {len(columns_df)} columns"):
                 st.dataframe(columns_df, use_container_width=True)
+                if "category" in columns_df["column_name"].values:
+                    category_breakdown_df = con.execute(
+                        f"SELECT category, COUNT(*) AS count FROM {view_name} GROUP BY category ORDER BY category"
+                    ).df()
+                    if len(category_breakdown_df) > 1:
+                        st.caption("By category (e.g. `request_logs` covers both request.log and outbound-request.log):")
+                        st.dataframe(category_breakdown_df, use_container_width=True, hide_index=True)
     except Exception as e:
         col1.metric("Total Logs Processed", "0")
         col2.metric("Critical Anomalies Detected", "0")
