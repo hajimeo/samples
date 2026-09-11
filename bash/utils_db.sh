@@ -221,10 +221,11 @@ function _postresql_replication_common() {
         _update_pg_hba_conf "replicator" ""
     fi
 
+    # Before PostgreSQL 13, wal_keep_segments was used instead of wal_keep_size
     _psql_adm "ALTER SYSTEM SET wal_level TO 'hot_standby';
                ALTER SYSTEM SET archive_mode TO 'ON';
                ALTER SYSTEM SET max_wal_senders TO '5';
-               ALTER SYSTEM SET wal_keep_segments TO '10';
+               ALTER SYSTEM SET wal_keep_size TO '10';
                ALTER SYSTEM SET hot_standby TO 'ON'"
 
     # @see: https://www.postgresql.org/docs/current/continuous-archiving.html https://www.postgresql.org/docs/current/runtime-config-wal.html
