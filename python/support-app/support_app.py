@@ -479,9 +479,10 @@ Four views are available:
    matched (true if the line was successfully parsed into these columns), category, source_file, line (raw fallback).
    Example: `SELECT date_time, class, message FROM application_logs WHERE loglevel = 'ERROR' ORDER BY date_time`
 
-3. `request_logs` - parsed request.log / outbound-request.log lines. Columns: clientHost, l, user, date, requestURL, statusCode
-   (integer), headerContentLength (integer), bytesSent (integer), elapsedTime (integer, ms), headerUserAgent, thread, misc,
-   matched, category, source_file, line (raw fallback).
+3. `request_logs` - parsed request.log / outbound-request.log lines, both in one view (there is no separate
+   `outbound_logs` view). Columns: clientHost, l, user, date, requestURL, statusCode (integer), headerContentLength
+   (integer), bytesSent (integer), elapsedTime (integer, ms), headerUserAgent, thread, misc, matched,
+   category ('request' or 'outbound' - filter on this to isolate outbound-request.log rows), source_file, line (raw fallback).
    Example: `SELECT requestURL, AVG(elapsedTime) AS avg_ms FROM request_logs WHERE matched GROUP BY requestURL ORDER BY avg_ms DESC LIMIT 10`
 
 4. `audit_logs` - parsed audit.log / audit-YYYY-MM-DD.log.gz entries (newline-delimited JSON, one audit event per
@@ -703,6 +704,16 @@ else:
         category_df = con.execute(
             "SELECT category, COUNT(*) AS count FROM logs GROUP BY category ORDER BY category").df()
         st.bar_chart(category_df.set_index("category"))
+
+        st.subheader("📋 Schema & Record Stats")
+        for view_name in ("logs", "application_logs", "request_logs", "audit_logs"):
+            try:
+                row_count = con.execute(f"SELECT COUNT(*) FROM {view_name}").fetchone()[0]
+                columns_df = con.execute(f"DESCRIBE {view_name}").df()
+            except Exception:
+                continue  # view doesn't exist (e.g. no matching log files found for that category)
+            with st.expander(f"`{view_name}` — {row_count:,} rows, {len(columns_df)} columns"):
+                st.dataframe(columns_df, use_container_width=True)
     except Exception as e:
         col1.metric("Total Logs Processed", "0")
         col2.metric("Critical Anomalies Detected", "0")
