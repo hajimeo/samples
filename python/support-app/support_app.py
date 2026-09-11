@@ -37,6 +37,10 @@ import requests
 ### Command arguments:
 MCP_MODE = "--mcp" in sys.argv[1:]
 
+if not MCP_MODE:
+    # Must be the very first Streamlit call in the script.
+    st.set_page_config(page_title="Local SupportZip Analyzer", layout="wide")
+
 
 def _config(key, default):
     """Config lookup that works with or without a running Streamlit context (MCP mode has none)."""
@@ -91,6 +95,10 @@ def _validated_date_config(key):
 
 LOG_DATE_FROM = _validated_date_config("LOG_DATE_FROM")
 LOG_DATE_TO = _validated_date_config("LOG_DATE_TO")
+
+# Size (per file) above which the user is asked whether to load the whole file or restrict to a
+# date/time range instead. Set via LOG_LARGE_FILE_THRESHOLD_MB env var (MB), default 100.
+LOG_LARGE_FILE_THRESHOLD_MB = int(_config("LOG_LARGE_FILE_THRESHOLD_MB", "10"))
 
 # Per-category regex to pull a timestamp substring out of a raw log line, plus the strptime format to
 # parse it with (None means the extracted substring is already ISO-ish and can be TRY_CAST to TIMESTAMP
@@ -179,6 +187,13 @@ def find_log_files():
     return matches
 
 
+def _find_large_files(file_categories, threshold_bytes):
+    """Returns [(path, size_bytes), ...] for matched files over threshold_bytes, largest first."""
+    all_paths = {p for paths in file_categories.values() for p in paths}
+    large = [(p, os.path.getsize(p)) for p in all_paths if os.path.getsize(p) > threshold_bytes]
+    return sorted(large, key=lambda t: -t[1])
+
+
 def setup_log_views(con, file_categories):
     """Creates a unified `logs` view over the categorized log files, one row per line."""
     union_parts = []
@@ -211,6 +226,57 @@ def setup_log_views(con, file_categories):
 
 
 _matched_log_files = find_log_files()
+
+# If any matched file is very large and the user hasn't already opted into a date range via
+# LOG_DATE_FROM/LOG_DATE_TO, offer (Streamlit) or warn about (--mcp) restricting the range before
+# doing the expensive parse/cache pass below.
+_large_files = _find_large_files(_matched_log_files, LOG_LARGE_FILE_THRESHOLD_MB * 1024 * 1024)
+if _large_files and not LOG_DATE_FROM and not LOG_DATE_TO:
+    _large_files_desc = ", ".join(f"{p} ({sz / (1024 * 1024):.0f} MB)" for p, sz in _large_files)
+    if MCP_MODE:
+        _warn(
+            f"Large log file(s) detected: {_large_files_desc}. Loading in full - set LOG_DATE_FROM "
+            "and/or LOG_DATE_TO to restrict the range and speed this up."
+        )
+    else:
+        _gate_choice = st.session_state.get("large_file_choice")
+        if _gate_choice is None:
+            st.title("🔍 Local SupportZip Analyzer")
+            st.warning(
+                "Large log file(s) detected:\n\n"
+                + "\n".join(f"- `{p}` ({sz / (1024 * 1024):.0f} MB)" for p, sz in _large_files)
+                + "\n\nLoading the full file(s) may be slow. You can restrict to a date/time range instead."
+            )
+            with st.form("large_file_gate_form"):
+                _col1, _col2 = st.columns(2)
+                _date_from_input = _col1.text_input("From (YYYY-MM-DD[ HH:MM:SS])")
+                _date_to_input = _col2.text_input("To (YYYY-MM-DD[ HH:MM:SS])")
+                _apply_clicked = st.form_submit_button("Apply date range")
+            _load_full_clicked = st.button("Load full file(s) anyway")
+
+            if _apply_clicked:
+                _bad = False
+                for _label, _value in (("From", _date_from_input), ("To", _date_to_input)):
+                    if _value.strip() and not _DATE_RE.match(_value.strip()):
+                        st.error(f"{_label} value {_value!r} is not a valid 'YYYY-MM-DD' or 'YYYY-MM-DD HH:MM:SS' date.")
+                        _bad = True
+                if not _bad and not _date_from_input.strip() and not _date_to_input.strip():
+                    st.error('Enter at least one of From/To, or click "Load full file(s) anyway" instead.')
+                    _bad = True
+                if not _bad:
+                    st.session_state["large_file_choice"] = {
+                        "mode": "range",
+                        "from": _DATE_RE.match(_date_from_input.strip()).group(1) if _date_from_input.strip() else "",
+                        "to": _DATE_RE.match(_date_to_input.strip()).group(1) if _date_to_input.strip() else "",
+                    }
+                    st.rerun()
+            if _load_full_clicked:
+                st.session_state["large_file_choice"] = {"mode": "full"}
+                st.rerun()
+            st.stop()
+        elif _gate_choice["mode"] == "range":
+            LOG_DATE_FROM = _gate_choice["from"]
+            LOG_DATE_TO = _gate_choice["to"]
 
 try:
     setup_log_views(con, _matched_log_files)
@@ -555,8 +621,7 @@ else:
     if _config("MCP_ENABLE", ""):
         start_mcp_server_background(con)
 
-    # 1. UI Configuration/customization
-    st.set_page_config(page_title="Local SupportZip Analyzer", layout="wide")
+    # 1. UI Configuration/customization (st.set_page_config already called near the top of the script)
     st.title("🔍 Local SupportZip Analyzer")
 
     # Hide the Streamlit "Deploy" button in the top-right corner
@@ -577,6 +642,11 @@ else:
 
     if LOG_DATE_FROM or LOG_DATE_TO:
         st.sidebar.caption(f"📅 Date range: {LOG_DATE_FROM or '(start)'} .. {LOG_DATE_TO or '(end)'}")
+
+    if _large_files and st.session_state.get("large_file_choice"):
+        if st.sidebar.button("Change log file range"):
+            st.session_state.pop("large_file_choice", None)
+            st.rerun()
 
     # 3. Sidebar Chat Interface (The "Support AI" Panel)
     st.sidebar.header("Ask AI Assistant")
@@ -602,9 +672,11 @@ else:
             st.sidebar.warning("Please enter a question first.")
 
     st.sidebar.subheader("SQL Query (editable)")
-    st.sidebar.text_area("Edit or write raw SQL, then run it:", key="sql_editor", height=150)
+    with st.sidebar.form("sql_editor_form"):
+        st.text_area("Edit or write raw SQL, then run it:", key="sql_editor", height=150)
+        run_clicked = st.form_submit_button("Run SQL")
 
-    if run_now or st.sidebar.button("Run SQL"):
+    if run_now or run_clicked:
         if st.session_state.sql_editor.strip():
             run_sql(st.session_state.sql_editor)
         else:
