@@ -3948,11 +3948,15 @@ function f_download_dummies_npm() {
 
 # 100 packages with 100 versions each with 5 concurrency (please check the Deployment policy)
 # for p in {1..5}; do sleep 1; for i in {1..20}; do f_upload_dummies_npm "npm-hosted" 100 "@test/dummy-pkg-${p}-${i}" || break; done & done; wait
+# Uploading pre-released versions for the new Cleanup policy keep X versions.
+#_DUMMY_PKG_VERSION_PRERELEASE_PFX="master" f_upload_dummies_npm
 function f_upload_dummies_npm() {
     local __doc__="Upload dummy tgz into npm hosted repository"
     local _repo_name="${1:-"npm-hosted"}"
     local _how_many="${2:-"10"}"
     local _dummy_pkg_name="${3:-"dummy-policy-demo"}"
+    local _dummy_pkg_version_pfx="${4:-"${_DUMMY_PKG_VERSION_PFX-"9.9."}"}"
+    local _dummy_pkg_version_prerelease_pfx="${5:-"${_DUMMY_PKG_VERSION_PRERELEASE_PFX}"}"
     local _repo_url="${_NEXUS_URL%/}/repository/${_repo_name}/"
     local _seq_start="${_SEQ_START:-1}"
     local _seq_end="$((${_seq_start} + ${_how_many} - 1))"
@@ -3962,7 +3966,12 @@ function f_upload_dummies_npm() {
     fi
     # TODO: upload concurrently with some limit (not only using _ASYNC_CURL="Y")
     for i in $(eval "${_seq}"); do
-        f_upload_dummy_npm "${_repo_name}" "${_dummy_pkg_name}" "9.${i}.0" || return $?
+        local _ver_str="${_dummy_pkg_version_pfx}${i}"
+        if [ -n "${_dummy_pkg_version_prerelease_pfx}" ]; then
+            sleep 1 # to avoid same timestamp
+            _ver_str="${_ver_str}-${_dummy_pkg_version_prerelease_pfx}.$(date +'%Y%m%d%H%M%S')"
+        fi
+        f_upload_dummy_npm "${_repo_name}" "${_dummy_pkg_name}" "${_ver_str}" || return $?
     done
 }
 #for i in {1..100}; do f_upload_dummy_npm "" "@test/dummy-policy-demo-$i" "0.0.0"; done
