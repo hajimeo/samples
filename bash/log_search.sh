@@ -536,7 +536,8 @@ function f_start_end_time(){
     # NOTE: not including milliseconds as some log wouldn't have
     [ -z "$_date_regex" ] && _date_regex="(^${_DATE_FORMAT}.\d\d:\d\d:\d\d|\[\d{2}[-/][a-zA-Z]{3}[-/]\d{4}.\d\d:\d\d:\d\d)"
 
-    local _start_date="$(_date2iso "`rg -z -N -om1 -r '$1' "$_date_regex" ${_log}`")" || return $?
+    local _start_date="$(_date2iso "$(timeout 180 rg -z -N -om1 -r '$1' "$_date_regex" ${_log})")" || return $?
+    [ -z "${_start_date}" ] && echo "No start date found in ${_log}" 1>&2 && return 1
     local _extension="${_log##*.}"
     if [ "${_extension}" = 'gz' ]; then
         local _end_date="$(_date2iso "`_gunzip -c ${_log} | _tac | rg -z -N -om1 -r '$1' "$_date_regex"`")" || return $?
@@ -1092,7 +1093,7 @@ function f_jvmlog2threads() {
     [ -z "${_end_regex}" ] && _end_regex="(^\s+class space.+|^\s+Metaspace\s+.+)"
 
     if [ -n "${_save_to}" ] && [ "$(ls -A "${_save_to}" 2>/dev/null)" ]; then
-        echo "${_save_to} is not empty"
+        echo "${_save_to} exists"
         return 1
     fi
 
@@ -1228,7 +1229,9 @@ function f_threads() {
             rg '^Heap' -A8 ${_file} | rg '(total|\d\d+% used)'    # % didn't work with G1GC
             echo " "
             echo "## Check if any 'deadlock' information exists"
-            rg -i '\bdeadlock\b' ${_file}
+            if rg -i '\bdeadlock\b' ${_file}; then
+                echo "# If Nexus version older than 3.80, might be LOGBACK-1421"
+            fi
             echo " "
 
             f_splitByRegex "${_file}" "^20\d\d-\d\d-\d\d \d\d:\d\d:\d\d" "${_tmp_dir%/}" "" || return $?
@@ -1279,7 +1282,9 @@ function f_threads() {
     echo " "
 
     echo "## 'deadlock'"
-    rg -i -w 'deadlock' ${_save_dir%/}/ -m1 --no-filename | sort | uniq -c
+    if rg -i -w 'deadlock' ${_save_dir%/}/ -m1 --no-filename | sort | uniq -c; then
+        echo "# If Nexus version older than 3.80, might be LOGBACK-1421"
+    fi
     echo " "
 
     echo "## Counting 'Pool.acquire' for DB pool"
