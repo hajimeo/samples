@@ -351,15 +351,15 @@ alias kapaWeb='open -na "Google Chrome" --args --user-data-dir=$HOME/.chromep/wo
 ## AI related
 alias goose-app='/Applications/Goose.app/Contents/MacOS/Goose . &>/tmp/goose_$$.out & echo "Goose started. Log: /tmp/goose_$$.out" >&2'
 #alias claude-m5='ANTHROPIC_AUTH_TOKEN=ollama ANTHROPIC_API_KEY="" ANTHROPIC_BASE_URL="${AI_LOCAL_URL_BASE%/}" CLAUDE_CODE_MAX_CONTEXT_TOKENS=256000 claude --model ${AI_DEFAULT_MODEL}'
-alias claude-omlx='ANTHROPIC_BASE_URL="http://Hajimes-MacBookM5.local:8000" ANTHROPIC_AUTH_TOKEN="admin123" ANTHROPIC_DEFAULT_OPUS_MODEL="Qwen2.5-14B-Instruct-4bit" ANTHROPIC_DEFAULT_SONNET_MODEL="Qwen2.5-14B-Instruct-4bit" ANTHROPIC_DEFAULT_HAIKU_MODEL="Qwen2.5-14B-Instruct-4bit" API_TIMEOUT_MS=3000000 CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC=1 CLAUDE_CODE_DISABLE_UNKNOWN_MODEL_WINDOW_ENFORCEMENT=1 CLAUDE_CODE_MAX_CONTEXT_TOKENS=131072 claude --disallowedTools LSP --model Qwen2.5-14B-Instruct-4bit'
+alias claude-omlx='ANTHROPIC_BASE_URL="http://m5mac:8000" ANTHROPIC_AUTH_TOKEN="admin123" ANTHROPIC_DEFAULT_OPUS_MODEL="Ornith-1.5-9B-MLX" ANTHROPIC_DEFAULT_SONNET_MODEL="Ornith-1.5-9B-MLX" ANTHROPIC_DEFAULT_HAIKU_MODEL="Ornith-1.5-9B-MLX" API_TIMEOUT_MS=3000000 CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC=1 CLAUDE_CODE_DISABLE_UNKNOWN_MODEL_WINDOW_ENFORCEMENT=1 CLAUDE_CODE_MAX_CONTEXT_TOKENS=131072 claude --disallowedTools LSP --model Ornith-1.5-9B-MLX'
 #alias claude-investigate='claude "Investigate this ticket"'
 #alias claude-local='ANTHROPIC_AUTH_TOKEN=ollama ANTHROPIC_API_KEY="" ANTHROPIC_BASE_URL="http://localhost:11434" CLAUDE_CODE_MAX_CONTEXT_TOKENS=32768 claude --model gemma4:e4b-mlx'
 
 # Ollama generates .codex/model.json, which contains model names (also .codex/ollama-launch.config.toml)
 #alias codex-m5='codex --profile remote-ollama -c model_provider="remote-ollama" -c model_providers.ollama-launch.name="Ollama" -c model_providers.ollama-launch.base_url="${AI_LOCAL_URL_BASE%/}/v1/" -c model_providers.ollama-launch.wire_api="responses" -c model_catalog_json="$HOME/IdeaProjects/samples/runcom/codex_local_model.json" -m ${AI_DEFAULT_MODEL}'
-alias codex-omlx='OMLX_API_KEY="admin123" codex -c model_provider="omlx" -c model_providers.omlx.name="oMLX" -c model_providers.omlx.base_url="http://Hajimes-MacBookM5.local:8000/v1" -c model_providers.omlx.env_key="OMLX_API_KEY" -c model_catalog_json="$HOME/IdeaProjects/samples/runcom/codex_local_model.json" -m Qwen2.5-14B-Instruct-4bit'
+alias codex-omlx='OMLX_API_KEY="admin123" codex -c model_provider="omlx" -c model_providers.omlx.name="oMLX" -c model_providers.omlx.base_url="http://m5mac:8000/v1" -c model_providers.omlx.env_key="OMLX_API_KEY" -c model_catalog_json="$HOME/IdeaProjects/samples/runcom/codex_local_model.json" -m Ornith-1.5-9B-MLX'
 # Gemma mode somehow doesn't answer the question properly.
-#alias codex-omlx='OMLX_API_KEY="admin123" codex -c model_provider="omlx" -c model_providers.omlx.name="oMLX" -c model_providers.omlx.base_url="http://Hajimes-MacBookM5.local:8000/v1" -c model_providers.omlx.env_key="OMLX_API_KEY" -c model_catalog_json="$HOME/IdeaProjects/samples/runcom/codex_local_model.json" -m gemma-4-12B-4bit'
+#alias codex-omlx='OMLX_API_KEY="admin123" codex -c model_provider="omlx" -c model_providers.omlx.name="oMLX" -c model_providers.omlx.base_url="http://m5mac:8000/v1" -c model_providers.omlx.env_key="OMLX_API_KEY" -c model_catalog_json="$HOME/IdeaProjects/samples/runcom/codex_local_model.json" -m gemma-4-12B-4bit'
 alias codex-ticket='codex -m gpt-5.6-terra "Read the entire ticket json file and understand the history and the current status, then report what you are going to investigate (no actual investigation yet)"'
 
 
@@ -1090,17 +1090,17 @@ function syncGitReposWithRemotePC() {
 
 # backup & cleanup Cases (backing up files smaller than 10MB only)
 function backupC() {
-    local _src="${1:-"/Volumes/Samsung_T5/hajime/cases"}"
+    local _src="${1:-"$HOME/Documents//cases_local"}"
     local _ext_backup="${2:-"/Volumes/Samsung_T5/hajime/backups"}"
     local _find="find"
     type gfind &>/dev/null && _find="gfind"
 
     # vs code / codium extensions
     if which code && [ -d "$HOME/backup" ]; then
-        code --list-extensions | xargs -L 1 echo code --install-extension >$HOME/backup/vscode_install_extensions.sh || return $?
+        code --list-extensions | xargs -t -L 1 echo code --install-extension >$HOME/backup/vscode_install_extensions.sh || return $?
     fi
     if type codium &>/dev/null && [ -d "$HOME/backup" ]; then
-        codium --list-extensions | xargs -L 1 echo codium --install-extension >$HOME/backup/vscodium_install_extensions.sh || return $?
+        codium --list-extensions | xargs -t -L 1 echo codium --install-extension >$HOME/backup/vscodium_install_extensions.sh || return $?
     fi
 
     # If $HOME/.bashrc is not a symlink, then copy to $HOME/backup/bashrc (just in case, not copying if it's empty)
@@ -1157,13 +1157,15 @@ function backupC() {
     fi
 
     echo ""
-    echo "#### Synchronising a few Github repositories into 'oldmac' ####" >&2
+    echo "#### Synchronising a few Github repositories into 'oldmac' and 'm5mac' ####" >&2
     echo ""
     syncGitReposWithRemotePC "oldmac" "$USER" "IdeaProjects/samples" "$HOME" #|| return $?
     syncGitReposWithRemotePC "oldmac" "$USER" "IdeaProjects/work" "$HOME"    #|| return $?
+    syncGitReposWithRemotePC "m5mac" "$USER" "IdeaProjects/samples" "$HOME" #|| return $?
+    syncGitReposWithRemotePC "m5mac" "$USER" "IdeaProjects/work" "$HOME"    #|| return $?
 
     echo ""
-    echo "#### Cleaning up old temp/test data (120 days) ####" >&2
+    echo "#### Cleaning up old temp/test data (60 days) ####" >&2
     echo ""
     if [ -d "$HOME/Documents/tests" ]; then
         cleanOldDirs "$HOME/Documents/tests" 60
@@ -1183,15 +1185,16 @@ function backupC() {
         echo "# Source ${_src} is not set nor directory. Ending this function." >&2
         return 1
     fi
+    local _max_days="21"
     echo ""
-    echo "#### Moving up old (90 days) directories from ${_src} into Trash ####" >&2
+    echo "#### Moving up old (${_max_days} days) directories from ${_src} into Trash ####" >&2
     echo ""
     ## Special: support_tmp directory or .tmp or .out file wouldn't need to backup (not using atime as directory doesn't work)
     # NOTE: xargs may not work with very long file name 'mv: rename {} to ${HOME%/}/.Trash/{}: No such file or directory', so not using.
     _src="$(realpath "${_src}")" # because find -L ... -delete does not work
     [ -z "${_src%/}" ] && return 12
-    # Find directories from the src and if no files newer than 120 days, then move to trash (no background)
-    find ${_src%/} -mindepth 1 -maxdepth 1 -type d -print | xargs -I{} -t -P4 bash -c "find {} -type f -mtime -90 ! -name '.*' | head -n1 | grep -q -E '.+' || mv {} $HOME/.Trash/"
+    # Find directories from the src and if no files newer than ${_max_days} days, then move to trash (no background)
+    find ${_src%/} -mindepth 1 -maxdepth 1 -type d -print | xargs -I{} -t -P4 bash -c "find {} -type f -mtime -${_max_days} ! -name '.*' | head -n1 | grep -q -E '.+' || mv {} $HOME/.Trash/"
     echo ""
     echo "#### Cleaning up tmp and old+large files from ${_src} ####" >&2
     echo ""
@@ -1202,7 +1205,7 @@ function backupC() {
     ${_find} ${_src%/} -type f -mtime +60 -name "*.log" -delete 2>/dev/null &
     # Delete large and old files
     ${_find} ${_src%/} -type f -mtime +90 -size +128000k -delete 2>/dev/null &
-    ${_find} ${_src%/} -type f -mtime +180 -delete 2>/dev/null &
+    #${_find} ${_src%/} -type f -mtime +180 -delete 2>/dev/null &
 
     jobs -l
     wait
@@ -1456,6 +1459,13 @@ function startCommonUtils() {
     local __doc__="Not prefer to add many services, so this function is for starting common services"
     local _with_localai="${1:-"n"}"
     local _with_mlx="${2:-"n"}"
+
+    # If /Volumes/Samsung_T5 is not mounted, then mount it (using password from keychain)
+    if [ ! -d "/Volumes/Samsung_T5" ]; then
+        echo "# Mounting /Volumes/Samsung_T5 from m5mac" >&2
+        open "smb://m5mac/Samsung_T5"
+    fi
+
     pgStatus start
     #tabby_start
     slackS
