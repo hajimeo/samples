@@ -4,6 +4,14 @@ import org.sonatype.nexus.common.log.LogManager
 import org.sonatype.nexus.common.log.LoggerLevel
 
 
+// For testing or running from the Admin - Execute Script task
+//def args = '{"repo_name":"maven-releases","component":"com.group","name":"artifact","version":"0.0.1","batch_size":100,"dryRun":false,"debug":false}'
+
+// If Nexus 3.70.x and probably older.
+//sqlSearchIndexService = container.lookup(com.sonatype.nexus.distributed.internal.search.sql.index.SqlSearchIndexService.class.name);
+sqlSearchIndexService = container.lookup(org.sonatype.nexus.repository.search.sql.index.SqlSearchIndexService.class.name);
+
+
 def processRepository(final repository, final String filterCondition, final batchSize, final dryRun) {
     try {
         def fluentComponents = repository.facet(org.sonatype.nexus.repository.content.facet.ContentFacet.class).components();
@@ -28,7 +36,6 @@ def reindexFilteredComponents(
         log.info("No components matching filter in repository {}", repository.getName());
         return 0;
     }
-    def sqlSearchIndexService = container.lookup(org.sonatype.nexus.repository.search.sql.index.SqlSearchIndexService.class.name);
     while (!components.isEmpty()) {
         if (dryRun) {
             components.each { component ->
@@ -47,7 +54,6 @@ def reindexFilteredComponents(
 }
 
 def main(params) {
-    // params = {"repo_name":"maven-releases","component":"com.group","name":"artifact","version":"0.0.1","batch_size":100,"dryRun":false,"debug":false}
     if (params.repo_name == null || params.repo_name.isEmpty()) {
         log.warn("Repository name is not provided. Please provide a valid repository name.")
         return
