@@ -3,7 +3,7 @@
 ## Simple/generic alias commands (some need pip though) ################################################################
 # 'cd' to last modified directory
 alias cdl='cd "`ls -dtr ./*/ | tail -n 1`"'
-alias fd='find . -name'
+#alias fd='find . -name' # may conflict with actual fd command
 alias sha1R='find . -type f -exec sha1sum "{}" \;'
 alias fcv='fc -e vim'
 alias vim0='vim -u NONE -N -c "syn off" -c "set nowrap"' # handy when you process large text
@@ -348,18 +348,16 @@ alias kapaWeb='open -na "Google Chrome" --args --user-data-dir=$HOME/.chromep/wo
 # pretending windows chrome on Linux
 #alias winchrome='/opt/google/chrome/chrome --user-data-dir=$HOME/.chromep --proxy-server=socks5://localhost:38081  --user-agent="Mozilla/5.0 (Windows NT 10.0; WOW64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/88.0.4324.96 Safari/537.36"'
 
+alias vncm5mac="open vnc://m5mac"
+
 ## AI related
 alias goose-app='/Applications/Goose.app/Contents/MacOS/Goose . &>/tmp/goose_$$.out & echo "Goose started. Log: /tmp/goose_$$.out" >&2'
-#alias claude-m5='ANTHROPIC_AUTH_TOKEN=ollama ANTHROPIC_API_KEY="" ANTHROPIC_BASE_URL="${AI_LOCAL_URL_BASE%/}" CLAUDE_CODE_MAX_CONTEXT_TOKENS=256000 claude --model ${AI_DEFAULT_MODEL}'
 alias claude-omlx='ANTHROPIC_BASE_URL="http://m5mac:8000" ANTHROPIC_AUTH_TOKEN="admin123" ANTHROPIC_DEFAULT_OPUS_MODEL="Ornith-1.5-9B-MLX" ANTHROPIC_DEFAULT_SONNET_MODEL="Ornith-1.5-9B-MLX" ANTHROPIC_DEFAULT_HAIKU_MODEL="Ornith-1.5-9B-MLX" API_TIMEOUT_MS=3000000 CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC=1 CLAUDE_CODE_DISABLE_UNKNOWN_MODEL_WINDOW_ENFORCEMENT=1 CLAUDE_CODE_MAX_CONTEXT_TOKENS=131072 claude --disallowedTools LSP --model Ornith-1.5-9B-MLX'
 #alias claude-investigate='claude "Investigate this ticket"'
 #alias claude-local='ANTHROPIC_AUTH_TOKEN=ollama ANTHROPIC_API_KEY="" ANTHROPIC_BASE_URL="http://localhost:11434" CLAUDE_CODE_MAX_CONTEXT_TOKENS=32768 claude --model gemma4:e4b-mlx'
 
 # Ollama generates .codex/model.json, which contains model names (also .codex/ollama-launch.config.toml)
-#alias codex-m5='codex --profile remote-ollama -c model_provider="remote-ollama" -c model_providers.ollama-launch.name="Ollama" -c model_providers.ollama-launch.base_url="${AI_LOCAL_URL_BASE%/}/v1/" -c model_providers.ollama-launch.wire_api="responses" -c model_catalog_json="$HOME/IdeaProjects/samples/runcom/codex_local_model.json" -m ${AI_DEFAULT_MODEL}'
 alias codex-omlx='OMLX_API_KEY="admin123" codex -c model_provider="omlx" -c model_providers.omlx.name="oMLX" -c model_providers.omlx.base_url="http://m5mac:8000/v1" -c model_providers.omlx.env_key="OMLX_API_KEY" -c model_catalog_json="$HOME/IdeaProjects/samples/runcom/codex_local_model.json" -m Ornith-1.5-9B-MLX'
-# Gemma mode somehow doesn't answer the question properly.
-#alias codex-omlx='OMLX_API_KEY="admin123" codex -c model_provider="omlx" -c model_providers.omlx.name="oMLX" -c model_providers.omlx.base_url="http://m5mac:8000/v1" -c model_providers.omlx.env_key="OMLX_API_KEY" -c model_catalog_json="$HOME/IdeaProjects/samples/runcom/codex_local_model.json" -m gemma-4-12B-4bit'
 alias codex-ticket='codex -m gpt-5.6-terra "Read the entire ticket json file and understand the history and the current status, then report what you are going to investigate (no actual investigation yet)"'
 
 
