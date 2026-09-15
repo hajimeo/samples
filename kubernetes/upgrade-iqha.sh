@@ -10,8 +10,9 @@ NAME_SPACE="${NAME_SPACE:-sonatype-ha}"
 RELEASE_NAME="${RELEASE_NAME:-nxiqha}"
 VALUES_YAML="${VALUES_YAML:-"${_current_dir%/}/helm-nxiqha-values.yml"}"
 
-if ! grep -qE '^\s*tag:\s*"?latest' ${VALUES_YAML}; then
-  echo "WARN: Image Tag defined in ${VALUES_YAML} is not using latest."
+non_latest_tag="$(grep -E '^\s*tag:\s*"?latest' ${VALUES_YAML} | grep -v "latest" || true)"
+if [ -n "${non_latest_tag}" ]; then
+  echo "WARN: Image Tag defined in ${VALUES_YAML} is not using latest but ${non_latest_tag} ."
   grep -E '^\s*tag:' ${VALUES_YAML} || true
   sleep 3
 fi
