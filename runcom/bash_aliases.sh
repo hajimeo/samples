@@ -3,7 +3,8 @@
 ## Simple/generic alias commands (some need pip though) ################################################################
 # 'cd' to last modified directory
 alias cdl='cd "`ls -dtr ./*/ | tail -n 1`"'
-#alias fd='find . -name' # may conflict with actual fd command
+alias fdn='find . -name' # Changed from 'fd` as it may conflict with actual fd command
+alias fdp='find . -path'
 alias sha1R='find . -type f -exec sha1sum "{}" \;'
 alias fcv='fc -e vim'
 alias vim0='vim -u NONE -N -c "syn off" -c "set nowrap"' # handy when you process large text
