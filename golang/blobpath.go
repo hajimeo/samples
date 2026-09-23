@@ -1,6 +1,7 @@
 /*
 Doing same as org.sonatype.nexus.blobstore.VolumeChapterLocationStrategy#location + java.lang.String.hashCode,
- and org.sonatype.nexus.blobstore.DateBasedLocationStrategy#location (blobCreationTime)
+
+	and org.sonatype.nexus.blobstore.DateBasedLocationStrategy#location (blobCreationTime)
 
 To build: GO_SKIP_TESTS=Y goBuild ./blobpath.go
 */
@@ -12,6 +13,8 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"strconv"
+	"time"
 )
 
 func usage() {
@@ -26,6 +29,11 @@ DOWNLOAD and INSTALL:
 USAGE EXAMPLE:
     $ blobpath "6c1d3423-ecbc-4c52-a0fe-01a45a12883a@2025-08-14T02:44"
     2025/08/14/02/44/6c1d3423-ecbc-4c52-a0fe-01a45a12883a.properties
+
+    # Timezone is required as Nexus uses UTC internally
+    $ rg -o '[a-f0-9-]+\s*|\s*\d{4}-\d{2}-\d{2}.\d{2}:\d{2}:\d{2}.\d{2}' sqlout.txt | xargs -I{} blobpath "{}"
+    2025/08/14/02/44/6c1d3423-ecbc-4c52-a0fe-01a45a12883a.properties
+    ...
 
     $ blobpath "83e59741-f05d-4915-a1ba-7fc789be34b1"
     vol-31/chap-32/83e59741-f05d-4915-a1ba-7fc789be34b1.properties
@@ -62,15 +70,31 @@ func myHashCode(s string) int32 {
 
 func genPath(blobIdLikeString string, pathPfx string, ext string) string {
 	// As this is called only once, not bothering pre-compiling the regex
+	// blob_ref value: 6c1d3423-ecbc-4c52-a0fe-01a45a12883a@2025-08-14T02:44
 	NewBlobIdPattern := regexp.MustCompile(`.*([a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12})@(\d{4})-(\d{2})-(\d{2}).(\d{2}):(\d{2}).*`)
 	matches := NewBlobIdPattern.FindStringSubmatch(blobIdLikeString)
 	if len(matches) > 6 {
-		// 6c1d3423-ecbc-4c52-a0fe-01a45a12883a@2025-08-14T02:44
 		// 2025/08/14/02/44/6c1d3423-ecbc-4c52-a0fe-01a45a12883a.properties
 		return filepath.Join(pathPfx, matches[2], matches[3], matches[4], matches[5], matches[6], matches[1]+ext)
 	}
-	NewBlobIdPattern2 := regexp.MustCompile(`/?([0-9]{4})/([0-9]{2})/([0-9]{2})/([0-9]{2})/([0-9]{2})/([a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}).*`)
-	matches = NewBlobIdPattern2.FindStringSubmatch(blobIdLikeString)
+	// DB query output:     6c1d3423-ecbc-4c52-a0fe-01a45a12883a | 2025-08-14 02:44:00+00
+	NewBlobIdPattern = regexp.MustCompile(`.*([a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}).+(\d{4})-(\d{2})-(\d{2}).(\d{2}):(\d{2}):\d{2}([+-]\d{2}).*`)
+	matches = NewBlobIdPattern.FindStringSubmatch(blobIdLikeString)
+	if len(matches) > 7 {
+		// matches[7] is the timezone offset in hours (e.g. "+10", "-05"); convert the local time to UTC.
+		year, _ := strconv.Atoi(matches[2])
+		month, _ := strconv.Atoi(matches[3])
+		day, _ := strconv.Atoi(matches[4])
+		hour, _ := strconv.Atoi(matches[5])
+		minute, _ := strconv.Atoi(matches[6])
+		tzOffsetHours, _ := strconv.Atoi(matches[7])
+		loc := time.FixedZone("", tzOffsetHours*3600)
+		utcTime := time.Date(year, time.Month(month), day, hour, minute, 0, 0, loc).UTC()
+
+		return filepath.Join(pathPfx, fmt.Sprintf("%04d", utcTime.Year()), fmt.Sprintf("%02d", int(utcTime.Month())), fmt.Sprintf("%02d", utcTime.Day()), fmt.Sprintf("%02d", utcTime.Hour()), fmt.Sprintf("%02d", utcTime.Minute()), matches[1]+ext)
+	}
+	NewBlobIdPattern = regexp.MustCompile(`/?([0-9]{4})/([0-9]{2})/([0-9]{2})/([0-9]{2})/([0-9]{2})/([a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}).*`)
+	matches = NewBlobIdPattern.FindStringSubmatch(blobIdLikeString)
 	if len(matches) > 6 {
 		return filepath.Join(pathPfx, matches[1], matches[2], matches[3], matches[4], matches[5], matches[6]+ext)
 	}
