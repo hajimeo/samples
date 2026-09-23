@@ -62,6 +62,7 @@ function _postgresql_configure() {
     local _verbose_logging="${1}"   # If Y, adds more logging configs which would work with pgbadger.
     local _postgresql_conf="${2}"   # Automatically detected if empty. "/var/lib/pgsql/data" or "/etc/postgresql/10/main" or /var/lib/pgsql/12/data/
     local _port="${3:-"5432"}"      # just for deciding the username. Optional.
+    local _log_dir="${4}"
     local _restart=false
 
     if [ ! -f "${_postgresql_conf}" ]; then
@@ -72,7 +73,8 @@ function _postgresql_configure() {
         return 1
     fi
     local _conf_dir="$(dirname "${_postgresql_conf}")"
-    [ ! -s "${_conf_dir%/}/postgresql.conf.orig" ] && cp -f "${_postgresql_conf}" "${_conf_dir%/}/postgresql.conf.orig"
+    local _back_conf="${_conf_dir%/}/postgresql.auto.conf.bak_$(date +"%Y%m%d%H%M%S")"
+    [ -s "${_conf_dir%/}/postgresql.auto.conf" ] && cp -v -f "${_conf_dir%/}/postgresql.auto.conf" "${_back_conf}"
     _log "INFO" "Updating ${_postgresql_conf} ..."
 
     # TODO: Do I still need this?
@@ -103,10 +105,12 @@ function _postgresql_configure() {
     #_upsert ${_postgresql_conf} "max_slot_wal_keep_size" "100GB" "#max_slot_wal_keep_size"    # Default -1 and probably from v13?
     _psql_adm "ALTER SYSTEM SET max_stack_depth TO '6MB'"    # Default 2048kB. To avoid 'stack depth limit exceeded'
     ### End of tuning ###
-    _psql_adm "ALTER SYSTEM SET listen_addresses TO ''*''"
-    # psql -c 'SELECT pg_current_logfile();;SHOW data_directory' # eg. "/opt/homebrew/var/postgresql@14"
-    [ -d /var/log/postgresql ] || mkdir -p -m 777 /var/log/postgresql
-    [ -d /var/log/postgresql ] && _psql_adm "ALTER SYSTEM SET log_directory TO ''/var/log/postgresql' '"    # default is 'log'
+    _psql_adm "ALTER SYSTEM SET listen_addresses TO '*'"
+    if [ -n "${_log_dir}" ]; then
+        _psql_adm 'SELECT pg_current_logfile();;SHOW data_directory' # eg. "/opt/homebrew/var/postgresql@14"
+        [ -d "${_log_dir}" ] || mkdir -p -m 777 "${_log_dir}"
+        [ -d "${_log_dir}" ] && _psql_adm "ALTER SYSTEM SET log_directory TO '${_log_dir}'"    # default is 'log'
+    fi
 
     #_upsert ${_postgresql_conf} "log_destination" "stderr" "#log_destination"  # stderr
     #_upsert ${_postgresql_conf} "log_duration" "on" "#log_duration"    # This output many lines, so log_min_duration_statement would be better
@@ -122,7 +126,7 @@ function _postgresql_configure() {
     if [[ "${_verbose_logging}" =~ (y|Y) ]]; then
         _psql_adm "ALTER SYSTEM SET log_error_verbosity TO 'verbose'"  # default
         # @see: https://www.eversql.com/enable-slow-query-log-postgresql/ for AWS RDS to log SQL
-        _psql_adm "ALTER SYSTEM SET log_line_prefix TO ''%t [%p]: db=%d,user=%u,app=%a,client=%h ''"
+        _psql_adm "ALTER SYSTEM SET log_line_prefix TO '%t [%p]: db=%d,user=%u,app=%a,client=%h '"
         # NOTE: Below stays after restarting and requires superuser
         # ALTER system RESET ALL;
         # ALTER system SET log_min_duration_statement = 1000;ALTER SYSTEM SET log_statement_stats TO 'on';SELECT pg_reload_conf(); -- 'DATABASE :DBNAME' doesn't work?
@@ -136,7 +140,7 @@ function _postgresql_configure() {
         _psql_adm "ALTER SYSTEM SET log_autovacuum_min_duration TO '0'"
         # Also, make sure 'autovacuum' is 'on', autovacuum_analyze_scale_factor (0.1), autovacuum_analyze_threshold (50)
     else
-        _psql_adm "ALTER SYSTEM SET log_line_prefix TO ''%m [%p-%c]: db=%d,user=%u,app=%a,client=%h ''"
+        _psql_adm "ALTER SYSTEM SET log_line_prefix TO '%m [%p-%c]: db=%d,user=%u,app=%a,client=%h '"
         # ALTER system RESET ALL;
         # ALTER system SET log_statement = 'all';SELECT pg_reload_conf();
         _psql_adm "ALTER SYSTEM SET log_statement TO 'mod'"
@@ -149,7 +153,7 @@ function _postgresql_configure() {
     #SELECT current_database() as "dbname", r.rolname as "owner", n.nspname as "schema", e.* from pg_extension e join pg_roles r on r.oid = e.extowner join pg_namespace n on n.oid = e.extnamespace;
     local _shared_preload_libraries="auto_explain"
     # https://www.postgresql.org/docs/current/pgstatstatements.html
-    if ${_psql_as_admin} -d template1 -c "CREATE EXTENSION IF NOT EXISTS pg_stat_statements schema public;"; then
+    if _psql_adm "CREATE EXTENSION IF NOT EXISTS pg_stat_statements schema public;"; then
         _shared_preload_libraries="${_shared_preload_libraries},pg_stat_statements"
         # @see https://www.postgresql.org/docs/current/pgstatstatements.html
         # SELECT pg_stat_statements_reset();
@@ -159,11 +163,11 @@ function _postgresql_configure() {
     #${_psql_as_admin} -d template1 -c "CREATE EXTENSION IF NOT EXISTS pg_buffercache;"
     # https://github.com/postgres/postgres/blob/master/contrib/pg_prewarm/autoprewarm.c
     # To check: 'ps -aef | grep autoprewarm' and $PGDATA/autoprewarm.blocks file
-    if ${_psql_as_admin} -d template1 -c "CREATE EXTENSION IF NOT EXISTS pg_prewarm;"; then
+    if _psql_adm "CREATE EXTENSION IF NOT EXISTS pg_prewarm;"; then
         _shared_preload_libraries="${_shared_preload_libraries},pg_prewarm"
         # select pg_prewarm('<tablename>'); # 2nd arg default is 'buffer', 3rd is 'main'
     fi
-    if _psql_adm "ALTER SYSTEM SET shared_preload_libraries TO ''${_shared_preload_libraries}''"; then
+    if _psql_adm "ALTER SYSTEM SET shared_preload_libraries TO '${_shared_preload_libraries}'"; then
         _restart=true
     fi
 
@@ -174,8 +178,12 @@ function _postgresql_configure() {
     # SELECT pg_reload_conf();
     # SELECT * FROM pg_settings WHERE name like 'auto_explain%';  -- to confirm the settings (auto_explain.log_analyze should be 'off')
 
-    diff -wu ${__TMP%/}/postgresql.conf.orig ${_postgresql_conf}
-    if ${_restart} || ! ${_psql_as_admin} -d template1 -c "SELECT pg_reload_conf();"; then
+    if [ -s "${_back_conf}" ]; then
+        _log "INFO" "Diff between ${_back_conf} and ${_conf_dir%/}/postgresql.auto.conf"
+        diff -wu "${_back_conf}" "${_conf_dir%/}/postgresql.auto.conf"
+    fi
+
+    if ${_restart} || ! _psql_adm "SELECT pg_reload_conf();"; then
         _log "INFO" "Updated postgresql config. Please restart or reload the service."
     fi
 
@@ -456,10 +464,10 @@ function _postgres_pitr() {
     if [ ! -s ${_data_dir%/}/postgresql.conf.bak ]; then
         cp -p ${_data_dir%/}/postgresql.conf ${_data_dir%/}/postgresql.conf.bak || return $?
     fi
-    _upsert ${_data_dir%/}/postgresql.conf "restore_command" "'cp ${_wal_archive_dir%/}/%f "%p"'" "#restore_command "
-    _upsert ${_data_dir%/}/postgresql.conf "recovery_target_action" "'promote'" "#recovery_target_action "
-    [ -n "${_target_ISO_datetime}" ] && _upsert ${_data_dir%/}/postgresql.conf "recovery_target_time" "'${_target_ISO_datetime}'" "#recovery_target_time "
-    diff -u ${_data_dir%/}/postgresql.conf.bak ${_data_dir%/}/postgresql.conf
+    _psql_adm "ALTER SYSTEM SET restore_command TO 'cp ${_wal_archive_dir%/}/%f \"%p\"'"
+    _psql_adm "ALTER SYSTEM SET recovery_target_action TO 'promote'"
+    [ -n "${_target_ISO_datetime}" ] && _psql_adm "ALTER SYSTEM SET recovery_target_time TO '${_target_ISO_datetime}'"
+    #diff -u ${_data_dir%/}/postgresql.conf.bak ${_data_dir%/}/postgresql.conf
     _log "INFO" "postgresql.conf has been updated. Please start PostgreSQL for recovery then 'promote'."
     # Upon completion of the recovery process, the server will remove recovery.signal (to prevent accidentally re-entering recovery mode later) and then commence normal database operations.
 }
