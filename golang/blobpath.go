@@ -30,7 +30,7 @@ USAGE EXAMPLE:
     $ blobpath "6c1d3423-ecbc-4c52-a0fe-01a45a12883a@2025-08-14T02:44"
     2025/08/14/02/44/6c1d3423-ecbc-4c52-a0fe-01a45a12883a.properties
 
-    # Timezone is required as Nexus uses UTC internally
+    # sqlout.text contains 'blob_id | date_path_ref' from reconcile_plan_details. Timezone is required as UTC is used.
     $ rg -o '[a-f0-9-]+\s*|\s*\d{4}-\d{2}-\d{2}.\d{2}:\d{2}:\d{2}.\d{2}' sqlout.txt | xargs -I{} blobpath "{}"
     2025/08/14/02/44/6c1d3423-ecbc-4c52-a0fe-01a45a12883a.properties
     ...
