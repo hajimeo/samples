@@ -89,10 +89,6 @@ if [ "$(uname)" = "Darwin" ]; then
     # If homebrew was used to install Java, check /opt/homebrew/bin/java
     # Truststore location: $(/usr/libexec/java_home)/lib/security/cacerts or $(/usr/libexec/java_home)/jre/lib/security/cacerts
     # To verify: -Djavax.net.debug=ssl,keymanager
-    if [ -f /usr/libexec/java_home ]; then
-        #[ -z "${JAVA_HOME_11}" ] && export JAVA_HOME_11=`/usr/libexec/java_home -v 11 2>/dev/null`
-        [ -z "${JAVA_HOME}" ] && export JAVA_HOME=`/usr/libexec/java_home -v 1.8 2>/dev/null`
-    fi
     if [ -d "/Library/Java/JavaVirtualMachines/zulu-8.jdk/Contents/Home" ]; then
         [ -z "${JAVA_HOME_8}" ] && export JAVA_HOME_8="/Library/Java/JavaVirtualMachines/zulu-8.jdk/Contents/Home"
         [ -z "${JAVA_HOME}" ] && export JAVA_HOME="/Library/Java/JavaVirtualMachines/zulu-8.jdk/Contents/Home"
@@ -111,10 +107,24 @@ if [ "$(uname)" = "Darwin" ]; then
     if [ -e "/Users/hosako/.sdkman/candidates/java/25.0.2-zulu" ]; then
         [ -z "${JAVA_HOME_25}" ] && export JAVA_HOME_25="/Users/hosako/.sdkman/candidates/java/25.0.2-zulu"
     fi
-    # For now, using java11's jshell
-    if [ -n "${JAVA_HOME_11%/}" ]; then
-        alias jshell="${JAVA_HOME_11}/bin/jshell"
+
+    if [ -f /usr/libexec/java_home ]; then
+        alias java17="export JAVA_HOME=\$(/usr/libexec/java_home -F -v 17)"
+        alias java21="export JAVA_HOME=\$(/usr/libexec/java_home -F -v 21)"
+        alias java25="export JAVA_HOME=\$(/usr/libexec/java_home -F -v 25)"
+        #[ -z "${JAVA_HOME}" ] && export JAVA_HOME=`/usr/libexec/java_home -v 1.8 2>/dev/null`
+
+        if [ -z "${JAVA_HOME_17}" ]; then
+            export JAVA_HOME_17=`/usr/libexec/java_home -F -v 17 2>/dev/null`
+        fi
+        if [ -z "${JAVA_HOME_21}" ]; then
+            export JAVA_HOME_21=`/usr/libexec/java_home -F -v 21 2>/dev/null`
+        fi
+        if [ -z "${JAVA_HOME_25}" ]; then
+            export JAVA_HOME_25=`/usr/libexec/java_home -F -v 25 2>/dev/null`
+        fi
     fi
+
 
     # Docker related. Use "podman" first
     if type podman &>/dev/null; then
@@ -152,7 +162,7 @@ if [ -f '/Users/hosako/Apps/google-cloud-sdk/completion.bash.inc' ]; then . '/Us
 #eval "$(gh copilot alias -- bash)"
 
 # rust / cargo installation added the below
-. "$HOME/.cargo/env"
+#. "$HOME/.cargo/env"
 #eval "$(jenv init -)"
 
 #test -e "${HOME}/.iterm2_shell_integration.bash" && source "${HOME}/.iterm2_shell_integration.bash" || true
