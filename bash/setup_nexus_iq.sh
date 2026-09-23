@@ -176,6 +176,30 @@ function f_install_iq() {
     fi
 }
 
+function f_uninstall_iq() {
+    local __doc__="Uninstall IQ by deleting database and directory"
+    local _dirpath="${1}"
+    if [ ! -d "${_dirpath%/}" ] || [[ ! "${_dirpath}" =~ [/]*nxiq_ ]]; then
+        echo "Incorrect _dirpath"
+        return 1
+    fi
+    local _config_yml="$(find ${_dirpath%/} -mindepth 1 -maxdepth 5 -name 'config.yml' 2>/dev/null | sort -V | head -n1)"
+    if [ ! -s "${_config_yml}" ]; then
+        echo "config.yml not found or empty"
+        return 1
+    fi
+    echo "Uninstalling IQ in ${_dirpath%/} with config.yml: ${_config_yml} ..."
+    _export_postgres_config "${_config_yml}" || return $?
+    if [ -z "${_DBNAME}" ]; then
+        echo "Database name is not set in ${_config_yml}"
+        return 1
+    fi
+    local _pcmd="psql -h ${_DBHOST} -p ${_DBPORT:-"5432"} -U ${_DBUSER} -d template1 -c \"DROP DATABASE ${_DBNAME}\""
+    echo "${_pcmd}"; sleep 3
+    eval "${_pcmd}" || return $?
+    rm -rf -v "${_dirpath%/}"
+}
+
 function f_upgrade_this_iq() {
     local __doc__="Upgrade this IQ version ('this' means starting this function from the extracted nexus-iq-server-<version> dir)"
     local _ver="${1}" # 'latest'
@@ -223,6 +247,7 @@ function _download_installer() {
     fi
 
     # This function export _LICENSE_PATH
+    _log "INFO" "Downloading ${_filename} to ${_download_dir%/} ..."
     _prepare_install "${_dirpath}" "https://download.sonatype.com/clm/server/${_filename}" "${_download_dir}" "${_force_extract}" || return $?
 
     if [ -d "${HOME%/}/.nexus_executable_cache" ]; then
@@ -250,7 +275,7 @@ function _download_installer() {
 
 ### Database related
 function _export_postgres_config() {
-    local _db_props_file="${1}"
+    local _cfg_file="${1}"
     eval "$(grep "^database:" -A10 "${_cfg_file}" | sed -n -E 's/^ +([^:]+): *(.+)$/\1=\2/p')" || return $?
     export _DBHOST="${hostname}"
     export _DBPORT="${port}"
