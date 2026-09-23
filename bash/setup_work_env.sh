@@ -19,6 +19,12 @@ _import "utils.sh"
 
 
 function f_prepare() {
+    if [ ! -w /usr/local/bin ]; then
+        echo "ERROR: /usr/local/bin is not writable by the current user. Execute the below:"
+        echo "sudo chown -R $(whoami):admin /usr/local/bin && sudo chmod -R g+w /usr/local/bin"
+        return 1
+    fi
+
     # commands which may require sudo, but minimum (not including screen)
     if ! which brew &>/dev/null; then
         if ! which add-apt-repository &>/dev/null; then
@@ -100,7 +106,7 @@ EOF
 
     if type brew &>/dev/null; then
         #arch -x86_64 /usr/local/bin/brew install gnu-sed grep coreutils findutils graphviz
-        brew install gnu-sed grep coreutils findutils graphviz pigz
+        brew install gnu-sed grep coreutils findutils pigz graphviz
         # 'q' is installable with brew
         brew install harelba/q/q
     else
@@ -111,6 +117,13 @@ EOF
 }
 
 function f_setup_misc() {
+    # Requires :sudo chown -R $(whoami):admin /usr/local/bin && sudo chmod -R g+w /usr/local/bin
+    # Check if `/usr/local/bin` is writable by the current user, if not, try to change the permission
+    if [ ! -w /usr/local/bin ]; then
+        echo "ERROR: /usr/local/bin is not writable by the current user. Execute the below:"
+        echo "sudo chown -R $(whoami):admin /usr/local/bin && sudo chmod -R g+w /usr/local/bin"
+        return 1
+    fi
     _symlink_or_download "runcom/bash_profile.sh" "$HOME/.bash_profile" || return $?
     _symlink_or_download "runcom/bash_aliases.sh" "$HOME/.bash_aliases" || return $?
     _symlink_or_download "runcom/vimrc" "$HOME/.vimrc" || return $?
@@ -510,11 +523,7 @@ function _symlink_or_download() {
     local _no_backup="$3"
     local _if_not_exists="$4"
     if [ ! -f ${_destination} ] && [ -s ${_SOURCE_REPO_BASE%/}/${_source_filename} ]; then
-        if which realpath &>/dev/null; then
-            ln -s "$(realpath "${_SOURCE_REPO_BASE%/}/${_source_filename}")" "$(realpath "${_destination}")" || return $?
-        else
-            ln -s "${_SOURCE_REPO_BASE%/}/${_source_filename}" "${_destination}" || return $?
-        fi
+        ln -s "$(readlink -f "${_SOURCE_REPO_BASE%/}/${_source_filename}")" "${_destination}" || return $?
     elif [ ! -L ${_destination} ]; then
         _download "${_DOWNLOAD_FROM_BASE%/}/${_source_filename}" "${_destination}" "${_no_backup}" "${_if_not_exists}" || return $?
     fi
