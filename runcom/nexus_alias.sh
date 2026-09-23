@@ -140,7 +140,7 @@ function _get_iq_url() {
             return
         fi
     fi
-    for _iq_url in "http://localhost:8070/" "https://nxiqha-k8s.standalone.localdomain/" "http://dh1:8070/"; do
+    for _iq_url in "http://localhost:8070/" "http://m5mac:8070/" "https://nxiqha-k8s.standalone.localdomain/"; do
         if curl -m1 -f -s -I "${_iq_url%/}/" &>/dev/null; then
             echo "${_iq_url%/}/"
             return
