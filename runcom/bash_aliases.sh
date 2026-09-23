@@ -352,6 +352,7 @@ alias kapaWeb='open -na "Google Chrome" --args --user-data-dir=$HOME/.chromep/wo
 alias vncm5mac="open vnc://m5mac"
 
 ## AI related
+alias zg-idx-logs='zg index --embedding local/potion-code-16m-v2 -g "*.log*" -g "*.json"'
 alias goose-app='/Applications/Goose.app/Contents/MacOS/Goose . &>/tmp/goose_$$.out & echo "Goose started. Log: /tmp/goose_$$.out" >&2'
 alias claude-omlx='ANTHROPIC_BASE_URL="http://m5mac:8000" ANTHROPIC_AUTH_TOKEN="admin123" ANTHROPIC_DEFAULT_OPUS_MODEL="Ornith-1.5-9B-MLX" ANTHROPIC_DEFAULT_SONNET_MODEL="Ornith-1.5-9B-MLX" ANTHROPIC_DEFAULT_HAIKU_MODEL="Ornith-1.5-9B-MLX" API_TIMEOUT_MS=3000000 CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC=1 CLAUDE_CODE_DISABLE_UNKNOWN_MODEL_WINDOW_ENFORCEMENT=1 CLAUDE_CODE_MAX_CONTEXT_TOKENS=131072 claude --disallowedTools LSP --model Ornith-1.5-9B-MLX'
 #alias claude-investigate='claude "Investigate this ticket"'
@@ -359,7 +360,8 @@ alias claude-omlx='ANTHROPIC_BASE_URL="http://m5mac:8000" ANTHROPIC_AUTH_TOKEN="
 
 # Ollama generates .codex/model.json, which contains model names (also .codex/ollama-launch.config.toml)
 alias codex-omlx='OMLX_API_KEY="admin123" codex -c model_provider="omlx" -c model_providers.omlx.name="oMLX" -c model_providers.omlx.base_url="http://m5mac:8000/v1" -c model_providers.omlx.env_key="OMLX_API_KEY" -c model_catalog_json="$HOME/IdeaProjects/samples/runcom/codex_local_model.json" -m Ornith-1.5-9B-MLX'
-alias codex-ticket='codex -m gpt-5.6-terra "Read the entire ticket json file and understand the history and the current status, then report what you are going to investigate (no actual investigation yet)"'
+alias codex-ticket='codex -m gpt-5.6-terra "Read the ticket json file and understand the history and the current status, then report what you are going to investigate (no actual investigation yet)"'
+# To re-authenticate: codex mcp login atlassian
 
 
 ## Work specific aliases ############################################################################################3
@@ -419,6 +421,16 @@ function fcat() {
         echo ''
     done
     return ${_result}
+}
+
+function Vim() {
+    local _file_path="$1"
+    # If file is larger than 512MB, starts with vim0, otherwise vim.
+    if [ -s "${_file_path}" ] && [ $(stat -f %z "${_file_path}") -gt 536870912 ]; then
+        vim0 "${_file_path}"
+    else
+        vim "${_file_path}"
+    fi
 }
 
 function fvim() {
@@ -783,12 +795,11 @@ function r2dh() {
     [ -z "${_dh}" ] && _dh="$(ifconfig ppp0 | grep -oE 'inet .+' | awk '{print $4}')" 2>/dev/null
     [ -z "${_dh}" ] && _dh="dh1.standalone.localdomain"
 
-    # My home network custom setting
+    # My home network custom setting (TODO: should not use ping)
     #if ping -Q -t1 -c1 192.168.42.129 &>/dev/null; then
     #    sudo route delete -net 192.168.1.0/24 &>/dev/null
     #    sudo route add -net 192.168.1.0/24 192.168.42.129
     #fi
-
     # If geteway is unreachable, shouldn't update the route
     ping -Q -t1 -c1 ${_dh} || return $?
 
@@ -1018,16 +1029,28 @@ function listLargeDirs() {
     done
 }
 
+function gDrivePull() {
+    cd $HOME/Documents/sonatype || return $?
+    # May not need to do this for now as AI may not be good at processing PDFs
+    echo "INFO: rsync-ing PDFs from remote to local..." >&2
+    rsync -av $HOME/Google\ Drive/My\ Drive/work/sonatype/*.pdf ./kbs/
+    echo "INFO: rsync-ing gDocs from remote to local..." >&2
+    rclone sync hajime-drive:"My Notes" ./gdocs_stared -P || return $?
+    echo "INFO: zg index ..." >&2
+    zg index --embedding local/potion-code-16m-v2
+    cd - &>/dev/null
+}
+
 #_RSYNC_DRY_RUN=Y syncGitReposWithRemotePC
 function syncGitReposWithRemotePC() {
-    local _remote_host="${1:-"oldmac"}"
+    local _remote_host="${1:-"m5mac"}"
     local _remote_user="${2:-"${USER}"}"
     local _repo_rel_path="${3:-"IdeaProjects/samples"}"
     local _local_base_dir="${4:-"$HOME"}"
     local _rsync_exclude="${5:-"--exclude .idea --exclude .git"}"
     local _dry_run="${6:-"${_RSYNC_DRY_RUN}"}"
     # Check if the remote is reachable
-    if ping -c1 ${_remote_host} &>/dev/null; then
+    if ssh -q -o ConnectTimeout=3 ${_remote_host} exit &>/dev/null; then
         echo "# '${_remote_host}' is reachable. Starting rsync." >&2
     else
         echo "# '${_remote_host}' is not reachable. Skipping rsync." >&2
@@ -1055,7 +1078,7 @@ function syncGitReposWithRemotePC() {
         _diff_mins="$(((_current_ts - _last_mod_ts) / 60))"
     fi
     echo "" >&2
-    echo "# Finding any '-mmin -${_diff_mins}' files in the remote and copy (just in case, excluding large files)" >&2
+    echo "# Finding any '-mmin -${_diff_mins}' files in the remote ${_remote_repo_path} and copy (just in case, excluding large files)" >&2
     # Need relative path, so using cd. If dry run, shouldn't touch the previous list file.
     ssh ${_remote_user_host} "cd ${_remote_repo_path} && find . -type f -mmin -${_diff_mins} -size -10M -not -path \"*/.idea/*\" -not -path \"*/.git/*\" -print" >"${_check_file}${_dry_run}" || return $?
     if [ -s "${_check_file}${_dry_run}" ]; then
@@ -1083,13 +1106,13 @@ function syncGitReposWithRemotePC() {
         # As the below may output misleading information, not running if dry run
         local _backup_dir="/tmp/$(basename ${_local_repo_path%/})_$(date +%Y%m%d%H%M%S)"
         echo "# Rsync ${_remote_user_host}:${_remote_repo_path%/}/ ${_local_repo_path%/}/ ${_rsync_exclude} --backup-dir=${_backup_dir} ${_dry_run}" >&2
-        eval "rsync -Pzau --delete --backup --backup-dir=${_backup_dir} --modify-window=1 ${_rsync_exclude}" ${_remote_user_host}:${_remote_repo_path%/}/ ${_local_repo_path%/}/ ${_dry_run}
+        eval "rsync --contimeout=20 -Pzau --delete --backup --backup-dir=${_backup_dir} --modify-window=1 ${_rsync_exclude}" ${_remote_user_host}:${_remote_repo_path%/}/ ${_local_repo_path%/}/ ${_dry_run}
     fi
 }
 
 # backup & cleanup Cases (backing up files smaller than 10MB only)
 function backupC() {
-    local _src="${1:-"$HOME/Documents//cases_local"}"
+    local _src="${1:-"$HOME/Documents/cases"}"
     local _ext_backup="${2:-"/Volumes/Samsung_T5/hajime/backups"}"
     local _find="find"
     type gfind &>/dev/null && _find="gfind"
@@ -1105,6 +1128,7 @@ function backupC() {
     # If $HOME/.bashrc is not a symlink, then copy to $HOME/backup/bashrc (just in case, not copying if it's empty)
     if [ -s "$HOME/.bashrc" ] && [ -d "$HOME/backup" ] && [ ! -L "$HOME/.bashrc" ]; then
         cp -v -f $HOME/.bashrc $HOME/backup/bashrc || return $?
+        scp -C $HOME/.bashrc m5mac:~/
     fi
 
     # If $HOME/.netrc is not a symlink, then copy to $HOME/backup/netrc (just in case, not copying if it's empty)
@@ -1293,7 +1317,7 @@ function pubS() {
     local _backup_server="${1:-"dh1"}"
     # If /tmp/pubS.last is older than 1 day, delete it to force checking files
     #find /tmp/pubS.last -mtime +1 -print -delete
-    if ! ping -c1 -t1 ${_backup_server} >/dev/null; then
+    if ! ssh -q -o ConnectTimeout=3 ${_backup_server} exit >/dev/null; then
         echo "Can't reach ${_backup_server}" >&2
     else
         echo "# Publishing updated scripts to ${_backup_server} at $(date)" >&2
@@ -1343,18 +1367,20 @@ function pubS() {
         cd -
     fi
 
-    # May not need to do this for now as AI may not be good at processing PDFs
-    echo "rsync-ing PDFs from remote to local..." >&2
-    rsync -av $HOME/Google\ Drive/My\ Drive/work/sonatype/*.pdf $HOME/Documents/sonatype/kbs/
-
     date | tee /tmp/pubS.last
 }
 function sync_nexus_binaries() {
     local _host="${1:-"dh1"}"
     echo "Synchronising IQ binaries from/to ${_host} ..." >&2
-    rsync -Prc ${_host}:/var/tmp/share/sonatype/nexus-iq-server-*-bundle.tar.gz $HOME/.nexus_executable_cache/
+    rsync --contimeout=3 -Prc ${_host}:/var/tmp/share/sonatype/nexus-iq-server-*-bundle.tar.gz $HOME/.nexus_executable_cache/ || return $?
     rsync -Prc $HOME/.nexus_executable_cache/nexus-iq-server-*-bundle.tar.gz ${_host}:/var/tmp/share/sonatype/
     rsync -Prc $HOME/.nexus_executable_cache/nexus-iq-cli-*.jar ${_host}:/var/tmp/share/sonatype/
+}
+
+function sync_git_repos() {
+    local _host="${1:-"m5mac"}"
+    syncGitReposWithRemotePC "${_host}" "$USER" "IdeaProjects/samples" "$HOME" #|| return $?
+    syncGitReposWithRemotePC "${_host}" "$USER" "IdeaProjects/work" "$HOME"    #|| return $?
 }
 
 function set_classpath() {
@@ -1490,6 +1516,13 @@ function startCommonUtils() {
         apfel --serve --port 11435 &>/tmp/apfel.out &
         sleep 1
         tail /tmp/apfel.out
+    fi
+
+    if type gDrivePull &>/dev/null; then
+        echo "# Starting gDrivePull" >&2
+        gDrivePull &>/tmp/gDrivePull.log &
+        sleep 1
+        tail /tmp/gDrivePull.log
     fi
 
     # Currently not starting ollama by default
