@@ -321,7 +321,7 @@ function f_uninstall_nexus3() {
         echo "Incorrect _dirpath"
         return 1
     fi
-    local _nexus_store="$(find ${_dirpath%/} -mindepth 5 -maxdepth 5 -name 'nexus-store.properties' 2>/dev/null | head -n1)"
+    local _nexus_store="$(find ${_dirpath%/} -mindepth 5 -maxdepth 5 -name 'nexus-store.properties' 2>/dev/null | sort -V | head -n1)"
     if [ -n "${_nexus_store}" ]; then
         if grep -q ':postgresql' ${_nexus_store}; then
             source ${_nexus_store}
@@ -475,7 +475,7 @@ function f_setup_npm() {
     local _extra_sto_opt="$(_get_extra_sto_opt "${_ds_name}")"
     # If no xxxx-proxy, create it
     if ! _is_repo_available "${_prefix}-proxy"; then
-        _apiS '{"action":"coreui_Repository","method":"create","data":[{"attributes":{"proxy":{"remoteUrl":"https://registry.npmjs.org","contentMaxAge":1440,"metadataMaxAge":1440},"httpclient":{"blocked":false,"autoBlock":true,"connection":{"useTrustStore":false}},"storage":{"blobStoreName":"'${_bs_name}'","strictContentTypeValidation":true'${_extra_sto_opt}'},"negativeCache":{"enabled":true,"timeToLive":1440},"cleanup":{"policyName":[]}},"name":"'${_prefix}'-proxy","format":"","type":"","url":"","online":true,"routingRuleId":"","authEnabled":false,"httpRequestSettings":false,"recipe":"npm-proxy"}],"type":"rpc"}' || return $?
+        _apiS '{"action":"coreui_Repository","method":"create","data":[{"attributes":{"proxy":{"remoteUrl":"https://registry.npmjs.org","contentMaxAge":1440,"metadataMaxAge":60},"httpclient":{"blocked":false,"autoBlock":true,"connection":{"useTrustStore":false}},"storage":{"blobStoreName":"'${_bs_name}'","strictContentTypeValidation":true'${_extra_sto_opt}'},"negativeCache":{"enabled":true,"timeToLive":1440},"cleanup":{"policyName":[]}},"name":"'${_prefix}'-proxy","format":"","type":"","url":"","online":true,"routingRuleId":"","authEnabled":false,"httpRequestSettings":false,"recipe":"npm-proxy"}],"type":"rpc"}' || return $?
         echo "NOTE: if 'IQ: Audit and Quarantine' is needed for ${_prefix}-proxy (set _IQ_URL)"
         echo "      f_iq_quarantine \"${_prefix}-proxy\""
     fi
@@ -1302,6 +1302,34 @@ print(\"Specs/%s/%s/%s/%s/%s/%s.podspec.json\" % (h[0],h[1],h[2],n,v,n))")"
     fi
 }
 
+function f_setup_swift() {
+    local __doc__="Create Swift proxy/hosted/group repositories with dummy data"
+    local _prefix="${1:-"swift"}"
+    local _bs_name="${2:-"${r_BLOBSTORE_NAME:-"${_BLOBTORE_NAME}"}"}"
+    local _ds_name="${3:-"${r_DATASTORE_NAME:-"${_DATASTORE_NAME}"}"}"
+    [ -z "${_bs_name}" ] && _bs_name="$(_get_blobstore_name)"
+    [ -z "${_ds_name}" ] && _ds_name="$(_get_datastore_name)"
+    local _extra_sto_opt="$(_get_extra_sto_opt "${_ds_name}")"
+    # If no xxxx-proxy, create it
+    if ! _is_repo_available "${_prefix}-proxy"; then
+        _apiS '{"action":"coreui_Repository","method":"create","data":[{"attributes":{"proxy":{"remoteUrl":"https://github.com/","contentMaxAge":-1,"metadataMaxAge":1440},"httpclient":{"blocked":false,"autoBlock":true,"connection":{"useTrustStore":false}},"storage":{"blobStoreName":"'${_bs_name}'","strictContentTypeValidation":true'${_extra_sto_opt}'},"negativeCache":{"enabled":true,"timeToLive":1440},"cleanup":{"policyName":[]}},"name":"'${_prefix}'-proxy","format":"","type":"","url":"","online":true,"routingRuleId":"","authEnabled":false,"httpRequestSettings":false,"recipe":"swift-proxy"}],"type":"rpc"}' || return $?
+    fi
+    # add some data for xxxx-proxy. It may need special headers? -H "Accept: application/vnd.swift.registry.v1+json"
+    f_get_asset "${_prefix}-proxy" "apple/swift-log/1.0.0"
+    f_get_asset "${_prefix}-proxy" "apple/swift-log/1.0.0.zip" "${_TMP%/}/swift-log_1.0.0.zip"
+
+    # If no xxxx-hosted, create it
+    if ! _is_repo_available "${_prefix}-hosted"; then
+        _apiS '{"action":"coreui_Repository","method":"create","data":[{"attributes":{"storage":{"blobStoreName":"'${_bs_name}'","writePolicy":"ALLOW","strictContentTypeValidation":true'${_extra_sto_opt}'},"cleanup":{"policyName":[]}},"name":"'${_prefix}'-hosted","format":"","type":"","url":"","online":true,"recipe":"swift-hosted"}],"type":"rpc"}' || return $?
+    fi
+    # TODO: add some data for xxxx-hosted and xxxx-group
+
+    # If no xxxx-group, create it
+    if ! _is_repo_available "${_prefix}-group"; then
+        _apiS '{"action":"coreui_Repository","method":"create","data":[{"attributes":{"storage":{"blobStoreName":"'${_bs_name}'","strictContentTypeValidation":true'${_extra_sto_opt}'},"group":{"memberNames":["'${_prefix}'-hosted","'${_prefix}'-proxy"]}},"name":"'${_prefix}'-group","format":"","type":"","url":"","online":true,"recipe":"swift-group"}],"type":"rpc"}' > ${_TMP%/}/f_apiS_last.out || return $?
+    fi
+}
+
 function f_setup_go() {
     local __doc__="Create Golang proxy repositories with dummy data"
     local _prefix="${1:-"go"}"
@@ -1572,10 +1600,13 @@ function f_setup_terraform() {
     local _extra_sto_opt="$(_get_extra_sto_opt "${_ds_name}")"
     if ! _is_repo_available "${_prefix}-proxy"; then
         # https://packagist.org is deprecated from Feb 2025
-        _apiS '{"action":"coreui_Repository","method":"create","data":[{"attributes":{"proxy":{"remoteUrl":"https://registry.terraform.io","preserveEncodedCharacters":false,"contentMaxAge":-1,"metadataMaxAge":1440},"replication":{"preemptivePullEnabled":false},"httpclient":{"blocked":false,"autoBlock":true,"connection":{"useTrustStore":false}},"storage":{"blobStoreName":"'${_bs_name}'","strictContentTypeValidation":true'${_extra_sto_opt}'},"negativeCache":{"enabled":true,"timeToLive":1440},"cleanup":{"policyName":[]}},"name":"'${_prefix}'-proxy","format":"","type":"","url":"","online":true,"routingRuleId":"","authEnabled":false,"httpRequestSettings":false,"recipe":"terraform-proxy"}],"type":"rpc"}' || return $?
+        _apiS '{"action":"coreui_Repository","method":"create","data":[{"attributes":{"proxy":{"remoteUrl":"https://registry.opentofu.org","preserveEncodedCharacters":false,"contentMaxAge":-1,"metadataMaxAge":1440},"replication":{"preemptivePullEnabled":false},"httpclient":{"blocked":false,"autoBlock":true,"connection":{"useTrustStore":false}},"storage":{"blobStoreName":"'${_bs_name}'","strictContentTypeValidation":true'${_extra_sto_opt}'},"negativeCache":{"enabled":true,"timeToLive":1440},"cleanup":{"policyName":[]}},"name":"'${_prefix}'-proxy","format":"","type":"","url":"","online":true,"routingRuleId":"","authEnabled":false,"httpRequestSettings":false,"recipe":"terraform-proxy"}],"type":"rpc"}' || return $?
     fi
     echo "To test:
     curl -sSf -D- ${_NEXUS_URL%/}/repository/${_prefix}-proxy/.well-known/terraform.json"
+    echo "For testing API:
+    curl -u admin:admin123 ${_NEXUS_URL%/}/repository/${_prefix}-proxy/v1/api/token
+    curl -v -H \"Authorization: Bearer \$TOKEN\" ${_NEXUS_URL%/}/repository/${_prefix}-proxy/v1/providers/hashicorp/aws/versions"
 }
 
 # NOTE: the Raw format should be the end of f_setup_{format} functions. Add new format in the above of f_setup_raw().
@@ -2280,10 +2311,10 @@ function _apiS() {
             return ${_rc}
         fi
     fi
-    local _sess="$(_sed -nr 's/.+\sNXSESSIONID\s+([0-9a-f]+)/\1/p' ${_c})"
+    local _sess="$(awk '/NXSESSIONID/ {print $NF}' ${_c})"
     local _sess_key="NXSESSIONID"
     if [ -z "${_sess}" ]; then
-        _sess="$(_sed -nr 's/.+\sNXJWT\s+([^\s]+)/\1/p' ${_c})"
+        _sess="$(awk '/NXSESSIONID/ {print $NF}' ${_c})"
         if [ -z "${_sess}" ]; then
             _log "ERROR" "No session id in '${_c}'"
             return 1
