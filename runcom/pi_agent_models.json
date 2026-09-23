@@ -1,0 +1,44 @@
+{
+  "providers": {
+    "omlx": {
+      "baseUrl": "http://m5mac:8000/v1",
+      "api": "openai-completions",
+      "apiKey": "admin123",
+      "authHeader": true,
+      "models": [
+        {
+          "id": "Ornith-1.5-9B-MLX",
+          "name": "Ornith-1.5-9B-MLX",
+          "reasoning": false,
+          "input": [
+            "text"
+          ],
+          "cost": {
+            "input": 0,
+            "output": 0,
+            "cacheRead": 0,
+            "cacheWrite": 0
+          },
+          "contextWindow": 131072,
+          "maxTokens": 32768
+        },
+        {
+          "id": "Ornith-1.5-35B-A3B-MLX-4bit",
+          "name": "Ornith-1.5-35B-A3B-MLX-4bit",
+          "reasoning": false,
+          "input": [
+            "text"
+          ],
+          "cost": {
+            "input": 0,
+            "output": 0,
+            "cacheRead": 0,
+            "cacheWrite": 0
+          },
+          "contextWindow": 131072,
+          "maxTokens": 32768
+        }
+      ]
+    }
+  }
+}

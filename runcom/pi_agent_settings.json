@@ -1,0 +1,11 @@
+{
+  "defaultProvider": "omlx",
+  "defaultModel": "Ornith-1.5-9B-MLX",
+  "lastChangelogVersion": "0.85.1",
+  "theme": "dark",
+  "packages": [
+    "git:github.com/coctostan/pi-superpowers",
+    "npm:@wbline/pi-acp-jetbrain",
+    "npm:@rolemodel/pi-omlx"
+  ]
+}
