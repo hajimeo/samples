@@ -426,14 +426,42 @@ function e_app_log() {
     fi
 }
 function e_requests() {
-    local _req_log_path="$(find . -maxdepth 3 -name "${_REQUEST_LOG:-"request.log"}" | sort -r | head -n1 2>/dev/null)"
-    if _size_check "${_req_log_path}" "$((${_LOG_THRESHOLD_BYTES} * 10))"; then
-        # Running in background as this can take long time
-        f_request2csv "${_req_log_path}" ${_FILTERED_DATA_DIR%/}/request.csv 2>/dev/null &
-        _rg "${_DATE_FMT_REQ}:(\d\d).+(/rest/|/api/)([^/ =?]+/?[^/ =?]+/?[^/ =?]+/?[^/ =?]+/?[^/ =?]+/?)" --no-filename -g ${_REQUEST_LOG} -o -r '"$1:" "$2$3"' | _replace_number | sort -k1,2 | uniq -c > ${_FILTERED_DATA_DIR%/}/agg_requests_count_hour_api.ssv
-    else
-        _LOG "WARN" "Not converting '${_req_log_path:-"empty"}' to CSV (and agg_requests_count_hour_api) because no ${_REQUEST_LOG:-"request.log"} or larger than _LOG_THRESHOLD_BYTES:${_LOG_THRESHOLD_BYTES} * 10"
+    local _request_log_name="${1:-"${_REQUEST_LOG:-"request.log"}"}"
+    local _result_ssv="${2:-"${_FILTERED_DATA_DIR%/}/agg_requests_count_hour_api.ssv"}"
+    local _result_csv="${3:-"${_FILTERED_DATA_DIR%/}/request.csv"}"
+    local _size_limit="${4:-"$((${_LOG_THRESHOLD_BYTES} * 10))"}"
+    local _req_log_path="$(find . -maxdepth 3 -name "${_request_log_name}" | sort -r | head -n1 2>/dev/null)"
+    if ! _size_check "${_req_log_path}" "${_size_limit}"; then
+        _LOG "WARN" "Not converting '${_req_log_path:-"empty"}' to CSV (and ${_result_ssv}) because no ${_request_log_name} or larger than _LOG_THRESHOLD_BYTES:${_LOG_THRESHOLD_BYTES} * 10"
+        return 1
     fi
+    # As this is the export function, even if it exists, converting to CSV should be done.
+    local _pid=""
+    if [ -n "${_result_csv}" ]; then
+        f_request2csv "${_req_log_path}" "${_result_csv}" 2>/dev/null &
+        _pid="$!"
+        _LOG "INFO" "PID:${_pid} for converting '${_req_log_path}' to ${_result_csv} in *background*"
+    fi
+    _find_frequent_apis "${_req_log_path}" "${_result_ssv}"
+    [ -n "${_pid}" ] && wait ${_pid}
+}
+function _find_frequent_apis() {
+    local _request_log_name="${1:-"${_REQUEST_LOG:-"request.log"}"}"
+    local _result_ssv="${2:-"${_FILTERED_DATA_DIR%/}/agg_requests_count_hour_api.ssv"}"
+    local _non_api_regex="${3:-"(/repository/)"}"
+    local _request_path="${_request_log_name}"
+    if [ -f "${_request_log_name}" ]; then
+        _request_path="${_request_log_name}"
+    else
+        _request_path="-g ${_request_log_name}"
+    fi
+    _LOG "INFO" "Finding frequent APIs in '${_request_path}' and saving to '${_result_ssv}'"
+    if [ -n "${_non_api_regex}" ]; then
+        _LOG "INFO" "Excluding ${_non_api_regex} from the search"
+        rg -v "${_non_api_regex}" ${_request_path} --no-filename | rg "${_DATE_FMT_REQ}:(\d\d).+(/rest/|/api/)([^/ =?]+/?[^/ =?]+/?[^/ =?]+/?[^/ =?]+/?[^/ =?]+/?)" -o -r '"$1:" "$2$3"'
+    else
+        rg "${_DATE_FMT_REQ}:(\d\d).+(/rest/|/api/)([^/ =?]+/?[^/ =?]+/?[^/ =?]+/?[^/ =?]+/?[^/ =?]+/?)" ${_request_path} -o -r '"$1:" "$2$3"' --no-filename
+    fi | _replace_number | sort -k1,2 | uniq -c > "${_result_ssv}"
 }
 function e_audits() {
     local _audit_log_path="$1"
