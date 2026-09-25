@@ -21,6 +21,11 @@
 #   Set LOG_DATE_FROM and/or LOG_DATE_TO ("YYYY-MM-DD" or "YYYY-MM-DD HH:MM:SS") to exclude log lines
 #   outside that range from every view (logs, application_logs, request_logs, audit_logs). Lines whose
 #   timestamp can't be determined are always kept. Applies in both Streamlit and --mcp modes.
+#
+# TODO:
+#   - When it starts with --mcp mode, it opens up a browser window but almost empty.
+#   - If port MCP_PORT is not specified but the default port is used, automatically change the port. but how to tell that to AI side?
+
 
 import gzip
 import os
@@ -50,15 +55,16 @@ def _config(key, default):
 ### Global variables: #################################################################################
 # 0. Model and API Configuration
 # If the environment variable AI_API_URL is set, use it; otherwise default to localhost
-AI_API_URL = _config("AI_API_URL", "http://localhost:11435/v1/chat/completions")  # Ollama or any OpenAI-compatible server
+AI_API_URL = _config("AI_API_URL",
+                     "http://localhost:11435/v1/chat/completions")  # Ollama or any OpenAI-compatible server
 AI_MODEL = _config("AI_MODEL", "apple-foundationmodel")
 
 # Default Log sources are matching all files under the current directory or `./log/` directory, and file name ends with `.log` or `.log.gz`
 # This can be overridden by LOG_APP_REGEX environment variable, which should be a regex pattern matching the log file paths to include.
-LOG_APP_REGEX = _config("LOG_APP_REGEX", "(nexus|clm-server).*(log|log.gz)$")  # category `application`
-LOG_REQ_REGEX = _config("LOG_REQ_REGEX", "(?<!outbound-)request.*(log|log.gz)$")  # category `request`
-LOG_OUTBOUND_REGEX = _config("LOG_OUTBOUND_REGEX", "outbound-request.*(log|log.gz)$")  # category `outbound`
-LOG_AUDIT_REGEX = _config("LOG_AUDIT_REGEX", "audit.*(log|log.gz)$")  # category `audit`
+LOG_APP_REGEX = _config("LOG_APP_REGEX", "(nexus|clm-server).log$")  # category `application`
+LOG_REQ_REGEX = _config("LOG_REQ_REGEX", "(?<!outbound-)request.log$")  # category `request`
+LOG_OUTBOUND_REGEX = _config("LOG_OUTBOUND_REGEX", "outbound-request.log$")  # category `outbound`
+LOG_AUDIT_REGEX = _config("LOG_AUDIT_REGEX", "audit.log$")  # category `audit`
 
 LOG_CATEGORY_REGEXES = {
     "application": LOG_APP_REGEX,
@@ -140,6 +146,7 @@ def _date_range_cache_suffix():
         return ""
     key = f"__{LOG_DATE_FROM or 'any'}_{LOG_DATE_TO or 'any'}"
     return re.sub(r'[^A-Za-z0-9_.-]', '-', key)
+
 
 # Where parsed views get cached as Parquet, so the (regex/JSON) parsing pass runs once instead of on every
 # query/Streamlit rerun (or MCP server restart), and repeat queries read from disk (with column pruning/predicate
@@ -246,6 +253,7 @@ if _large_files and not LOG_DATE_FROM and not LOG_DATE_TO:
                 "Large log file(s) detected:\n\n"
                 + "\n".join(f"- `{p}` ({sz / (1024 * 1024):.0f} MB)" for p, sz in _large_files)
                 + "\n\nLoading the full file(s) may be slow. You can restrict to a date/time range instead."
+                + "\n\nAnd/Or restart after editing `LOG_APP_REGEX, LOG_REQ_REGEX, LOG_OUTBOUND_REGEX, LOG_AUDIT_REGEX` to exclude some files."
             )
             with st.form("large_file_gate_form"):
                 _col1, _col2 = st.columns(2)
@@ -258,7 +266,8 @@ if _large_files and not LOG_DATE_FROM and not LOG_DATE_TO:
                 _bad = False
                 for _label, _value in (("From", _date_from_input), ("To", _date_to_input)):
                     if _value.strip() and not _DATE_RE.match(_value.strip()):
-                        st.error(f"{_label} value {_value!r} is not a valid 'YYYY-MM-DD' or 'YYYY-MM-DD HH:MM:SS' date.")
+                        st.error(
+                            f"{_label} value {_value!r} is not a valid 'YYYY-MM-DD' or 'YYYY-MM-DD HH:MM:SS' date.")
                         _bad = True
                 if not _bad and not _date_from_input.strip() and not _date_to_input.strip():
                     st.error('Enter at least one of From/To, or click "Load full file(s) anyway" instead.')
@@ -719,7 +728,8 @@ else:
                         f"SELECT category, COUNT(*) AS count FROM {view_name} GROUP BY category ORDER BY category"
                     ).df()
                     if len(category_breakdown_df) > 1:
-                        st.caption("By category (e.g. `request_logs` covers both request.log and outbound-request.log):")
+                        st.caption(
+                            "By category (e.g. `request_logs` covers both request.log and outbound-request.log):")
                         st.dataframe(category_breakdown_df, use_container_width=True, hide_index=True)
     except Exception as e:
         col1.metric("Total Logs Processed", "0")
