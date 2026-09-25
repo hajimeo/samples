@@ -861,7 +861,12 @@ function _prepare_install() {
         _tgz="${_local_tgz}"
     fi
     mkdir -v -p "${_extract_path}" || return $?
-    tar -C ${_extract_path%/} -xf ${_tgz} || return $?
+    if uname | grep -qi "linux"; then
+        # newer tar may generates a lot of "tar: Ignoring unknown extended header keyword 'LIBARCHIVE.creationtime'"
+        tar --warning=no-unknown-keyword -C ${_extract_path%/} -xf ${_tgz} || return $?
+    else
+        tar -C ${_extract_path%/} -xf ${_tgz} || return $?
+    fi
 }
 
 function _export_license_path() {
