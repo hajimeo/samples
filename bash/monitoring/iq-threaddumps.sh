@@ -41,24 +41,42 @@ _PID=""
 _OUT_DIR=""
 _NO_JSTACK=false
 
+function _pid() {
+    if type ps >/dev/null 2>&1 && type awk >/dev/null 2>&1; then
+        ps auxwww | grep -E '(nexus-iq-server.*\.jar|com.sonatype.insight.brain.service.InsightBrainService|com.sonatype.insight.brain.spring.InsightBrainSpringApplicationserver)' | grep -vw grep | awk '{print $2}' | tail -n1
+        return $?
+    fi
+    grep -a -E '(nexus-iq-server.*\.jar|com.sonatype.insight.brain.service.InsightBrainService|com.sonatype.insight.brain.spring.InsightBrainSpringApplicationserver)' -l /proc/[0-9]*/cmdline 2>/dev/null | grep -Eo '[0-9]+' | tail -n1
+}
+
+function _cmdline() {
+    local __doc__="ps wwwp equivalent which does not require 'ps'"
+    local _pid="$1"
+    if type ps >/dev/null 2>&1; then
+        ps wwwp ${_pid} 2>/dev/null
+        return $?
+    fi
+    tr '\0' ' ' < "/proc/${_pid}/cmdline" 2>/dev/null
+}
+
 function detectDirs() {    # Best effort. may not return accurate dir path
     local __doc__="Populate PID and directory path global variables"
     local _pid="${1:-"${_PID}"}"
     if [ -z "${_pid}" ]; then
-        _pid="$(ps auxwww | grep -E '(nexus-iq-server.*\.jar|com.sonatype.insight.brain.service.InsightBrainService) server' | grep -vw grep | awk '{print $2}' | tail -n1)"
+        _pid="$(_pid)"
         _PID="${_pid}"
         [ -z "${_pid}" ] && return 11
     fi
     if [ ! -d "${_INSTALL_DIR}" ]; then
         _INSTALL_DIR="$(readlink -f /proc/${_pid}/cwd 2>/dev/null)"
         if [ -z "${_INSTALL_DIR}" ]; then
-            if type lsof &>/dev/null; then  # eg. Mac (Darwin)
+            if type lsof >/dev/null 2>&1; then  # eg. Mac (Darwin). If lsof is available, probably awk too
                 _INSTALL_DIR="$(lsof -a -d cwd -p ${_pid} | grep -w "${_pid}" | awk '{print $9}')"
             fi
             if [ -z "${_INSTALL_DIR}" ]; then
-                local _jarpath="$(ps wwwp ${_pid} 2>/dev/null | grep -m1 -E -o 'nexus-iq-server.*\.jar')"
+                local _jarpath="$(_cmdline ${_pid} | grep -m1 -E -o 'nexus-iq-server.*\.jar')"
                 if [ -z "${_jarpath}" ]; then
-                    _jarpath="$(dirname "$(ps wwwp ${_pid} 2>/dev/null | grep -m1 -E -o '\S+/jars/\*')")"
+                    _jarpath="$(dirname "$(_cmdline ${_pid} | grep -m1 -E -o '\S+/jars/\*')")"
                 fi
                 _INSTALL_DIR="$(dirname "${_jarpath}")"
             fi
@@ -66,7 +84,7 @@ function detectDirs() {    # Best effort. may not return accurate dir path
         [ -d "${_INSTALL_DIR}" ] || return 12
     fi
     if [ -z "${_STORE_FILE}" ]; then
-        _STORE_FILE="$(ps wwwp ${_pid} | sed -n -E 's/.+(nexus-iq-server.*\.jar|com.sonatype.insight.brain.service.InsightBrainService) server ([^ ]+).*/\2/p' | tail -n1)"
+        _STORE_FILE="$(_cmdline ${_pid} | sed -n -E 's/.+(nexus-iq-server.*\.jar|com.sonatype.insight.brain.service.InsightBrainService) server ([^ ]+).*/\2/p' | tail -n1)"
         [[ ! "${_STORE_FILE}" =~ ^/ ]] && _STORE_FILE="${_INSTALL_DIR%/}/${_STORE_FILE}"
         [ -e "${_STORE_FILE}" ] && _STORE_FILE="$(readlink -f "${_STORE_FILE}")"
     fi
@@ -115,7 +133,7 @@ function tailStdout() {
 
     if [ -f /proc/${_pid}/fd/1 ]; then
         _cmd="tail -n ${_TAIL_N:-"-1"} -f /proc/${_pid}/fd/1"
-    elif [ -n "${_installDir}" ] && [[ "$(ps wwwp ${_pid})" =~ XX:LogFile=([^[:space:]]+) ]]; then
+    elif [ -n "${_installDir}" ] && [[ "$(_cmdline ${_pid})" =~ XX:LogFile=([^[:space:]]+) ]]; then
         local jvmLog="${BASH_REMATCH[1]}"
         _cmd="tail -n ${_TAIL_N:-"-1"} -f "${_installDir%/}/${jvmLog#/}""
     elif readlink -f /proc/${_pid}/fd/1 2>/dev/null | grep -q '/pipe:'; then
@@ -149,9 +167,9 @@ function takeDumps() {
     local _admin_url=""
     if [ -x "${JAVA_HOME%/}/bin/jstack" ]; then
         _jstack="${JAVA_HOME%/}/bin/jstack"
-    elif type jstack &>/dev/null; then
+    elif type jstack >/dev/null 2>&1; then
         _jstack="jstack"
-    elif [ -x /opt/sonatype/nexus-iq-server/bin/jstack ] &>/dev/null; then
+    elif [ -x /opt/sonatype/nexus-iq-server/bin/jstack ] >/dev/null 2>&1; then
         _jstack="/opt/sonatype/nexus-iq-server/bin/jstack"
     fi
     if [ -z "${_jstack}" ]; then
@@ -204,7 +222,7 @@ function takeDumps() {
     fi
     if [ -s /tmp/.tailStdout.run ]; then
         local _wpid="$(cat /tmp/.tailStdout.run)"
-        ps -p ${_wpid} &>/dev/null && wait ${_wpid}
+        [ -d "/proc/${_wpid}" ] && wait ${_wpid}
     fi
     if [ ! -s "${_outPfx}000.log" ]; then
         echo "[$(date +'%Y-%m-%d %H:%M:%S')] ERROR Failed to take Java thread dumps into ${_outPfx}000.log" >&2
@@ -237,7 +255,7 @@ function miscChecks() {
     # DNS (LDAP but not for Nexus) slowness
     nscd -g
 
-    ps auxwwwf
+        ps auxwwwf
     if [ -n "${_pid}" ]; then
         cat /proc/${_pid}/limits
         cat /proc/locks | grep -w "${_pid}"
@@ -253,7 +271,8 @@ function _stopping() {
     echo -n -e "\nStopping "
     for _i in $(seq 1 10); do
         sleep 1
-        if ! ps -p "${_pid}" &>/dev/null ; then
+        # As newer IQ image does not have ps, check /proc/${_pid} or /proc/${_pid}/fd/1
+        if [ ! -d /proc/${_pid} ] && [ ! -f /proc/${_pid}/fd/1 ]; then
             echo "" | tee /tmp/.tailStdout.run
             exit
         fi
@@ -280,7 +299,7 @@ main() {
     fi
 
     if [ -z "${_LOG_FILE}" ]; then
-        miscChecks "${_PID}" &> "${_outDir%/}/${_pfx}900.log" &
+        miscChecks "${_PID}" > "${_outDir%/}/${_pfx}900.log" 2>&1 &
         takeDumps "${_PID}" "${_COUNT}" "${_INTERVAL}" "${_STORE_FILE}" "${_INSTALL_DIR%/}" "${_outDir%/}" "${_pfx}"
         wait
         return $?
