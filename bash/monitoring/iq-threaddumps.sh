@@ -59,7 +59,8 @@ function _pid() {
     ls -1 /proc/[0-9]*/cmdline 2>/dev/null | while read -r _f; do
         local _tmp_pid="$(echo "${_f}" | grep -Eo '[0-9]+')"
         [ "${_tmp_pid}" == "$$" ] && continue
-        grep -a -q -E '(om.sonatype.insight.brain.service.InsightBrainService|com.sonatype.insight.brain.spring.InsightBrainSpringApplication|com.sonatype.insight.brain.spring.InsightBrainSpringApplication)' ${_f} 2>/dev/null && echo "${_tmp_pid}" && return 0
+        # at this moment, not checking "nexus-iq-server.*\.jar"
+        grep -a -q -E '(com.sonatype.insight.brain.service.InsightBrainService|com.sonatype.insight.brain.spring.InsightBrainSpringApplication)' ${_f} 2>/dev/null && echo "${_tmp_pid}" && return 0
     done
     #grep -a -E '(InsightBrainService|InsightBrainSpringApplicationserver)' -l /proc/[0-9]*/cmdline 2>/dev/null | grep -v -w $$ | grep -Eo '[0-9]+' | sort -n | head -n1
 }
@@ -89,7 +90,7 @@ function detectDirs() {    # Best effort. may not return accurate dir path
         [ -d "${_INSTALL_DIR}" ] || return 12
     fi
     if [ -z "${_STORE_FILE}" ]; then
-        _STORE_FILE="$(_cmdline ${_pid} | sed -n -E 's/.+(nexus-iq-server.*\.jar|com.sonatype.insight.brain.service.InsightBrainService) server ([^ ]+).*/\2/p' | tail -n1)"
+        _STORE_FILE="$(_cmdline ${_pid} | sed -n -E 's/.+(nexus-iq-server.*\.jar|com.sonatype.insight.brain.service.InsightBrainService|com.sonatype.insight.brain.spring.InsightBrainSpringApplication) server ([^ ]+).*/\2/p' | tail -n1)"
         [[ ! "${_STORE_FILE}" =~ ^/ ]] && _STORE_FILE="${_INSTALL_DIR%/}/${_STORE_FILE}"
         [ -e "${_STORE_FILE}" ] && _STORE_FILE="$(readlink -f "${_STORE_FILE}")"
     fi
