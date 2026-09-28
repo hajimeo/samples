@@ -41,14 +41,6 @@ _PID=""
 _OUT_DIR=""
 _NO_JSTACK=false
 
-function _pid() {
-    if type ps >/dev/null 2>&1 && type awk >/dev/null 2>&1; then
-        ps auxwww | grep -E '(nexus-iq-server.*\.jar|com.sonatype.insight.brain.service.InsightBrainService|com.sonatype.insight.brain.spring.InsightBrainSpringApplicationserver)' | grep -vw grep | awk '{print $2}' | tail -n1
-        return $?
-    fi
-    grep -a -E '(nexus-iq-server.*\.jar|com.sonatype.insight.brain.service.InsightBrainService|com.sonatype.insight.brain.spring.InsightBrainSpringApplicationserver)' -l /proc/[0-9]*/cmdline 2>/dev/null | grep -Eo '[0-9]+' | tail -n1
-}
-
 function _cmdline() {
     local __doc__="ps wwwp equivalent which does not require 'ps'"
     local _pid="$1"
@@ -57,6 +49,19 @@ function _cmdline() {
         return $?
     fi
     tr '\0' ' ' < "/proc/${_pid}/cmdline" 2>/dev/null
+}
+
+function _pid() {
+    if type ps >/dev/null 2>&1 && type awk >/dev/null 2>&1; then
+        ps auxwww | grep -E '(nexus-iq-server.*\.jar|com.sonatype.insight.brain.service.InsightBrainService|com.sonatype.insight.brain.spring.InsightBrainSpringApplication|com.sonatype.insight.brain.spring.InsightBrainSpringApplicationserver)' | grep -vw grep | awk '{print $2}' | tail -n1
+        return $?
+    fi
+    ls -1 /proc/[0-9]*/cmdline 2>/dev/null | while read -r _f; do
+        local _tmp_pid="$(echo "${_f}" | grep -Eo '[0-9]+')"
+        [ "${_tmp_pid}" == "$$" ] && continue
+        grep -a -q -E '(om.sonatype.insight.brain.service.InsightBrainService|com.sonatype.insight.brain.spring.InsightBrainSpringApplication|com.sonatype.insight.brain.spring.InsightBrainSpringApplication)' ${_f} 2>/dev/null && echo "${_tmp_pid}" && return 0
+    done
+    #grep -a -E '(InsightBrainService|InsightBrainSpringApplicationserver)' -l /proc/[0-9]*/cmdline 2>/dev/null | grep -v -w $$ | grep -Eo '[0-9]+' | sort -n | head -n1
 }
 
 function detectDirs() {    # Best effort. may not return accurate dir path
