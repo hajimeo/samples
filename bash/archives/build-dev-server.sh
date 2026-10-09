@@ -2763,10 +2763,10 @@ Note: this function does not support non default installation."
             grep -iP '^standby_mode\s*=\s*on' /etc/postgresql/${_tmp_pass%/}/recovery.conf &>/dev/null
             if [ $? -eq 0 ]; then
                 echo "# SLAVE : $l"
-                _eval "psql -p ${_tmp_port} -x -c \"select pg_is_in_recovery() as is_slave, pg_is_xlog_replay_paused() as is_paused, pg_last_xlog_receive_location() as receive_location, pg_last_xlog_replay_location() as replay_location, pg_xlog_location_diff(pg_last_xlog_receive_location(), pg_last_xlog_replay_location()) as diff_byte, pg_xlog_location_diff(pg_last_xlog_receive_location(), '0/0') as total_receive_byte, pg_last_xact_replay_timestamp() as replaytime, now()\" | grep -v '^-\[ RECORD '" "N" "$g_db_superuser"
+                _eval "psql -p ${_tmp_port} -x -c \"select pg_is_in_recovery() as is_slave, pg_is_wal_replay_paused() as is_paused, pg_last_wal_receive_lsn() as receive_lsn, pg_last_wal_replay_lsn() as replay_lsn, pg_wal_lsn_diff(pg_last_wal_receive_lsn(), pg_last_wal_replay_lsn()) as diff_byte, pg_wal_lsn_diff(pg_last_wal_receive_lsn(), '0/0') as total_receive_byte, pg_last_wal_replay_lsn() as replaytime, now()\" | grep -v '^-\[ RECORD '" "N" "$g_db_superuser"
             else
                 echo "# MASTER: $l"
-                _eval "psql -p ${_tmp_port} -x -c \"select pid, client_addr, client_port, state, pg_current_xlog_location() as master_location, pg_xlogfile_name_offset(pg_current_xlog_location()) as master_xlog, pg_xlogfile_name_offset(sent_location) as sent_xlog, pg_xlogfile_name_offset(replay_location) as replay_xlog, pg_xlog_location_diff(pg_current_xlog_location(), replay_location) as diff_byte, pg_xlog_location_diff(sent_location, '0/0') as total_sent_byte, backend_start, now() from pg_stat_replication\"" "N" "$g_db_superuser"
+                _eval "psql -p ${_tmp_port} -x -c \"select pid, client_addr, client_port, state, pg_current_wal_lsn() as master_lsn, pg_walfile_name_offset(pg_current_wal_lsn()) as master_xlog, pg_walfile_name_offset(sent_lsn) as sent_wal, pg_walfile_name_offset(replay_lsn) as replay_wal, pg_wal_lsn_diff(pg_current_wal_lsn(), replay_lsn) as diff_byte, pg_wal_lsn_diff(sent_lsn, '0/0') as total_sent_byte, backend_start, now() from pg_stat_replication\"" "N" "$g_db_superuser"
             fi
             _tmp_data_dir="`echo $l | awk '{print $6}'`"
             _eval "ls -lt ${_tmp_data_dir%/}/pg_xlog/ | head -n 5"
