@@ -15,13 +15,13 @@ mount | grep "${USER}@${_CONN_TO}"
 if ! grep -E "#?${_CONN_TO}\s+m1mac\.standalone.localdomain" /etc/hosts; then
     echo "Updating /etc/hosts to map m1mac.standalone.localdomain to ${_CONN_TO} ..."
     if ! grep -E "#?.+\s+m1mac\.standalone.localdomain" /etc/hosts; then
-        echo "${_CONN_TO} m1mac.standalone.localdomain m1mac" | sudo tee -a /etc/hosts
+        echo "${_CONN_TO} m1mac.standalone.localdomain" | sudo tee -a /etc/hosts
     else
         sudo sed -i -E 's/^[0-9.]+[[:space:]]+m1mac/'${_CONN_TO}' m1mac/' /etc/hosts
     fi
 fi
 
-echo "Use the following commands to create disk space:
-docker system prune -a #-f
-podman system prune -a
-sudo journalctl --vacuum-size=100M"
+cp -v ~/IdeaProjects/samples/runcom/bash_profile.sh ~/.bash_profile
+cp -v ~/IdeaProjects/samples/runcom/bash_aliases.sh ~/.bash_aliases
+scp ${USER}@${_CONN_TO}:/Users/${USER}/.bashrc ~/.bashrc
+scp ${USER}@${_CONN_TO}:/Users/${USER}/.netrc ~/.netrc
