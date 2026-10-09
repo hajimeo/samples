@@ -62,7 +62,8 @@ function _pid() {
         # at this moment, not checking "nexus-iq-server.*\.jar"
         grep -a -q -E '(com.sonatype.insight.brain.service.InsightBrainService|com.sonatype.insight.brain.spring.InsightBrainSpringApplication)' ${_f} 2>/dev/null && echo "${_tmp_pid}" && return 0
     done
-    #grep -a -E '(InsightBrainService|InsightBrainSpringApplicationserver)' -l /proc/[0-9]*/cmdline 2>/dev/null | grep -v -w $$ | grep -Eo '[0-9]+' | sort -n | head -n1
+    # one-liner
+    #grep -al 'InsightBrainS' /proc/[0-9]*/cmdline | grep -v -w $$ | grep -Eo '[0-9]+' | sort -n | head -n1
 }
 
 function detectDirs() {    # Best effort. may not return accurate dir path
@@ -217,7 +218,7 @@ function takeDumps() {
         else
             echo "[$(date +'%Y-%m-%d %H:%M:%S')] ERROR No 'jstack' and no admin url and no PID" >&2
         fi
-        (date +"%Y-%m-%d %H:%M:%S"; top -H -b -n1 2>/dev/null | head -n60) >> "${_outPfx}001.log"
+        (date +"%Y-%m-%d %H:%M:%S"; top -H -b -n1 2>/dev/null | head -n60 || cat /proc/${_pid}/task/*/stat 2>/dev/null) >> "${_outPfx}001.log"
         (date +"%Y-%m-%d %H:%M:%S"; netstat -topen 2>/dev/null || cat /proc/net/tcp* 2>/dev/null) >> "${_outPfx}002.log"
         (date +"%Y-%m-%d %H:%M:%S"; netstat -s 2>/dev/null || cat /proc/net/dev 2>/dev/null) >> "${_outPfx}003.log"
         [ ${_i} -lt ${_count} ] && sleep ${_interval}
