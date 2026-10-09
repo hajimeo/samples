@@ -81,7 +81,7 @@ Just get the repositories setting:
 
 
 ## Global variables_populate_docker_proxy_oras
-: ${_REPO_FORMATS:="maven,pypi,npm,nuget,docker,yum,rubygem,helm,conda,cocoapods,bower,go,apt,r,p2,gitlfs,raw"}
+: ${_REPO_FORMATS:="maven,pypi,npm,nuget,docker,yum,rubygem,helm,conda,cocoapods,bower,go,apt,r,p2,gitlfs,cargo,raw"}
 #TODO: : ${_NO_ASSET_UPLOAD:=""}
 : ${_ADMIN_USER:="admin"}
 : ${_ADMIN_PWD:="admin123"}
@@ -417,6 +417,7 @@ function f_setup_pypi() {
     #http://localhost:8081/repository/pypi-proxy/packages/python-policy-demo/1.0.0/python-policy-demo-1.0.0.tar.gz#sha256=9c86f628b4b8f8ae78d2ca9bed2b456cf2b6806866c58496fac5b3a1b38f7160
     #_ASYNC_CURL="Y" f_get_asset "${_prefix}-proxy" "packages/python-policy-demo/1.0.0/python-policy-demo-1.0.0.tar" # Good (normal) one
     #for i in {1..3}; do f_get_asset "pypi-proxy" "packages/python_policy_demo/1.$i.0/python_policy_demo-1.$i.0-py3-none-any.whl"; done
+    # TODO: test JSON index file with: curl -H "Accept: application/vnd.pypi.simple.v1+json" "${_NEXUS_URL%/}/repository/pypi-proxy/simple/python_policy_demo/"
 
     # If no xxxx-hosted, create it
     if ! _is_repo_available "${_prefix}-hosted"; then
@@ -426,10 +427,11 @@ function f_setup_pypi() {
     if [ -s "${_TMP%/}/mydummyproject-3.0.0.tar.gz" ] || curl -sf -o ${_TMP%/}/mydummyproject-3.0.0.tar.gz -L "https://github.com/hajimeo/samples/raw/master/misc/mydummyproject-3.0.0.tar.gz"; then
         _ASYNC_CURL="Y" f_upload_asset "${_prefix}-hosted" -F "pypi.asset=@${_TMP%/}/mydummyproject-3.0.0.tar.gz"
     fi
-    # add some data for xxxx-hosted
     if [ -s "${_TMP%/}/mydummyproject-3.0.0-py3-none-any.whl" ] || curl -sf -o ${_TMP%/}/mydummyproject-3.0.0-py3-none-any.whl -L "https://github.com/hajimeo/samples/raw/master/misc/mydummyproject-3.0.0-py3-none-any.whl"; then
         _ASYNC_CURL="Y" f_upload_asset "${_prefix}-hosted" -F "pypi.asset=@${_TMP%/}/mydummyproject-3.0.0-py3-none-any.whl"
     fi
+    # TODO: test JSON index file with: curl -H "Accept: application/vnd.pypi.simple.v1+json" "${_NEXUS_URL%/}/repository/pypi-hosted/simple/dummypypiproject/"
+
     # To test a pypi group metadata merge
     if [ -s "${_TMP%/}/Unit-9.9.9.tar.gz" ] || curl -sf -o ${_TMP%/}/Unit-9.9.9.tar.gz -L "https://github.com/hajimeo/samples/raw/master/misc/Unit-9.9.9.tar.gz"; then
         _ASYNC_CURL="Y" f_upload_asset "${_prefix}-hosted" -F "pypi.asset=@${_TMP%/}/Unit-9.9.9.tar.gz"
@@ -863,6 +865,23 @@ function _docker_build() {
         _log "ERROR" "'${_cmd} build --rm -t ${_tag_to} .' failed (${_rc}, ${_TMP%/}/$(basename "${_build_dir}"))"
         return ${_rc}
     fi
+}
+
+function f_setup_huggingface() {
+    local __doc__="Create Hugging face proxy repository"
+    local _prefix="${1:-"huggingface"}"
+    local _bs_name="${2:-"${r_BLOBSTORE_NAME:-"${_BLOBTORE_NAME}"}"}"
+    local _ds_name="${3:-"${r_DATASTORE_NAME:-"${_DATASTORE_NAME}"}"}"
+    [ -z "${_bs_name}" ] && _bs_name="$(_get_blobstore_name)"
+    [ -z "${_ds_name}" ] && _ds_name="$(_get_datastore_name)"
+    local _extra_sto_opt="$(_get_extra_sto_opt "${_ds_name}")"
+    # If no xxxx-proxy, create it
+    if ! _is_repo_available "${_prefix}-proxy"; then
+        _apiS '{"action":"coreui_Repository","method":"create","data":[{"attributes":{"proxy":{"remoteUrl":"https://huggingface.co/","contentMaxAge":-1,"metadataMaxAge":1440},"httpclient":{"blocked":false,"autoBlock":true,"connection":{"useTrustStore":false}},"storage":{"blobStoreName":"'${_bs_name}'","strictContentTypeValidation":true'${_extra_sto_opt}'},"negativeCache":{"enabled":true,"timeToLive":1440},"cleanup":{"policyName":[]}},"name":"'${_prefix}'-proxy","format":"","type":"","url":"","online":true,"routingRuleId":"","authEnabled":false,"httpRequestSettings":false,"recipe":"huggingface-proxy"}],"type":"rpc"}' || return $?
+    fi
+    # TODO: add some data for xxxx-proxy. but usually huggingface assets are large.
+    #f_get_asset "${_prefix}-proxy" "unsloth/Mistral-Small-3.2-24B-Instruct-2506-GGUF/resolve/b750ec2299225e492f1bd27cab88a0a595fa848f/Mistral-Small-3.2-24B-Instruct-2506-Q4_0.gguf"
+    echo "To test: curl -I -u ${_ADMIN_USER} ${_NEXUS_URL%/}/repository/${_prefix}-proxy/unsloth/Mistral-Small-3.2-24B-Instruct-2506-GGUF/resolve/b750ec2299225e492f1bd27cab88a0a595fa848f/Mistral-Small-3.2-24B-Instruct-2506-Q4_0.gguf"
 }
 
 function f_setup_yum() {
@@ -1537,15 +1556,7 @@ function f_setup_cargo() {
     if ! _is_repo_available "${_prefix}-group"; then
         _apiS '{"action":"coreui_Repository","method":"create","data":[{"attributes":{"storage":{"blobStoreName":"'${_bs_name}'","strictContentTypeValidation":true'${_extra_sto_opt}'},"group":{"memberNames":["'${_prefix}'-hosted","'${_prefix}'-proxy"]}},"name":"'${_prefix}'-group","format":"","type":"","url":"","online":true,"recipe":"cargo-group"}],"type":"rpc"}' || return $?
     fi
-    echo "To test:
-    curl -sSf -D- -o/dev/null -H \"Authorization: Basic <B64encoded_UserToken>\" ${_NEXUS_URL%/}/repository/${_prefix}-hosted/config.json
-    #curl -sSf -D- ${_NEXUS_URL%/}/repository/${_prefix}-group/me   # To get the token (but User Token should be used)"
-    cat << EOF
-# Clean cargo project
-    #cargo clean
-    rm -r -v ~/.cargo/registry
-    #rm ./Cargo.lock
-EOF
+
     mkdir -p $HOME/.cargo
     if [ ! -s "$HOME/.cargo/config.toml" ]; then
         cat << EOF > $HOME/.cargo/config.toml
@@ -1561,16 +1572,29 @@ index = "sparse+http://nexus.example/repository/cargo-hosted/"
 replace-with = "cargo-proxy"
 EOF
     else
-        _log "INFO" "$HOME/.cargo/config.toml already exists."
+        _log "INFO" "$HOME/.cargo/config.toml already exists. Compare with https://help.sonatype.com/en/rust-cargo.html#example-rust-configuration"
     fi
+    local _admin_base64="{base64_encoded_UserToken}"
     if [ ! -s "$HOME/.cargo/credentials.toml" ]; then
+        _admin_base64="$(echo -n "${r_ADMIN_USER:-"${_ADMIN_USER}"}:${r_ADMIN_PWD:-"${_ADMIN_PWD}"}" | base64)"
         cat << EOF > $HOME/.cargo/credentials.toml
 [registries.cargo-hosted]
-token = "Basic {replace_with_base64_econded}"
+token = "Basic ${_admin_base64}"
 EOF
     else
         _log "INFO" "$HOME/.cargo/credentials.toml already exists."
     fi
+    echo "To test:
+    #curl -sSf -D- ${_NEXUS_URL%/}/repository/${_prefix}-group/me   # To get the token (but User Token should be used)
+    curl -sSf -D- -o/dev/null -H \"Authorization: Basic ${_admin_base64}\" ${_NEXUS_URL%/}/repository/${_prefix}-hosted/config.json"
+    cat << EOF
+# To clean cargo project
+    #cargo clean
+    rm -r -v ~/.cargo/registry
+    #rm ./Cargo.lock
+EOF
+    echo "To download assets:
+    cargo install --registry cargo-proxy cargo-cache --force"
 }
 
 function f_setup_composer() {
@@ -3105,7 +3129,7 @@ function f_start_dummy_webhook_responder() {
 }
 
 #_PROXY_KEY=$HOME/IdeaProjects/samples/golang/HttpProxy/proxy.key _PROXY_CERT=$HOME/IdeaProjects/samples/golang/HttpProxy/proxy.crt _REPL_CERT="Y" f_start_forward_proxy
-#_URL_REGEX="sonatype.com" _DEBUG2="Y" _REPL_CERT="Y" f_start_forward_proxy
+#_URL_REGEX="sonatype.com" _REPL_CERT="Y" _DEBUG2="Y" f_start_forward_proxy
 function f_start_forward_proxy() {
     local __doc__="Setup and start simple HTTP/HTTPS/forward proxy server"
     local _port="${1:-"8080"}"
@@ -4096,11 +4120,6 @@ function f_upload_dummies_pypi() {
     local _seq_end="$((${_seq_start} + ${_how_many} - 1))"
     local _seq="seq ${_seq_start} ${_seq_end}"
 
-    if [ -z "$VIRTUAL_ENV" ]; then
-        _log "ERROR" "Please activate a Python virtual environment with 'build' package"
-        return 1
-    fi
-
     # TODO: upload concurrently with some limit (not only using _ASYNC_CURL="Y")
     for i in $(eval "${_seq}"); do
         f_upload_dummy_pypi "${_repo_name}" "${_dummy_pkg_name}" "9.${i}.0" || return $?
@@ -4115,10 +4134,6 @@ function f_upload_dummy_pypi() {
     local _tmpbase="${4:-"${_TMP%/}"}"
     local _extra_file="${5-"${_PYPI_EXTRA_FILE}"}"  # If set, the extra file will be uploaded as well
 
-    if [ -z "$VIRTUAL_ENV" ]; then
-        _log "ERROR" "Please activate a Python virtual environment with 'build' package"
-        return 1
-    fi
     if ! python3 -c "import build"; then
         _log "ERROR" "Please install 'build' package in the active Python3 environment"
         return 1
