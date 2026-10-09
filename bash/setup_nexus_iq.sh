@@ -78,7 +78,7 @@ Using previously saved response file and NO interviews:
 : ${_ADMIN_USER:="admin"}
 : ${_ADMIN_PWD:="admin123"}
 : ${_IQ_URL:="http://localhost:8070/"}
-: ${_IQ_TEST_URLS:="http://localhost:8070/ http://utm-ubuntu:8070/ https://nxiqha-k8s.${_DOMAIN#.}/"}
+: ${_IQ_TEST_URLS:="http://localhost:8070/ http://${REMOTE_AI_HOST:-"m5mac"}:8070/ http://utm-ubuntu:8070/ https://nxiqha-k8s.${_DOMAIN#.}/"}
 : ${_CLM_STAGING:=""}
 _TMP="/tmp" # for downloading/uploading assets
 _DEBUG=false
@@ -223,11 +223,12 @@ function _download_installer() {
         #https://download.sonatype.com/clm/server/nexus-iq-server-1.205.0-03-linux-x86_64.tgz
         #https://download.sonatype.com/clm/server/nexus-iq-server-1.205.0-03-linux-aarch_64.tgz
         local _arch="$(uname -m)"
-        if [ "${_arch}" == "arm64" ]; then
-            _arch="aarch_64"
+        if [ "${_arch}" == "arm64" ] || [ "${_arch}" == "aarch64" ]; then
+            _arch="aarch_64"    #why dash ...
         fi
         _filename="nexus-iq-server-${_tgz_ver}-linux-${_arch}.tgz"
     elif [ -z "${_ver}" ] || [ "${_ver}" == "latest" ]; then
+        _log "WARN" "Downloading latest.tgz from https://download.sonatype.com/clm/server/latest.tgz which can't specify the architecture"
         _filename="latest.tgz"
         if [ -z "${_download_dir}" ]; then
             _download_dir="${_TMP%/}/nxiq_latest_$$"
@@ -1033,13 +1034,15 @@ function f_setup_saml_simplesaml() {
     fi
     if [ ! -s "${_idp_metadata}" ]; then
         _log "ERROR" "Missing IDP metadata file (_idp_metadata): ${_idp_metadata}"
-        echo "Please execute 'f_start_saml_server \"\" \"\" \"${_IQ_URL%/}/api/v2/config/saml/metadata\"'" >&2
+        _log "     " "Please execute 'f_start_saml_server \"\" \"\" \"${_IQ_URL%/}/api/v2/config/saml/metadata\"'"
         return 1
     fi
     if ! _curl "${_IQ_URL%/}/api/v2/config/saml" -X PUT -F identityProviderXml=@${_idp_metadata} -F samlConfiguration="{\"identityProviderName\":\"${_name}\",\"entityId\":\"${_IQ_URL%/}/api/v2/config/saml/metadata\",\"usernameAttributeName\":\"uid\",\"firstNameAttributeName\":\"givenName\",\"lastNameAttributeName\":\"sn\",\"emailAttributeName\":\"eduPersonPrincipalName\",\"groupsAttributeName\":\"Groups\",\"validateResponseSignature\":false,\"validateAssertionSignature\":false}"; then
-        echo "If SAML is already configured, please try 'DELETE /api/v2/config/saml' first."
+        _log "WARN" "If SAML is already configured, please try 'DELETE /api/v2/config/saml' first."
         return 1
     fi
+    _log "INFO" "SAML configuration is set."
+    _log "    " "To map a role: f_api_role_mapping 'developer' 'ipausers' 'Sandbox Organization' 'group' 'organization'"
 }
 
 # NOTE: Use the setup_nexus3_repo.sh:f_start_ldap_server() to start GLAuth
@@ -1958,7 +1961,9 @@ function f_cli() {
     local _simple_scan="${_SIMPLE_SCAN:-"N"}" # Y: simple, N: full
     local _use_docker="${_USE_DOCKER}"
 
-    _iq_url="$(_get_iq_url "${_iq_url}")" || return $?
+    if [ -z "${_iq_url}" ]; then
+        _iq_url="$(_get_iq_url)" || return $?
+    fi
     if [ -z "${_iq_cli_ver}" ]; then
         _iq_cli_ver="$(curl -m3 -sf "${_iq_url%/}/rest/product/version" | python -c "import sys,json;a=json.loads(sys.stdin.read());print(a['version'])")"
     fi
