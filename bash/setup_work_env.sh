@@ -446,7 +446,8 @@ function f_setup_java() {
     [[ "${_v}" =~ ^[678]$ ]] && _ver="1.${_v}"
 
     if [ "$(uname)" = "Darwin" ]; then
-        _log "WARN" "Use https://www.azul.com/downloads/?version=java-8-lts&os=macos&architecture=x86-64-bit&package=jdk"
+        _log "WARN" "Use brew install --cask temurin@17 temurin@21 temurin@25"
+        #_log "WARN" "Use https://www.azul.com/downloads/?version=java-8-lts&os=macos&architecture=x86-64-bit&package=jdk"
         return 1
     fi
 
