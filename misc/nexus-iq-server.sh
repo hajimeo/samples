@@ -17,7 +17,7 @@
 
 ### BEGIN Variables (change to fit your configuration)
 # Make sure those directories exist and owned by "RUN_AS_USER"
-NEXUS_IQ_SERVER_HOME="$(dirname -- "${BASH_SOURCE[0]}")"
+NEXUS_IQ_SERVER_HOME="$(dirname -- "${BASH_SOURCE[0]}")/nexusiq"
 RUN_AS_USER="${USER}"
 ### END Variables
 
@@ -30,10 +30,8 @@ JAVA="java"
 
 # Minimum recommended options (but not using -XX:-OmitStackTraceInFastThrow as this is for my test server)
 JAVA_OPTIONS="-Xms${_NXIQ_HEAPSIZE:-"2G"} -Xmx${_NXIQ_HEAPSIZE:-"2G"} -XX:ActiveProcessorCount=2"
-
 # For kill -3 (too see the stdout, use journalctl _PID=<PID>). Also jvm_%p.log works too
 JAVA_OPTIONS="${JAVA_OPTIONS} -XX:+UnlockDiagnosticVMOptions -XX:+LogVMOutput -XX:LogFile=${NEXUS_IQ_SERVER_HOME}/log/jvm.log"
-
 # GC log related options are different by Java version.
 if ${JAVA} -XX:+PrintFlagsFinal -version 2>&1 | grep -q GCLogFileSize; then
     # probably java 8 (-verbose:gc = -XX:+PrintGC)
@@ -52,35 +50,73 @@ JAVA_OPTIONS="${JAVA_OPTIONS} -XX:MaxDirectMemorySize=1g -Djdk.nio.maxCachedBuff
 #JAVA_OPTIONS="${JAVA_OPTIONS} -XX:OnOutOfMemoryError='kill -3 %p'"  # TODO: May not work with IQ
 #JAVA_OPTIONS="${JAVA_OPTIONS} -XX:+CrashOnOutOfMemoryError -XX:ErrorFile=${NEXUS_IQ_SERVER_HOME}/log"  # TODO: May not work with IQ
 #JAVA_OPTIONS="${JAVA_OPTIONS} -XX:+HeapDumpOnOutOfMemoryError -XX:HeapDumpPath=${NEXUS_IQ_SERVER_HOME}/log"    # or 'user.dir' (cwd) if not specified
-## May not work: JAVA_OPTIONS="${JAVA_OPTIONS} -Xdump:system:label=${NEXUS_IQ_SERVER_HOME}/log/core.%Y%m%d.%H%M%S.%pid.dmp"
+#JAVA_OPTIONS="${JAVA_OPTIONS} -Xdump:system:label=${NEXUS_IQ_SERVER_HOME}/log/core.%Y%m%d.%H%M%S.%pid.dmp"     # or 'user.dir' (cwd) if not specified
 #JAVA_OPTIONS="${JAVA_OPTIONS} -Dcom.sun.management.jmxremote -Dcom.sun.management.jmxremote.port=6786 -Dcom.sun.management.jmxremote.local.only=false -Dcom.sun.management.jmxremote.authenticate=false -Dcom.sun.management.jmxremote.ssl=false"
 # for testing
 #JAVA_OPTIONS="${JAVA_OPTIONS} -Dinsight.threads.monitor=3"
 
+JAR_FILE="$(find -L "${NEXUS_IQ_SERVER_HOME%/}" -maxdepth 3 -type f -name 'insight-brain-service*.jar' -o -name 'nexus-iq-server*.jar' 2>/dev/null | sort -V | tail -n1)"
+CONFIG_FILE="$(find -L "${NEXUS_IQ_SERVER_HOME%/}" -maxdepth 3 -type f -name 'config.yml' 2>/dev/null | sort -V | tail -n1)"
+
 chmod a+w /tmp/nexus_iq_server.out /tmp/nexus_iq_server.err &>/dev/null
-mkdir -p ${NEXUS_IQ_SERVER_HOME}/log &>/dev/null
+mkdir -p ${NEXUS_IQ_SERVER_HOM%/E}/log &>/dev/null
+
+function get_pid() {
+    # NOTE: Should not output anything except the PID.
+    local work_dir="$(sed -n -E 's/sonatypeWork[[:space:]]*:[[:space:]]*(.+)/\1/p' "${CONFIG_FILE}")"
+    if [ ! -d "${work_dir}" ]; then
+        echo "ERROR: No work_dir detected from ${CONFIG_FILE}" >&2
+        return 1
+    fi
+    local lock_file="${work_dir%/}/lock"
+    if [ ! -s "${lock_file}" ]; then
+        echo "ERROR: No lock file detected from ${work_dir}" >&2
+        return 1
+    fi
+    local pid="$(cat "${lock_file}" | cut -d"@" -f1)"
+    if ! ls -1 /proc/"${pid}" &>/dev/null; then
+        echo "nexus-iq-server is NOT running - PID ${pid} (stale lock file)" >&2
+        return 1
+    fi
+    echo "${pid}"
+}
 
 do_start()
 {
-    cd "${NEXUS_IQ_SERVER_HOME}"
+    cd "${NEXUS_IQ_SERVER_HOME}" || return $?   # Log path might be using relative path
+    export NEXUS_IQ_SERVER_HOME
     # Original uses su -m which can inherits almost all env of current user (eg: root), not sure if it was intentional
-    ${SUDO} ${JAVA} ${JAVA_OPTIONS} -jar ${NEXUS_IQ_SERVER_HOME%/}/nexus-iq-server-[0-9.]*-??.jar server ${NEXUS_IQ_SERVER_HOME%/}/config.yml > /tmp/nexus_iq_server.out 2> /tmp/nexus_iq_server.err &
+    ${SUDO} ${JAVA} ${JAVA_OPTIONS} -jar "${JAR_FILE}" server "${CONFIG_FILE}" > /tmp/nexus_iq_server.out 2> /tmp/nexus_iq_server.err &
     echo "Started nexus-iq-server"
 }
 
 do_console()
 {
-    cd "${NEXUS_IQ_SERVER_HOME}"
-    ${SUDO} ${JAVA} ${JAVA_OPTIONS} -jar ${NEXUS_IQ_SERVER_HOME%/}/nexus-iq-server-[0-9.]*-??.jar server ${NEXUS_IQ_SERVER_HOME%/}/config.yml
+    cd "${NEXUS_IQ_SERVER_HOME}" || return $?
+    export NEXUS_IQ_SERVER_HOME
+    ${SUDO} ${JAVA} ${JAVA_OPTIONS} -jar "${JAR_FILE}" server "${CONFIG_FILE}"
 }
 
 do_stop()
 {
-    local pid=$(ps -o pid,command -u ${RUN_AS_USER} -U ${RUN_AS_USER} | grep -m1 -P '\bjava .+/nexus-iq-server.*jar server ' | awk '{print $1}')
-    if [ -n "${pid}" ]; then
-        kill $pid || return $?
-        echo "Killed nexus-iq-server - PID $pid"
+    local pid="$(get_pid)"
+    if [ -z "${pid}" ]; then
+        sleep 10
+        pid="$(get_pid)"
     fi
+
+    if [ -z "${pid}" ]; then
+        echo "ERROR: No nexus-iq-server process found" >&2
+        return 1
+    fi
+
+    if ! grep -aq "NEXUS_IQ_SERVER_HOME" /proc/${pid}/environ 2>/dev/null; then
+        echo "ERROR: PID ${pid} is not started by this script" >&2
+        return 1
+    fi
+
+    echo "Terminating nexus-iq-server - PID $pid"
+    kill $pid || return $?
 }
 
 do_usage()
