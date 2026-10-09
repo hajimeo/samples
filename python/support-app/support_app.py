@@ -27,6 +27,7 @@
 #   - If port MCP_PORT is not specified but the default port is used, automatically change the port. but how to tell that to AI side?
 
 
+import concurrent.futures
 import gzip
 import os
 import re
@@ -465,16 +466,27 @@ def setup_audit_log_view(con, file_categories):
     materialize_view_via_parquet(con, "audit_logs", select_sql, paths)
 
 
-try:
-    setup_typed_log_views(con, _matched_log_files)
-except Exception as e:
-    _warn(
-        "Could not build typed application_logs/request_logs views. The AI assistant may have limited data: " + str(e))
+def _run_app_views():
+    try:
+        setup_typed_log_views(con.cursor(), _matched_log_files)
+    except Exception as e:
+        _warn(
+            "Could not build typed application_logs/request_logs views. The AI assistant may have limited data: " + str(e))
 
-try:
-    setup_audit_log_view(con, _matched_log_files)
-except Exception as e:
-    _warn("Could not build typed audit_logs view. The AI assistant may have limited data: " + str(e))
+
+def _run_audit_view():
+    try:
+        setup_audit_log_view(con.cursor(), _matched_log_files)
+    except Exception as e:
+        _warn("Could not build typed audit_logs view. The AI assistant may have limited data: " + str(e))
+
+
+# Run in parallel via separate cursors on the shared connection - audit.log is often much larger than
+# nexus.log/request.log, so overlapping its (I/O/decompression-bound) scan with the app/request pass
+# (mostly CPU-bound regex parsing) saves real wall-clock time on multi-core machines, rather than just
+# serializing two workloads that would otherwise contend for the same resources one after another.
+with concurrent.futures.ThreadPoolExecutor(max_workers=2) as _views_executor:
+    list(_views_executor.map(lambda f: f(), [_run_app_views, _run_audit_view]))
 
 # Schema description shared between the AI system prompt (ask_local_ai) and the MCP `logs://schema` resource,
 # so the two never drift apart.
