@@ -8,7 +8,7 @@ export HISTTIMEFORMAT="%Y-%m-%d %T "
 
 [ -s $HOME/.bashrc ] && source $HOME/.bashrc
 [ -s $HOME/.bash_aliases ] && source $HOME/.bash_aliases
-#[ -s $HOME/IdeaProjects/samples/runcom/bash_aliases.sh ] && source $HOME/IdeaProjects/samples/runcom/bash_aliases.sh
+[ -s $HOME/.profile ] && source $HOME/.profile  # Using this file for host specific settings (not synced)
 
 #eval "$(/opt/homebrew/bin/brew shellenv)" 
 export HOMEBREW_PREFIX="/opt/homebrew";
@@ -166,3 +166,8 @@ if [ -f '/Users/hosako/Apps/google-cloud-sdk/completion.bash.inc' ]; then . '/Us
 #eval "$(jenv init -)"
 
 #test -e "${HOME}/.iterm2_shell_integration.bash" && source "${HOME}/.iterm2_shell_integration.bash" || true
+
+export RIPGREP_CONFIG_PATH=$HOME/.rgrc
+
+# uv
+export PATH="/Users/hosako/.local/bin:$PATH"

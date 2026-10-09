@@ -3,6 +3,18 @@
 ## Simple/generic alias commands (some need pip though) ################################################################
 # 'cd' to last modified directory
 alias cdl='cd "`ls -dtr ./*/ | tail -n 1`"'
+function cd_nfs() {
+    local _dir="${1:-"."}"
+    local _nfs_path="${2:-"$HOME/Documents/cases_nfs"}"
+    local _abs_path="$(readlink -f "${_dir%/}")"
+    # Replace /cases/ or /cases_xxxx/ to /cases_nfs/
+    if [[ ! "${_abs_path}" =~ \/cases[^/]*\/(.+) ]]; then
+        echo "Error: ${_abs_path} is not under /cases/ or /cases_xxxx/" >&2
+        return 1
+    fi
+    local _cd_path="${_nfs_path%/}/${BASH_REMATCH[1]}"
+    cd "${_cd_path}" || return $?
+}
 alias fdn='find . -name' # Changed from 'fd` as it may conflict with actual fd command
 alias fdp='find . -path'
 alias sha1R='find . -type f -exec sha1sum "{}" \;'
@@ -66,6 +78,8 @@ alias caddy_reverse='caddy reverse-proxy --debug --change-host-header --header-u
 # to switch/check out to specific tag, `rm3Vers "release-3.90.2-06"` first
 alias codeNexus='codium -r . $HOME/IdeaProjects/nexus-internal'
 alias codeIQ='codium -r . $HOME/IdeaProjects/insight-brain'
+alias quickmd='open -a QuickMD'
+
 alias opencode-cli='/Applications/OpenCode.app/Contents/MacOS/opencode-cli'
 alias opencode='/Applications/OpenCode.app/Contents/MacOS/OpenCode'
 alias chatgpt='open -a ChatGPT'
@@ -73,19 +87,25 @@ alias gpt='open -a ChatGPT .'
 function pdf2md() {
     local _pdf="${1}"
     local _md="${2:-"${_pdf%.*}.md"}"
+    local _force="${3:-"${PDF2MD_FORCE:-""}"}"
     # if _pdf is empty, search all pdf files in current directory and convert to md
-    if [ -z "${_pdf}" ]; then
-        for f in ./*.pdf; do
+    if [ -d "${_pdf}" ]; then
+        for f in "${_pdf}"/*.pdf; do
             local _temp_md="${f%.*}.md"
             if [ -s "${_temp_md}" ]; then
                 echo "File ${_temp_md} already exists, skipping ${f}" >&2
                 continue
             fi
-            pdf2md "$f" || echo "Failed to convert ${f}" >&2
+            pdf2md "$f" "${_temp_md}" "${_force}" || echo "Failed to convert ${f}" >&2
         done
         return $?
     fi
+
     #pdftotext -layout "${_pdf}" - | pandoc -f plain -t markdown -o "${_md}"
+    if [ -s "${_md}" ] && [ -z "${_force}" ]; then
+        echo "File ${_md} already exists, skipping ${_pdf}" >&2
+        return 0
+    fi
     lit parse "${_pdf}" --no-ocr -o "${_md}"
     echo "Converted ${_pdf} to ${_md}" >&2
 }
@@ -95,6 +115,7 @@ function pdf2md() {
 alias git_tag_crt='git describe --tags'
 alias git_crt_tag=git_tag_crt
 alias git_tag_hash='git tag --contains'
+alias git_switch='git switch --detach'
 # To list release-<version>
 function git_tags() {
     local _project="${1:-"."}" # eg: $HOME/IdeaProjects/samples
@@ -105,6 +126,9 @@ function git_tags() {
         return $?
     fi
     git -C "${_project%/}" tag -l | sort --version-sort # | grep -oE "\d+\.\d+\.\d+\-\d+"
+    if type git_switch &>/dev/null; then
+        echo "# To switch to a specific tag: git_switch <tag_name> (or git_tags <tag_name>)" >&2
+    fi
 }
 # compare commits: git diff <commit1>[..<commit2>]
 # compare tags
@@ -277,6 +301,7 @@ alias podmand="podman --log-level debug" && alias podman_login="podman --log-lev
 alias podman_delete_all='podman system prune --all' # --force && podman rmi --all
 #type microk8s &>/dev/null && alias kubectl="microk8s kubectl"
 alias kPods='kubectl get pods --show-labels -A'
+alias radarM5mac='KUBECONFIG="$HOME/.kube/config_m5mac" radar'
 function kShell() {
     local _pod="${1}"
     local _ns="${2}"
@@ -349,19 +374,80 @@ alias kapaWeb='open -na "Google Chrome" --args --user-data-dir=$HOME/.chromep/wo
 # pretending windows chrome on Linux
 #alias winchrome='/opt/google/chrome/chrome --user-data-dir=$HOME/.chromep --proxy-server=socks5://localhost:38081  --user-agent="Mozilla/5.0 (Windows NT 10.0; WOW64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/88.0.4324.96 Safari/537.36"'
 
-alias vncm5mac="open vnc://m5mac"
+alias vncm5mac="open vnc://${REMOTE_AI_HOST}"
 
 ## AI related
-alias zg-idx-logs='zg index --embedding local/potion-code-16m-v2 -g "*.log*" -g "*.json"'
-alias goose-app='/Applications/Goose.app/Contents/MacOS/Goose . &>/tmp/goose_$$.out & echo "Goose started. Log: /tmp/goose_$$.out" >&2'
-alias claude-omlx='ANTHROPIC_BASE_URL="http://m5mac:8000" ANTHROPIC_AUTH_TOKEN="admin123" ANTHROPIC_DEFAULT_OPUS_MODEL="Ornith-1.5-9B-MLX" ANTHROPIC_DEFAULT_SONNET_MODEL="Ornith-1.5-9B-MLX" ANTHROPIC_DEFAULT_HAIKU_MODEL="Ornith-1.5-9B-MLX" API_TIMEOUT_MS=3000000 CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC=1 CLAUDE_CODE_DISABLE_UNKNOWN_MODEL_WINDOW_ENFORCEMENT=1 CLAUDE_CODE_MAX_CONTEXT_TOKENS=131072 claude --disallowedTools LSP --model Ornith-1.5-9B-MLX'
-#alias claude-investigate='claude "Investigate this ticket"'
+export _AI_DEFAULT_PROMPT="Read this ticket journal JSON file, then report your understanding of the current issue and how you investigate (No actual investigation yet)"
+alias zg-query='zg query --human'
+alias zg-idx-logs='zg index --embedding local/potion-code-16m-v2 -g "*.log*" -g "*.json" -g "!_filtered/*"'
+function zg-remote-idx() {
+    # If you provide an argument, it targets that subfolder. Otherwise, it indexes the main cases folder.
+    local path="${1-"."}"
+    local remote_host="${2:-"${REMOTE_AI_HOST}"}"  # Default to m5mac if no second argument is provided
+    local log_file="./zg_index.out"
+    if [ -z "${path}" ] || [ "${path}" == "." ]; then
+        path="$(pwd)"
+    fi
+    echo "Connecting to $remote_host to index '$path' ..." >&2
+    # NOTE: if `.zvec-grep` is created from this PC, it contains the lock file of this PC.
+    local cmd="/opt/homebrew/bin/zg index --embedding local/potion-code-16m-v2 -g '*.log*' -g '*.json' -g '!_filtered/*'"
+    ssh "$remote_host" 'bash -l -c "cd '$path' && nohup '${cmd}' >> '$log_file' 2>&1 &"'
+    echo "Executed ${cmd} on $remote_host. Check $log_file for progress." >&2
+}
+
+function recommend_zg_index() {
+    if [ -d ./.zvec-grep ]; then
+        # From the current directory, check if any new files than .zvec-grep/manifest.json (it should be automatically updated)
+        if ! find . -type f -newer ./.zvec-grep/manifest.json -not \( -path "./.zvec-grep/*" -o -path "./zg_index.out" \) | grep -q .; then
+            echo ".zvec-grep is present and up-to-date. No need to run zg index." >&2
+            return 0
+        fi
+        echo ".zvec-grep may be outdated." >&2
+    else
+        echo ".zvec-grep is missing." >&2
+    fi
+
+    local _recommended_cmd=""
+    if type zg-remote-idx &>/dev/null; then
+        _recommended_cmd="zg-remote-idx"
+    elif type zg-idx-logs &>/dev/null; then
+        _recommended_cmd="zg-idx-logs"
+    fi
+
+    if [ -z  "${_recommended_cmd}" ]; then
+        echo "No recommended command found for indexing. Please ensure zg is installed and the appropriate function is defined." >&2
+        return 1
+    fi
+
+    read -p "Would you like to run ${_recommended_cmd} in background? (y/n): " -n 1 -r
+    echo # Move to a new line
+    if [[ $REPLY =~ ^[Yy]$ ]]; then
+        echo "Starting ${_recommended_cmd} . Check ./zg_index.out ..."; sleep 2
+        ${_recommended_cmd}
+        sleep 3 # as remote one runs in background so need type to read the output.
+    fi
+}
+#alias goose-app='/Applications/Goose.app/Contents/MacOS/Goose . &>/tmp/goose_$$.out & echo "Goose started. Log: /tmp/goose_$$.out" >&2'
+#alias claude-omlx='ANTHROPIC_BASE_URL="http://${REMOTE_AI_HOST}:8000" ANTHROPIC_AUTH_TOKEN="admin123" ANTHROPIC_DEFAULT_OPUS_MODEL="Ornith-1.5-9B-MLX" ANTHROPIC_DEFAULT_SONNET_MODEL="Ornith-1.5-9B-MLX" ANTHROPIC_DEFAULT_HAIKU_MODEL="Ornith-1.5-9B-MLX" API_TIMEOUT_MS=3000000 CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC=1 CLAUDE_CODE_DISABLE_UNKNOWN_MODEL_WINDOW_ENFORCEMENT=1 CLAUDE_CODE_MAX_CONTEXT_TOKENS=131072 claude --disallowedTools LSP --model Ornith-1.5-9B-MLX'
 #alias claude-local='ANTHROPIC_AUTH_TOKEN=ollama ANTHROPIC_API_KEY="" ANTHROPIC_BASE_URL="http://localhost:11434" CLAUDE_CODE_MAX_CONTEXT_TOKENS=32768 claude --model gemma4:e4b-mlx'
+function claude-ticket() {
+    recommend_zg_index
+    echo "Running claude-ticket with *${ANTHROPIC_MODEL}* ..."
+    sleep 2
+    claude --model "${ANTHROPIC_MODEL:-"claude-sonnet-5[1m]"}" "${_AI_DEFAULT_PROMPT}"
+}
 
 # Ollama generates .codex/model.json, which contains model names (also .codex/ollama-launch.config.toml)
-alias codex-omlx='OMLX_API_KEY="admin123" codex -c model_provider="omlx" -c model_providers.omlx.name="oMLX" -c model_providers.omlx.base_url="http://m5mac:8000/v1" -c model_providers.omlx.env_key="OMLX_API_KEY" -c model_catalog_json="$HOME/IdeaProjects/samples/runcom/codex_local_model.json" -m Ornith-1.5-9B-MLX'
-alias codex-ticket='codex -m gpt-5.6-terra "Read the ticket json file and understand the history and the current status, then report what you are going to investigate (no actual investigation yet)"'
+#alias codex-omlx='OMLX_API_KEY="admin123" codex -c model_provider="omlx" -c model_providers.omlx.name="oMLX" -c model_providers.omlx.base_url="http://${REMOTE_AI_HOST}:8000/v1" -c model_providers.omlx.env_key="OMLX_API_KEY" -c model_catalog_json="$HOME/IdeaProjects/samples/runcom/codex_local_model.json" -m Ornith-1.5-9B-MLX'
+# --no-daemon is for avoiding "Cannot use the background server".
+##alias codex-ticket='codex --no-daemon "Read the ticket json file and understand the history and the current status, then report what you are going to investigate (no actual investigation yet)"'
 # To re-authenticate: codex mcp login atlassian
+function codex-ticket() {
+    recommend_zg_index
+    echo "Running codex-ticket with *gpt-6-LUNA* (--no-daemon) ..."
+    sleep 2
+    codex -m "gpt-6-luna" --no-daemon "${_AI_DEFAULT_PROMPT}"
+}
 
 
 ## Work specific aliases ############################################################################################3
@@ -454,13 +540,17 @@ function lns() {
     ln -v -s "$(realpath "$1")" "$2"
 }
 
+export UNZIPS_EXCLUDE="-x '*__MACOSX/*' -x '*nexus.huggingface.xet.presigned_url.sweep*'"
 function unzips() {
+    local __doc__="unzip file(s) with ditto if available"
+    # TODO: Should this use "ditto -xk {zip} ."?
     for _f in "$@"; do
         local _dir_name="$(basename "${_f}" .zip)"
+        # if the zip contains the directory, unzip to current dir, otherwise unzip to the directory
         if unzip -l "${_f}" | grep -q "${_dir_name}"; then
-            unzip "${_f}"
+            unzip "${_f}" ${UNZIPS_EXCLUDE}
         else
-            unzip -d "${_dir_name}" "${_f}"
+            unzip -d "${_dir_name}" "${_f}" ${UNZIPS_EXCLUDE}
         fi || return $?
     done
 }
@@ -853,7 +943,13 @@ function pgStatus() {
     local _log_path="${3-"${HOME%/}/postgresql.log"}"        # may not have permission on /var/log and /tmp might be small
     local _wal_backup_path="${4:-"$HOME/share/$USER/backups/$(hostname -s)_wal"}"
     #ln -s /Volumes/Samsung_T5/hajime/backups $HOME/share/$USER/backups
-    if [[ "${_cmd}" =~ start$ ]]; then
+    # Check if PostgreSQL is already running
+    if [ "${_cmd}" == "start" ] && pg_ctl -D ${_pg_data} status; then
+        echo "PostgreSQL is already running."
+        return 0
+    fi
+
+    if [[ "${_cmd}" =~ start$ ]]; then  # start and restart
         if [ -n "${_log_path}" ] && [ -s "${_log_path}" ]; then
             echo -n >${_log_path}
         fi
@@ -861,11 +957,13 @@ function pgStatus() {
             find ${_wal_backup_path%/} -type f -mtime +2 -delete 2>/dev/null & # -print
         fi
     fi
+
     if [ -n "${_log_path}" ]; then
         pg_ctl -D ${_pg_data} -l ${_log_path} ${_cmd}
     else
         pg_ctl -D ${_pg_data} ${_cmd}
     fi || return $?
+
     export PGDATA="${_pg_data}"
     if [ -d "${_pg_data}" ]; then
         du -sh ${_pg_data%/} 2>/dev/null
@@ -928,7 +1026,7 @@ function goBuild() {
     env GOOS=darwin GOARCH=arm64 go build -trimpath -o "${_destDir%/}/${_name}_Darwin_arm64" ${_opts} ${_goFile} || return $?
     env GOOS=linux GOARCH=amd64 go build -trimpath -o "${_destDir%/}/${_name}_Linux_x86_64" ${_opts} ${_goFile} &
     env GOOS=linux GOARCH=arm64 go build -trimpath -o "${_destDir%/}/${_name}_Linux_aarch64" ${_opts} ${_goFile} &
-    env GOOS=darwin GOARCH=amd64 go build -trimpath -o "${_destDir%/}/${_name}_Darwin_x86_64" ${_opts} ${_goFile} &
+    #env GOOS=darwin GOARCH=amd64 go build -trimpath -o "${_destDir%/}/${_name}_Darwin_x86_64" ${_opts} ${_goFile} &
     env GOOS=windows GOARCH=amd64 go build -trimpath -o "${_destDir%/}/${_name}_Windows_x86_64" ${_opts} ${_goFile} &
     wait
     echo "" >&2
@@ -1030,20 +1128,36 @@ function listLargeDirs() {
 }
 
 function gDrivePull() {
-    cd $HOME/Documents/sonatype || return $?
+    local gd_backup_dir="${1:-"$HOME/Documents/sonatype"}"
+
     # May not need to do this for now as AI may not be good at processing PDFs
     echo "INFO: rsync-ing PDFs from remote to local..." >&2
-    rsync -av $HOME/Google\ Drive/My\ Drive/work/sonatype/*.pdf ./kbs/
-    echo "INFO: rsync-ing gDocs from remote to local..." >&2
-    rclone sync hajime-drive:"My Notes" ./gdocs_stared -P || return $?
-    echo "INFO: zg index ..." >&2
-    zg index --embedding local/potion-code-16m-v2
-    cd - &>/dev/null
+    touch ${gd_backup_dir%/}/kbs/.last_sync_start
+    if ! rsync -av "$HOME/Google Drive/My Drive/work/sonatype/"*.pdf ${gd_backup_dir%/}/kbs/ > /tmp/gDrivePull_rsync.out 2>&1; then
+        echo "ERROR: rsync failed. Check /tmp/gDrivePull_rsync.out for details." >&2
+        return 1
+    fi
+    if type pdf2md &>/dev/null; then
+        find ${gd_backup_dir%/}/kbs -type f -name '*.pdf' -newer ${gd_backup_dir%/}/kbs/.last_sync_start | while read -r _pdf; do
+            echo "INFO: Converting ${_pdf} to Markdown..." >&2
+            pdf2md "${_pdf}" "" "Y" || echo "WARNING: Failed to convert ${_pdf} to Markdown." >&2
+        done
+    else
+        echo "WARNING: pdf2md not found. Skipping PDF to Markdown conversion." >&2
+    fi
+
+    echo "INFO: rclone-ing gDocs from remote to local..." >&2
+    if ! rclone sync hajime-drive:"My Notes" ${gd_backup_dir%/}/gdocs_stared -P --drive-export-formats md,html,txt > /tmp/gDrivePull_rclone.out 2>&1; then
+        echo "ERROR: rclone failed. Check /tmp/gDrivePull_rclone.out for details." >&2
+        return 1
+    fi
+    echo "INFO: Completed. Run the below:
+cd ${gd_backup_dir} && zg index --glob '!**/*.pdf' --embedding local/potion-retrieval-32m" >&2
 }
 
 #_RSYNC_DRY_RUN=Y syncGitReposWithRemotePC
 function syncGitReposWithRemotePC() {
-    local _remote_host="${1:-"m5mac"}"
+    local _remote_host="${1:-"${REMOTE_AI_HOST}"}"
     local _remote_user="${2:-"${USER}"}"
     local _repo_rel_path="${3:-"IdeaProjects/samples"}"
     local _local_base_dir="${4:-"$HOME"}"
@@ -1117,75 +1231,81 @@ function backupC() {
     local _find="find"
     type gfind &>/dev/null && _find="gfind"
 
-    # vs code / codium extensions
-    if which code && [ -d "$HOME/backup" ]; then
-        code --list-extensions | xargs -t -L 1 echo code --install-extension >$HOME/backup/vscode_install_extensions.sh || return $?
-    fi
-    if type codium &>/dev/null && [ -d "$HOME/backup" ]; then
-        codium --list-extensions | xargs -t -L 1 echo codium --install-extension >$HOME/backup/vscodium_install_extensions.sh || return $?
-    fi
+    if [ -d "$HOME/backup" ]; then
+        # vs code / codium extensions
+        if which code ]; then
+            code --list-extensions | xargs -t -L 1 echo code --install-extension >$HOME/backup/vscode_install_extensions.sh || return $?
+        fi
+        if type codium &>/dev/null; then
+            codium --list-extensions | xargs -t -L 1 echo codium --install-extension >$HOME/backup/vscodium_install_extensions.sh || return $?
+        fi
 
-    # If $HOME/.bashrc is not a symlink, then copy to $HOME/backup/bashrc (just in case, not copying if it's empty)
-    if [ -s "$HOME/.bashrc" ] && [ -d "$HOME/backup" ] && [ ! -L "$HOME/.bashrc" ]; then
-        cp -v -f $HOME/.bashrc $HOME/backup/bashrc || return $?
-        scp -C $HOME/.bashrc m5mac:~/
-    fi
+        # If $HOME/.bashrc is not a symlink, then copy to $HOME/backup/bashrc (just in case, not copying if it's empty)
+        if [ -s "$HOME/.bashrc" ] && [ ! -L "$HOME/.bashrc" ]; then
+            cp -v -f $HOME/.bashrc $HOME/backup/bashrc || return $?
+        fi
 
-    # If $HOME/.netrc is not a symlink, then copy to $HOME/backup/netrc (just in case, not copying if it's empty)
-    if [ -s "$HOME/.netrc" ] && [ -d "$HOME/backup" ] && [ ! -L "$HOME/.netrc" ]; then
-        cp -v -f $HOME/.netrc $HOME/backup/netrc || return $?
-    fi
+        # If $HOME/.netrc is not a symlink, then copy to $HOME/backup/netrc (just in case, not copying if it's empty)
+        if [ -s "$HOME/.netrc" ] && [ ! -L "$HOME/.netrc" ]; then
+            cp -v -f $HOME/.netrc $HOME/backup/netrc || return $?
+        fi
 
-    if [ -s "$HOME/.mcps.json" ] && [ -d "$HOME/backup" ]; then
-        cp -v -f $HOME/.mcps.json $HOME/backup/mcps.json || return $?
-    fi
+        if [ -s "$HOME/.mcps.json" ]; then
+            cp -v -f $HOME/.mcps.json $HOME/backup/mcps.json || return $?
+        fi
 
-    if type codex &>/dev/null && [ -d "$HOME/backup" ]; then
-        # Don't want to copy an empty file
-        if [ -s "$HOME/.codex/config.toml" ]; then
-            cp -v -f $HOME/.codex/config.toml $HOME/backup/codex_config.toml || return $?
+        if type codex &>/dev/null; then
+            # Don't want to copy an empty file
+            if [ -s "$HOME/.codex/config.toml" ]; then
+                cp -v -f $HOME/.codex/config.toml $HOME/backup/codex_config.toml || return $?
+            fi
+        fi
+        if type claude &>/dev/null; then
+            if [ -s "$HOME/.claude.json" ]; then    # MCP settings etc.
+                cp -v -f $HOME/.claude.json $HOME/backup/claude_config.json || return $?
+            fi
+            if [ -s "$HOME/.claude/settings.json" ]; then
+                cp -v -f $HOME/.claude/settings.json $HOME/backup/claude_settings.json || return $?
+            fi
+        fi
+
+        if type kubectl &>/dev/null; then
+            if [ ! -d "$HOME/backup/kube" ]; then
+                mkdir -v -p $HOME/backup/kube
+            fi
+            rsync -cav $HOME/.kube/*config* $HOME/backup/kube/
+        fi
+
+        if [ -s $HOME/.aws/config ]; then
+            # Not backing up .aws/credentials
+            cp -v -f $HOME/.aws/config $HOME/backup/aws_config || return $?
+        fi
+        if [ -s /etc/hosts ]; then
+            cp -v -f /etc/hosts $HOME/backup/etc_hosts || return $?
+        fi
+        # Currently not backing up if no ssh directory.
+        if [ -d "$HOME/.ssh" ] && [ -d "$HOME/backup/ssh" ]; then
+            # not copying symlink as I'm expecting symlinks would be from the "samples" repo
+            rsync -cav --no-links "$HOME/.ssh/" "$HOME/backup/ssh" || return $?
+        fi
+
+        if [ -s "$HOME/IdeaProjects/m2_settings.xml" ] && [ -d "$HOME/backup/IdeaProjects" ]; then
+            cp -v -f $HOME/IdeaProjects/m2_settings*.xml $HOME/backup/IdeaProjects/ || return $?
         fi
     fi
-    if type claude &>/dev/null && [ -d "$HOME/backup" ]; then
-        if [ -s "$HOME/.claude.json" ]; then
-            cp -v -f $HOME/.claude.json $HOME/backup/claude_config.json || return $?
-        fi
-        if [ -s "$HOME/.claude/settings.json" ]; then
-            cp -v -f $HOME/.claude/settings.json $HOME/backup/claude_settings.json || return $?
-        fi
-    fi
 
-    if type kubectl &>/dev/null && [ -d "$HOME/backup/kube" ]; then
-        rsync -cav $HOME/.kube/*config* $HOME/backup/kube/
-    fi
-    if [ -s $HOME/.aws/config ] && [ -d "$HOME/backup" ]; then
-        # Not backing up .aws/credentials
-        cp -v -f $HOME/.aws/config $HOME/backup/aws_config || return $?
-    fi
-
-    if [ -s /etc/hosts ] && [ -d "$HOME/backup" ]; then
-        cp -v -f /etc/hosts $HOME/backup/etc_hosts || return $?
-    fi
-    if [ -d "$HOME/.ssh" ] && [ -d "$HOME/backup/ssh" ]; then
-        # not copying symlink as I'm expecting symlinks would be from the "samples" repo
-        rsync -cav --no-links "$HOME/.ssh/" "$HOME/backup/ssh" || return $?
-    fi
-    if [ -s "$HOME/IdeaProjects/m2_settings.xml" ] && [ -d "$HOME/backup/IdeaProjects" ]; then
-        cp -v -f $HOME/IdeaProjects/m2_settings*.xml $HOME/backup/IdeaProjects/ || return $?
-    fi
 
     if [ -s "$HOME/.pyvenv_new/bin/activate" ]; then
+        echo "Generating requirements.txt from $HOME/.pyvenv_new/bin/activate ..." >&2
         source $HOME/.pyvenv_new/bin/activate && pip freeze > $HOME/IdeaProjects/samples/misc/requirements.txt
         deactivate &>/dev/null
     fi
 
     echo ""
-    echo "#### Synchronising a few Github repositories into 'oldmac' and 'm5mac' ####" >&2
+    echo "#### Synchronising a few Github repositories into 'oldmac' and '${REMOTE_AI_HOST}' ####" >&2
     echo ""
-    syncGitReposWithRemotePC "oldmac" "$USER" "IdeaProjects/samples" "$HOME" #|| return $?
-    syncGitReposWithRemotePC "oldmac" "$USER" "IdeaProjects/work" "$HOME"    #|| return $?
-    syncGitReposWithRemotePC "m5mac" "$USER" "IdeaProjects/samples" "$HOME" #|| return $?
-    syncGitReposWithRemotePC "m5mac" "$USER" "IdeaProjects/work" "$HOME"    #|| return $?
+    #sync_mac "oldmac" &>/dev/null &
+    sync_mac "${REMOTE_AI_HOST}"
 
     echo ""
     echo "#### Cleaning up old temp/test data (60 days) ####" >&2
@@ -1203,6 +1323,24 @@ function backupC() {
         #rsync -Pvaz --bwlimit=10240 --max-size=10000k --modify-window=1 --exclude '*_tmp' --exclude '_*' ${_src%/}/ ${_dst%/}/
         ${_find} "${_ext_backup%/}" -maxdepth 1 -type d -name "*_wal" -print0 | xargs -0 -P4 -I{} -t ${_find} {} -type f -mtime +30 -delete
     fi
+
+    cleanCases
+
+
+    # Currently updatedb may not index external drive (maybe because exFat?)
+    if type updatedb &>/dev/null; then
+        #alias of 'updatedb' = sudo FILESYSTEMS="hfs ufs apfs exfat" /usr/libexec/locate.updatedb
+        echo ""
+        echo "#### Executing updatedb (may ask sudo password) ####" >&2
+        echo ""
+        updatedb && ls -lh /var/db/locate.database
+    fi
+}
+
+function cleanCases() {
+    local _src="${1:-"$HOME/Documents/cases"}"
+    local _find="find"
+    type gfind &>/dev/null && _find="gfind"
 
     if [ ! -d "${_src}" ]; then
         echo "# Source ${_src} is not set nor directory. Ending this function." >&2
@@ -1252,15 +1390,6 @@ function backupC() {
         listLargeDirs "${_src}" 20
         #echo "# du -Shx ${_src} | sort -h | tail -n40" >&2
         #du -Shx ${_src} | sort -h | tail -n40
-    fi
-
-    # Currently updatedb may not index external drive (maybe because exFat?)
-    if type updatedb &>/dev/null; then
-        #alias of 'updatedb' = sudo FILESYSTEMS="hfs ufs apfs exfat" /usr/libexec/locate.updatedb
-        echo ""
-        echo "#### Executing updatedb (may ask sudo password) ####" >&2
-        echo ""
-        updatedb && ls -lh /var/db/locate.database
     fi
 }
 
@@ -1377,10 +1506,33 @@ function sync_nexus_binaries() {
     rsync -Prc $HOME/.nexus_executable_cache/nexus-iq-cli-*.jar ${_host}:/var/tmp/share/sonatype/
 }
 
-function sync_git_repos() {
-    local _host="${1:-"m5mac"}"
+function sync_mac() {
+    local _host="${1:-"${REMOTE_AI_HOST}"}"
+    local _sync_misc_configs="${2}"
     syncGitReposWithRemotePC "${_host}" "$USER" "IdeaProjects/samples" "$HOME" #|| return $?
     syncGitReposWithRemotePC "${_host}" "$USER" "IdeaProjects/work" "$HOME"    #|| return $?
+
+    [ "${_host}" != "${REMOTE_AI_HOST}" ] && return 0 # Only syncing ${REMOTE_AI_HOST} for below
+
+    echo "# Syncing ~/.codex/config.toml, ~/.agents/skills and ~/.claude/skills to ${_host} ..." >&2
+    rsync -b --suffix=.$(date +%Y%m%d).bak $HOME/.codex/config.toml ${_host}:~/.codex/
+    #rsync -b --suffix=.$(date +%Y%m%d).bak $HOME/.claude/settings.json ${_host}:~/.claude/
+    rsync -avz $HOME/.agents/skills/ ${_host}:~/.agents/skills/
+    rsync -avz $HOME/.claude/skills/ ${_host}:~/.claude/skills/
+
+    if [ "${_sync_misc_configs}" == "Y" ]; then
+        # If there is something do not want to sync frequently.
+        echo "# WARN: Syncing important configs to ${_host} ... (wait for 3 seconds) ..." >&2; sleep 3
+
+        #echo "# Syncing .bashrc and .netrc to ${_host} ..." >&2
+        # Always local wins (using rsync as scp doesn't have backup option)
+        rsync -b --suffix=.$(date +%Y%m%d).bak $HOME/.bashrc ${_host}:~/
+        rsync -b --suffix=.$(date +%Y%m%d).bak $HOME/.netrc ${_host}:~/
+
+        echo "# Syncing .ssh to ${_host} ... " >&2
+        # If remote has newer, do not replace (TODO: but should warn)
+        rsync -avzi -u $HOME/.ssh/ ${_host}:$HOME/.ssh/
+    fi
 }
 
 function set_classpath() {
@@ -1487,8 +1639,15 @@ function startCommonUtils() {
 
     # If /Volumes/Samsung_T5 is not mounted, then mount it (using password from keychain)
     if [ ! -d "/Volumes/Samsung_T5" ]; then
-        echo "# Mounting /Volumes/Samsung_T5 from m5mac" >&2
-        open "smb://m5mac/Samsung_T5"
+        echo "# Mounting /Volumes/Samsung_T5 from ${REMOTE_AI_HOST}" >&2
+        timeout 10 open "smb://${REMOTE_AI_HOST}/Samsung_T5"
+    fi
+    if [ ! -d "$HOME/nfsmounts/Samsung_T5/hajime/nexus_executable_cache" ]; then
+        echo "# Restarting nfsd on ${REMOTE_AI_HOST} and showing exports ..." >&2
+        ssh -t ${REMOTE_AI_HOST} "sudo nfsd restart && sleep 3 && showmount -e"
+        echo "# Mounting ~/nfsmounts/Samsung_T5 from ${REMOTE_AI_HOST} ..." >&2
+        # Using NFS is because some command line tool such as codex doesn't work with SMB without extra privileges.
+        timeout 10 sudo mount -t nfs -o locallocks ${REMOTE_AI_HOST}:/Volumes/Samsung_T5 $HOME/nfsmounts/Samsung_T5
     fi
 
     pgStatus start
@@ -1512,17 +1671,32 @@ function startCommonUtils() {
     #fi
 
     if type apfel &>/dev/null; then
-        echo "# Starting apfel on port 11435" >&2
-        apfel --serve --port 11435 &>/tmp/apfel.out &
-        sleep 1
-        tail /tmp/apfel.out
+        # Check afel is running on port 11435, if not, start it
+        local _listening_pid="$(lsof -ti:11435 -s TCP:LISTEN)"
+        if [ -n "${_listening_pid}" ]; then
+            echo "# PID: ${_listening_pid} is running on port 11435" >&2
+        else
+            echo "# Starting apfel on port 11435" >&2
+            apfel --serve --port 11435 &>/tmp/apfel.out &
+            sleep 1
+            tail /tmp/apfel.out
+        fi
     fi
 
     if type gDrivePull &>/dev/null; then
         echo "# Starting gDrivePull" >&2
-        gDrivePull &>/tmp/gDrivePull.log &
-        sleep 1
-        tail /tmp/gDrivePull.log
+        local gd_backup_dir="$HOME/Documents/sonatype"
+        gDrivePull "$gd_backup_dir" || sleep 5
+        echo "INFO: zg index on ${gd_backup_dir} ..." >&2
+        cd "${gd_backup_dir}" || return $?
+        # Somehow -T pdf does not work. Not using potion-code-16m-v2
+        zg index --glob '!**/*.pdf' --embedding local/potion-retrieval-32m
+        local _rc=$?
+        cd - &>/dev/null
+        if [ ${_rc} -ne 0 ]; then
+            echo "ERROR: 'zg index' on ${gd_backup_dir} failed with exit code ${_rc}" >&2
+            return ${_rc}
+        fi
     fi
 
     # Currently not starting ollama by default
@@ -1535,27 +1709,33 @@ function startCommonUtils() {
         #fi
 
         if [[ "${_with_mlx}" =~ ^[yY] ]]; then
-            # NOTE: Currently vllm-mlx does not work with CodeX app, but as this function is for Open WebUI, starting.
-            #       Not checking ' && type $HOME/.pyvenv_new/bin/vllm-mlx &>/dev/null' as it should fail with error
-            #       Using https://huggingface.co/mlx-community/gemma-4-12B-it-qat-4bit
-            vllm-mlx serve mlx-community/gemma-4-12B-it-qat-4bit \
-                --enable-auto-tool-choice \
-                --tool-call-parser gemma4 \
-                --reasoning-parser gemma4 \
-                --port 48080 &>/tmp/vllm-mlx.log &
-            #vllm-mlx serve mlx-community/gemma-4-e4b-it-8bit --port 48080 &>/tmp/vllm-mlx.log &
-            sleep 1
-            tail /tmp/vllm-mlx.log
-            return
-        fi
-
-        if type ollama &>/dev/null; then
-            OLLAMA_NO_CLOUD="1" OLLAMA_FLASH_ATTENTION="1" OLLAMA_KV_CACHE_TYPE="q8_0" OLLAMA_NUM_PARALLEL="2" ollama serve &>/tmp/ollama.log &
-            sleep 3
-            tail $HOME/.ollama/logs/server.log
-            ollama list
-            echo "# how to stop 'killall Ollama && pkill ollama'" >&2
-            return
+            local _listening_pid="$(lsof -ti:48080 -s TCP:LISTEN)"
+            if [ -n "${_listening_pid}" ]; then
+                echo "# PID: ${_listening_pid} is running on port 48080" >&2
+            else
+                # NOTE: Currently vllm-mlx does not work with CodeX app, but as this function is for Open WebUI, starting.
+                #       Not checking ' && type $HOME/.pyvenv_new/bin/vllm-mlx &>/dev/null' as it should fail with error
+                #       Using https://huggingface.co/mlx-community/gemma-4-12B-it-qat-4bit
+                vllm-mlx serve mlx-community/gemma-4-12B-it-qat-4bit \
+                    --enable-auto-tool-choice \
+                    --tool-call-parser gemma4 \
+                    --reasoning-parser gemma4 \
+                    --port 48080 &>/tmp/vllm-mlx.log &
+                #vllm-mlx serve mlx-community/gemma-4-e4b-it-8bit --port 48080 &>/tmp/vllm-mlx.log &
+                sleep 1
+                tail /tmp/vllm-mlx.log
+            fi
+        elif type ollama &>/dev/null; then
+            local _listening_pid="$(lsof -ti:11434 -s TCP:LISTEN)"
+            if [ -n "${_listening_pid}" ]; then
+                echo "# PID: ${_listening_pid} is running on port 11434" >&2
+            else
+                OLLAMA_NO_CLOUD="1" OLLAMA_FLASH_ATTENTION="1" OLLAMA_KV_CACHE_TYPE="q8_0" OLLAMA_NUM_PARALLEL="2" ollama serve &>/tmp/ollama.log &
+                sleep 3
+                tail $HOME/.ollama/logs/server.log
+                ollama list
+                echo "# how to stop 'killall Ollama && pkill ollama'" >&2
+            fi
         fi
 
         # NOTE: If pandasai or jupyterlab-ai, no webUI required

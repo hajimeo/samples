@@ -1,11 +1,13 @@
 {
   "defaultProvider": "omlx",
   "defaultModel": "Ornith-1.5-9B-MLX",
-  "lastChangelogVersion": "0.85.1",
+  "lastChangelogVersion": "1.1.0",
   "theme": "dark",
   "packages": [
     "git:github.com/coctostan/pi-superpowers",
     "npm:@wbline/pi-acp-jetbrain",
-    "npm:@rolemodel/pi-omlx"
+    "npm:max-context",
+    "npm:@luminascale/pi-zvec-grep",
+    "npm:pi-omlx-picker"
   ]
 }

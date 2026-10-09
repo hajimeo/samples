@@ -38,6 +38,7 @@ print(\"Specs/%s/%s/%s/%s/%s/%s.podspec.json\" % (h[0],h[1],h[2],n,v,n))"
 _ORIG_JAVA_HOME=""
 function _java_home() {
     local _prod_ver="${1}"
+    local _is_java11=false
     local _is_java17=false
     local _is_java21=false
     local _is_java25=false
@@ -47,6 +48,8 @@ function _java_home() {
         _is_java_bundled=true
     elif [[ "${_prod_ver}" =~ 3\.(7[1-9]\.|8[0-6]\.).+ ]]; then
         _is_java17=true
+    elif [[ "${_prod_ver}" =~ 3\.70.+ ]]; then
+        _is_java11=true
     elif [[ "${_prod_ver}" =~ 1\.2[1-9][0-9]\. ]]; then  # For IQ v21x+
         _is_java25=true
     elif [[ "${_prod_ver}" =~ 1\.20[4-9]\. ]]; then  # For IQ v204+
@@ -90,6 +93,17 @@ function _java_home() {
             echo "# export JAVA_HOME=\"${JAVA_HOME_17}\""
         else
             echo "# Make sure JAVA_HOME is set to Java 17"; sleep 3
+        fi
+    elif ${_is_java11}; then
+        if [ -d "${JAVA_HOME_11}" ]; then
+            _ORIG_JAVA_HOME="${JAVA_HOME}"
+            export JAVA_HOME="${JAVA_HOME_11}" #NEXUSTOOLS_JAVA_HOME="${JAVA_HOME_11}"
+            export INSTALL4J_JAVA_HOME="${JAVA_HOME_11}"
+            export INSTALL4J_JAVA_HOME_OVERRIDE="${JAVA_HOME_11}"
+            export APP_JAVA_HOME="${JAVA_HOME_11}"
+            echo "# export JAVA_HOME=\"${JAVA_HOME_11}\""
+        else
+            echo "# Make sure JAVA_HOME is set to Java 11"; sleep 3
         fi
     elif [ -n "${_ORIG_JAVA_HOME}" ]; then
         export JAVA_HOME="${_ORIG_JAVA_HOME}"
@@ -135,13 +149,13 @@ function _get_iq_url() {
                 _iq_url="http://${_iq_url%/}/"
             fi
         fi
-        if curl -m1 -f -s -I "${_iq_url%/}/" &>/dev/null; then
+        if curl -m3 -f -s -I "${_iq_url%/}/" &>/dev/null; then
             echo "${_iq_url%/}/"
             return
         fi
     fi
-    for _iq_url in "http://localhost:8070/" "http://m5mac:8070/" "https://nxiqha-k8s.standalone.localdomain/"; do
-        if curl -m1 -f -s -I "${_iq_url%/}/" &>/dev/null; then
+    for _iq_url in "http://localhost:8070/" "http://${REMOTE_AI_HOST:-"m5mac"}:8070/" "https://nxiqha-k8s.standalone.localdomain/"; do
+        if curl -m3 -f -s -I "${_iq_url%/}/" &>/dev/null; then
             echo "${_iq_url%/}/"
             return
         fi
@@ -173,15 +187,16 @@ function nxrmStart() {
     local _debug_port=5005
     local _debug_port_2nd=$((_debug_port+100))
     # If the debug port is NOT in use (can't check with curl as not http/https)
-    if lsof -nPi:${_debug_port} | grep -q -w "127.0.0.1:${_debug_port}"; then    # Mac's lsof doesn't work with -sTCP:LISTEN
-        if lsof -ti:${_debug_port_2nd} | grep -q -w "127.0.0.1:${_debug_port_2nd}"; then
+    if lsof -nPi:${_debug_port} | grep -q -w ":${_debug_port}"; then    # Mac's lsof doesn't work with -sTCP:LISTEN
+        if lsof -ti:${_debug_port_2nd} | grep -q -w ":${_debug_port_2nd}"; then
             echo "WARN: Debug port ${_debug_port} and ${_debug_port_2nd} are in use, so not enabling debug mode"; sleep 3;
         else
             _debug_port=${_debug_port_2nd}
             echo "WARN: Debug port ${_debug_port} is in use, so using ${_debug_port_2nd} instead"; sleep 3;
         fi
     fi
-    local _debug_opts="-Xrunjdwp:transport=dt_socket,server=y,address=${_debug_port},suspend=${_SUSPEND:-"n"}"
+    # TODO: Java 8 does not accept `address=*:`
+    local _debug_opts="-Xrunjdwp:transport=dt_socket,server=y,address=*:${_debug_port},suspend=${_SUSPEND:-"n"}"
     if [ -n "${_java_opts}" ]; then
         _java_opts="${_java_opts} ${_debug_opts}"
     else
@@ -460,14 +475,16 @@ function _find_app_port() {
         return 0
     fi
 
-    if ! lsof -ti:${_checking_port} -sTCP:LISTEN &>/dev/null; then
+    local _listening_pid="$(lsof -ti:${_checking_port} -sTCP:LISTEN 2>/dev/null)"
+    if [ -z "${_listening_pid}" ]; then
         _port="${_checking_port}"
     else
         # If no port specified, checking if the _checking_port to _up_to is available
         for _i in $(seq ${_start_from} ${_up_to}); do
             _p=$((_checking_port + _i))
             # Mac's netstat is too different, and lsof may not be available, but curl needs http or https
-            if ! lsof -ti:${_p} -sTCP:LISTEN &>/dev/null; then
+            _listening_pid="$(lsof -ti:${_p} -sTCP:LISTEN 2>/dev/null)"
+            if [ -z "${_listening_pid}" ]; then
                 if [ -n "${_skip_regex}" ] && [[ "${_p}" =~ ${_skip_regex} ]]; then
                     continue
                 fi
@@ -479,7 +496,8 @@ function _find_app_port() {
 
     if [ -z "${_port}" ] && [ -n "${_current_port}" ]; then
         # If couldn't find the port and if the current port is not in use, using the current port
-        if ! lsof -ti:${_current_port} -sTCP:LISTEN &>/dev/null; then
+        _listening_pid="$(lsof -ti:${_current_port} -sTCP:LISTEN 2>/dev/null)"
+        if [ -z "${_listening_pid}" ]; then
             _port="${_current_port}"
         fi
     fi
@@ -687,17 +705,14 @@ function nxrmDocker() {
 # _H2_WEB=Y iqStart
 function iqStart() {
     local _base_dir="${1:-"."}"
-    local _java_opts="${2-"-XX:ActiveProcessorCount=2 -Xmx4g -agentlib:jdwp=transport=dt_socket,server=y,address=5006,suspend=${_SUSPEND:-"n"}"}"
+    local _java_opts="${2-"-XX:ActiveProcessorCount=2 -Xmx4g -agentlib:jdwp=transport=dt_socket,server=y,address=*:5006,suspend=${_SUSPEND:-"n"}"}"
     local _h2_jar="${3:-"$HOME/IdeaProjects/libs/h2-1.4.196.jar"}"
     local _loader_jar="${4:-"$HOME/IdeaProjects/product-support-nexus-tools/nexustools/src/nexustools/booter/support-zip-loader-v2.jar"}"
     #local _java_opts=${@:2}
     local _java_opts_common="${_JAVA_OPTS_COMMON-"-XX:ActiveProcessorCount=2 -Xmx4g"}"
     #_java_opts_common="${_java_opts_common} -XX:+PrintGCDetails -XX:+PrintGCDateStamps -XX:+PrintGCCause -XX:+PrintClassHistogramAfterFullGC -XX:+UseGCLogFileRotation -XX:NumberOfGCLogFiles=10 -XX:GCLogFileSize=100M -Xloggc:/tmp/iq-gc_%p_%t.log"
 
-    local _jar_file="$(find -L "${_base_dir%/}" -maxdepth 2 -type f -name 'nexus-iq-server*.jar' 2>/dev/null | sort -V | tail -n1)"
-    if [ -z "${_jar_file}" ]; then
-        _jar_file="$(find -L "${_base_dir%/}" -maxdepth 3 -type f -name 'insight-brain-service*.jar' 2>/dev/null | sort -V | tail -n1)"
-    fi
+    local _jar_file="$(find -L "${_base_dir%/}" -maxdepth 3 -type f -name 'insight-brain-service*.jar' -o -name 'nexus-iq-server*.jar' 2>/dev/null | sort -V | tail -n1)"
     [ -z "${_jar_file}" ] && return 11
     local _cfg_file="./config.yml"
     if [ ! -s "${_cfg_file}" ]; then
@@ -726,7 +741,7 @@ function iqStart() {
         local _no_default_port=false
         if grep -qE '^\s+port: 8071$' "${_cfg_file}"; then
             local _port="$(_find_app_port "" "8071" "" "100")"
-            if [ "${_port}" != "8071" ]; then
+            if [ -n "${_port}" ] && [ "${_port}" != "8071" ]; then
                 echo "WARN: Changing IQ *ADMIN* port to *** '${_port}' *** from 8071 !!" >&2; sleep 3;
                 sed -i'.tmp' 's/port: 8071/port: '${_port}'/g' "${_cfg_file}"
             fi
@@ -736,7 +751,7 @@ function iqStart() {
         fi
         if grep -qE '^\s+port: 8070$' "${_cfg_file}"; then
             local _port="$(_find_app_port "" "8070" "" "100" "(8071|8171)")"
-            if [ "${_port}" != "8070" ]; then
+            if [ -n "${_port}" ] && [ "${_port}" != "8070" ]; then
                 echo "WARN: Changing IQ port to *** '${_port}' *** from 8070 !!" >&2; sleep 3;
                 sed -i'.tmp' 's/port: 8070/port: '${_port}'/g' "${_cfg_file}"
             fi
@@ -784,7 +799,17 @@ $(sed -n "/^  loggers:/,\$p" ${_cfg_file} | grep -v '^  loggers:')" > "${_cfg_fi
 
     _java_home "${_jar_file}"
     local _java="java"
-    [ -n "${JAVA_HOME}" ] && _java="${JAVA_HOME%/}/bin/java"
+    if [ -n "${JAVA_HOME}" ]; then
+        echo "Using java from JAVA_HOME=${JAVA_HOME}"
+        _java="${JAVA_HOME%/}/bin/java"
+    else
+        local _bundle_java="$(find . -executable -type f -name 'java' -path '*/bin/*' | sort -V | tail -n1)"
+        if [ -n "${_bundle_java}" ]; then
+            echo "Using java from bundled ${_bundle_java}"
+            _java="${_bundle_java}"
+        fi
+    fi
+
 
     if [ -n "${_CUSTOM_DNS}" ]; then
         # TODO: it stopped working with 127.0.0.1
