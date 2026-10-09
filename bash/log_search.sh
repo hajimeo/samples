@@ -533,16 +533,26 @@ function f_start_end_time(){
     #eg: for _f in \`ls\`; do f_start_end_time \$_f \"^${_DATE_FORMAT}.\d\d:\d\d:\d\d,\d\d\d\"; done | sort -t$'\\t' -k2)
     local _log="$1"
     local _date_regex="${2}"    # Use (). See below line for example
+    local _head_n="${3:-100}"
     # NOTE: not including milliseconds as some log wouldn't have
     [ -z "$_date_regex" ] && _date_regex="(^${_DATE_FORMAT}.\d\d:\d\d:\d\d|\[\d{2}[-/][a-zA-Z]{3}[-/]\d{4}.\d\d:\d\d:\d\d)"
 
-    local _start_date="$(_date2iso "$(timeout 180 rg -z -N -om1 -r '$1' "$_date_regex" ${_log})")" || return $?
+    if [ ! -s "${_log}" ]; then
+        echo "ERROR: ${_log} is empty or not readable" 1>&2
+        return 1
+    fi
+    local _start_date=""
+    if [ "${_log##*.}" = 'gz' ]; then
+        _start_date="$(_date2iso "$(_gunzip -c "${_log}" | head -n"${_head_n}" | rg -N -om1 -r '$1' "$_date_regex" )")" || return $?
+    else
+        _start_date="$(_date2iso "$(head -n"${_head_n}" "${_log}" | rg -z -N -om1 -r '$1' "$_date_regex" )")" || return $?
+    fi
     [ -z "${_start_date}" ] && echo "No start date found in ${_log}" 1>&2 && return 1
     local _extension="${_log##*.}"
     if [ "${_extension}" = 'gz' ]; then
-        local _end_date="$(_date2iso "`_gunzip -c ${_log} | _tac | rg -z -N -om1 -r '$1' "$_date_regex"`")" || return $?
+        local _end_date="$(_date2iso "`_gunzip -c ${_log} | _tac | head -n"${_head_n}" | rg -N -om1 -r '$1' "$_date_regex"`")" || return $?
     else
-        local _end_date="$(_date2iso "`_tac ${_log} | rg -z -N -om1 -r '$1' "$_date_regex"`")" || return $?
+        local _end_date="$(_date2iso "`_tac ${_log} | head -n"${_head_n}" | rg -N -om1 -r '$1' "$_date_regex"`")" || return $?
     fi
     local _start_int=`_date2int "${_start_date}"`
     local _end_int=`_date2int "${_end_date}"`
