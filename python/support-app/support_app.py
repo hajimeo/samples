@@ -57,8 +57,9 @@ def _config(key, default):
 # 0. Model and API Configuration
 # If the environment variable AI_API_URL is set, use it; otherwise default to localhost
 AI_API_URL = _config("AI_API_URL",
-                     "http://localhost:11435/v1/chat/completions")  # Ollama or any OpenAI-compatible server
+                     "http://localhost:11435/v1/chat/completions")  # Ollama or OpenAI-compatible endpoint
 AI_MODEL = _config("AI_MODEL", "apple-foundationmodel")
+AI_API_KEY = _config("AI_API_KEY", "apfel")
 
 # Default Log sources are matching all files under the current directory or `./log/` directory, and file name ends with `.log` or `.log.gz`
 # This can be overridden by LOG_APP_REGEX environment variable, which should be a regex pattern matching the log file paths to include.
@@ -288,11 +289,13 @@ if _large_files and not LOG_DATE_FROM and not LOG_DATE_TO:
             LOG_DATE_FROM = _gate_choice["from"]
             LOG_DATE_TO = _gate_choice["to"]
 
+_logs_view_ready = True
 try:
     setup_log_views(con, _matched_log_files)
 except Exception as e:
     # report error but continue; the user may not have logs yet
-    _warn("Some log files are missing or could not be read. The AI assistant may have limited data: " + str(e))
+    _logs_view_ready = False
+    _warn("Some log files could not be read. Please check if the directory is readable and writable. The AI assistant may have limited data: " + str(e))
 
 # Column layouts + regexes for nexus.log/clm-server.log and request.log/outbound-request.log,
 # so the AI can query real columns instead of regex-parsing the raw `line` itself.
@@ -549,8 +552,12 @@ def ask_local_ai(user_prompt):
         "stream": False
     }
 
+    headers = {"Content-Type": "application/json"}
+    if AI_API_KEY:
+        headers["Authorization"] = f"Bearer {AI_API_KEY}"
+
     try:
-        response = requests.post(ai_api_url, json=payload)
+        response = requests.post(ai_api_url, json=payload, headers=headers)
         return response.json()['choices'][0]['message']['content'].strip()
     except Exception as e:
         return f"Error connecting to AI API: {str(e)}"
@@ -709,6 +716,8 @@ else:
     col1, col2, col3 = st.columns(3)
 
     try:
+        if not _logs_view_ready:
+            raise RuntimeError("logs view was not created; see warning above")
         # Use DuckDB to quickly populate high-level dashboard metrics from the categorized logs
         total_logs = con.execute("SELECT COUNT(*) FROM logs").fetchone()[0]
         try:
@@ -752,5 +761,7 @@ else:
             "`./log/request.log` and `./log/outbound-request.log` (request/outbound), "
             "and `./log/audit.log` (audit) to populate the dashboards."
         )
-        st.error(f"Error reading logs or creating views: {str(e)}")
-        st.exception(e)
+        if _logs_view_ready:
+            # Unexpected failure after the view was created successfully — show full detail.
+            st.error(f"Error reading logs or creating views: {str(e)}")
+            st.exception(e)
