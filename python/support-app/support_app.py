@@ -17,6 +17,12 @@
 #   Set MCP_ENABLE=1 and run the Streamlit command above; the MCP server then also listens on
 #   MCP_HOST/MCP_PORT in a background thread of the same Streamlit process, sharing its DuckDB connection/cache.
 #
+# HOW TO RUN (pre-warm the Parquet cache only, no UI/server):
+#   python python/support_app.py --prewarm [--from "YYYY-MM-DD[ HH:MM:SS]"] [--to "YYYY-MM-DD[ HH:MM:SS]"]
+#   Builds/refreshes the __spt-app_db_cache Parquet cache for the given date/time range (or the full
+#   logs if --from/--to are omitted) and exits - useful to pre-build the cache before starting the
+#   UI/MCP server, or from a cron/CI job. --from/--to take priority over LOG_DATE_FROM/LOG_DATE_TO.
+#
 # RESTRICTING TO A DATE RANGE:
 #   Set LOG_DATE_FROM and/or LOG_DATE_TO ("YYYY-MM-DD" or "YYYY-MM-DD HH:MM:SS") to exclude log lines
 #   outside that range from every view (logs, application_logs, request_logs, audit_logs). Lines whose
@@ -34,6 +40,7 @@ import re
 import sys
 import tempfile
 import threading
+import time
 from datetime import datetime, timezone
 
 import streamlit as st
@@ -42,8 +49,19 @@ import requests
 
 ### Command arguments:
 MCP_MODE = "--mcp" in sys.argv[1:]
+PREWARM_MODE = "--prewarm" in sys.argv[1:]
 
-if not MCP_MODE:
+
+def _cli_arg_value(name):
+    """Returns the value following `name` in sys.argv (e.g. "--from" "2024-01-01"), or "" if absent."""
+    args = sys.argv[1:]
+    if name not in args:
+        return ""
+    idx = args.index(name)
+    return args[idx + 1] if idx + 1 < len(args) else ""
+
+
+if not MCP_MODE and not PREWARM_MODE:
     # Must be the very first Streamlit call in the script.
     st.set_page_config(page_title="Local SupportZip Analyzer", layout="wide")
 
@@ -79,7 +97,7 @@ LOG_CATEGORY_REGEXES = {
 def _warn(msg):
     """Reports a non-fatal setup problem to the console always, and to the Streamlit UI when running there."""
     print("WARNING: " + msg)
-    if not MCP_MODE:
+    if not MCP_MODE and not PREWARM_MODE:
         st.warning(msg)
 
 
@@ -90,19 +108,27 @@ def _warn(msg):
 _DATE_RE = re.compile(r'^(\d{4}-\d{2}-\d{2}(?:[ T]\d{2}:\d{2}:\d{2})?)(?: ?[+-]\d{2}:?\d{2})?$')
 
 
-def _validated_date_config(key):
-    value = _config(key, "").strip()
+def _validated_date_value(value, label):
+    """Validates an already-resolved date string (from env or CLI arg), warning and discarding it if invalid."""
+    value = value.strip()
     if not value:
         return ""
     m = _DATE_RE.match(value)
     if not m:
-        _warn(f"{key}={value!r} is not a valid 'YYYY-MM-DD' or 'YYYY-MM-DD HH:MM:SS' date; ignoring it.")
+        _warn(f"{label}={value!r} is not a valid 'YYYY-MM-DD' or 'YYYY-MM-DD HH:MM:SS' date; ignoring it.")
         return ""
     return m.group(1)
 
 
-LOG_DATE_FROM = _validated_date_config("LOG_DATE_FROM")
-LOG_DATE_TO = _validated_date_config("LOG_DATE_TO")
+def _validated_date_config(key):
+    return _validated_date_value(_config(key, ""), key)
+
+
+# --prewarm's --from/--to CLI args take priority over LOG_DATE_FROM/LOG_DATE_TO when both are given.
+LOG_DATE_FROM = _validated_date_value(_cli_arg_value("--from"), "--from") if PREWARM_MODE and _cli_arg_value(
+    "--from") else _validated_date_config("LOG_DATE_FROM")
+LOG_DATE_TO = _validated_date_value(_cli_arg_value("--to"), "--to") if PREWARM_MODE and _cli_arg_value(
+    "--to") else _validated_date_config("LOG_DATE_TO")
 
 # Size (per file) above which the user is asked whether to load the whole file or restrict to a
 # date/time range instead. Set via LOG_LARGE_FILE_THRESHOLD_MB env var (MB), default 100.
@@ -179,7 +205,14 @@ def materialize_view_via_parquet(con, view_name, select_sql, source_paths, cache
     os.makedirs(cache_dir, exist_ok=True)
     cache_file = os.path.join(cache_dir, f"{view_name}{_date_range_cache_suffix()}.parquet")
     if not _is_cache_fresh(cache_file, source_paths):
+        if PREWARM_MODE:
+            print(f"[prewarm] Building '{view_name}' from {len(source_paths)} file(s) -> {cache_file} ...")
+        _t0 = time.monotonic()
         con.execute(f"COPY ({select_sql}) TO '{cache_file}' (FORMAT PARQUET)")
+        if PREWARM_MODE:
+            print(f"[prewarm] Built '{view_name}' in {time.monotonic() - _t0:.1f}s.")
+    elif PREWARM_MODE:
+        print(f"[prewarm] '{view_name}' cache already fresh at {cache_file}, skipping.")
     con.execute(f"CREATE OR REPLACE VIEW {view_name} AS SELECT * FROM read_parquet('{cache_file}')")
 
 
@@ -236,16 +269,21 @@ def setup_log_views(con, file_categories):
 
 _matched_log_files = find_log_files()
 
+if PREWARM_MODE:
+    _total_matched = sum(len(paths) for paths in _matched_log_files.values())
+    print(f"[prewarm] Found {_total_matched} log file(s): "
+          + ", ".join(f"{cat}={len(paths)}" for cat, paths in _matched_log_files.items()))
+
 # If any matched file is very large and the user hasn't already opted into a date range via
 # LOG_DATE_FROM/LOG_DATE_TO, offer (Streamlit) or warn about (--mcp) restricting the range before
 # doing the expensive parse/cache pass below.
 _large_files = _find_large_files(_matched_log_files, LOG_LARGE_FILE_THRESHOLD_MB * 1024 * 1024)
 if _large_files and not LOG_DATE_FROM and not LOG_DATE_TO:
     _large_files_desc = ", ".join(f"{p} ({sz / (1024 * 1024):.0f} MB)" for p, sz in _large_files)
-    if MCP_MODE:
+    if MCP_MODE or PREWARM_MODE:
         _warn(
-            f"Large log file(s) detected: {_large_files_desc}. Loading in full - set LOG_DATE_FROM "
-            "and/or LOG_DATE_TO to restrict the range and speed this up."
+            f"Large log file(s) detected: {_large_files_desc}. Loading in full - set LOG_DATE_FROM/--from "
+            "and/or LOG_DATE_TO/--to to restrict the range and speed this up."
         )
     else:
         _gate_choice = st.session_state.get("large_file_choice")
@@ -644,7 +682,15 @@ def start_mcp_server_background(_con):
     return thread
 
 
-if MCP_MODE:
+if PREWARM_MODE:
+    _range_desc = f"[{LOG_DATE_FROM or '(start)'}, {LOG_DATE_TO or '(end)'}]" if (
+        LOG_DATE_FROM or LOG_DATE_TO) else "(full range)"
+    if _logs_view_ready:
+        print(f"Cache pre-warmed in {DB_CACHE_DIR!r} for date range {_range_desc}.")
+    else:
+        print(f"Cache pre-warm finished with warnings for date range {_range_desc} - see above.")
+        sys.exit(1)
+elif MCP_MODE:
     run_mcp_server(con)
 else:
     if _config("MCP_ENABLE", ""):
