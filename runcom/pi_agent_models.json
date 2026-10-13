@@ -4,12 +4,7 @@
       "baseUrl": "http://169.254.20.20:8000/v1",
       "api": "openai-completions",
       "apiKey": "admin123",
-      "models": [
-        { "id": "Qwen2.5-14B-Instruct-4bit" },
-        { "id": "Ornith-1.5-9B-MLX" },
-        { "id": "Ternary-Bonsai-27B-mlx-2bit" },
-        { "id": "Ternary-Bonsai-2-27B-MLX-oQ4-mtp" }
-      ]
+      "autoDiscover": true
     }
   }
 }

@@ -8,6 +8,6 @@
     "npm:@wbline/pi-acp-jetbrain",
     "npm:max-context",
     "npm:@luminascale/pi-zvec-grep",
-    "npm:pi-omlx-picker"
+    "npm:@rolemodel/pi-omlx"
   ]
 }
