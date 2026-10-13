@@ -117,7 +117,7 @@ _RESP_FILE=""
 # To upgrade (from ${_dirpath}/):
 #   tar -xvf $HOME/.nexus_executable_cache/nexus-3.
 # To install HA instances (port is automatic):
-#   _VER="3.91.1-03"
+#   _VER="3.96.4-01"
 #   _NXRM3_INSTALL_DIR="./nxrm_${_VER}_1st" _NEXUS_ENABLE_HA=Y f_install_nexus3 "${_VER}"
 #   _NXRM3_INSTALL_DIR="./nxrm_${_VER}_2nd" _NEXUS_ENABLE_HA=Y f_install_nexus3 "${_VER}"
 #   # Need to think about the location of the shared blob store. e.g. create a symlink between blobs dir.
@@ -3718,13 +3718,13 @@ function f_upload_dummy_raw() {
 }
 
 #dd if=/dev/urandom of=./test_random.data bs=1024 count=100
-#_DUMMY_FILE_PATH="./test_random.data" _FILE_PREFIX="/swrel/WSW_Internal_Release/EEBU_SW_REL/MXDRIVER/LINUX/concurrent" f_upload_dummies_raw
+#_DUMMY_FILE_PATH="./test_random.data" _UPLOAD_DIR="" _FILE_PREFIX="/swrel/WSW_Internal_Release/EEBU_SW_REL/MXDRIVER/LINUX/concurrent" f_upload_dummies_raw
 function f_upload_dummies_raw() {
     local __doc__="Upload text files into raw hosted repository by using f_upload_dummies"
     local _repo_name="${1:-"raw-hosted"}"
     local _how_many="${2:-"10"}"
     local _parallel="${3:-"5"}"
-    local _upload_dir="${4:-"${_UPLOAD_DIR:-"dummies"}"}"
+    local _upload_dir="${4-"${_UPLOAD_DIR-"dummies"}"}"
     local _file_prefix="${5:-"${_FILE_PREFIX}"}"   # If empty, random subdirs will be created
     local _file_suffix="${6:-".txt"}"
     local _sub_dir_depth="${7:-"${_SUB_DIR_DEPTH:-3}"}"
