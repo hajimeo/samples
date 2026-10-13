@@ -17,6 +17,12 @@ if ! curl -sf -m5 -o/dev/null http://${_BRIDGE_IP}:11435/v1/models -H "Authoriza
     #/usr/bin/fm serve --host 0.0.0.0 --port 14345 > /tmp/fm.log 2>&1 &
 fi
 
+# zvac-grep
+if /opt/homebrew/bin/zg server status | grep -q -w 'ready'; then
+    echo "# Stopping zvac-grep on $(hostname) ..." >&2; sleep 2
+    /opt/homebrew/bin/zg server off
+fi
+
 # For Apple Container k8s
 if ! /opt/homebrew/bin/container system status; then
     /opt/homebrew/bin/container system restart; sleep 10
