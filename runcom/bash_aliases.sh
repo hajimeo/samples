@@ -376,11 +376,14 @@ alias kapaWeb='open -na "Google Chrome" --args --user-data-dir=$HOME/.chromep/wo
 
 alias vncm5mac="open vnc://${REMOTE_AI_HOST}"
 
+
 ## AI related
 export _AI_DEFAULT_PROMPT="Read this ticket journal JSON file, then report your understanding of the current issue and how you investigate (No actual investigation yet)"
 alias zg-query='zg query --human'
-alias zg-idx-logs='zg index --embedding local/potion-code-16m-v2 -g "*.log*" -g "*.json" -g "!_filtered/*"'
-function zg-remote-idx() {
+#alias zg-idx-logs='zg index --embedding local/potion-retrieval-32m -g "*.log*" -g "*.json" -g "!_filtered/*"'
+# TODO: add _filtered. Somehow single-quotes didn't work
+#alias zg-idx-cfgs="zg index --embedding local/potion-retrieval-32m -g '*.yml' -g '*.yaml' -g '*.xml' -g '*.json' -g '*.properties'"
+function zg-remote-idx_not_in_use() {
     # If you provide an argument, it targets that subfolder. Otherwise, it indexes the main cases folder.
     local path="${1-"."}"
     local remote_host="${2:-"${REMOTE_AI_HOST}"}"  # Default to m5mac if no second argument is provided
@@ -390,7 +393,7 @@ function zg-remote-idx() {
     fi
     echo "Connecting to $remote_host to index '$path' ..." >&2
     # NOTE: if `.zvec-grep` is created from this PC, it contains the lock file of this PC.
-    local cmd="/opt/homebrew/bin/zg index --embedding local/potion-code-16m-v2 -g '*.log*' -g '*.json' -g '!_filtered/*'"
+    local cmd="/opt/homebrew/bin/zg index --mode auto --embedding local/potion-retrieval-32m -g '*.yml' -g '*.yaml' -g '*.xml' -g '*.json' -g '*.properties'"
     ssh "$remote_host" 'bash -l -c "cd '$path' && nohup '${cmd}' >> '$log_file' 2>&1 &"'
     echo "Executed ${cmd} on $remote_host. Check $log_file for progress." >&2
 }
@@ -410,8 +413,8 @@ function recommend_zg_index() {
     local _recommended_cmd=""
     if type zg-remote-idx &>/dev/null; then
         _recommended_cmd="zg-remote-idx"
-    elif type zg-idx-logs &>/dev/null; then
-        _recommended_cmd="zg-idx-logs"
+    elif type zg-idx-cfgs &>/dev/null; then
+        _recommended_cmd="zg-idx-cfgs"
     fi
 
     if [ -z  "${_recommended_cmd}" ]; then
@@ -431,7 +434,7 @@ function recommend_zg_index() {
 #alias claude-omlx='ANTHROPIC_BASE_URL="http://${REMOTE_AI_HOST}:8000" ANTHROPIC_AUTH_TOKEN="admin123" ANTHROPIC_DEFAULT_OPUS_MODEL="Ornith-1.5-9B-MLX" ANTHROPIC_DEFAULT_SONNET_MODEL="Ornith-1.5-9B-MLX" ANTHROPIC_DEFAULT_HAIKU_MODEL="Ornith-1.5-9B-MLX" API_TIMEOUT_MS=3000000 CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC=1 CLAUDE_CODE_DISABLE_UNKNOWN_MODEL_WINDOW_ENFORCEMENT=1 CLAUDE_CODE_MAX_CONTEXT_TOKENS=131072 claude --disallowedTools LSP --model Ornith-1.5-9B-MLX'
 #alias claude-local='ANTHROPIC_AUTH_TOKEN=ollama ANTHROPIC_API_KEY="" ANTHROPIC_BASE_URL="http://localhost:11434" CLAUDE_CODE_MAX_CONTEXT_TOKENS=32768 claude --model gemma4:e4b-mlx'
 function claude-ticket() {
-    recommend_zg_index
+    #recommend_zg_index
     echo "Running claude-ticket with *${ANTHROPIC_MODEL}* ..."
     sleep 2
     claude --model "${ANTHROPIC_MODEL:-"claude-sonnet-5[1m]"}" "${_AI_DEFAULT_PROMPT}"
@@ -443,7 +446,7 @@ function claude-ticket() {
 ##alias codex-ticket='codex --no-daemon "Read the ticket json file and understand the history and the current status, then report what you are going to investigate (no actual investigation yet)"'
 # To re-authenticate: codex mcp login atlassian
 function codex-ticket() {
-    recommend_zg_index
+    #recommend_zg_index
     echo "Running codex-ticket with *gpt-6-LUNA* (--no-daemon) ..."
     sleep 2
     codex -m "gpt-6-luna" --no-daemon "${_AI_DEFAULT_PROMPT}"
@@ -463,6 +466,7 @@ if [ -s "${HOME%/}/.mcps.json" ]; then
 fi
 if [ -s "$HOME/IdeaProjects/samples/python/support-app/support_app.py" ]; then
     alias spt-app="source $HOME/.venv_support/bin/activate && streamlit run $HOME/IdeaProjects/samples/python/support-app/support_app.py --client.toolbarMode=\"viewer\""
+    alias spt-app-prewarm="source $HOME/.venv_support/bin/activate && python $HOME/IdeaProjects/samples/python/support-app/support_app.py --prewarm"
     alias spt-app-client="source $HOME/.venv_support/bin/activate && streamlit run $HOME/IdeaProjects/samples/python/support-app/support_app.py"
 fi
 
@@ -540,7 +544,7 @@ function lns() {
     ln -v -s "$(realpath "$1")" "$2"
 }
 
-export UNZIPS_EXCLUDE="-x '*__MACOSX/*' -x '*nexus.huggingface.xet.presigned_url.sweep*'"
+
 function unzips() {
     local __doc__="unzip file(s) with ditto if available"
     # TODO: Should this use "ditto -xk {zip} ."?
@@ -548,9 +552,9 @@ function unzips() {
         local _dir_name="$(basename "${_f}" .zip)"
         # if the zip contains the directory, unzip to current dir, otherwise unzip to the directory
         if unzip -l "${_f}" | grep -q "${_dir_name}"; then
-            unzip "${_f}" ${UNZIPS_EXCLUDE}
+            unzip "${_f}" -x "*/nexus.huggingface.xet.presigned_url.sweep-*.log" "__MACOSX/*"
         else
-            unzip -d "${_dir_name}" "${_f}" ${UNZIPS_EXCLUDE}
+            unzip -d "${_dir_name}" "${_f}" -x "*/nexus.huggingface.xet.presigned_url.sweep-*.log" "__MACOSX/*"
         fi || return $?
     done
 }
@@ -1643,11 +1647,15 @@ function startCommonUtils() {
         timeout 10 open "smb://${REMOTE_AI_HOST}/Samsung_T5"
     fi
     if [ ! -d "$HOME/nfsmounts/Samsung_T5/hajime/nexus_executable_cache" ]; then
-        echo "# Restarting nfsd on ${REMOTE_AI_HOST} and showing exports ..." >&2
-        ssh -t ${REMOTE_AI_HOST} "sudo nfsd restart && sleep 3 && showmount -e"
+        #echo "# Restarting nfsd on ${REMOTE_AI_HOST} and showing exports ..." >&2
+        #timeout 30 ssh -t ${REMOTE_AI_HOST} "sudo nfsd restart && sleep 3 && showmount -e"
         echo "# Mounting ~/nfsmounts/Samsung_T5 from ${REMOTE_AI_HOST} ..." >&2
         # Using NFS is because some command line tool such as codex doesn't work with SMB without extra privileges.
         timeout 10 sudo mount -t nfs -o locallocks ${REMOTE_AI_HOST}:/Volumes/Samsung_T5 $HOME/nfsmounts/Samsung_T5
+        if [ $? -ne 0 ]; then
+            echo "# Failed to mount ~/nfsmounts/Samsung_T5 from ${REMOTE_AI_HOST}" >&2
+            echo " Use: ssh -t ${REMOTE_AI_HOST} \"sudo nfsd restart && sleep 3 && showmount -e\""; sleep 3
+        fi
     fi
 
     pgStatus start
@@ -1670,6 +1678,14 @@ function startCommonUtils() {
     #    tail /tmp/mcpo.log
     #fi
 
+    # zvac-grep
+    if ! /opt/homebrew/bin/zg server status | grep -q -w 'ready'; then
+        echo "# Starting zvac-grep on $(hostname) because it is not running" >&2; sleep 2
+        /opt/homebrew/bin/zg server on
+    fi
+    #echo "# Stopping zvac-grep on this PC ..." >&2; sleep 2
+    #/opt/homebrew/bin/zg server off
+
     if type apfel &>/dev/null; then
         # Check afel is running on port 11435, if not, start it
         local _listening_pid="$(lsof -ti:11435 -s TCP:LISTEN)"
@@ -1689,7 +1705,7 @@ function startCommonUtils() {
         gDrivePull "$gd_backup_dir" || sleep 5
         echo "INFO: zg index on ${gd_backup_dir} ..." >&2
         cd "${gd_backup_dir}" || return $?
-        # Somehow -T pdf does not work. Not using potion-code-16m-v2
+        # Somehow -T pdf does not work. Not using potion-retrieval-32m
         zg index --glob '!**/*.pdf' --embedding local/potion-retrieval-32m
         local _rc=$?
         cd - &>/dev/null
