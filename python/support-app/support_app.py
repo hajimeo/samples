@@ -22,6 +22,9 @@
 #   Builds/refreshes the __spt-app_db_cache Parquet cache for the given date/time range (or the full
 #   logs if --from/--to are omitted) and exits - useful to pre-build the cache before starting the
 #   UI/MCP server, or from a cron/CI job. --from/--to take priority over LOG_DATE_FROM/LOG_DATE_TO.
+#   A later plain run (Streamlit or --mcp) with no LOG_DATE_FROM/LOG_DATE_TO set reuses the range from
+#   the most recent --prewarm run automatically (recorded in __spt-app_db_cache/_prewarm_manifest.json),
+#   so it hits the same cache instead of re-parsing the full raw logs from scratch.
 #
 # RESTRICTING TO A DATE RANGE:
 #   Set LOG_DATE_FROM and/or LOG_DATE_TO ("YYYY-MM-DD" or "YYYY-MM-DD HH:MM:SS") to exclude log lines
@@ -35,6 +38,7 @@
 
 import concurrent.futures
 import gzip
+import json
 import os
 import re
 import sys
@@ -124,11 +128,52 @@ def _validated_date_config(key):
     return _validated_date_value(_config(key, ""), key)
 
 
+# Where parsed views get cached as Parquet - defined here (ahead of its other use below) so the
+# pre-warmed-range manifest can be consulted while resolving LOG_DATE_FROM/LOG_DATE_TO just below.
+DB_CACHE_DIR = _config("DB_CACHE_DIR", os.path.join(".", "__spt-app_db_cache"))
+_PREWARM_MANIFEST_FILE = os.path.join(DB_CACHE_DIR, "_prewarm_manifest.json")
+
+
+def _read_prewarm_manifest():
+    """Returns the (from, to) date range recorded by the last successful `--prewarm` run, or ("", "")
+    if there isn't one (missing/unreadable manifest, or that run covered the full range)."""
+    try:
+        with open(_PREWARM_MANIFEST_FILE) as f:
+            manifest = json.load(f)
+        return manifest.get("from", ""), manifest.get("to", "")
+    except (OSError, ValueError):
+        return "", ""
+
+
+def _write_prewarm_manifest(date_from, date_to):
+    """Records the date range `--prewarm` just (re)built the cache for, so a later plain run with no
+    LOG_DATE_FROM/LOG_DATE_TO/--from/--to can pick it up automatically instead of ignoring the cache
+    and re-parsing the full raw logs from scratch."""
+    os.makedirs(DB_CACHE_DIR, exist_ok=True)
+    with open(_PREWARM_MANIFEST_FILE, "w") as f:
+        json.dump({"from": date_from, "to": date_to}, f)
+
+
 # --prewarm's --from/--to CLI args take priority over LOG_DATE_FROM/LOG_DATE_TO when both are given.
-LOG_DATE_FROM = _validated_date_value(_cli_arg_value("--from"), "--from") if PREWARM_MODE and _cli_arg_value(
-    "--from") else _validated_date_config("LOG_DATE_FROM")
-LOG_DATE_TO = _validated_date_value(_cli_arg_value("--to"), "--to") if PREWARM_MODE and _cli_arg_value(
-    "--to") else _validated_date_config("LOG_DATE_TO")
+if PREWARM_MODE and (_cli_arg_value("--from") or _cli_arg_value("--to")):
+    LOG_DATE_FROM = _validated_date_value(_cli_arg_value("--from"), "--from")
+    LOG_DATE_TO = _validated_date_value(_cli_arg_value("--to"), "--to")
+else:
+    LOG_DATE_FROM = _validated_date_config("LOG_DATE_FROM")
+    LOG_DATE_TO = _validated_date_config("LOG_DATE_TO")
+    # No explicit range given anywhere (env, or --from/--to in --prewarm mode) - fall back to whatever
+    # range a prior `--prewarm` run recorded, so a plain start reuses that cache instead of rebuilding
+    # the full-range one from scratch. Doesn't apply to --prewarm itself: omitting --from/--to there
+    # means "prewarm the full range", not "repeat the last prewarm".
+    if not PREWARM_MODE and not LOG_DATE_FROM and not LOG_DATE_TO:
+        _manifest_from, _manifest_to = _read_prewarm_manifest()
+        if _manifest_from or _manifest_to:
+            LOG_DATE_FROM, LOG_DATE_TO = _manifest_from, _manifest_to
+            _warn(
+                f"No LOG_DATE_FROM/LOG_DATE_TO set - reusing the date range [{LOG_DATE_FROM or '(start)'}, "
+                f"{LOG_DATE_TO or '(end)'}] from the last `--prewarm` run's cache. Set LOG_DATE_FROM/"
+                "LOG_DATE_TO explicitly (or re-run --prewarm with no --from/--to) to use the full range instead."
+            )
 
 # Size (per file) above which the user is asked whether to load the whole file or restrict to a
 # date/time range instead. Set via LOG_LARGE_FILE_THRESHOLD_MB env var (MB), default 100.
@@ -176,11 +221,11 @@ def _date_range_cache_suffix():
     return re.sub(r'[^A-Za-z0-9_.-]', '-', key)
 
 
-# Where parsed views get cached as Parquet, so the (regex/JSON) parsing pass runs once instead of on every
-# query/Streamlit rerun (or MCP server restart), and repeat queries read from disk (with column pruning/predicate
-# pushdown) instead of holding every category fully materialized in memory at once.
-# Default location should be current directory. Can't be shared with other directories as the cache would conflict.
-DB_CACHE_DIR = _config("DB_CACHE_DIR", os.path.join(".", "__spt-app_db_cache"))
+# Parsed views get cached as Parquet under DB_CACHE_DIR (defined above), so the (regex/JSON) parsing pass
+# runs once instead of on every query/Streamlit rerun (or MCP server restart), and repeat queries read from
+# disk (with column pruning/predicate pushdown) instead of holding every category fully materialized in
+# memory at once. Default location is the current directory - can't be shared with other directories as
+# the cache would conflict.
 # Default should be OS's temp dir (e.g. /tmp/ if Linux, Mac, or %TEMP% if Windows)
 LOG_CACHE_DIR = _config("LOG_CACHE_DIR", os.path.join(tempfile.gettempdir(), "spt-app_log"))
 MCP_REQUEST_LOG_FILE = os.path.join(LOG_CACHE_DIR, "mcp_requests.log")
@@ -686,6 +731,7 @@ if PREWARM_MODE:
     _range_desc = f"[{LOG_DATE_FROM or '(start)'}, {LOG_DATE_TO or '(end)'}]" if (
         LOG_DATE_FROM or LOG_DATE_TO) else "(full range)"
     if _logs_view_ready:
+        _write_prewarm_manifest(LOG_DATE_FROM, LOG_DATE_TO)
         print(f"Cache pre-warmed in {DB_CACHE_DIR!r} for date range {_range_desc}.")
     else:
         print(f"Cache pre-warm finished with warnings for date range {_range_desc} - see above.")
