@@ -1,6 +1,6 @@
 # REQUIREMENTS:
 #   1. Python with the following packages installed; recommend to run in a virtual environment
-#       pip install -U streamlit duckdb requests "mcp[cli]<2" #watchdog
+#       pip install -U streamlit duckdb requests watchdog "mcp[cli]<2"
 #   2. Local (or remote) AI model that supports the OpenAI-compatible chat completions API.
 #      Default example is using `apfel --serve --port 11435`
 #
@@ -19,9 +19,12 @@
 #
 # HOW TO RUN (pre-warm the Parquet cache only, no UI/server):
 #   python python/support_app.py --prewarm [--from "YYYY-MM-DD[ HH:MM:SS]"] [--to "YYYY-MM-DD[ HH:MM:SS]"]
+#   python python/support_app.py --prewarm --time "YYYY-MM-DD HH:MM:SS"
 #   Builds/refreshes the __spt-app_db_cache Parquet cache for the given date/time range (or the full
-#   logs if --from/--to are omitted) and exits - useful to pre-build the cache before starting the
-#   UI/MCP server, or from a cron/CI job. --from/--to take priority over LOG_DATE_FROM/LOG_DATE_TO.
+#   logs if --from/--to/--time are omitted) and exits - useful to pre-build the cache before starting
+#   the UI/MCP server, or from a cron/CI job. --time is a shorthand for "--from (time - 1h) --to
+#   (time + 1h)" and takes priority over --from/--to if both are given; --from/--to (or --time) take
+#   priority over LOG_DATE_FROM/LOG_DATE_TO.
 #   A later plain run (Streamlit or --mcp) with no LOG_DATE_FROM/LOG_DATE_TO set reuses the range from
 #   the most recent --prewarm run automatically (recorded in __spt-app_db_cache/_prewarm_manifest.json),
 #   so it hits the same cache instead of re-parsing the full raw logs from scratch.
@@ -45,7 +48,7 @@ import sys
 import tempfile
 import threading
 import time
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 import streamlit as st
 import duckdb
@@ -128,6 +131,29 @@ def _validated_date_config(key):
     return _validated_date_value(_config(key, ""), key)
 
 
+def _resolve_cli_from_to():
+    """Resolves --from/--to from the CLI args, with --time "YYYY-MM-DD HH:MM:SS" as a convenience for
+    "--from (time - 1h) --to (time + 1h)". --time is validated and takes priority over --from/--to if
+    both are given (with a warning), since specifying both is almost certainly a mistake."""
+    time_value = _cli_arg_value("--time")
+    from_value = _cli_arg_value("--from")
+    to_value = _cli_arg_value("--to")
+    if not time_value:
+        return from_value, to_value
+    validated_time = _validated_date_value(time_value, "--time")
+    if not validated_time:
+        return from_value, to_value
+    if from_value or to_value:
+        _warn("--time and --from/--to both given; --time takes priority and --from/--to are ignored.")
+    fmt = '%Y-%m-%d %H:%M:%S' if ' ' in validated_time else '%Y-%m-%d'
+    center = datetime.strptime(validated_time, fmt)
+    out_fmt = '%Y-%m-%d %H:%M:%S'
+    return (center - timedelta(hours=1)).strftime(out_fmt), (center + timedelta(hours=1)).strftime(out_fmt)
+
+
+_CLI_FROM, _CLI_TO = _resolve_cli_from_to()
+
+
 # Where parsed views get cached as Parquet - defined here (ahead of its other use below) so the
 # pre-warmed-range manifest can be consulted while resolving LOG_DATE_FROM/LOG_DATE_TO just below.
 DB_CACHE_DIR = _config("DB_CACHE_DIR", os.path.join(".", "__spt-app_db_cache"))
@@ -154,10 +180,10 @@ def _write_prewarm_manifest(date_from, date_to):
         json.dump({"from": date_from, "to": date_to}, f)
 
 
-# --prewarm's --from/--to CLI args take priority over LOG_DATE_FROM/LOG_DATE_TO when both are given.
-if PREWARM_MODE and (_cli_arg_value("--from") or _cli_arg_value("--to")):
-    LOG_DATE_FROM = _validated_date_value(_cli_arg_value("--from"), "--from")
-    LOG_DATE_TO = _validated_date_value(_cli_arg_value("--to"), "--to")
+# --prewarm's --from/--to (or --time) CLI args take priority over LOG_DATE_FROM/LOG_DATE_TO when given.
+if PREWARM_MODE and (_CLI_FROM or _CLI_TO):
+    LOG_DATE_FROM = _validated_date_value(_CLI_FROM, "--from")
+    LOG_DATE_TO = _validated_date_value(_CLI_TO, "--to")
 else:
     LOG_DATE_FROM = _validated_date_config("LOG_DATE_FROM")
     LOG_DATE_TO = _validated_date_config("LOG_DATE_TO")
@@ -236,12 +262,28 @@ MCP_REQUEST_LOG_FILE = os.path.join(LOG_CACHE_DIR, "mcp_requests.log")
 con = duckdb.connect(database=':memory:')
 
 
+def _cache_sources_file(cache_file):
+    """Sidecar file recording the exact source paths a cache file was built from, so a later run with a
+    different set of matched files (e.g. audit.log appearing after `logs` was first cached from
+    application-only files) invalidates the cache instead of silently reusing stale/incomplete data -
+    mtime comparison alone can't detect that, since every individual mtime can still be <= cache_mtime."""
+    return cache_file + ".sources.json"
+
+
 def _is_cache_fresh(cache_file, source_paths):
-    """True if cache_file exists and is newer than every file in source_paths."""
+    """True if cache_file exists, is newer than every file in source_paths, and was built from exactly
+    this set of source paths (not some other/older set)."""
     if not os.path.isfile(cache_file):
         return False
     cache_mtime = os.path.getmtime(cache_file)
-    return all(os.path.getmtime(p) <= cache_mtime for p in source_paths if os.path.isfile(p))
+    if not all(os.path.getmtime(p) <= cache_mtime for p in source_paths if os.path.isfile(p)):
+        return False
+    try:
+        with open(_cache_sources_file(cache_file)) as f:
+            recorded_paths = json.load(f)
+    except (OSError, ValueError):
+        return False  # no record of what built this cache - don't trust it
+    return sorted(recorded_paths) == sorted(source_paths)
 
 
 def materialize_view_via_parquet(con, view_name, select_sql, source_paths, cache_dir=DB_CACHE_DIR):
@@ -254,6 +296,8 @@ def materialize_view_via_parquet(con, view_name, select_sql, source_paths, cache
             print(f"[prewarm] Building '{view_name}' from {len(source_paths)} file(s) -> {cache_file} ...")
         _t0 = time.monotonic()
         con.execute(f"COPY ({select_sql}) TO '{cache_file}' (FORMAT PARQUET)")
+        with open(_cache_sources_file(cache_file), "w") as f:
+            json.dump(source_paths, f)
         if PREWARM_MODE:
             print(f"[prewarm] Built '{view_name}' in {time.monotonic() - _t0:.1f}s.")
     elif PREWARM_MODE:
