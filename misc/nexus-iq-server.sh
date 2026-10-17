@@ -28,7 +28,7 @@ JAVA="java"
 # If JAVA_HOME is specified, use it.
 [ -n "${JAVA_HOME}" ] && JAVA="${JAVA_HOME%/}/bin/java"
 
-# Minimum recommended options (but not using -XX:-OmitStackTraceInFastThrow as this is for my test server)
+# Minimum recommended options (but not using '-XX:-OmitStackTraceInFastThrow', which is helpful for troubleshooting)
 JAVA_OPTIONS="-Xms${_NXIQ_HEAPSIZE:-"2G"} -Xmx${_NXIQ_HEAPSIZE:-"2G"} -XX:ActiveProcessorCount=2"
 # For kill -3 (too see the stdout, use journalctl _PID=<PID>). Also jvm_%p.log works too
 JAVA_OPTIONS="${JAVA_OPTIONS} -XX:+UnlockDiagnosticVMOptions -XX:+LogVMOutput -XX:LogFile=${NEXUS_IQ_SERVER_HOME}/log/jvm.log"
