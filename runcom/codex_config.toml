@@ -1,0 +1,384 @@
+model = "gpt-6.1-sol"
+notify = [
+    "/Users/hosako/.codex/computer-use/Codex Computer Use.app/Contents/SharedSupport/SkyComputerUseClient.app/Contents/MacOS/SkyComputerUseClient",
+    "turn-ended",
+]
+model_reasoning_effort = "medium"
+
+[analytics]
+enabled = false
+
+[model_providers.remote-ollama]
+name = "Remote Ollama Server"
+base_url = "http://Hajimes-MacBookM5.local:11434/v1"
+wire_api = "responses"
+requires_openai_auth = false
+
+[sandbox_workspace_write]
+network_access = true
+
+[projects."/Users/hosako"]
+trust_level = "untrusted"
+
+[projects."/Users/hosako/Documents/cases_local"]
+trust_level = "trusted"
+
+[projects."/Users/hosako/Documents/cases_local/*"]
+trust_level = "trusted"
+
+[projects."/Volumes/Samsung_T5/hajime/cases/*"]
+trust_level = "trusted"
+
+[projects."/Users/hosako/IdeaProjects/samples"]
+trust_level = "trusted"
+
+[projects."/Users/hosako/Desktop/temp"]
+trust_level = "trusted"
+
+[projects."/Users/hosako/Documents/Codex/2026-07-24/skill"]
+trust_level = "trusted"
+
+[projects."/Users/hosako/Documents/tests/*"]
+trust_level = "trusted"
+
+[projects."/Users/hosako/Documents"]
+trust_level = "trusted"
+
+[projects."/Users/hosako/IdeaProjects/nexus-internal"]
+trust_level = "trusted"
+
+[projects."/Users/hosako/Documents/cases_local/126914"]
+trust_level = "trusted"
+
+[projects."/Users/hosako/Documents/cases_local/126890"]
+trust_level = "trusted"
+
+[projects."/Users/hosako/Documents/cases_local/127030"]
+trust_level = "trusted"
+
+[projects."/Users/hosako/Documents/cases_local/126624"]
+trust_level = "trusted"
+
+[projects."/Users/hosako/Documents/cases_local/127031"]
+trust_level = "trusted"
+
+[projects."/Users/hosako/Documents/cases_local/126556"]
+trust_level = "trusted"
+
+[projects."/Users/hosako/Documents/cases_local/127113"]
+trust_level = "trusted"
+
+[projects."/Users/hosako/Documents/cases_local/125552"]
+trust_level = "trusted"
+
+[projects."/Users/hosako/Documents/cases_local/127165"]
+trust_level = "trusted"
+
+[projects."/Users/hosako/Documents/cases_local/127154"]
+trust_level = "trusted"
+
+[projects."/Users/hosako/Documents/cases_local/127086"]
+trust_level = "trusted"
+
+[projects."/Users/hosako/Documents/cases_local/127239"]
+trust_level = "trusted"
+
+[projects."/Users/hosako/Documents/cases_local/127182"]
+trust_level = "trusted"
+
+[projects."/Users/hosako/Documents/cases_local/127197"]
+trust_level = "trusted"
+
+[projects."/Users/hosako/Documents/cases_local/127225"]
+trust_level = "trusted"
+
+[projects."/Users/hosako/Documents/cases_local/127250"]
+trust_level = "trusted"
+
+[projects."/Users/hosako/Documents/cases_local/127285"]
+trust_level = "trusted"
+
+[projects."/Volumes/Samsung_T5/hajime/cases/127200"]
+trust_level = "trusted"
+
+[projects."/Volumes/Samsung_T5/hajime/cases/127203"]
+trust_level = "trusted"
+
+[projects."/Volumes/Samsung_T5/hajime/cases/127207"]
+trust_level = "trusted"
+
+[projects."/Volumes/Samsung_T5/hajime/cases/127341"]
+trust_level = "trusted"
+
+[projects."/Volumes/Samsung_T5/hajime/cases/127090"]
+trust_level = "trusted"
+
+[projects."/Volumes/Samsung_T5/hajime/cases/127420"]
+trust_level = "trusted"
+
+[projects."/Volumes/Samsung_T5/hajime/cases/127262"]
+trust_level = "trusted"
+
+[projects."/Volumes/Samsung_T5/hajime/cases/127436"]
+trust_level = "trusted"
+
+[projects."/Volumes/Samsung_T5/hajime/cases/127452"]
+trust_level = "trusted"
+
+[projects."/Volumes/Samsung_T5/hajime/cases/126556-b/SendSafely_download_D18L-L7UB"]
+trust_level = "trusted"
+
+[projects."/Volumes/Samsung_T5/hajime/cases/127499"]
+trust_level = "trusted"
+
+[projects."/Volumes/Samsung_T5/hajime/cases/126556-c"]
+trust_level = "trusted"
+
+[projects."/Volumes/Samsung_T5/hajime/cases"]
+trust_level = "trusted"
+
+[projects."/Volumes/Samsung_T5/hajime/cases/127555"]
+trust_level = "trusted"
+
+[projects."/Volumes/Samsung_T5/hajime/cases/127568"]
+trust_level = "trusted"
+
+[projects."/Volumes/Samsung_T5/hajime/cases/127569"]
+trust_level = "trusted"
+
+[projects."/Volumes/Samsung_T5/hajime/cases/127566"]
+trust_level = "trusted"
+
+[projects."/Volumes/Samsung_T5/hajime/cases/127555/new-zips"]
+trust_level = "trusted"
+
+[projects."/Volumes/Samsung_T5/hajime/cases/126556-d"]
+trust_level = "trusted"
+
+[projects."/Volumes/Samsung_T5/hajime/cases/127505"]
+trust_level = "trusted"
+
+[projects."/Volumes/Samsung_T5/hajime/cases/127482"]
+trust_level = "trusted"
+
+[projects."/Volumes/Samsung_T5/hajime/cases/127680"]
+trust_level = "trusted"
+
+[projects."/Volumes/Samsung_T5/hajime/cases/127279"]
+trust_level = "trusted"
+
+[projects."/Volumes/Samsung_T5/hajime/cases/127750"]
+trust_level = "trusted"
+
+[projects."/Volumes/Samsung_T5/hajime/cases/127750/pg-logs-rds-noncore"]
+trust_level = "trusted"
+
+[projects."/Volumes/Samsung_T5/hajime/cases/127691"]
+trust_level = "trusted"
+
+[projects."/Volumes/Samsung_T5/hajime/cases/127215"]
+trust_level = "trusted"
+
+[projects."/Volumes/Samsung_T5/hajime/cases/127565"]
+trust_level = "trusted"
+
+[mcp_servers.playwright]
+command = "npx"
+args = ["@playwright/mcp@latest"]
+enabled = false
+
+[mcp_servers.kb-pdfs2]
+command = "/Users/hosako/.pyvenv/bin/python3"
+args = [
+        "-W",
+        "ignore",
+        "/Users/hosako/IdeaProjects/work/demo-mcp/zvec-grep/zg-query.py",
+        "/Users/hosako/Documents/sonatype"
+      ]
+
+[mcp_servers.node_repl]
+args = []
+command = "/Applications/ChatGPT.app/Contents/Resources/cua_node/bin/node_repl"
+startup_timeout_sec = 120
+
+[mcp_servers.node_repl.env]
+NODE_REPL_NATIVE_PIPE_CONNECT_TIMEOUT_MS = "1000"
+NODE_REPL_NODE_MODULE_DIRS = "/Applications/ChatGPT.app/Contents/Resources/cua_node/lib/node_modules"
+NODE_REPL_NODE_PATH = "/Applications/ChatGPT.app/Contents/Resources/cua_node/bin/node"
+NODE_REPL_TRUSTED_CODE_PATHS = "/Users/hosako/.codex:/Applications/ChatGPT.app/Contents/Resources/cua_node/lib/node_modules"
+CODEX_HOME = "/Users/hosako/.codex"
+BROWSER_USE_AVAILABLE_BACKENDS = "chrome,iab,mcpapps"
+BROWSER_USE_TINYSKY_ENABLED = "1"
+NODE_REPL_INSTRUCTIONS_USE_CASE_BROWSER = ""
+NODE_REPL_INSTRUCTIONS_USE_CASE_CHROME = ""
+NODE_REPL_INSTRUCTIONS_USE_CASE_COMPUTER_USE = ""
+BROWSER_USE_CODEX_APP_BUILD_FLAVOR = "prod"
+BROWSER_USE_CODEX_APP_VERSION = "26.1007.30912"
+NODE_REPL_TRUSTED_SERVICES = '{"browser":"/Users/hosako/.codex/plugins/cache/openai-bundled/browser/26.1007.30912/scripts/browser-service.mjs","sky":"@oai/sky/service"}'
+SKY_CUA_SERVICE_PATH = "/Users/hosako/.codex/computer-use/Codex Computer Use.app"
+CODEX_CLI_PATH = "/Applications/ChatGPT.app/Contents/Resources/codex-cli/CodexCLI.app/Contents/MacOS/codex"
+
+[mcp_servers.atlassian2]
+command = "npx"
+args = ["-y", "mcp-remote@0.1.38", "https://mcp.atlassian.com/v1/mcp/authv2"]
+enabled = false
+
+[mcp_servers.atlassian2.env]
+ATLASSIAN_URL = "https://sonatype.atlassian.net"
+cloudId = "https://sonatype.atlassian.net"
+
+[mcp_servers.computer-use]
+command = "./Codex Computer Use.app/Contents/SharedSupport/SkyComputerUseClient.app/Contents/MacOS/SkyComputerUseClient"
+args = ["mcp"]
+cwd = "."
+enabled = false
+
+[mcp_servers.zvec_grep]
+command = "zg"
+args = ["server", "--stdio"]
+tool_timeout_sec = 600.0
+default_tools_approval_mode = "approve"
+
+[mcp_servers.sona-mcp]
+url = "https://sonatype.mcp.kapa.ai"
+
+[mcp_servers.sona-mcp.tools.search_sonatype_knowledge_sources]
+approval_mode = "approve"
+
+[mcp_servers.server-memory]
+command = "npx"
+args = ["-y", "@modelcontextprotocol/server-memory@2026.8.31"]
+
+[mcp_servers.server-memory.env]
+MEMORY_FILE_PATH = "/Users/hosako/.mms/memory.json"
+
+[mcp_servers.intellij-index]
+url = "http://127.0.0.1:29170/index-mcp/streamable-http"
+
+[mcp_servers.intellij-index.tools.ide_index_status]
+approval_mode = "approve"
+
+[mcp_servers.intellij-index.tools.ide_search_text]
+approval_mode = "approve"
+
+[mcp_servers.intellij-index.tools.ide_find_class]
+approval_mode = "approve"
+
+[mcp_servers.intellij-index.tools.ide_find_definition]
+approval_mode = "approve"
+
+[mcp_servers.aha-ideas]
+enabled = false
+url = "https://sonatype.aha.io/api/v1/mcp"
+
+[notice.model_migrations]
+"gpt-5.2-codex" = "gpt-5.3-codex"
+"gpt-5.3-codex" = "gpt-5.4"
+
+[plugins."github@openai-curated"]
+enabled = true
+
+[plugins."documents@openai-primary-runtime"]
+enabled = false
+
+[plugins."spreadsheets@openai-primary-runtime"]
+enabled = false
+
+[plugins."presentations@openai-primary-runtime"]
+enabled = false
+
+[plugins."google-drive@openai-curated"]
+enabled = false
+
+[plugins."atlassian-rovo@openai-curated"]
+enabled = true
+
+[plugins."browser@openai-bundled"]
+enabled = true
+
+[plugins."chrome@openai-bundled"]
+enabled = true
+
+[plugins."pdf@openai-primary-runtime"]
+enabled = true
+
+[plugins."visualize@openai-bundled"]
+enabled = true
+
+[plugins."template-creator@openai-primary-runtime"]
+enabled = true
+
+[plugins."atlassian@claude-plugins-official"]
+enabled = true
+
+[plugins."superpowers@claude-plugins-official"]
+enabled = true
+
+[plugins."codex-app-tools@openai-bundled"]
+enabled = true
+
+[plugins."unified-computer-use@openai-bundled"]
+enabled = true
+
+[plugins."code-review@openai-bundled"]
+enabled = true
+
+[plugins."computer-use@openai-bundled"]
+enabled = true
+
+[marketplaces.openai-bundled]
+source_type = "local"
+source = "/Users/hosako/.codex/.tmp/bundled-marketplaces/openai-bundled"
+
+[marketplaces.openai-primary-runtime]
+source_type = "local"
+source = "/Users/hosako/.cache/codex-runtimes/codex-primary-runtime/plugins/openai-primary-runtime"
+
+[marketplaces.claude-plugins-official]
+last_updated = "2026-08-23T22:13:27Z"
+last_revision = "340e33aef211d95769d252324854497af871dafe"
+source_type = "git"
+source = "https://github.com/anthropics/claude-plugins-official.git"
+
+[desktop]
+default-service-tier = "fast"
+followUpQueueMode = "queue"
+dock-icon-preference = "codex-system"
+conversationDetailMode = "STEPS_COMMANDS"
+ambient-suggestions-enabled = true
+
+[desktop.open-in-target-preferences]
+global = "fileManager"
+
+[desktop.open-in-target-preferences.perPath]
+"/Users/hosako" = "terminal"
+"/Volumes/Samsung_T5/hajime/cases/122662" = "fileManager"
+
+[features]
+js_repl = false
+
+[tui]
+screen_reader_detection_done = true
+
+[tui.model_availability_nux]
+"gpt-5.5" = 1
+"gpt-5.6-sol" = 1
+"gpt-6.1-sol" = 4
+
+[shell_environment_policy.set]
+NODE_REPL_TRUSTED_BROWSER_CLIENT_SHA256S = "9230e2bd8b24b7ac7a0ba6774c64bf0d78ecdabbdd91d0ed627b02a587bae2df"
+
+[hooks.state]
+
+[hooks.state."/Users/hosako/.codex/hooks.json:user_prompt_submit:0:0"]
+trusted_hash = "sha256:385b0f46dec20b89bb0510829d63c8dd37d2c41a6706ab0bc38079affe75111a"
+
+[hooks.state."/Users/hosako/.codex/hooks.json:stop:0:0"]
+trusted_hash = "sha256:24b4bd3516c65a124cb62ea27873842797ee9669b6e9b431cd787f1a3c6c5a66"
+
+[hooks.state."/Users/hosako/.codex/hooks.json:stop:0:1"]
+trusted_hash = "sha256:7e053feb72ae069512f2cbdce909745620165a5d167c5bf04dad3e3137f7b3af"
+
+[apps.connector_69a601eef7a08191be87417cfa1c5c99.tools."ask_sona_internal_knowledge.search_sonatype_knowledge_sources"]
+approval_mode = "approve"
+# ZVEC_GREP_END
