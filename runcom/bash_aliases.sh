@@ -559,6 +559,32 @@ function unzips() {
     done
 }
 
+function unzip_excl() {
+    local __doc__="unzip one zip but exclude some files"
+    local _zip_file="${1}"
+    local _excl_regex="${2}"    # Used against "unzip -l" output. Example: "^\s*\d{10,} .+audit" for excluding large audit.
+    # Generate -x option for unzip
+    unzip -l "${_zip_file}" | rg "${_excl_regex}" > /tmp/unzip_excl_$$.txt
+    local _excl_files=($(awk '{print $4}' /tmp/unzip_excl_$$.txt))
+    local _excl_opts="\"*/nexus.huggingface.xet.presigned_url.sweep-*.log\" \"__MACOSX/*\""
+    for _f in "${_excl_files[@]}"; do
+        [ -n "${_f}" ] && _excl_opts="${_excl_opts} \"${_f}\""
+    done
+    local _cmd="unzip \"${_zip_file}\" -x ${_excl_opts}"
+    # Ask if it's OK to proceed if there are many files to exclude
+    echo "In addition to the default, excluding below files as well." >&2
+    echo "--------------------------------------------------------" >&2
+    cat /tmp/unzip_excl_$$.txt >&2
+    echo "--------------------------------------------------------" >&2
+    echo "Proceed? (y/n): " >&2
+    read -r _answer
+    if [[ ! "${_answer}" =~ ^[Yy]$ ]]; then
+        echo "Aborted." >&2
+        return 1
+    fi
+    eval "${_cmd}"
+}
+
 function random_list() {
     eval "IFS=\" \" read -a _list <<< \"${1}\""
     local _rand=$(($RANDOM % ${#_list[@]}))
@@ -1123,7 +1149,7 @@ function listLargeDirs() {
             local _parent_dir="${BASH_REMATCH[2]}"
             local _dir_name="${BASH_REMATCH[3]}"
             local _url=""
-            if [[ "${_dir_name}" =~ ^[0-9][0-9][0-9][0-9][0-9]+$ ]]; then
+            if [[ "${_dir_name}" =~ ^[0-9][0-9][0-9][0-9][0-9][0-9] ]]; then
                 _url="https://sonatype.zendesk.com/agent/tickets/${_dir_name}"
             fi
             echo -e "${_size}\t$(ls -dl "${_parent_dir}/${_dir_name}" | cut -d' ' -f9-)\t${_url}"
