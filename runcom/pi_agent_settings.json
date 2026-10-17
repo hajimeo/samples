@@ -1,7 +1,7 @@
 {
   "defaultProvider": "omlx",
   "defaultModel": "Ornith-1.5-9B-MLX",
-  "lastChangelogVersion": "1.1.0",
+  "lastChangelogVersion": "1.2.0",
   "theme": "dark",
   "packages": [
     "git:github.com/coctostan/pi-superpowers",
