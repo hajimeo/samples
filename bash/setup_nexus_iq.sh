@@ -1965,7 +1965,12 @@ function f_cli() {
         _iq_url="$(_get_iq_url)" || return $?
     fi
     if [ -z "${_iq_cli_ver}" ]; then
-        _iq_cli_ver="$(curl -m3 -sf "${_iq_url%/}/rest/product/version" | python -c "import sys,json;a=json.loads(sys.stdin.read());print(a['version'])")"
+        _iq_cli_ver="$(curl -m3 -sf "${_iq_url%/}/rest/product/version" | python -c "import sys,json;a=json.loads(sys.stdin.read());print(a['version'])" 2>/dev/null)"
+        if [ -z "${_iq_cli_ver}" ]; then
+            _log "WARN" "Failed to get the IQ CLI version from ${_iq_url%/}/rest/product/version. Using another IQ URL to get the version ..."
+            _iq_url="$(_get_iq_url)" || return $?
+            _iq_cli_ver="$(curl -m3 -sf "${_iq_url%/}/rest/product/version" | python -c "import sys,json;a=json.loads(sys.stdin.read());print(a['version'])" 2>/dev/null)"
+        fi
     fi
     local _java="java"
     if [[ "${_iq_cli_ver}" =~ ^1\.1[89] ]] && [ -n "${JAVA_HOME_17}" ]; then

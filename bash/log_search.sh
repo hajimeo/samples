@@ -2254,32 +2254,28 @@ function _search_json() {
 function _search_size_in_bytes() {
     local _search_prefix="$1"   # ^["]?shared_buffers\b
     local _search_target="$2"   # -g dbFileInfo.txt
-    local _result="$(rg --no-filename -i "${_search_prefix}[^0-9]*([0-9]+)\s*TB\b" -o -r '$1' ${_search_target})"
-    if [ -n "${_result}" ]; then
-        echo "$(bc <<<"${_result} * 1099511627776")"
-        return
-    fi
-    _result="$(rg --no-filename -i "${_search_prefix}[^0-9]*([0-9]+)\s*GB\b" -o -r '$1' ${_search_target})"
-    if [ -n "${_result}" ]; then
-        echo "$(bc <<<"${_result} * 1073741824")"
-        return
-    fi
-    _result="$(rg --no-filename -i "${_search_prefix}[^0-9]*([0-9]+)\s*MB\b" -o -r '$1' ${_search_target})"
-    if [ -n "${_result}" ]; then
-        echo "$(bc <<<"${_result} * 1048576")"
-        return
-    fi
-    _result="$(rg --no-filename -i "${_search_prefix}[^0-9]*([0-9]+)\s*KB\b" -o -r '$1' ${_search_target})"
-    if [ -n "${_result}" ]; then
-        echo "$(bc <<<"${_result} * 1024")"
-        return
-    fi
-    # Not perfect but assuming as bytes
-    _result="$(rg --no-filename -i "${_search_prefix}[^0-9]*([0-9]+)\s*B?\b" -o -r '$1' ${_search_target})"
-    if [ -n "${_result}" ]; then
-        echo "$(bc <<<"${_result} * 1024")"
-        return
-    fi
+    local _unit_num="$3"   # Used only value doesn't contain unit string (KB,MB,GB,TB). Eg. block_size: 8192
+    # Get numeric value and unit (TB, GB, MB, KB, B) separately
+    # Not considering duplicates
+    rg --no-filename -m1 "${_search_prefix}[^0-9]*([0-9]+)\s*([kmgtKMGT]?[bB]?)\b" -o -r '$1 $2' ${_search_target} | while read -r _num _unit; do
+        # If _unit is not empty, convert to capital letters
+        _unit="$(echo "${_unit}" | tr '[:lower:]' '[:upper:]')"
+        case "${_unit}" in
+            TB) echo "$(bc <<<"${_num} * 1099511627776")"; return ;;
+            GB) echo "$(bc <<<"${_num} * 1073741824")"; return ;;
+            MB) echo "$(bc <<<"${_num} * 1048576")"; return ;;
+            KB) echo "$(bc <<<"${_num} * 1024")"; return ;;
+            B)  echo "${_num}"; return ;;
+            # If unknown, if ${_unit_num} is given use it, otherwise return 1
+            *)  if [ -n "${_unit_num}" ]; then
+                    echo "$(bc <<<"${_num} * ${_unit_num}")"; return
+                else
+                    # not perfect but assuming as bytes
+                    echo "${_num}"; return
+                fi
+                ;;
+        esac
+    done
 }
 
 function _human_friendly() {

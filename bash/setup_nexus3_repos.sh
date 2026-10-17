@@ -1749,19 +1749,18 @@ function _get_datastore_name() {
 }
 
 function _get_docker_hostname() {
-    local _docker_hostname="local.standalone.localdomain"
-    if [ -n "${_NEXUS_DOCKER_HOSTNAME}" ]; then
-        echo "${_NEXUS_DOCKER_HOSTNAME}"
-        return
-    fi
-    if [[ "${_NEXUS_URL}" =~ https?://([^:/]+) ]]; then
-        local _hostname="${BASH_REMATCH[1]}"
-        if [ ${_hostname} != "localhost" ]; then
-            _NEXUS_DOCKER_HOSTNAME="${_hostname}"
-        fi
-    fi
+    local _default_docker_hostname="local.standalone.localdomain"
     if [ -z "${_NEXUS_DOCKER_HOSTNAME}" ]; then
-        _NEXUS_DOCKER_HOSTNAME="${_docker_hostname}"
+        if [[ "${_NEXUS_URL}" =~ https?://([^:/]+) ]]; then
+            local _hostname="${BASH_REMATCH[1]}"
+            if [ ${_hostname} != "localhost" ]; then
+                _NEXUS_DOCKER_HOSTNAME="${_hostname}"
+            fi
+        else
+            _NEXUS_DOCKER_HOSTNAME="${_default_docker_hostname}"
+        fi
+        echo "Using ${_NEXUS_DOCKER_HOSTNAME} as the hostname for Nexus docker repositories" >&2
+        export _NEXUS_DOCKER_HOSTNAME
     fi
     echo "${_NEXUS_DOCKER_HOSTNAME}"
 }
@@ -3051,7 +3050,13 @@ function f_install_oras() {
     if [ -s "${_install_dir%/}/oras" ]; then
         _log "INFO" "${_install_dir%/}/oras already exists and executable. adding in PATH ..."; sleep 1
         chmod u+x ${_install_dir%/}/oras || return $?
-        export PATH="${_install_dir%/}/oras:$PATH"
+        if [ -d /usr/local/bin/ ]; then
+            ln -s ${_install_dir%/}/oras /usr/local/bin/oras
+            _log "INFO" "Linked ${_install_dir%/}/oras to /usr/local/bin/oras"
+        else
+            # This usually does not work though
+            export PATH="${_install_dir%/}/oras:$PATH"
+        fi
         return 0
     fi
 

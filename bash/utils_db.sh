@@ -90,16 +90,17 @@ function _postgresql_configure() {
     _psql_adm "ALTER SYSTEM SET max_connections TO '200'"   # NOTE: work_mem * max_conn < shared_buffers.
     #_psql_adm "ALTER SYSTEM SET statement_timeout TO '8h'" # NOTE: ALTER ROLE nexus SET statement_timeout = '1h';
     _psql_adm "ALTER SYSTEM SET idle_in_transaction_session_timeout TO '30min'" # Default is 0 (no timeout), Probably no need to use idle_session_timeout
-    _psql_adm "ALTER SYSTEM SET shared_buffers TO '1024MB'" # Default 8MB. RAM * 25%. Make sure enough kernel.shmmax (ipcs -l) and /dev/shm if very old Linux or BSD
+    _psql_adm "ALTER SYSTEM SET shared_buffers TO '1024MB'" # If no unit * 8 kB. Default 8MB. RAM * 25%. Make sure enough kernel.shmmax (ipcs -l) and /dev/shm if very old Linux or BSD
     _psql_adm "ALTER SYSTEM SET work_mem TO '8MB'"    # Default 4MB. RAM * 25% / max_connections (200) + extra a few MB. NOTE: I'm not expecting my PG uses 200 though
     _psql_adm "ALTER SYSTEM SET maintenance_work_mem TO '1GB'" # RAM * 5%. Default 64MB. Used for VACUUM, CREATE INDEX etc.
     #_psql_adm "ALTER SYSTEM SET autovacuum_work_mem TO '-1'"  # Default -1 means uses the above for AUTO vacuum.
     #_psql_adm "ALTER SYSTEM SET max_parallel_maintenance_workers TO '4'" # Default 2. Used for (manual) VACUUM, CREATE INDEX etc.
     _psql_adm "ALTER SYSTEM SET effective_cache_size TO '3072MB'" # Default 4GB. RAM * 50% ~ 75%. Used by planner. Does NOT allocate any memory, just hint.
     #_upsert ${_postgresql_conf} "wal_buffers" "16MB" "#wal_buffers" # Default -1 (1/32 of shared_buffers) Usually higher provides better write performance
-    #_upsert ${_postgresql_conf} "random_page_cost" "1.1" "#random_page_cost"   # Default 4.0. If very fast disk is used, recommended to use same as seq_page_cost (1.0)
-    #_upsert ${_postgresql_conf} "effective_io_concurrency" "200" "#effective_io_concurrency"   # Default 1. Was for RAID so number of disks. If SSD, somehow 200 is recommended
     _psql_adm "ALTER SYSTEM SET checkpoint_completion_target TO '0.9'"    # Default 0.5 (old 'checkpoint_segments')Ratio of checkpoint_timeout (5min). Larger reduce disk I/O but may take checkpointing longer
+    _psql_adm "ALTER SYSTEM SET random_page_cost TO '1.1'"  # Default 4. Lower encourages the planner to use Index Scan instead of Seq Scan, which should work better with SSD. If very fast disk is used, recommended to use same as seq_page_cost (1.0)
+    #_psql_adm "ALTER SYSTEM SET effective_io_concurrency TO '16'"  # # Default 1. It was for RAID so number of disks. If SSD, 200 is recommended. Windows and Mac doesn't support.
+    #_psql_adm "ALTER SYSTEM SET maintenance_io_concurrency TO '16'"  # Default 1 for v17 or older. 16 from v18. Windows, Mac, cloud do support
     _psql_adm "ALTER SYSTEM SET min_wal_size TO '1GB'"    # Default 80MB
     _psql_adm "ALTER SYSTEM SET max_wal_size TO '4GB'"    # Default 1GB
     #_upsert ${_postgresql_conf} "max_slot_wal_keep_size" "100GB" "#max_slot_wal_keep_size"    # Default -1 and probably from v13?

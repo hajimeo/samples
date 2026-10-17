@@ -25,8 +25,10 @@ fi
 
 # For Apple Container k8s
 if ! /opt/homebrew/bin/container system status; then
-    /opt/homebrew/bin/container system restart; sleep 10
-    /opt/homebrew/bin/kubectl proxy --address='0.0.0.0' --port=16445 --accept-hosts='^.*$' &> /tmp/kubectl_proxy_http_16445.out &
+    if /opt/homebrew/bin/container system start; then
+        sleep 10
+        /opt/homebrew/bin/kubectl proxy --address='0.0.0.0' --port=16445 --accept-hosts='^.*$' &> /tmp/kubectl_proxy_http_16445.out &
+    fi
 fi
 # If Kiac (no longer needed with 'container')
 #/opt/homebrew/bin/kiac resume cluster > /tmp/kiac-resume.log 2>&1 && sleep 30
