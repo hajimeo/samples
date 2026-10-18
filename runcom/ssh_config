@@ -8,6 +8,19 @@ Host *
 Host backup.osakos.com
   HostKeyAlgorithms=+ssh-rsa
 
+Host osakos
+    HostName osakos.com
+    User hajime
+    IdentityFile ~/.ssh/hajime_id_rsa
+
+Host mac-aus
+    HostName localhost
+    Port 2222
+    User hosako
+    ProxyJump osakos
+    LocalForward 5901 localhost:5900
+    Compression yes
+
 Host 10.230.140.2
   StrictHostKeyChecking no
   UserKnownHostsFile /dev/null

@@ -20,7 +20,7 @@ network_access = true
 [projects."/Users/hosako"]
 trust_level = "untrusted"
 
-[projects."/Users/hosako/IdeaProjects/samples"]
+    [projects."/Users/hosako/IdeaProjects/samples"]
 trust_level = "trusted"
 
 [projects."/Users/hosako/Desktop/temp"]
