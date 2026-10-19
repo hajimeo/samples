@@ -434,10 +434,11 @@ function recommend_zg_index() {
 #alias claude-omlx='ANTHROPIC_BASE_URL="http://${REMOTE_AI_HOST}:8000" ANTHROPIC_AUTH_TOKEN="admin123" ANTHROPIC_DEFAULT_OPUS_MODEL="Ornith-1.5-9B-MLX" ANTHROPIC_DEFAULT_SONNET_MODEL="Ornith-1.5-9B-MLX" ANTHROPIC_DEFAULT_HAIKU_MODEL="Ornith-1.5-9B-MLX" API_TIMEOUT_MS=3000000 CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC=1 CLAUDE_CODE_DISABLE_UNKNOWN_MODEL_WINDOW_ENFORCEMENT=1 CLAUDE_CODE_MAX_CONTEXT_TOKENS=131072 claude --disallowedTools LSP --model Ornith-1.5-9B-MLX'
 #alias claude-local='ANTHROPIC_AUTH_TOKEN=ollama ANTHROPIC_API_KEY="" ANTHROPIC_BASE_URL="http://localhost:11434" CLAUDE_CODE_MAX_CONTEXT_TOKENS=32768 claude --model gemma4:e4b-mlx'
 function claude-ticket() {
+    local _prompt="${1-"${_AI_DEFAULT_PROMPT}"}"
     #recommend_zg_index
     echo "Running claude-ticket with *${ANTHROPIC_MODEL}* ..."
     sleep 2
-    claude --model "${ANTHROPIC_MODEL:-"claude-sonnet-5[1m]"}" "${_AI_DEFAULT_PROMPT}"
+    claude --model "${ANTHROPIC_MODEL:-"claude-sonnet-5[1m]"}" "${_prompt}"
 }
 
 # Ollama generates .codex/model.json, which contains model names (also .codex/ollama-launch.config.toml)
@@ -446,10 +447,11 @@ function claude-ticket() {
 ##alias codex-ticket='codex --no-daemon "Read the ticket json file and understand the history and the current status, then report what you are going to investigate (no actual investigation yet)"'
 # To re-authenticate: codex mcp login atlassian
 function codex-ticket() {
+    local _prompt="${1-"${_AI_DEFAULT_PROMPT}"}"
     #recommend_zg_index
     echo "Running codex-ticket with *gpt-6-LUNA* (--no-daemon) ..."
     sleep 2
-    codex -m "gpt-6-luna" --no-daemon "${_AI_DEFAULT_PROMPT}"
+    codex -m "gpt-6-luna" --sandbox workspace-write --no-daemon "${_prompt}"
 }
 
 
@@ -1058,6 +1060,7 @@ function goBuild() {
     env GOOS=linux GOARCH=arm64 go build -trimpath -o "${_destDir%/}/${_name}_Linux_aarch64" ${_opts} ${_goFile} &
     #env GOOS=darwin GOARCH=amd64 go build -trimpath -o "${_destDir%/}/${_name}_Darwin_x86_64" ${_opts} ${_goFile} &
     env GOOS=windows GOARCH=amd64 go build -trimpath -o "${_destDir%/}/${_name}_Windows_x86_64" ${_opts} ${_goFile} &
+    env GOOS=windows GOARCH=arm64 go build -trimpath -o "${_destDir%/}/${_name}_Windows_arm64" ${_opts} ${_goFile} &
     wait
     echo "" >&2
     find "${_destDir%/}" -type f -name "${_name}_*" -mmin -1 >&2
