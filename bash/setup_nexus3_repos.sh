@@ -1756,10 +1756,11 @@ function _get_docker_hostname() {
             if [ ${_hostname} != "localhost" ]; then
                 _NEXUS_DOCKER_HOSTNAME="${_hostname}"
             fi
-        else
+        fi
+        if [ -z "${_NEXUS_DOCKER_HOSTNAME}" ]; then
             _NEXUS_DOCKER_HOSTNAME="${_default_docker_hostname}"
         fi
-        echo "Using ${_NEXUS_DOCKER_HOSTNAME} as the hostname for Nexus docker repositories" >&2
+        echo "Using '${_NEXUS_DOCKER_HOSTNAME}' as the hostname for Nexus docker repositories" >&2
         export _NEXUS_DOCKER_HOSTNAME
     fi
     echo "${_NEXUS_DOCKER_HOSTNAME}"
