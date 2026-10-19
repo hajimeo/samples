@@ -191,8 +191,8 @@ function nxrmStart() {
         if lsof -ti:${_debug_port_2nd} | grep -q -w ":${_debug_port_2nd}"; then
             echo "WARN: Debug port ${_debug_port} and ${_debug_port_2nd} are in use, so not enabling debug mode"; sleep 3;
         else
-            _debug_port=${_debug_port_2nd}
             echo "WARN: Debug port ${_debug_port} is in use, so using ${_debug_port_2nd} instead"; sleep 3;
+            _debug_port=${_debug_port_2nd}
         fi
     fi
     # TODO: Java 8 does not accept `address=*:`
