@@ -123,6 +123,12 @@ approval_mode = "approve"
 [mcp_servers.intellij-index.tools.ide_find_definition]
 approval_mode = "approve"
 
+[mcp_servers.intellij-index.tools.ide_find_references]
+approval_mode = "approve"
+
+[mcp_servers.intellij-index.tools.ide_call_hierarchy]
+approval_mode = "approve"
+
 [mcp_servers.aha-ideas]
 enabled = false
 url = "https://sonatype.aha.io/api/v1/mcp"
