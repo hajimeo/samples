@@ -19,12 +19,13 @@
 #
 # HOW TO RUN (pre-warm the Parquet cache only, no UI/server):
 #   python python/support_app.py --prewarm [--from "YYYY-MM-DD[ HH:MM:SS]"] [--to "YYYY-MM-DD[ HH:MM:SS]"]
-#   python python/support_app.py --prewarm --time "YYYY-MM-DD HH:MM:SS"
+#   python python/support_app.py --prewarm --time "YYYY-MM-DD HH:MM:SS" [--time-window-hours N]
 #   Builds/refreshes the __spt-app_db_cache Parquet cache for the given date/time range (or the full
 #   logs if --from/--to/--time are omitted) and exits - useful to pre-build the cache before starting
-#   the UI/MCP server, or from a cron/CI job. --time is a shorthand for "--from (time - 1h) --to
-#   (time + 1h)" and takes priority over --from/--to if both are given; --from/--to (or --time) take
-#   priority over LOG_DATE_FROM/LOG_DATE_TO.
+#   the UI/MCP server, or from a cron/CI job. --time is a shorthand for "--from (time - N) --to
+#   (time + N)", N being --time-window-hours (default 1 hour, accepts fractional values), and takes
+#   priority over --from/--to if both are given; --from/--to (or --time) take priority over
+#   LOG_DATE_FROM/LOG_DATE_TO.
 #   A later plain run (Streamlit or --mcp) with no LOG_DATE_FROM/LOG_DATE_TO set reuses the range from
 #   the most recent --prewarm run automatically (recorded in __spt-app_db_cache/_prewarm_manifest.json),
 #   so it hits the same cache instead of re-parsing the full raw logs from scratch.
@@ -131,10 +132,27 @@ def _validated_date_config(key):
     return _validated_date_value(_config(key, ""), key)
 
 
+def _resolve_time_window_hours():
+    """Resolves the +/- window (in hours) around --time from the --time-window-hours CLI arg, defaulting
+    to 1 and warning (then falling back to the default) if the given value isn't a positive number."""
+    raw = _cli_arg_value("--time-window-hours")
+    if not raw:
+        return 1.0
+    try:
+        hours = float(raw)
+        if hours <= 0:
+            raise ValueError
+        return hours
+    except ValueError:
+        _warn(f"--time-window-hours={raw!r} is not a positive number; defaulting to 1.")
+        return 1.0
+
+
 def _resolve_cli_from_to():
     """Resolves --from/--to from the CLI args, with --time "YYYY-MM-DD HH:MM:SS" as a convenience for
-    "--from (time - 1h) --to (time + 1h)". --time is validated and takes priority over --from/--to if
-    both are given (with a warning), since specifying both is almost certainly a mistake."""
+    "--from (time - N) --to (time + N)", N being --time-window-hours (default 1 hour). --time is
+    validated and takes priority over --from/--to if both are given (with a warning), since specifying
+    both is almost certainly a mistake."""
     time_value = _cli_arg_value("--time")
     from_value = _cli_arg_value("--from")
     to_value = _cli_arg_value("--to")
@@ -148,7 +166,8 @@ def _resolve_cli_from_to():
     fmt = '%Y-%m-%d %H:%M:%S' if ' ' in validated_time else '%Y-%m-%d'
     center = datetime.strptime(validated_time, fmt)
     out_fmt = '%Y-%m-%d %H:%M:%S'
-    return (center - timedelta(hours=1)).strftime(out_fmt), (center + timedelta(hours=1)).strftime(out_fmt)
+    window = timedelta(hours=_resolve_time_window_hours())
+    return (center - window).strftime(out_fmt), (center + window).strftime(out_fmt)
 
 
 _CLI_FROM, _CLI_TO = _resolve_cli_from_to()
