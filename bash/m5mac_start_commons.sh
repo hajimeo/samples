@@ -19,7 +19,7 @@ fi
 
 # zvac-grep
 if /opt/homebrew/bin/zg server status | grep -q -w 'ready'; then
-    echo "# Stopping zvac-grep on $(hostname) ..." >&2; sleep 2
+    echo "# *Stopping* zvac-grep on $(hostname) ..." >&2; sleep 2
     /opt/homebrew/bin/zg server off
 fi
 
