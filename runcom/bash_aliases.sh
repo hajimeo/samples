@@ -1194,7 +1194,7 @@ function syncGitReposWithRemotePC() {
     local _remote_user="${2:-"${USER}"}"
     local _repo_rel_path="${3:-"IdeaProjects/samples"}"
     local _local_base_dir="${4:-"$HOME"}"
-    local _rsync_exclude="${5:-"--exclude .idea --exclude .git"}"
+    local _rsync_exclude="${5:-"--exclude .idea --exclude .git --exclude .zvec-grep"}"
     local _dry_run="${6:-"${_RSYNC_DRY_RUN}"}"
     # Check if the remote is reachable
     if ssh -q -o ConnectTimeout=3 ${_remote_host} exit &>/dev/null; then
@@ -1476,11 +1476,11 @@ if [ -s $HOME/IdeaProjects/work/bash/nexus_aliases.sh ]; then
     source $HOME/IdeaProjects/work/bash/nexus_aliases.sh
 fi
 function pubS() {
-    local _backup_server="${1:-"dh1"}"
+    local _backup_server="${1-"dh1"}"
     # If /tmp/pubS.last is older than 1 day, delete it to force checking files
     #find /tmp/pubS.last -mtime +1 -print -delete
-    if ! ssh -q -o ConnectTimeout=3 ${_backup_server} exit >/dev/null; then
-        echo "Can't reach ${_backup_server}" >&2
+    if [ -z "${_backup_server}" ] || ! ssh -q -o ConnectTimeout=3 "${_backup_server}" exit >/dev/null; then
+        echo "Can't reach ${_backup_server}. Skipping this server ..." >&2
     else
         echo "# Publishing updated scripts to ${_backup_server} at $(date)" >&2
         [ $HOME/IdeaProjects/work/bash/install_nexus.sh -nt /tmp/pubS.last ] && scp -C $HOME/IdeaProjects/work/bash/install_nexus.sh ${_backup_server}:/var/tmp/share/sonatype/ && cp -v -f $HOME/IdeaProjects/work/bash/install_nexus.sh $HOME/share/sonatype/
@@ -1498,10 +1498,9 @@ function pubS() {
         [ $HOME/IdeaProjects/samples/misc/h2-console.jar -nt /tmp/pubS.last ] && scp $HOME/IdeaProjects/samples/misc/h2-console.jar ${_backup_server}:/var/tmp/share/java/
         #[ $HOME/IdeaProjects/samples/misc/filelist_Linux_x86_64 -nt /tmp/pubS.last ] && scp $HOME/IdeaProjects/samples/misc/filelist_Linux_x86_64 ${_backup_server}:/var/tmp/share/bin/
         [ $HOME/IdeaProjects/samples/misc/filelistv2_Linux_x86_64 -nt /tmp/pubS.last ] && scp $HOME/IdeaProjects/samples/misc/filelistv2_Linux_x86_64 ${_backup_server}:/var/tmp/share/bin/
+
+        sync_nexus_binaries &>/dev/null &
     fi
-
-    sync_nexus_binaries &>/dev/null &
-
 
     if ! type rsync >/dev/null; then
         echo "rsync command not found. Skipping all remaining part." >&2
@@ -1734,7 +1733,7 @@ function startCommonUtils() {
         gDrivePull "$gd_backup_dir" || sleep 5
         echo "INFO: zg index on ${gd_backup_dir} ..." >&2
         cd "${gd_backup_dir}" || return $?
-        # Somehow -T pdf does not work. Not using potion-retrieval-32m
+        # Somehow -T pdf does not work.
         zg index --glob '!**/*.pdf' --embedding local/potion-retrieval-32m
         local _rc=$?
         cd - &>/dev/null
