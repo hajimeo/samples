@@ -1609,6 +1609,17 @@ function f_prep_docker_image_for_scan() {
     fi
 }
 
+function f_prep_docker_image_for_scan_oras() {
+    oras cp docker.io/library/alpine:latest --to-oci-layout ./alpine-layout || return $?
+    tar -czvf alpine-oci.tgz ./alpine-layout
+}
+
+function f_prep_docker_image_for_scan_container() {
+    container image pull alpine:latest || return $?
+    container image save alpine:latest --platform linux/arm64 --output alpine.tar || return $?
+    gzip alpine.tar
+}
+
 function f_prep_scan_target_for_proprietary_component() {
     local __doc__="As scan-<reportId>.xml.gz file can't be used for this test, generating a dummy jar file"
     local _path="${1:-"./"}"                # A/1/_work/8/s/all/target/some.class.com.all-1.0-SNAPSHOT.jar
