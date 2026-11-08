@@ -1379,16 +1379,22 @@ function cleanCases() {
         echo "# Source ${_src} is not set nor directory. Ending this function." >&2
         return 1
     fi
+    local _trash="$(dirname "$(readlink -f "${_src%/}")")/.Trash"
+    if [ ! -d "${_trash}" ]; then
+        echo "# Trash directory ${_trash} does not exist. Creating it." >&2
+        mkdir -v -p -m 777 ${_trash%/} || return $?
+    fi
+
     local _max_days="21"
     echo ""
-    echo "#### Moving up old (${_max_days} days) directories from ${_src} into Trash ####" >&2
+    echo "#### Moving up old (${_max_days} days) directories from ${_src} into ${_trash%/}/ ####" >&2
     echo ""
     ## Special: support_tmp directory or .tmp or .out file wouldn't need to backup (not using atime as directory doesn't work)
-    # NOTE: xargs may not work with very long file name 'mv: rename {} to ${HOME%/}/.Trash/{}: No such file or directory', so not using.
+    # NOTE: xargs may not work with very long file name 'mv: rename {} to ${_trash%/}/{}: No such file or directory', so not using.
     _src="$(realpath "${_src}")" # because find -L ... -delete does not work
     [ -z "${_src%/}" ] && return 12
     # Find directories from the src and if no files newer than ${_max_days} days, then move to trash (no background)
-    find ${_src%/} -mindepth 1 -maxdepth 1 -type d -print | xargs -I{} -t -P4 bash -c "find {} -type f -mtime -${_max_days} ! -name '.*' | head -n1 | grep -q -E '.+' || mv {} $HOME/.Trash/"
+    find ${_src%/} -mindepth 1 -maxdepth 1 -type d -print | xargs -I{} -t -P4 bash -c "find {} -type f -mtime -${_max_days} ! -name '.*' | head -n1 | grep -q -E '.+' || mv {} ${_trash%/}/"
     echo ""
     echo "#### Cleaning up tmp and old+large files from ${_src} ####" >&2
     echo ""
@@ -1424,6 +1430,7 @@ function cleanCases() {
         #echo "# du -Shx ${_src} | sort -h | tail -n40" >&2
         #du -Shx ${_src} | sort -h | tail -n40
     fi
+    du -sh ${_trash%/}
 }
 
 # accessed time doesn't seem to work with directory, so using _name to check files
