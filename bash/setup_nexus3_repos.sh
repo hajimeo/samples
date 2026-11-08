@@ -361,7 +361,7 @@ function f_setup_maven() {
     # add some data for xxxx-proxy
     # If NXRM2: _get_asset_NXRM2 "${_prefix}-proxy" "junit/junit/4.12/junit-4.12.jar"
     _ASYNC_CURL="Y" f_get_asset "${_prefix}-proxy" "org/sonatype/maven-policy-demo/1.0.0/maven-policy-demo-1.0.0.jar"
-    #_ASYNC_CURL="Y" f_get_asset "${_prefix}-proxy" "org/sonatype/maven-policy-demo/1.1.0/maven-policy-demo-1.1.0.jar"  # For Malware test
+    _ASYNC_CURL="Y" f_get_asset "${_prefix}-proxy" "org/sonatype/maven-policy-demo/1.1.0/maven-policy-demo-1.1.0.jar"  # For Malware test
     _ASYNC_CURL="Y" f_get_asset "${_prefix}-proxy" "org/sonatype/maven-policy-demo/maven-metadata.xml"
     _ASYNC_CURL="Y" f_get_asset "${_prefix}-proxy" "junit/junit/4.12/junit-4.12.pom"
     # To use this jar later, not asynchronous
@@ -485,6 +485,7 @@ function f_setup_npm() {
     #_ASYNC_CURL="Y" f_get_asset "${_prefix}-proxy" "lodash/-/lodash-4.17.19.tgz"
     _ASYNC_CURL="Y" f_get_asset "${_prefix}-proxy" "es5-ext/-/es5-ext-0.10.62.tgz"
     _ASYNC_CURL="Y" f_get_asset "${_prefix}-proxy" "@sonatype/policy-demo/-/policy-demo-2.0.0.tgz" # Good (normal) one
+    _ASYNC_CURL="Y" f_get_asset "${_prefix}-proxy" "@sonatype/policy-demo/-/policy-demo-2.1.0.tgz" # Malware test
     #for i in {1..3}; do f_get_asset "npm-proxy" "@sonatype/policy-demo/-/policy-demo-2.$i.0.tgz"; done
 
     if [ -n "${_source_nexus_url}" ] && [ -n "${_extra_sto_opt}" ] && ! _is_repo_available "${_prefix}-repl-proxy"; then
