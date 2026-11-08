@@ -1,4 +1,4 @@
-model = "gpt-6.1-sol"
+model = "gpt-6.1-terra"
 notify = [
     "/Users/hosako/.codex/computer-use/Codex Computer Use.app/Contents/SharedSupport/SkyComputerUseClient.app/Contents/MacOS/SkyComputerUseClient",
     "turn-ended",
@@ -127,6 +127,12 @@ approval_mode = "approve"
 approval_mode = "approve"
 
 [mcp_servers.intellij-index.tools.ide_call_hierarchy]
+approval_mode = "approve"
+
+[mcp_servers.intellij-index.tools.ide_project_status]
+approval_mode = "approve"
+
+[mcp_servers.intellij-index.tools.ide_find_file]
 approval_mode = "approve"
 
 [mcp_servers.aha-ideas]
