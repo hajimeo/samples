@@ -93,9 +93,6 @@ if [ "$(uname)" = "Darwin" ]; then
         [ -z "${JAVA_HOME_8}" ] && export JAVA_HOME_8="/Library/Java/JavaVirtualMachines/zulu-8.jdk/Contents/Home"
         [ -z "${JAVA_HOME}" ] && export JAVA_HOME="/Library/Java/JavaVirtualMachines/zulu-8.jdk/Contents/Home"
     fi
-    if [ -d "$HOME/Apps/jdk11" ]; then
-        [ -z "${JAVA_HOME_11}" ] && export JAVA_HOME_11="$HOME/Apps/jdk11"
-    fi
     if [ -d "/opt/homebrew/opt/openjdk@17/libexec/openjdk.jdk/Contents/Home" ]; then
         [ -z "${NEXUSTOOLS_JAVA17_HOME}" ] && export NEXUSTOOLS_JAVA17_HOME="/opt/homebrew/opt/openjdk@17/libexec/openjdk.jdk/Contents/Home"
         [ -z "${JAVA_HOME_17}" ] && export JAVA_HOME_17="/opt/homebrew/opt/openjdk@17/libexec/openjdk.jdk/Contents/Home"
@@ -109,11 +106,15 @@ if [ "$(uname)" = "Darwin" ]; then
     fi
 
     if [ -f /usr/libexec/java_home ]; then
+        alias java11="export JAVA_HOME=\$(/usr/libexec/java_home -F -v 11)"
         alias java17="export JAVA_HOME=\$(/usr/libexec/java_home -F -v 17)"
         alias java21="export JAVA_HOME=\$(/usr/libexec/java_home -F -v 21)"
         alias java25="export JAVA_HOME=\$(/usr/libexec/java_home -F -v 25)"
         #[ -z "${JAVA_HOME}" ] && export JAVA_HOME=`/usr/libexec/java_home -v 1.8 2>/dev/null`
 
+        if [ -z "${JAVA_HOME_11}" ]; then
+            export JAVA_HOME_11=`/usr/libexec/java_home -F -v 11 2>/dev/null`
+        fi
         if [ -z "${JAVA_HOME_17}" ]; then
             export JAVA_HOME_17=`/usr/libexec/java_home -F -v 17 2>/dev/null`
         fi
