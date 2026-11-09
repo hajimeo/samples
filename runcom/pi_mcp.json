@@ -1,22 +1,16 @@
 {
   "mcpServers": {
     "intellij-mcp": {
-      "url": "http://127.0.0.1:29170/index-mcp/streamable-http"
+      "url": "http://127.0.0.1:29170/index-mcp/streamable-http",
+      "exposure": "direct"
     },
     "sona-mcp": {
-      "url": "https://sonatype.mcp.kapa.ai"
+      "url": "https://sonatype.mcp.kapa.ai",
+      "exposure": "direct"
     },
-    "atlassian2": {
-      "command": "npx",
-      "args": [
-        "-y",
-        "mcp-remote@0.1.38",
-        "https://mcp.atlassian.com/v1/mcp/authv2"
-      ],
-      "env": {
-        "ATLASSIAN_URL": "https://sonatype.atlassian.net",
-        "cloudId": "https://sonatype.atlassian.net"
-      }
+    "atlassian": {
+      "url": "https://mcp.atlassian.com/v2/mcp/",
+      "exposure": "direct"
     },
     "kb-pdfs2": {
       "command": "/Users/hosako/.pyvenv/bin/python3",
@@ -25,7 +19,8 @@
         "ignore",
         "/Users/hosako/IdeaProjects/work/demo-mcp/zvec-grep/zg-query.py",
         "/Users/hosako/Documents/sonatype"
-      ]
+      ],
+      "exposure": "direct"
     }
   }
 }
