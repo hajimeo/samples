@@ -398,7 +398,20 @@ function zg-remote-idx_not_in_use() {
     echo "Executed ${cmd} on $remote_host. Check $log_file for progress." >&2
 }
 
+function recommend_extra() {
+    # If no '__spt-app_db_cache' directory under 3 depth sub directories, recommend to run extra indexing for AI search
+    if ! find . -maxdepth 3 -type d -name "__spt-app_db_cache" | grep -q .; then
+        echo "INFO: No '__spt-app_db_cache' directory found under 3 depth sub directories. It is recommended to run one of the followings." >&2
+        cat <<'EOF'
+#   spt-app-prewarm [--from "YYYY-MM-DD[ HH:MM:SS]"] [--to "YYYY-MM-DD[ HH:MM:SS]"]
+#   spt-app-prewarm --time "YYYY-MM-DD HH:MM:SS" [--time-window-hours N]
+EOF
+        sleep 2
+    fi
+}
+
 function recommend_zg_index() {
+    echo "No longer used" ; return 0
     if [ -d ./.zvec-grep ]; then
         # From the current directory, check if any new files than .zvec-grep/manifest.json (it should be automatically updated)
         if ! find . -type f -newer ./.zvec-grep/manifest.json -not \( -path "./.zvec-grep/*" -o -path "./zg_index.out" \) | grep -q .; then
@@ -431,14 +444,20 @@ function recommend_zg_index() {
     fi
 }
 #alias goose-app='/Applications/Goose.app/Contents/MacOS/Goose . &>/tmp/goose_$$.out & echo "Goose started. Log: /tmp/goose_$$.out" >&2'
-#alias claude-omlx='ANTHROPIC_BASE_URL="http://${REMOTE_AI_HOST}:8000" ANTHROPIC_AUTH_TOKEN="admin123" ANTHROPIC_DEFAULT_OPUS_MODEL="Ornith-1.5-9B-MLX" ANTHROPIC_DEFAULT_SONNET_MODEL="Ornith-1.5-9B-MLX" ANTHROPIC_DEFAULT_HAIKU_MODEL="Ornith-1.5-9B-MLX" API_TIMEOUT_MS=3000000 CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC=1 CLAUDE_CODE_DISABLE_UNKNOWN_MODEL_WINDOW_ENFORCEMENT=1 CLAUDE_CODE_MAX_CONTEXT_TOKENS=131072 claude --disallowedTools LSP --model Ornith-1.5-9B-MLX'
+alias claude-omlx='ANTHROPIC_BASE_URL="http://${REMOTE_AI_HOST}:8000" ANTHROPIC_AUTH_TOKEN="admin123" ANTHROPIC_DEFAULT_OPUS_MODEL="${OMLX_DEFAULT_MODEL}" ANTHROPIC_DEFAULT_SONNET_MODEL="${OMLX_DEFAULT_MODEL}" ANTHROPIC_DEFAULT_HAIKU_MODEL="${OMLX_DEFAULT_MODEL}" API_TIMEOUT_MS=3000000 CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC=1 CLAUDE_CODE_DISABLE_UNKNOWN_MODEL_WINDOW_ENFORCEMENT=1 claude'    # CLAUDE_CODE_MAX_CONTEXT_TOKENS=128000
 #alias claude-local='ANTHROPIC_AUTH_TOKEN=ollama ANTHROPIC_API_KEY="" ANTHROPIC_BASE_URL="http://localhost:11434" CLAUDE_CODE_MAX_CONTEXT_TOKENS=32768 claude --model gemma4:e4b-mlx'
 function claude-ticket() {
     local _prompt="${1-"${_AI_DEFAULT_PROMPT}"}"
-    #recommend_zg_index
-    echo "Running claude-ticket with *${ANTHROPIC_MODEL}* ..."
-    sleep 2
-    claude --model "${ANTHROPIC_MODEL:-"claude-sonnet-5[1m]"}" "${_prompt}"
+    echo "Running claude-ticket with claude-sonnet-5[1m] and *Low* effort first ..."
+    sleep 1
+    claude --model "claude-sonnet-5[1m]" --effort "low" "${_prompt}" || return $?
+}
+function claude-omlx-ticket() {
+    local _prompt="${1-"${_AI_DEFAULT_PROMPT}"}"
+    echo "Running claude-omlx-ticket with ${OMLX_DEFAULT_MODEL} and *Low* effort first ..."
+    sleep 1
+    # --disallowedTools "LSP"   # forgot what this was for
+    claude-omlx --model "${OMLX_DEFAULT_MODEL}" --effort "low" "${_prompt}" || return $?
 }
 
 # Ollama generates .codex/model.json, which contains model names (also .codex/ollama-launch.config.toml)
@@ -448,10 +467,48 @@ function claude-ticket() {
 # To re-authenticate: codex mcp login atlassian
 function codex-ticket() {
     local _prompt="${1-"${_AI_DEFAULT_PROMPT}"}"
-    #recommend_zg_index
-    echo "Running codex-ticket with *gpt-6-LUNA* (--no-daemon) ..."
-    sleep 2
+    echo "Running codex-ticket with *gpt-6-LUNA* (--no-daemon) first ..."
+    sleep 1
     codex -m "gpt-6-luna" --sandbox workspace-write --no-daemon "${_prompt}"
+}
+
+function ai_cli() {
+    # Ask plan first so that the session can be cleared then read the RESPONSE.md
+    local _prompt="${1:-"${_AI_DEFAULT_PROMPT}"}"    # in .bash_aliases.sh
+    local _ticket_number="${2}"
+    local _local_model="${3:-"${OMLX_DEFAULT_MODEL}"}"
+    [ -z "${_ticket_number}" ] && _ticket_number="$(guessTicketNo)"
+    local _ai_cmd=""
+
+    #if type goose &>/dev/null; then # && curl -s -f --max-time 1 -o /dev/null "${AI_LOCAL_URL_BASE}"
+    if type pi &>/dev/null; then # && curl -s -f --max-time 1 -o /dev/null "${AI_LOCAL_URL_BASE}"
+        # NOTE: require 'pi install npm:@rolemodel/pi-omlx' for autodiscovery of local AI model
+        _ai_cmd="pi"
+        if [ -n "${_local_model}" ]; then
+            _ai_cmd="${_ai_cmd} --model ${_local_model}"
+        fi
+
+        if [ -n "${_ticket_number}" ] && [ -s "./${_ticket_number}.json" ]; then
+            #echo "Found ./${_ticket_number}.json, appending it to '@' ..." 1>&2
+            _ai_cmd="${_ai_cmd} @./${_ticket_number}.json"
+        fi
+        if [ -s "./RESPONSE.md" ]; then
+            #echo "Found ./RESPONSE.md, appending it to '@' ..." 1>&2
+            _ai_cmd="${_ai_cmd} @./RESPONSE.md"
+        fi
+        # Find the newest Log_tests_result.md file and append to the `pi` command with `@`
+        #local _newest_md="$(find . -name "Log_tests_result.md" -size +0 -exec stat -f "%m %N" {} + | sort -n | tail -1 | cut -d' ' -f2-)"
+        #if [ -s "${_newest_md}" ]; then
+        #    #echo "Found ${_newest_md}, appending it to '@' ..." 1>&2
+        #    _ai_cmd="${_ai_cmd} @${_newest_md}"
+        #fi
+    fi
+
+    if [ -n "${_ai_cmd}" ]; then
+        echo "Starting ${_ai_cmd} \"${_prompt}\"" 1>&2; sleep 2
+        eval "${_ai_cmd} \"${_prompt}\""
+        return $?
+    fi
 }
 
 
@@ -1335,9 +1392,8 @@ function backupC() {
     fi
 
     echo ""
-    echo "#### Synchronising a few Github repositories into 'oldmac' and '${REMOTE_AI_HOST}' ####" >&2
+    echo "#### Synchronising a few Github repositories into '${REMOTE_AI_HOST}' ####" >&2
     echo ""
-    #sync_mac "oldmac" &>/dev/null &
     sync_mac "${REMOTE_AI_HOST}"
 
     echo ""
@@ -1430,6 +1486,9 @@ function cleanCases() {
         #echo "# du -Shx ${_src} | sort -h | tail -n40" >&2
         #du -Shx ${_src} | sort -h | tail -n40
     fi
+    echo ""
+    echo "#### ${_trash%/} size ####" >&2
+    echo ""
     du -sh ${_trash%/}
 }
 
@@ -1558,6 +1617,9 @@ function sync_mac() {
     #rsync -b --suffix=.$(date +%Y%m%d).bak $HOME/.claude/settings.json ${_host}:~/.claude/
     rsync -avz $HOME/.agents/skills/ ${_host}:~/.agents/skills/
     rsync -avz $HOME/.claude/skills/ ${_host}:~/.claude/skills/
+
+    echo "# Syncing ~/Documents/sonatype to ${_host} ..." >&2
+    rsync -avz $HOME/Documents/sonatype/ ${_host}:~/Documents/sonatype/
 
     if [ "${_sync_misc_configs}" == "Y" ]; then
         # If there is something do not want to sync frequently.
@@ -1714,12 +1776,12 @@ function startCommonUtils() {
     #fi
 
     # zvac-grep
-    if ! /opt/homebrew/bin/zg server status | grep -q -w 'ready'; then
+    if ! /opt/homebrew/bin/zg --server status | grep -q -w 'ready'; then
         echo "# Starting zvac-grep on $(hostname) because it is not running" >&2; sleep 2
-        /opt/homebrew/bin/zg server on
+        /opt/homebrew/bin/zg --server on
     fi
     #echo "# Stopping zvac-grep on this PC ..." >&2; sleep 2
-    #/opt/homebrew/bin/zg server off
+    #/opt/homebrew/bin/zg --server off
 
     if type apfel &>/dev/null; then
         # Check afel is running on port 11435, if not, start it
@@ -1738,15 +1800,20 @@ function startCommonUtils() {
         echo "# Starting gDrivePull" >&2
         local gd_backup_dir="$HOME/Documents/sonatype"
         gDrivePull "$gd_backup_dir" || sleep 5
-        echo "INFO: zg index on ${gd_backup_dir} ..." >&2
-        cd "${gd_backup_dir}" || return $?
-        # Somehow -T pdf does not work.
-        zg index --glob '!**/*.pdf' --embedding local/potion-retrieval-32m
-        local _rc=$?
-        cd - &>/dev/null
-        if [ ${_rc} -ne 0 ]; then
-            echo "ERROR: 'zg index' on ${gd_backup_dir} failed with exit code ${_rc}" >&2
-            return ${_rc}
+
+        if type zg &>/dev/null; then
+            cd "${gd_backup_dir}" || return $?
+            # Somehow -T pdf does not work.
+            echo "INFO: zg --index on ${gd_backup_dir} ..." >&2
+            zg --index --glob '!**/*.pdf' --embedding local/potion-retrieval-32m
+            local _rc=$?
+            cd - &>/dev/null
+            if [ ${_rc} -ne 0 ]; then
+                echo "ERROR: 'zg --index' on ${gd_backup_dir} failed with exit code ${_rc}" >&2
+                return ${_rc}
+            fi
+        else
+            echo "INFO: zg command not found. Skipping indexing of ${gd_backup_dir} ..." >&2
         fi
     fi
 
