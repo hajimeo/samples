@@ -139,29 +139,14 @@ function _get_rm_url() {
     echo "${_rm_url}"
     _NEXUS_URL="${_rm_url%/}/"
 }
-function _get_iq_url() {
-    local _iq_url="${1-${_IQ_URL}}"
-    if [ -n "${_iq_url%/}" ]; then
-        if [[ ! "${_iq_url}" =~ ^https?://.+ ]]; then
-            if [[ ! "${_iq_url}" =~ .+:[0-9]+ ]]; then   # Provided hostname only
-                _iq_url="http://${_iq_url%/}:8070/"
-            else
-                _iq_url="http://${_iq_url%/}/"
-            fi
+if type _get_iq_url &>/dev/null; then
+    function _get_iq_url() {
+        if [ -s "$HOME/IdeaProjects/samples/bash/setup_nexus_iq.sh" ]; then
+            source "$HOME/IdeaProjects/samples/bash/setup_nexus_iq.sh" || return $?
+            _get_iq_url "$@"
         fi
-        if curl -m3 -f -s -I "${_iq_url%/}/" &>/dev/null; then
-            echo "${_iq_url%/}/"
-            return
-        fi
-    fi
-    for _iq_url in "http://localhost:8070/" "http://${REMOTE_AI_HOST:-"m5mac"}:8070/" "https://nxiqha-k8s.standalone.localdomain/"; do
-        if curl -m3 -f -s -I "${_iq_url%/}/" &>/dev/null; then
-            echo "${_iq_url%/}/"
-            return
-        fi
-    done
-    return 1
-}
+    }
+fi
 
 # export JAVA_HOME=$JAVA_HOME_17
 #
@@ -393,8 +378,8 @@ function _updateNexusProps() {
     grep -qE '^#?nexus.search.updateIndexesOnStartup.enabled' "${_cfg_file}" || echo "nexus.search.updateIndexesOnStartup.enabled=false" >> "${_cfg_file}"
     grep -qE '^#?nexus.assetBlobCleanupTask.blobCreatedDelayMinute' "${_cfg_file}" || echo "nexus.assetBlobCleanupTask.blobCreatedDelayMinute=0" >> "${_cfg_file}"
     grep -qE '^#?nexus.blobstore.get.retryDelayMs' "${_cfg_file}" || echo "nexus.blobstore.get.retryDelayMs=1" >> "${_cfg_file}"    # NEXUS-48573
-    # NOTE: disabling analytics may fail to start on several versions, but if not disabled, shutting down becomes slow
-    grep -qE '^#?nexus.analytics.enabled' "${_cfg_file}" || echo "nexus.analytics.enabled=false" >> "${_cfg_file}"
+    # NOTE: disabling analytics may fail to start on several versions
+    #grep -qE '^#?nexus.analytics.enabled' "${_cfg_file}" || echo "nexus.analytics.enabled=false" >> "${_cfg_file}"
     # No longer works from 3.83
     #grep -qE '^#?nexus.malware.risk.enabled' "${_cfg_file}" || echo "nexus.malware.risk.enabled=false" >> "${_cfg_file}"
     #grep -qE '^#?nexus.malware.risk.on.disk.enabled' "${_cfg_file}" || echo "nexus.malware.risk.on.disk.enabled=false" >> "${_cfg_file}"
