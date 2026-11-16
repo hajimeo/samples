@@ -172,3 +172,6 @@ export RIPGREP_CONFIG_PATH=$HOME/.rgrc
 
 # uv
 export PATH="/Users/hosako/.local/bin:$PATH"
+# bun
+export BUN_INSTALL="$HOME/.bun"
+export PATH="$BUN_INSTALL/bin:$PATH"
