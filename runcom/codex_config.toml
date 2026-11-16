@@ -52,6 +52,9 @@ args = [
         "/Users/hosako/Documents/sonatype"
       ]
 
+[mcp_servers.kb-pdfs2.tools.search_my_knowledge_base]
+approval_mode = "approve"
+
 [mcp_servers.node_repl]
 args = []
 command = "/Applications/ChatGPT.app/Contents/Resources/cua_node/bin/node_repl"
@@ -134,6 +137,9 @@ approval_mode = "approve"
 approval_mode = "approve"
 
 [mcp_servers.intellij-index.tools.ide_find_file]
+approval_mode = "approve"
+
+[mcp_servers.intellij-index.tools.ide_sync_files]
 approval_mode = "approve"
 
 [mcp_servers.aha-ideas]
@@ -221,6 +227,7 @@ global = "fileManager"
 "/Volumes/Samsung_T5/hajime/cases/122662" = "fileManager"
 
 [features]
+hooks = true
 js_repl = false
 
 [tui]
@@ -248,3 +255,45 @@ trusted_hash = "sha256:7e053feb72ae069512f2cbdce909745620165a5d167c5bf04dad3e313
 [apps.connector_69a601eef7a08191be87417cfa1c5c99.tools."ask_sona_internal_knowledge.search_sonatype_knowledge_sources"]
 approval_mode = "approve"
 # ZVEC_GREP_END
+
+[hooks.state."/Users/hosako/.codex/hooks.json:session_start:0:0"]
+enabled = true
+trusted_hash = "sha256:d853ef9fbaf2ff5c8504bf2463675664aaf29a8016c6a35293a6ddc053b4f030"
+
+[hooks.state."/Users/hosako/.codex/hooks.json:user_prompt_submit:1:0"]
+enabled = true
+trusted_hash = "sha256:5383e8af0fe09d96df4e6d0f5f3edaec15485d6162a1a749b5c69e7242eb0478"
+
+[hooks.state."/Users/hosako/.codex/hooks.json:pre_tool_use:0:0"]
+enabled = true
+trusted_hash = "sha256:33153c88ce09e9a5b899b9cb33dd23382be394a3e1cdb421e44e0b3778e8bdf2"
+
+[hooks.state."/Users/hosako/.codex/hooks.json:permission_request:0:0"]
+enabled = true
+trusted_hash = "sha256:bd2c29369e47a438a3f2c1c18896d7bd86ce58c0eb5542f1c3b879e427f92fc9"
+
+[hooks.state."/Users/hosako/.codex/hooks.json:post_tool_use:0:0"]
+enabled = true
+trusted_hash = "sha256:a452131ceaecacb08404d1a8d49d85315fdf109905d152859c32b538c9002f93"
+
+[hooks.state."/Users/hosako/.codex/hooks.json:subagent_start:0:0"]
+enabled = true
+trusted_hash = "sha256:269737162a0cf2b29b3e40df23411c02a8bbdeb5f471243c924dac116624cdcf"
+
+[hooks.state."/Users/hosako/.codex/hooks.json:subagent_stop:0:0"]
+enabled = true
+trusted_hash = "sha256:62ff9ef7fcca3784011e955f35ee3612b11168b2f62bd772f08adefb918d34be"
+
+[hooks.state."/Users/hosako/.codex/hooks.json:stop:1:0"]
+enabled = true
+trusted_hash = "sha256:1ae8ee19d95298f7bc4821368a7d4600b9f9d36c68695812c19419b28b5ad53e"
+
+[hooks.state."/Users/hosako/.codex/hooks.json:interrupt:0:0"]
+enabled = true
+trusted_hash = "sha256:78b430d1d7794c49e6d83a36964d4082d05ec72023ccc38244e97b8e08d054d2"
+
+[plugins."claude-mem@thedotmack"]
+enabled = false
+
+[plugins."claude-mem@claude-mem-local"]
+enabled = false
