@@ -1958,6 +1958,7 @@ EOF
 #JAVA_TOOL_OPTIONS="-agentlib:jdwp=transport=dt_socket,server=y,suspend=y,address=5007" f_cli
 #_IQ_CLI_OPT="-D containerScannerMode=sonatype" _IQ_CLI_VER="2.7.0-01" f_cli "container:sonatype/nexus-iq-server:1.198.0-alpine"
 #_IQ_CLI_OPT="-D containerScannerMode=sonatype" _IQ_CLI_VER="2.8.4-01" f_cli "container:https://registry.hub.docker.com/library/alpine:3.4"
+#_IQ_CLI_VER="2.16.1-01" f_cli "container:amazoncorretto:25-al2023-headless"
 function f_cli() {
     local __doc__="Start IQ CLI https://help.sonatype.com/integrations/nexus-iq-cli#NexusIQCLI-Parameters"
     local _path="${1:-"./"}"
@@ -1972,9 +1973,7 @@ function f_cli() {
     local _simple_scan="${_SIMPLE_SCAN:-"N"}" # Y: simple, N: full
     local _use_docker="${_USE_DOCKER}"
 
-    if [ -z "${_iq_url}" ]; then
-        _iq_url="$(_get_iq_url)" || return $?
-    fi
+    _iq_url="$(_get_iq_url "${_iq_url}")" || return $?
     if [ -z "${_iq_cli_ver}" ]; then
         _iq_cli_ver="$(curl -m3 -sf "${_iq_url%/}/rest/product/version" | python -c "import sys,json;a=json.loads(sys.stdin.read());print(a['version'])" 2>/dev/null)"
         if [ -z "${_iq_cli_ver}" ]; then
