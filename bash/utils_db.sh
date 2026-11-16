@@ -130,7 +130,9 @@ function _postgresql_configure() {
         _psql_adm "ALTER SYSTEM SET log_line_prefix TO '%t [%p]: db=%d,user=%u,app=%a,client=%h '"
         # NOTE: Below stays after restarting and requires superuser
         # ALTER system RESET ALL;
-        # ALTER system SET log_min_duration_statement = 1000;ALTER SYSTEM SET log_statement_stats TO 'on';SELECT pg_reload_conf(); -- 'DATABASE :DBNAME' doesn't work?
+        # ALTER system SET log_min_duration_statement = 1000;ALTER SYSTEM SET log_statement_stats TO 'on';SELECT pg_reload_conf();
+        # ALTER DATABASE nxrm3latest SET log_min_duration_statement = '0';  -- no need to use SELECT pg_reload_conf();
+        # ALTER DATABASE nxrm3latest RESET log_min_duration_statement;
         # Moved connection/disconnection logs in here as it's too verbose for Nexus
         _psql_adm "ALTER SYSTEM SET log_connections TO 'on'"
         _psql_adm "ALTER SYSTEM SET log_disconnections TO 'on'"
