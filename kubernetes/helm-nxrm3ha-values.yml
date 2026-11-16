@@ -4,18 +4,23 @@
 # LIMITATION:
 #   Can't (or need to be careful) use special characters such as double-quotes and dollar mark.
 
-#$ export NAME_SPACE="nexusrepo" RELEASE_NAME="nxrm3ha" ADMIN_PWD="admin123" LICENSE_B64="$(base64 -i $HOME/share/sonatype/sonatype-license.lic)" DB_SERVER="192.168.4.31";export NFS_SERVER="192.168.4.31" SHARE_DIR="/var/tmp/share/sonatype/${RELEASE_NAME}-nfs"
+#$ export NAME_SPACE="nexusrepo" RELEASE_NAME="nxrm3ha" ADMIN_PWD="admin123" LICENSE_B64="$(base64 -i $HOME/share/sonatype/sonatype-license.lic)" SHARE_DIR="$HOME/share/sonatype/${RELEASE_NAME}-nfs" HOST_IP="192.168.4.141"
+#$ export DB_SERVER="${HOST_IP}" DB_USER="nxrm3ha" DB_PWD="nxrm3ha" DB_NAME="nxrm3helmha" NFS_SERVER="${HOST_IP}"
+# NOTE: make sure to update pg_hba.conf to allow connections from the Kubernetes cluster nodes (e.g. 'host nxrm3helmha nxrm3ha 0.0.0.0/0 scram-sha-256')
+#       CREATE USER nxrm3ha WITH PASSWORD 'nxrm3ha';
+#       CREATE DATABASE nxrm3helmha OWNER nxrm3ha;
 #$ export TAG="3.72.0"
 # NOTE: to decode: kubectl get secrets nexus-repo-license.lic -n $NAME_SPACE -o jsonpath="{.data.nexus-repo-license\.lic}" | base64 -d >/tmp/my-test2.lic
 
-## Most likely only once
-#$ #kubectl create namespace ${NAME_SPACE}
+## Most likely only once setups
+#$ kubectl create namespace ${NAME_SPACE}
 ### https://github.com/sonatype/nxrm3-ha-repository/blob/main/nxrm-ha/README.md#configuration-for-dynamic-persistent-volume-provisioning-2
 #$ helm install nfs-subdir-external-provisioner nfs-subdir-external-provisioner/nfs-subdir-external-provisioner --set nfs.server=${NFS_SERVER} --set nfs.path=${SHARE_DIR} --set storageClass.create=true
 ### Setting up NFS PV and PVC (used in `additionalVolumes`)
 #$ eval "echo \"$(cat ./k8s-nfs-pv-pvc-tmpl.yaml | grep -v '^\s*#')\"" > ./${RELEASE_NAME}-nfs-pv-pvc.yaml
 #$ kubectl apply -f ./${RELEASE_NAME}-nfs-pv-pvc.yaml -n ${NAME_SPACE}
-### Adding sonatype helm repo (and search for versions to confirm)
+
+## Adding sonatype helm repo (and search for versions to confirm)
 #$ helm repo add sonatype-helm https://sonatype.github.io/helm3-charts/
 #$ helm search repo sonatype-helm/nxrm-ha --versions | head
 
@@ -45,7 +50,7 @@ statefulset:
   serviceName: nxrm-statefulset-service
   replicaCount: 1
   hostAliases:
-   - ip: "192.168.4.31"
+   - ip: "${HOST_IP}"
      hostnames:
      - "nxiqha-k8s.standalone.localdomain"
      - "nxiqha-admin-k8s.standalone.localdomain"
@@ -103,7 +108,7 @@ statefulset:
     pullPolicy: Always
     terminationGracePeriod: 120
     env:
-      nexusDBName: nxrm3helmha
+      nexusDBName: '${DB_NAME}'
       nexusDBPort: 5432
       # Also check the `nexus:` section below
       install4jAddVmParams: '-Xms2g -Xmx2g -Dcom.redhat.fips=false -Dnexus.datastore.nexus.maximumPoolSize=10 -Dnexus.datastore.nexus.advanced=maxLifetime=30000'
@@ -143,9 +148,9 @@ secret:
     name: 'nxrm-db-secret'
     enabled: true
   db:
-    user: 'nxrm3ha'
+    user: '${DB_USER}'
     userAlias: nxrm-db-user-alias
-    password: 'nxrm3ha'
+    password: '${DB_PWD}'
     passwordAlias: nxrm-db-password-alias
     host: '${DB_SERVER}'
     hostAlias: nxrm-db-host-alias
@@ -172,7 +177,7 @@ nexus:
       nexus.jwt.expiry: 28800
   # This seems to work after 'uninstall' even "Ingress.networking.k8s.io "nxrm3ha-nxrm-ha-docker-5000" is invalid:..."
   docker:
-    enabled: true
+    enabled: false
     type: NodePort
     protocol: TCP
     registries:

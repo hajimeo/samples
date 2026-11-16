@@ -14,7 +14,7 @@ spec:
   storageClassName: nfs
   mountOptions:
     - hard
-    - nfsvers=4.1
+    #- nfsvers=4.1 Mac's NFSd does not support
   accessModes:
     - ReadWriteMany
   nfs:
@@ -36,7 +36,6 @@ spec:
   storageClassName: nfs
   mountOptions:
     - hard
-    - nfsvers=4.1
   accessModes:
     - ReadWriteMany
   nfs:
