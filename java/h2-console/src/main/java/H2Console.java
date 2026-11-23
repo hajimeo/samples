@@ -135,34 +135,42 @@ public class H2Console {
         }
         int rowCount = 0;
         while (rs.next()) {
-            if (columns.contains(ridName.toUpperCase())) {
-                lastRid = rs.getObject(ridName.toUpperCase()).toString();
-            } else if (columns.contains(ridName.toLowerCase())) {
-                lastRid = rs.getObject(ridName.toLowerCase()).toString();
-            } else
-                terminal.writer().print("\n  ");
-            // Not first row
-            if (rowCount > 0) {
-                terminal.writer().print(",");
-            }
-            rowCount++;
-            JSONObject obj = new JSONObject();
-
             try {
-                for (String label : columns) {
-                    Object o = rs.getObject(label);
-                    if (!binaryField.isEmpty() && label.equalsIgnoreCase(binaryField)) {
-                        obj.put(label, bytesToStr(o));
-                    } else {
-                        obj.put(label, o);
-                    }
+                if (columns.contains(ridName.toUpperCase())) {
+                    lastRid = rs.getObject(ridName.toUpperCase()).toString();
+                } else if (columns.contains(ridName.toLowerCase())) {
+                    lastRid = rs.getObject(ridName.toLowerCase()).toString();
+                } else
+                    terminal.writer().print("\n  ");
+                // Not first row
+                if (rowCount > 0) {
+                    terminal.writer().print(",");
                 }
-                terminal.writer().print(obj.toString());
-            } catch (Exception e) {
-                log("WARN: printing result failed (lastRid = " + lastRid + ") Exception: " + e.getMessage());
-                e.printStackTrace();
+                rowCount++;
+                JSONObject obj = new JSONObject();
+
+                try {
+                    for (String label : columns) {
+                        Object o = rs.getObject(label);
+                        if (!binaryField.isEmpty() && label.equalsIgnoreCase(binaryField)) {
+                            obj.put(label, bytesToStr(o));
+                        } else {
+                            obj.put(label, o);
+                        }
+                    }
+                    terminal.writer().print(obj.toString());
+                } catch (Exception e) {
+                    log("WARN: printing result failed (lastRid = " + lastRid + ") Exception: " + e.getMessage());
+                    e.printStackTrace();
+                }
+                terminal.flush();
+            } catch (SQLException e) {
+                if (e.getErrorCode() == 90028 || e.getErrorCode() == 90031) {
+                    log("WARN: Skipping corrupted LOB (lastRid = " + lastRid + ")");
+                    continue;
+                }
+                throw e;
             }
-            terminal.flush();
         }
         if (!isPaging || rowCount < paging) {
             terminal.writer().println("\n]");
@@ -183,27 +191,35 @@ public class H2Console {
         Hashtable<String, Integer> maxLen = new Hashtable<>();
         int rowCount = 0;
         while (rs.next()) {
-            Hashtable<String, String> row = new Hashtable<>();
-            for (String label : columns) {
-                Object obj = rs.getObject(label);
-                String value = "null";
-                if (obj != null) {
-                    value = obj.toString();
+            try {
+                Hashtable<String, String> row = new Hashtable<>();
+                for (String label : columns) {
+                    Object obj = rs.getObject(label);
+                    String value = "null";
+                    if (obj != null) {
+                        value = obj.toString();
+                    }
+                    //log(label + " = " + value, isDebug);
+                    if (!maxLen.containsKey(label)) {
+                        maxLen.put(label, label.length());
+                    }
+                    if (maxLen.get(label) < value.length()) {
+                        maxLen.put(label, value.length());
+                    }
+                    row.put(label, value);
                 }
-                //log(label + " = " + value, isDebug);
-                if (!maxLen.containsKey(label)) {
-                    maxLen.put(label, label.length());
+                resultUpToNth.add(row);
+                // sample only first N
+                rowCount++;
+                if (rowCount >= 1000) {
+                    break;
                 }
-                if (maxLen.get(label) < value.length()) {
-                    maxLen.put(label, value.length());
+            } catch (SQLException e) {
+                if (e.getErrorCode() == 90028 || e.getErrorCode() == 90031) {
+                    log("WARN: Skipping corrupted LOB");
+                    continue;
                 }
-                row.put(label, value);
-            }
-            resultUpToNth.add(row);
-            // sample only first N
-            rowCount++;
-            if (rowCount >= 1000) {
-                break;
+                throw e;
             }
         }
 
@@ -233,13 +249,21 @@ public class H2Console {
         }
 
         while (rs.next()) {
-            StringBuilder line = new StringBuilder();
-            for (String label : columns) {
-                line.append(fixedWidth(rs.getString(label), label, maxLen, numTypes.contains(columnsWithType.get(label))));
+            try {
+                StringBuilder line = new StringBuilder();
+                for (String label : columns) {
+                    line.append(fixedWidth(rs.getString(label), label, maxLen, numTypes.contains(columnsWithType.get(label))));
+                }
+                terminal.writer().println(line.toString().replaceAll(",\\s*$", ""));
+                terminal.flush();
+                rowCount++;
+            } catch (SQLException e) {
+                if (e.getErrorCode() == 90028 || e.getErrorCode() == 90031) {
+                    log("WARN: Skipping corrupted LOB");
+                    continue;
+                }
+                throw e;
             }
-            terminal.writer().println(line.toString().replaceAll(",\\s*$", ""));
-            terminal.flush();
-            rowCount++;
         }
         return rowCount;
     }
@@ -349,23 +373,31 @@ public class H2Console {
                 List<Hashtable<String, String>> result = new ArrayList();
                 Hashtable<String, Integer> maxLen = new Hashtable<>();
                 while (rs.next()) {
-                    Hashtable<String, String> row = new Hashtable<>();
-                    for (String label : columns) {
-                        Object obj = rs.getObject(label);
-                        String value = "null";
-                        if (obj != null) {
-                            value = obj.toString();
+                    try {
+                        Hashtable<String, String> row = new Hashtable<>();
+                        for (String label : columns) {
+                            Object obj = rs.getObject(label);
+                            String value = "null";
+                            if (obj != null) {
+                                value = obj.toString();
+                            }
+                            log(label + " = " + value, isDebug);
+                            if (!maxLen.containsKey(label)) {
+                                maxLen.put(label, label.length());
+                            }
+                            if (maxLen.get(label) < value.length()) {
+                                maxLen.put(label, value.length());
+                            }
+                            row.put(label, value);
                         }
-                        log(label + " = " + value, isDebug);
-                        if (!maxLen.containsKey(label)) {
-                            maxLen.put(label, label.length());
+                        result.add(row);
+                    } catch (SQLException e) {
+                        if (e.getErrorCode() == 90028 || e.getErrorCode() == 90031) {
+                            log("WARN: Skipping corrupted LOB");
+                            continue;
                         }
-                        if (maxLen.get(label) < value.length()) {
-                            maxLen.put(label, value.length());
-                        }
-                        row.put(label, value);
+                        throw e;
                     }
-                    result.add(row);
                 }
                 StringBuilder header = new StringBuilder();
                 for (String label : columns) {
@@ -591,13 +623,21 @@ public class H2Console {
                 rs = stat.getResultSet();
                 Statement _stat = conn.createStatement();
                 while (rs.next()) {
-                    String export_query = "SCRIPT SIMPLE TO '" + exportToPath + "/tbl_" + rs.getString(1).toLowerCase() + "_" + rs.getString(2).toLowerCase() + ".sql' TABLE " + rs.getString(1) + "." + rs.getString(2) + ";";
                     try {
-                        log(export_query);
-                        _stat.execute(export_query);
-                        probablyExported = true;
+                        String export_query = "SCRIPT SIMPLE TO '" + exportToPath + "/tbl_" + rs.getString(1).toLowerCase() + "_" + rs.getString(2).toLowerCase() + ".sql' TABLE " + rs.getString(1) + "." + rs.getString(2) + ";";
+                        try {
+                            log(export_query);
+                            _stat.execute(export_query);
+                            probablyExported = true;
+                        } catch (SQLException e) {
+                            log(e.getMessage());    // but keep going
+                        }
                     } catch (SQLException e) {
-                        log(e.getMessage());    // but keep going
+                        if (e.getErrorCode() == 90028 || e.getErrorCode() == 90031) {
+                            log("WARN: Skipping corrupted LOB");
+                            continue;
+                        }
+                        throw e;
                     }
                 }
             }
@@ -643,14 +683,30 @@ public class H2Console {
                 if (stat.execute("SELECT DISTINCT TABLE_SCHEMA, TABLE_NAME FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_TYPE <> 'SYSTEM TABLE'")) {
                     rs = stat.getResultSet();
                     while (rs.next()) {
-                        wordSet.add(rs.getString(2));
-                        wordSet.add(rs.getString(1) + "." + rs.getString(2));
+                        try {
+                            wordSet.add(rs.getString(2));
+                            wordSet.add(rs.getString(1) + "." + rs.getString(2));
+                        } catch (SQLException e) {
+                            if (e.getErrorCode() == 90028 || e.getErrorCode() == 90031) {
+                                log("WARN: Skipping corrupted LOB");
+                                continue;
+                            }
+                            throw e;
+                        }
                     }
                 }
                 if (stat.execute("SELECT DISTINCT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS")) {
                     rs = stat.getResultSet();
                     while (rs.next()) {
-                        wordSet.add(rs.getString(1));
+                        try {
+                            wordSet.add(rs.getString(1));
+                        } catch (SQLException e) {
+                            if (e.getErrorCode() == 90028 || e.getErrorCode() == 90031) {
+                                log("WARN: Skipping corrupted LOB");
+                                continue;
+                            }
+                            throw e;
+                        }
                     }
                 }
             } catch (SQLException e) {
