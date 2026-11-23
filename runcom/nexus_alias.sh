@@ -313,7 +313,19 @@ function nxrmStart() {
     _java_home "${_nexus_ver}"
     echo "# Executing: ${_cmd}"
     [ -n "${_CUSTOM_DNS}" ] && sleep 5
+    local _jdk="$(find . -maxdepth 2 -type d -name jdk 2>/dev/null | sort -V | tail -n1)"
     eval "${_cmd}"
+    local _rc=$?
+    if ! [ "${_rc}" -eq 0 ] && [ -n "${_jdk}" ]; then
+        echo "# Checking if ${_jdk} has com.apple.quarantine attribute ..."
+        #find ${_jdk%/} -exec ls -ld {} \; 2>/dev/null | grep -E "[x\-]@ " | awk '{printf $9; printf "\n"}' | xargs -I {} xattr -lv {} | grep "com.apple.quarantine"
+        local _any_quarantined="$(find "${_jdk%/}" -exec xattr -p com.apple.quarantine {} + 2>/dev/null | head -n 1)"
+        if [ -n "${_any_quarantined}" ]; then
+            echo "# Found com.apple.quarantine attribute in ${_jdk}, removing ..."
+            xattr -dr com.apple.quarantine "${_jdk}"
+        fi
+    fi
+    return ${_rc}
     # ulimit / Too many open files: https://help.sonatype.com/repomanager3/installation/system-requirements#SystemRequirements-MacOSX
 }
 function _rm3StartSQLs_h2() {
@@ -688,6 +700,7 @@ function nxrmDocker() {
 #   _CUSTOM_DNS="$(hostname -f)" iqStart
 # export JAVA_TOOL_OPTIONS="-javaagent:$HOME/IdeaProjects/samples/misc/delver.jar=$HOME/IdeaProjects/samples/misc/delver-conf.xml"
 # _H2_WEB=Y iqStart
+alias iqStartLatest='iqStart "$HOME/Documents/tests/nxiq_latest_nxiqlatest"'
 function iqStart() {
     local _base_dir="${1:-"."}"
     local _java_opts="${2-"-XX:ActiveProcessorCount=2 -Xmx4g -agentlib:jdwp=transport=dt_socket,server=y,address=*:5006,suspend=${_SUSPEND:-"n"}"}"
@@ -696,6 +709,11 @@ function iqStart() {
     #local _java_opts=${@:2}
     local _java_opts_common="${_JAVA_OPTS_COMMON-"-XX:ActiveProcessorCount=2 -Xmx4g"}"
     #_java_opts_common="${_java_opts_common} -XX:+PrintGCDetails -XX:+PrintGCDateStamps -XX:+PrintGCCause -XX:+PrintClassHistogramAfterFullGC -XX:+UseGCLogFileRotation -XX:NumberOfGCLogFiles=10 -XX:GCLogFileSize=100M -Xloggc:/tmp/iq-gc_%p_%t.log"
+
+    # If _base_dir is not '.', cd to it as config.yml may uses relative paths
+    if [ "${_base_dir%/}" != "." ]; then
+        cd "${_base_dir%/}" || return $?
+    fi
 
     local _jar_file="$(find -L "${_base_dir%/}" -maxdepth 3 -type f -name 'insight-brain-service*.jar' -o -name 'nexus-iq-server*.jar' 2>/dev/null | sort -V | tail -n1)"
     [ -z "${_jar_file}" ] && return 11
@@ -776,7 +794,6 @@ $(sed -n "/^  loggers:/,\$p" ${_cfg_file} | grep -v '^  loggers:')" > "${_cfg_fi
         [ -f "${_cfg_file}.tmp" ] && rm -v "${_cfg_file}.tmp"
     fi
 
-    [ "${_base_dir}" != "." ] && cd "${_base_dir}"
     if [[ "${_java_opts}" =~ agentlib:jdwp ]] && [[ "${JAVA_TOOL_OPTIONS}" =~ agentlib:jdwp ]]; then
         echo "WARN: Unsetting JAVA_TOOL_OPTIONS = ${JAVA_TOOL_OPTIONS}"; sleep 3
         unset JAVA_TOOL_OPTIONS
@@ -841,13 +858,24 @@ $(sed -n "/^  loggers:/,\$p" ${_cfg_file} | grep -v '^  loggers:')" > "${_cfg_fi
     if [[ "${_H2_WEB}" =~ [yY] ]] && ! grep -q '^database:' ${_cfg_file} && [ -s "${_h2_jar}" ] && [ -s "${_loader_jar}" ]; then
         _cmd="${_java} ${_java_opts} -cp ${_jar_file}:${_h2_jar}:${_loader_jar} com.sonatype.insight.brain.supportloader.StartIqWithH2 ${_cfg_file}"
     fi
-    echo "${_cmd}"; sleep 2
-    eval "${_cmd} 2>/tmp/iq-server.err" | tee /tmp/iq-server.out
+
+    if [ "${_base_dir%/}" == "." ]; then
+        echo "# ${_cmd} 2>/tmp/iq-server_$$.err | tee /tmp/iq-server_$$.out"
+        eval "${_cmd}" 2>/tmp/iq-server_$$.err | tee /tmp/iq-server_$$.out
+    else
+        echo "# WARN: ${_cmd} >/tmp/iq-server_$$.out 2>/tmp/iq-server_$$.err &"
+        sleep 2
+        eval "${_cmd}" >/tmp/iq-server_$$.out 2>/tmp/iq-server_$$.err &
+        local _pid=$!
+        cd - &>/dev/null
+        sleep 2
+        tail -f /tmp/iq-server_$$.*
+        echo "IQ Server might be still running with PID ${_pid}"
+    fi
     #if [ ${PIPESTATUS[0]} -ne 0 ]; then
     #    echo "WARN: May need 'export JAVA_HOME=${JAVA_HOME_17}' (${PIPESTATUS[0]})"
     #    return ${PIPESTATUS[0]}
     #fi
-    #[ "${_base_dir}" != "." ] && cd -
 }
 function _iqStartSQLs() {
 #UPDATE insight_brain_ods.source_control SET remediation_pull_requests_enabled = false, status_checks_enabled = false, pull_request_commenting_enabled = false, source_control_evaluations_enabled = false;
@@ -953,7 +981,7 @@ function iqDocker() {
 }
 
 
-### maven/mvn related
+### maven/mvn/nuget/npm related #################################################
 alias mvn-sbom='mvn org.cyclonedx:cyclonedx-maven-plugin:makeAggregateBom'
 
 function mvn-purge-local() {
@@ -1188,8 +1216,6 @@ function _mvn_settings() {
     echo "-s ${_settings_xml}"
 }
 
-
-
 # basically same as npm init -y but adding lodash 4.17.4 :-)
 function npmInit() {
     local _name="${1:-"lodash-vulnerable"}"
@@ -1292,7 +1318,182 @@ function nuget-get() {
 }
 
 
-### Misc.   #################################
+### AI / ticket analysis related ########################################
+function guessTicketNo() {
+    local _maybe_ticketNo="$(basename "$PWD")"
+    if [[ "${_maybe_ticketNo}" =~ ^([0-9][0-9][0-9][0-9][0-9][0-9])\-?[a-z]?$ ]]; then
+        echo ${BASH_REMATCH[1]}
+        return 0
+    fi
+    _maybe_ticketNo="$(basename "$(dirname "$PWD")")"
+    if [[ "${_maybe_ticketNo}" =~ ^([0-9][0-9][0-9][0-9][0-9][0-9])\-?[a-z]?$ ]]; then
+        echo "${BASH_REMATCH[1]}"
+        return 0
+    fi
+    return 1
+}
+
+function _generatePrompt() {
+    local _ticketNo="$1"
+    local _ticket_json_file="JSON"
+    if [ -z "${_ticketNo}" ]; then
+        _ticketNo="$(guessTicketNo)"
+    fi
+    if [ -n "${_ticketNo}" ]; then
+        _ticket_json_file="./${_ticketNo}.json"
+    fi
+    local _response_md_file="./RESPONSE.md"
+    echo "If exist, read the ticket journal ${_ticket_json_file} (or .pdf) and the previous investigate result ${_response_md_file}, then report your understanding of the current issue including the date/time of the issue and how you investigate (No actual investigation yet)"
+}
+
+## zg related
+alias zg-query='zg --preview detail'
+#alias zg-idx-logs='zg index --embedding local/potion-retrieval-32m -g "*.log*" -g "*.json" -g "!_filtered/*"'
+# TODO: add _filtered. Somehow single-quotes didn't work
+#alias zg-idx-cfgs="zg index --embedding local/potion-retrieval-32m -g '*.yml' -g '*.yaml' -g '*.xml' -g '*.json' -g '*.properties'"
+function zg-remote-idx-not-in-use() {
+    # If you provide an argument, it targets that subfolder. Otherwise, it indexes the main cases folder.
+    local path="${1-"."}"
+    local remote_host="${2:-"${REMOTE_AI_HOST}"}"  # Default to m5mac if no second argument is provided
+    local log_file="./zg_index.out"
+    if [ -z "${path}" ] || [ "${path}" == "." ]; then
+        path="$(pwd)"
+    fi
+    echo "Connecting to $remote_host to index '$path' ..." >&2
+    # NOTE: if `.zvec-grep` is created from this PC, it contains the lock file of this PC.
+    local cmd="/opt/homebrew/bin/zg --index --mode auto --embedding local/potion-retrieval-32m -g '*.yml' -g '*.yaml' -g '*.xml' -g '*.json' -g '*.properties'"
+    ssh "$remote_host" 'bash -l -c "cd '$path' && nohup '${cmd}' >> '$log_file' 2>&1 &"'
+    echo "Executed ${cmd} on $remote_host. Check $log_file for progress." >&2
+}
+
+function recommend_extra() {
+    # If no '__spt-app_db_cache' directory under 3 depth sub directories, recommend to run extra indexing for AI search
+    if ! find . -maxdepth 3 -type d -name "__spt-app_db_cache" | grep -q .; then
+        echo "INFO: No '__spt-app_db_cache' directory found under 3 depth sub directories. It is recommended to run one of the followings." >&2
+        cat <<'EOF'
+#   spt-app-prewarm [--from "YYYY-MM-DD[ HH:MM:SS]"] [--to "YYYY-MM-DD[ HH:MM:SS]"]
+#   spt-app-prewarm --time "YYYY-MM-DD HH:MM:SS" [--time-window-hours N]
+EOF
+        sleep 2
+    fi
+}
+
+function recommend_zg_index() {
+    echo "No longer used" ; return 0
+    if [ -d ./.zvec-grep ]; then
+        # From the current directory, check if any new files than .zvec-grep/manifest.json (it should be automatically updated)
+        if ! find . -type f -newer ./.zvec-grep/manifest.json -not \( -path "./.zvec-grep/*" -o -path "./zg_index.out" \) | grep -q .; then
+            echo ".zvec-grep is present and up-to-date. No need to run zg index." >&2
+            return 0
+        fi
+        echo ".zvec-grep may be outdated." >&2
+    else
+        echo ".zvec-grep is missing." >&2
+    fi
+
+    local _recommended_cmd=""
+    if type zg-remote-idx &>/dev/null; then
+        _recommended_cmd="zg-remote-idx"
+    elif type zg-idx-cfgs &>/dev/null; then
+        _recommended_cmd="zg-idx-cfgs"
+    fi
+
+    if [ -z  "${_recommended_cmd}" ]; then
+        echo "No recommended command found for indexing. Please ensure zg is installed and the appropriate function is defined." >&2
+        return 1
+    fi
+
+    read -p "Would you like to run ${_recommended_cmd} in background? (y/n): " -n 1 -r
+    echo # Move to a new line
+    if [[ $REPLY =~ ^[Yy]$ ]]; then
+        echo "Starting ${_recommended_cmd} . Check ./zg_index.out ..."; sleep 2
+        ${_recommended_cmd}
+        sleep 3 # as remote one runs in background so need type to read the output.
+    fi
+}
+#alias goose-app='/Applications/Goose.app/Contents/MacOS/Goose . &>/tmp/goose_$$.out & echo "Goose started. Log: /tmp/goose_$$.out" >&2'
+alias claude-omlx='ANTHROPIC_BASE_URL="http://${REMOTE_AI_HOST}:8000" ANTHROPIC_AUTH_TOKEN="admin123" ANTHROPIC_DEFAULT_OPUS_MODEL="${OMLX_DEFAULT_MODEL}" ANTHROPIC_DEFAULT_SONNET_MODEL="${OMLX_DEFAULT_MODEL}" ANTHROPIC_DEFAULT_HAIKU_MODEL="${OMLX_DEFAULT_MODEL}" API_TIMEOUT_MS=3000000 CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC=1 CLAUDE_CODE_DISABLE_UNKNOWN_MODEL_WINDOW_ENFORCEMENT=1 claude'    # CLAUDE_CODE_MAX_CONTEXT_TOKENS=128000
+#alias claude-local='ANTHROPIC_AUTH_TOKEN=ollama ANTHROPIC_API_KEY="" ANTHROPIC_BASE_URL="http://localhost:11434" CLAUDE_CODE_MAX_CONTEXT_TOKENS=32768 claude --model gemma4:e4b-mlx'
+function claude-ticket() {
+    local _prompt="${1}"
+    if [ -z "${_prompt}" ]; then
+        _prompt="$(_generatePrompt)"
+    fi
+    # Replace '%s' with the ticket number can be guessed
+    echo "Running claude-ticket with claude-sonnet-5[1m] and *Low* effort first ..."
+    sleep 1
+    claude --model "claude-sonnet-5[1m]" --effort "low" "${_prompt}" || return $?
+}
+function claude-omlx-ticket() {
+    local _prompt="${1}"
+    if [ -z "${_prompt}" ]; then
+        _prompt="$(_generatePrompt)"
+    fi
+    echo "Running claude-omlx-ticket with ${OMLX_DEFAULT_MODEL} and *Low* effort first ..."
+    sleep 1
+    # --disallowedTools "LSP"   # forgot what this was for
+    claude-omlx --model "${OMLX_DEFAULT_MODEL}" --effort "low" "${_prompt}" || return $?
+}
+
+# Ollama generates .codex/model.json, which contains model names (also .codex/ollama-launch.config.toml)
+#alias codex-omlx='OMLX_API_KEY="admin123" codex -c model_provider="omlx" -c model_providers.omlx.name="oMLX" -c model_providers.omlx.base_url="http://${REMOTE_AI_HOST}:8000/v1" -c model_providers.omlx.env_key="OMLX_API_KEY" -c model_catalog_json="$HOME/IdeaProjects/samples/runcom/codex_local_model.json" -m Ornith-1.5-9B-MLX'
+# --no-daemon is for avoiding "Cannot use the background server".
+##alias codex-ticket='codex --no-daemon "Read the ticket json file and understand the history and the current status, then report what you are going to investigate (no actual investigation yet)"'
+# To re-authenticate: codex mcp login atlassian
+function codex-ticket() {
+    local _prompt="${1}"
+    if [ -z "${_prompt}" ]; then
+        _prompt="$(_generatePrompt)"
+    fi
+    echo "Running codex-ticket with *gpt-6-LUNA* (--no-daemon) first ..."
+    sleep 1
+    codex -m "gpt-6-luna" --sandbox workspace-write --no-daemon "${_prompt}"
+}
+
+function ai_cli() {
+    # Ask plan first so that the session can be cleared then read the RESPONSE.md
+    local _prompt="${1}"
+    if [ -z "${_prompt}" ]; then
+        _prompt="$(_generatePrompt)"
+    fi
+    local _ticket_number="${2}"
+    local _local_model="${3:-"${OMLX_DEFAULT_MODEL}"}"
+    [ -z "${_ticket_number}" ] && _ticket_number="$(guessTicketNo)"
+    local _ai_cmd=""
+
+    #if type goose &>/dev/null; then # && curl -s -f --max-time 1 -o /dev/null "${AI_LOCAL_URL_BASE}"
+    if type pi &>/dev/null; then # && curl -s -f --max-time 1 -o /dev/null "${AI_LOCAL_URL_BASE}"
+        # NOTE: require 'pi install npm:@rolemodel/pi-omlx' for autodiscovery of local AI model
+        _ai_cmd="pi"
+        if [ -n "${_local_model}" ]; then
+            _ai_cmd="${_ai_cmd} --model ${_local_model}"
+        fi
+
+        if [ -n "${_ticket_number}" ] && [ -s "./${_ticket_number}.json" ]; then
+            #echo "Found ./${_ticket_number}.json, appending it to '@' ..." 1>&2
+            _ai_cmd="${_ai_cmd} @./${_ticket_number}.json"
+        fi
+        if [ -s "./RESPONSE.md" ]; then
+            #echo "Found ./RESPONSE.md, appending it to '@' ..." 1>&2
+            _ai_cmd="${_ai_cmd} @./RESPONSE.md"
+        fi
+        # Find the newest Log_tests_result.md file and append to the `pi` command with `@`
+        #local _newest_md="$(find . -name "Log_tests_result.md" -size +0 -exec stat -f "%m %N" {} + | sort -n | tail -1 | cut -d' ' -f2-)"
+        #if [ -s "${_newest_md}" ]; then
+        #    #echo "Found ${_newest_md}, appending it to '@' ..." 1>&2
+        #    _ai_cmd="${_ai_cmd} @${_newest_md}"
+        #fi
+    fi
+
+    if [ -n "${_ai_cmd}" ]; then
+        echo "Starting ${_ai_cmd} \"${_prompt}\"" 1>&2; sleep 2
+        eval "${_ai_cmd} \"${_prompt}\""
+        return $?
+    fi
+}
+
+
+### Misc.   #############################################################
 function nxrm3Scripting() {
     local _groovy_file="$1"
     local _nexus_url="$2"
