@@ -17,9 +17,12 @@
 #   -Djavax.net.debug=ssl,keymanager
 #   -Djavax.net.debug=ssl:handshake:verbose
 #
-# Typical troubleshooting command for "PKIX path building failed" error:
+# Typical troubleshooting command for "PKIX path building failed" error (--trace-ascii won't show the chain):
+#   curl -sfkL -w "%{certs}" --proxytunnel --proxy localhost:20001 --proxy-user myuser:mypass "https://${_host}:${_port}/" -o test.html > test.crt
 #   curl --trace-ascii - -sf -k -L "https://${_host}:${_port}/" &> ./curl_std_err_$$.out
-#   keytool -J-Djavax.net.debug=all -J-Dhttps.proxyHost=localhost -J-Dhttps.proxyPort=8080 -printcert -rfc -sslserver ${_host}:${_port}
+#   keytool -J-Djavax.net.debug=all -printcert -rfc -sslserver ${_host}:${_port}
+#
+# (legacy) No longer using as 'curl' is sufficient
 #   echo -n | openssl s_client -proxy "localhost:8080" -showcerts -connect ${_host}:${_port} | openssl x509 -outform PEM | tee ./certificates.pem
 #
 #   keytool -list -cacerts -storepass changeit > cacerts_sha256.out
@@ -369,8 +372,6 @@ function keytool_v() {
     eval "${_cmd} ${_pwd_opts}"
 }
 
-# TODO: not sure if this works, but if HTTP*S* proxy with username and password: -J-Dhttps.proxyUser="proxyuser" -J-Dhttps.proxyPassword="proxypwd"
-#$ keytool -J-Djavax.net.debug=all -J-Dhttps.proxyHost=dh1.standalone.localdomain -J-Dhttps.proxyPort=28080 -printcert -rfc -sslserver ${_host}:${_port} >maybe_certs.pem 2>keytool.err
 # NOTE: Not in Docker image but, openssl might be better and easier for troubleshooting as it also shows depth etc.
 #$ openssl s_client -help 2>&1 | grep proxy
 #$ echo -n | openssl s_client -proxy "dh1.standalone.localdomain:28080" -proxy_user "proxyuser" -proxy_pass "pass:proxypwd" -showcerts -connect ${_host}:${_port} | openssl x509 -outform PEM | tee ./certificates.pem
@@ -396,10 +397,11 @@ function get_cert_from_https() {
                 _proxy_host="${BASH_REMATCH[1]}"
                 _proxy_port="${BASH_REMATCH[2]}"
             fi
-            _proxy_opt="-J-Dhttps.proxyHost=${_proxy_host} -J-Dhttps.proxyPort=${_proxy_port}"
+            # '-J-Dhttps' does not work with current keytool.
+            _proxy_opt="-J-Dhttp.proxyHost=${_proxy_host} -J-Dhttp.proxyPort=${_proxy_port}"
             if [ -n "${_PROXY_USER_PWD}" ]; then
-                # '-J-Dhttps.proxyUser=${_proxy_user} -J-Dhttps.proxyPassword=${_proxy_pwd}' does not work
-                _proxy_opt="-J-Dhttps.proxyHost=${_PROXY_USER_PWD}@${_proxy_host} -J-Dhttps.proxyPort=${_proxy_port}"
+                # TODO: probably this doesn't work
+                _proxy_opt="-J-Dhttp.proxyHost=${_PROXY_USER_PWD}@${_proxy_host} -J-Dhttp.proxyPort=${_proxy_port}"
             fi
         else
             # NOTE: very old openssl version may fail with -proxy (Mac and modern Linux works), so workaround:
