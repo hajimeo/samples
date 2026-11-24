@@ -676,7 +676,7 @@ function t_pg_config() {
         _code "$(rg -i "^\s*['\"]?synchronous_commit:\s?\S+" ${_pg_cfg})" "" ""
     fi
 
-    _test_template "$(rg --no-filename -i "^\s*['\"]?(max_connections|effective_cache_size|shared_buffers|work_mem|maintenance_work_mem|synchronous_standby_names|block_size|random_page_cost)\b" ${_pg_cfg})" "${_level}" "Please review DB configs" "https://help.sonatype.com/en/advanced-database-memory-tuning.html"
+    _test_template "$(rg --no-filename -i "^\s*['\"]?(max_connections|effective_cache_size|shared_buffers|work_mem|maintenance_work_mem|synchronous_standby_names|block_size|random_page_cost|statement_timeout)\b" ${_pg_cfg})" "${_level}" "Please review DB configs" "https://help.sonatype.com/en/advanced-database-memory-tuning.html"
 }
 function t_mounts() {
     _basic_check "" "${_FILTERED_DATA_DIR%/}/system-filestores.json" || return
