@@ -1662,6 +1662,11 @@ EOF
 }
 
 # TODO: create same for Java (maybe INT-10383 is the good example)
+# IdeaProjects/work/misc/insight-scanner-call-flow-analyzer-test.zip
+# $ mvn clean package
+# NOTE: Create the component label "Security-Reachable" in an app, and create a policy with a constraint 'Label is "Security-Reachable"' (might be some UI bug)
+# NOTE: scan with '-c' is probably obsoleted. Also if not fat/uber/shaded jar, specifying -rn with jar path does not work.
+# java -jar ./latest.jar -s http://localhost:8070/ -a "admin:admin123" -i sandbox-application -t develop -ra -r ./iq_result_with_ra.json -k . | tee ./iq_cli_with_ra.out
 
 function f_import_sbom() {
     local __doc__="https://help.sonatype.com/en/sbom-manager-api.html SBOM examples: https://help.sonatype.com/en/cyclonedx-rest-api.html#response-162417"
