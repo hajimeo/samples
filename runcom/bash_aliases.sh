@@ -78,7 +78,8 @@ alias caddy_reverse='caddy reverse-proxy --debug --change-host-header --header-u
 # to switch/check out to specific tag, `rm3Vers "release-3.90.2-06"` first
 alias codeNexus='codium -r . $HOME/IdeaProjects/nexus-internal'
 alias codeIQ='codium -r . $HOME/IdeaProjects/insight-brain'
-alias quickmd='open -a QuickMD'
+alias resp='codium -r RESPONSE.md'
+#alias quickmd='open -a QuickMD'
 
 alias opencode-cli='/Applications/OpenCode.app/Contents/MacOS/opencode-cli'
 alias opencode='/Applications/OpenCode.app/Contents/MacOS/OpenCode'
@@ -375,141 +376,6 @@ alias kapaWeb='open -na "Google Chrome" --args --user-data-dir=$HOME/.chromep/wo
 #alias winchrome='/opt/google/chrome/chrome --user-data-dir=$HOME/.chromep --proxy-server=socks5://localhost:38081  --user-agent="Mozilla/5.0 (Windows NT 10.0; WOW64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/88.0.4324.96 Safari/537.36"'
 
 alias vncm5mac="open vnc://${REMOTE_AI_HOST}"
-
-
-## AI related
-export _AI_DEFAULT_PROMPT="Read this ticket journal JSON file, then report your understanding of the current issue and how you investigate (No actual investigation yet)"
-alias zg-query='zg query --human'
-#alias zg-idx-logs='zg index --embedding local/potion-retrieval-32m -g "*.log*" -g "*.json" -g "!_filtered/*"'
-# TODO: add _filtered. Somehow single-quotes didn't work
-#alias zg-idx-cfgs="zg index --embedding local/potion-retrieval-32m -g '*.yml' -g '*.yaml' -g '*.xml' -g '*.json' -g '*.properties'"
-function zg-remote-idx_not_in_use() {
-    # If you provide an argument, it targets that subfolder. Otherwise, it indexes the main cases folder.
-    local path="${1-"."}"
-    local remote_host="${2:-"${REMOTE_AI_HOST}"}"  # Default to m5mac if no second argument is provided
-    local log_file="./zg_index.out"
-    if [ -z "${path}" ] || [ "${path}" == "." ]; then
-        path="$(pwd)"
-    fi
-    echo "Connecting to $remote_host to index '$path' ..." >&2
-    # NOTE: if `.zvec-grep` is created from this PC, it contains the lock file of this PC.
-    local cmd="/opt/homebrew/bin/zg index --mode auto --embedding local/potion-retrieval-32m -g '*.yml' -g '*.yaml' -g '*.xml' -g '*.json' -g '*.properties'"
-    ssh "$remote_host" 'bash -l -c "cd '$path' && nohup '${cmd}' >> '$log_file' 2>&1 &"'
-    echo "Executed ${cmd} on $remote_host. Check $log_file for progress." >&2
-}
-
-function recommend_extra() {
-    # If no '__spt-app_db_cache' directory under 3 depth sub directories, recommend to run extra indexing for AI search
-    if ! find . -maxdepth 3 -type d -name "__spt-app_db_cache" | grep -q .; then
-        echo "INFO: No '__spt-app_db_cache' directory found under 3 depth sub directories. It is recommended to run one of the followings." >&2
-        cat <<'EOF'
-#   spt-app-prewarm [--from "YYYY-MM-DD[ HH:MM:SS]"] [--to "YYYY-MM-DD[ HH:MM:SS]"]
-#   spt-app-prewarm --time "YYYY-MM-DD HH:MM:SS" [--time-window-hours N]
-EOF
-        sleep 2
-    fi
-}
-
-function recommend_zg_index() {
-    echo "No longer used" ; return 0
-    if [ -d ./.zvec-grep ]; then
-        # From the current directory, check if any new files than .zvec-grep/manifest.json (it should be automatically updated)
-        if ! find . -type f -newer ./.zvec-grep/manifest.json -not \( -path "./.zvec-grep/*" -o -path "./zg_index.out" \) | grep -q .; then
-            echo ".zvec-grep is present and up-to-date. No need to run zg index." >&2
-            return 0
-        fi
-        echo ".zvec-grep may be outdated." >&2
-    else
-        echo ".zvec-grep is missing." >&2
-    fi
-
-    local _recommended_cmd=""
-    if type zg-remote-idx &>/dev/null; then
-        _recommended_cmd="zg-remote-idx"
-    elif type zg-idx-cfgs &>/dev/null; then
-        _recommended_cmd="zg-idx-cfgs"
-    fi
-
-    if [ -z  "${_recommended_cmd}" ]; then
-        echo "No recommended command found for indexing. Please ensure zg is installed and the appropriate function is defined." >&2
-        return 1
-    fi
-
-    read -p "Would you like to run ${_recommended_cmd} in background? (y/n): " -n 1 -r
-    echo # Move to a new line
-    if [[ $REPLY =~ ^[Yy]$ ]]; then
-        echo "Starting ${_recommended_cmd} . Check ./zg_index.out ..."; sleep 2
-        ${_recommended_cmd}
-        sleep 3 # as remote one runs in background so need type to read the output.
-    fi
-}
-#alias goose-app='/Applications/Goose.app/Contents/MacOS/Goose . &>/tmp/goose_$$.out & echo "Goose started. Log: /tmp/goose_$$.out" >&2'
-alias claude-omlx='ANTHROPIC_BASE_URL="http://${REMOTE_AI_HOST}:8000" ANTHROPIC_AUTH_TOKEN="admin123" ANTHROPIC_DEFAULT_OPUS_MODEL="${OMLX_DEFAULT_MODEL}" ANTHROPIC_DEFAULT_SONNET_MODEL="${OMLX_DEFAULT_MODEL}" ANTHROPIC_DEFAULT_HAIKU_MODEL="${OMLX_DEFAULT_MODEL}" API_TIMEOUT_MS=3000000 CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC=1 CLAUDE_CODE_DISABLE_UNKNOWN_MODEL_WINDOW_ENFORCEMENT=1 claude'    # CLAUDE_CODE_MAX_CONTEXT_TOKENS=128000
-#alias claude-local='ANTHROPIC_AUTH_TOKEN=ollama ANTHROPIC_API_KEY="" ANTHROPIC_BASE_URL="http://localhost:11434" CLAUDE_CODE_MAX_CONTEXT_TOKENS=32768 claude --model gemma4:e4b-mlx'
-function claude-ticket() {
-    local _prompt="${1-"${_AI_DEFAULT_PROMPT}"}"
-    echo "Running claude-ticket with claude-sonnet-5[1m] and *Low* effort first ..."
-    sleep 1
-    claude --model "claude-sonnet-5[1m]" --effort "low" "${_prompt}" || return $?
-}
-function claude-omlx-ticket() {
-    local _prompt="${1-"${_AI_DEFAULT_PROMPT}"}"
-    echo "Running claude-omlx-ticket with ${OMLX_DEFAULT_MODEL} and *Low* effort first ..."
-    sleep 1
-    # --disallowedTools "LSP"   # forgot what this was for
-    claude-omlx --model "${OMLX_DEFAULT_MODEL}" --effort "low" "${_prompt}" || return $?
-}
-
-# Ollama generates .codex/model.json, which contains model names (also .codex/ollama-launch.config.toml)
-#alias codex-omlx='OMLX_API_KEY="admin123" codex -c model_provider="omlx" -c model_providers.omlx.name="oMLX" -c model_providers.omlx.base_url="http://${REMOTE_AI_HOST}:8000/v1" -c model_providers.omlx.env_key="OMLX_API_KEY" -c model_catalog_json="$HOME/IdeaProjects/samples/runcom/codex_local_model.json" -m Ornith-1.5-9B-MLX'
-# --no-daemon is for avoiding "Cannot use the background server".
-##alias codex-ticket='codex --no-daemon "Read the ticket json file and understand the history and the current status, then report what you are going to investigate (no actual investigation yet)"'
-# To re-authenticate: codex mcp login atlassian
-function codex-ticket() {
-    local _prompt="${1-"${_AI_DEFAULT_PROMPT}"}"
-    echo "Running codex-ticket with *gpt-6-LUNA* (--no-daemon) first ..."
-    sleep 1
-    codex -m "gpt-6-luna" --sandbox workspace-write --no-daemon "${_prompt}"
-}
-
-function ai_cli() {
-    # Ask plan first so that the session can be cleared then read the RESPONSE.md
-    local _prompt="${1:-"${_AI_DEFAULT_PROMPT}"}"    # in .bash_aliases.sh
-    local _ticket_number="${2}"
-    local _local_model="${3:-"${OMLX_DEFAULT_MODEL}"}"
-    [ -z "${_ticket_number}" ] && _ticket_number="$(guessTicketNo)"
-    local _ai_cmd=""
-
-    #if type goose &>/dev/null; then # && curl -s -f --max-time 1 -o /dev/null "${AI_LOCAL_URL_BASE}"
-    if type pi &>/dev/null; then # && curl -s -f --max-time 1 -o /dev/null "${AI_LOCAL_URL_BASE}"
-        # NOTE: require 'pi install npm:@rolemodel/pi-omlx' for autodiscovery of local AI model
-        _ai_cmd="pi"
-        if [ -n "${_local_model}" ]; then
-            _ai_cmd="${_ai_cmd} --model ${_local_model}"
-        fi
-
-        if [ -n "${_ticket_number}" ] && [ -s "./${_ticket_number}.json" ]; then
-            #echo "Found ./${_ticket_number}.json, appending it to '@' ..." 1>&2
-            _ai_cmd="${_ai_cmd} @./${_ticket_number}.json"
-        fi
-        if [ -s "./RESPONSE.md" ]; then
-            #echo "Found ./RESPONSE.md, appending it to '@' ..." 1>&2
-            _ai_cmd="${_ai_cmd} @./RESPONSE.md"
-        fi
-        # Find the newest Log_tests_result.md file and append to the `pi` command with `@`
-        #local _newest_md="$(find . -name "Log_tests_result.md" -size +0 -exec stat -f "%m %N" {} + | sort -n | tail -1 | cut -d' ' -f2-)"
-        #if [ -s "${_newest_md}" ]; then
-        #    #echo "Found ${_newest_md}, appending it to '@' ..." 1>&2
-        #    _ai_cmd="${_ai_cmd} @${_newest_md}"
-        #fi
-    fi
-
-    if [ -n "${_ai_cmd}" ]; then
-        echo "Starting ${_ai_cmd} \"${_prompt}\"" 1>&2; sleep 2
-        eval "${_ai_cmd} \"${_prompt}\""
-        return $?
-    fi
-}
 
 
 ## Work specific aliases ############################################################################################3
@@ -1175,7 +1041,7 @@ function cleanOldDBs() {
     fi
     grep -vxFf <(cat /tmp/${FUNCNAME[0]}_nxrm_$$.out /tmp/${FUNCNAME[0]}_nxiq_$$.out) /tmp/${FUNCNAME[0]}_in_db_$$.out | while read -r _db; do
         # Currently hard-coded to skip some databases
-        if [[ "${_db}" =~ (sptboot|filelisttest|large) ]]; then
+        if [[ "${_db}" =~ (sptboot|filelisttest|large|latest) ]]; then
             continue
         fi
         local _sql="ALTER DATABASE \"${_db}\" RENAME TO \"to_be_deleted_${_db}\""
@@ -1241,8 +1107,6 @@ function gDrivePull() {
         echo "ERROR: rclone failed. Check /tmp/gDrivePull_rclone.out for details." >&2
         return 1
     fi
-    echo "INFO: Completed. Run the below:
-cd ${gd_backup_dir} && zg index --glob '!**/*.pdf' --embedding local/potion-retrieval-32m" >&2
 }
 
 #_RSYNC_DRY_RUN=Y syncGitReposWithRemotePC
@@ -1396,25 +1260,7 @@ function backupC() {
     echo ""
     sync_mac "${REMOTE_AI_HOST}"
 
-    echo ""
-    echo "#### Cleaning up old temp/test data (60 days) ####" >&2
-    echo ""
-    if [ -d "$HOME/Documents/tests" ]; then
-        cleanOldDirs "$HOME/Documents/tests" 60
-        cleanOldDBs "$HOME/Documents/tests"
-    fi
-
-    if [ -d "${_ext_backup}" ]; then
-        echo ""
-        echo "#### Cleaning up older than 30 days files from ${_ext_backup} ####" >&2
-        echo ""
-        # Should backup something to the external backup location?
-        #rsync -Pvaz --bwlimit=10240 --max-size=10000k --modify-window=1 --exclude '*_tmp' --exclude '_*' ${_src%/}/ ${_dst%/}/
-        ${_find} "${_ext_backup%/}" -maxdepth 1 -type d -name "*_wal" -print0 | xargs -0 -P4 -I{} -t ${_find} {} -type f -mtime +30 -delete
-    fi
-
-    cleanCases
-
+    cleanMany
 
     # Currently updatedb may not index external drive (maybe because exFat?)
     if type updatedb &>/dev/null; then
@@ -1423,6 +1269,35 @@ function backupC() {
         echo "#### Executing updatedb (may ask sudo password) ####" >&2
         echo ""
         updatedb && ls -lh /var/db/locate.database
+    fi
+}
+
+function cleanMany() {
+    local _clean_dirs="${1:-"$HOME/Documents/tests"}"
+    local _clean_case_dirs="${2:-"$HOME/Documents/cases"}"
+    local _clean_pg_wal_dirs="${3:-"/Volumes/Samsung_T5/hajime/backups"}"
+
+    local _clean_days="60"
+    echo ""
+    echo "#### Cleaning up old temp/test data (${_clean_days} days) ####" >&2
+    echo ""
+    if [ -d "${_clean_dirs}" ]; then
+        cleanOldDirs "${_clean_dirs}" "${_clean_days}"
+        cleanOldDBs "${_clean_dirs}"
+    fi
+
+    cleanCases "${_clean_case_dirs}"
+
+    if [ -d "${_clean_pg_wal_dirs}" ]; then
+        echo ""
+        echo "#### Cleaning up older than 30 days files from ${_clean_pg_wal_dirs} ####" >&2
+        echo ""
+        # Should backup something to the external backup location?
+        #rsync -Pvaz --bwlimit=10240 --max-size=10000k --modify-window=1 --exclude '*_tmp' --exclude '_*' ${_src%/}/ ${_dst%/}/
+        local _find="find"
+        type gfind &>/dev/null && _find="gfind"
+        ${_find} "${_clean_pg_wal_dirs%/}" -maxdepth 1 -type d -name "*_wal" -print0 | xargs -0 -P4 -I{} -t ${_find} {} -type f -mtime +30 -delete
+        du -sh "${_clean_pg_wal_dirs%/}"
     fi
 }
 
@@ -1735,8 +1610,9 @@ EOF
 
 function startCommonUtils() {
     local __doc__="Not prefer to add many services, so this function is for starting common services"
-    local _with_localai="${1:-"n"}"
+    local _with_localai="${1:-"y"}"
     local _with_mlx="${2:-"n"}"
+    local _with_ollama="${3:-"n"}"
 
     # If /Volumes/Samsung_T5 is not mounted, then mount it (using password from keychain)
     if [ ! -d "/Volumes/Samsung_T5" ]; then
@@ -1748,7 +1624,7 @@ function startCommonUtils() {
         #timeout 30 ssh -t ${REMOTE_AI_HOST} "sudo nfsd restart && sleep 3 && showmount -e"
         echo "# Mounting ~/nfsmounts/Samsung_T5 from ${REMOTE_AI_HOST} ..." >&2
         # Using NFS is because some command line tool such as codex doesn't work with SMB without extra privileges.
-        timeout 10 sudo mount -t nfs -o locallocks ${REMOTE_AI_HOST}:/Volumes/Samsung_T5 $HOME/nfsmounts/Samsung_T5
+        timeout 60 sudo mount -t nfs -o locallocks ${REMOTE_AI_HOST}:/Volumes/Samsung_T5 $HOME/nfsmounts/Samsung_T5
         if [ $? -ne 0 ]; then
             echo "# Failed to mount ~/nfsmounts/Samsung_T5 from ${REMOTE_AI_HOST}" >&2
             echo " Use: ssh -t ${REMOTE_AI_HOST} \"sudo nfsd restart && sleep 3 && showmount -e\""; sleep 3
@@ -1761,9 +1637,6 @@ function startCommonUtils() {
     #chrome-work
     #open -na "Google Chrome"
 
-    # Currently not in-use as seems not working.
-    #screen -dmS claude-mcp bash -c "cd /Users/hosako/Documents/cases && claude mcp serve -d --verbose"
-
     # This part is not specific to local AI
     #source $HOME/.pyvenv_new/bin/activate || return $?
     #if [ -s "$HOME/.mcps.json" ]; then
@@ -1775,26 +1648,84 @@ function startCommonUtils() {
     #    tail /tmp/mcpo.log
     #fi
 
-    # zvac-grep
-    if ! /opt/homebrew/bin/zg --server status | grep -q -w 'ready'; then
-        echo "# Starting zvac-grep on $(hostname) because it is not running" >&2; sleep 2
-        /opt/homebrew/bin/zg --server on
+    if type sync_mac &>/dev/null; then
+        echo "# Starting sync_mac" >&2
+        sync_mac &>/tmp/sync_mac.log &
+        sleep 1
+        tail /tmp/sync_mac.log
     fi
-    #echo "# Stopping zvac-grep on this PC ..." >&2; sleep 2
-    #/opt/homebrew/bin/zg --server off
 
-    if type apfel &>/dev/null; then
-        # Check afel is running on port 11435, if not, start it
-        local _listening_pid="$(lsof -ti:11435 -s TCP:LISTEN)"
-        if [ -n "${_listening_pid}" ]; then
-            echo "# PID: ${_listening_pid} is running on port 11435" >&2
-        else
-            echo "# Starting apfel on port 11435" >&2
-            apfel --serve --port 11435 &>/tmp/apfel.out &
-            sleep 1
-            tail /tmp/apfel.out
-        fi
+    # zvac-grep is currently not in use
+    if type /opt/homebrew/bin/zg &>/dev/null; then
+        #! /opt/homebrew/bin/zg --server status | grep -q -w 'ready'; then
+        #echo "# Starting zvac-grep MCP on $(hostname) because it is not running" >&2; sleep 2
+        /opt/homebrew/bin/zg --server off   #on
     fi
+    # Currently not starting ollama by default
+    if [[ "${_with_localai}" =~ ^[yY] ]]; then
+        #if type apfel &>/dev/null; then
+            # Check afel is running on port 11435, if not, start it
+        #    local _listening_pid="$(lsof -ti:11435 -s TCP:LISTEN)"
+        #    if [ -n "${_listening_pid}" ]; then
+        #        echo "# PID: ${_listening_pid} is running on port 11435" >&2
+        #    else
+        #        echo "# Starting apfel on port 11435" >&2
+        #        apfel --serve --port 11435 &>/tmp/apfel.out &
+        #        sleep 1
+        #        tail /tmp/apfel.out
+        #    fi
+        #fi
+
+        #if type uvx &>/dev/null; then
+        #    echo "# Starting open-terminal (127.0.0.1:48001)" >&2
+        #    uvx open-terminal run --host 127.0.0.1 --port 48001 --cwd $HOME/Documents/cases --api-key admin123 &>/tmp/uvx_open-terminal.log &
+        #    sleep 1
+        #    tail /tmp/uvx_open-terminal.log
+        #fi
+
+        if [[ "${_with_mlx}" =~ ^[yY] ]] && type vllm-mlx &>/dev/null; then
+            local _listening_pid="$(lsof -ti:48080 -s TCP:LISTEN)"
+            if [ -n "${_listening_pid}" ]; then
+                echo "# PID: ${_listening_pid} is running on port 48080" >&2
+            else
+                # NOTE: Currently vllm-mlx does not work with CodeX app, but as this function is for Open WebUI, starting.
+                #       Not checking ' && type $HOME/.pyvenv_new/bin/vllm-mlx &>/dev/null' as it should fail with error
+                #       Using https://huggingface.co/mlx-community/gemma-4-12B-it-qat-4bit
+                vllm-mlx serve mlx-community/gemma-4-12B-it-qat-4bit \
+                    --enable-auto-tool-choice \
+                    --tool-call-parser gemma4 \
+                    --reasoning-parser gemma4 \
+                    --port 48080 &>/tmp/vllm-mlx.log &
+                #vllm-mlx serve mlx-community/gemma-4-e4b-it-8bit --port 48080 &>/tmp/vllm-mlx.log &
+                sleep 1
+                tail /tmp/vllm-mlx.log
+            fi
+        elif [[ "${_with_ollama}" =~ ^[yY] ]] && type ollama &>/dev/null; then
+            local _listening_pid="$(lsof -ti:11434 -s TCP:LISTEN)"
+            if [ -n "${_listening_pid}" ]; then
+                echo "# PID: ${_listening_pid} is running on port 11434" >&2
+            else
+                OLLAMA_NO_CLOUD="1" OLLAMA_FLASH_ATTENTION="1" OLLAMA_KV_CACHE_TYPE="q8_0" OLLAMA_NUM_PARALLEL="2" ollama serve &>/tmp/ollama.log &
+                sleep 3
+                tail $HOME/.ollama/logs/server.log
+                ollama list
+                echo "# how to stop 'killall Ollama && pkill ollama'" >&2
+            fi
+        elif type mirai &>/dev/null; then
+            local _mirai_model="trymirai/Qwen3.5-9B-M"
+            echo "# Starting mirai uzu with '${_mirai_model}' on 127.0.0.1:8000 ..." >&2; sleep 2
+            /opt/homebrew/bin/mirai server --model ${_mirai_model} --port 8000 &> /tmp/mirai_uzu.log &
+            sleep 2
+            tail -n 20 /tmp/mirai_uzu.log
+        fi
+
+        # NOTE: If pandasai or jupyterlab-ai, no webUI required
+        #       Also, not starting this because I'm using Open WebUI app
+        #if  [ -s "$HOME/.pyvenv_new/bin/open-webui" ]; then
+        #    open-webui serve --host 127.0.0.1 --port 48080 &>/tmp/open-webui.log &
+        #fi
+    fi
+
 
     if type gDrivePull &>/dev/null; then
         echo "# Starting gDrivePull" >&2
@@ -1815,51 +1746,5 @@ function startCommonUtils() {
         else
             echo "INFO: zg command not found. Skipping indexing of ${gd_backup_dir} ..." >&2
         fi
-    fi
-
-    # Currently not starting ollama by default
-    if [[ "${_with_localai}" =~ ^[yY] ]]; then
-        #if type uvx &>/dev/null; then
-        #    echo "# Starting open-terminal (127.0.0.1:48001)" >&2
-        #    uvx open-terminal run --host 127.0.0.1 --port 48001 --cwd $HOME/Documents/cases --api-key admin123 &>/tmp/uvx_open-terminal.log &
-        #    sleep 1
-        #    tail /tmp/uvx_open-terminal.log
-        #fi
-
-        if [[ "${_with_mlx}" =~ ^[yY] ]]; then
-            local _listening_pid="$(lsof -ti:48080 -s TCP:LISTEN)"
-            if [ -n "${_listening_pid}" ]; then
-                echo "# PID: ${_listening_pid} is running on port 48080" >&2
-            else
-                # NOTE: Currently vllm-mlx does not work with CodeX app, but as this function is for Open WebUI, starting.
-                #       Not checking ' && type $HOME/.pyvenv_new/bin/vllm-mlx &>/dev/null' as it should fail with error
-                #       Using https://huggingface.co/mlx-community/gemma-4-12B-it-qat-4bit
-                vllm-mlx serve mlx-community/gemma-4-12B-it-qat-4bit \
-                    --enable-auto-tool-choice \
-                    --tool-call-parser gemma4 \
-                    --reasoning-parser gemma4 \
-                    --port 48080 &>/tmp/vllm-mlx.log &
-                #vllm-mlx serve mlx-community/gemma-4-e4b-it-8bit --port 48080 &>/tmp/vllm-mlx.log &
-                sleep 1
-                tail /tmp/vllm-mlx.log
-            fi
-        elif type ollama &>/dev/null; then
-            local _listening_pid="$(lsof -ti:11434 -s TCP:LISTEN)"
-            if [ -n "${_listening_pid}" ]; then
-                echo "# PID: ${_listening_pid} is running on port 11434" >&2
-            else
-                OLLAMA_NO_CLOUD="1" OLLAMA_FLASH_ATTENTION="1" OLLAMA_KV_CACHE_TYPE="q8_0" OLLAMA_NUM_PARALLEL="2" ollama serve &>/tmp/ollama.log &
-                sleep 3
-                tail $HOME/.ollama/logs/server.log
-                ollama list
-                echo "# how to stop 'killall Ollama && pkill ollama'" >&2
-            fi
-        fi
-
-        # NOTE: If pandasai or jupyterlab-ai, no webUI required
-        #       Also, not starting this because I'm using Open WebUI app
-        #if  [ -s "$HOME/.pyvenv_new/bin/open-webui" ]; then
-        #    open-webui serve --host 127.0.0.1 --port 48080 &>/tmp/open-webui.log &
-        #fi
     fi
 }
