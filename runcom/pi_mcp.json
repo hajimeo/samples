@@ -10,7 +10,8 @@
       "url": "https://sonatype.mcp.kapa.ai"
     },
     "atlassian": {
-      "url": "https://mcp.atlassian.com/v2/mcp?tools=all"
+      "url": "https://mcp.atlassian.com/v2/mcp?tools=all",
+      "exposure": "deferred"
     },
     "kb-pdfs2": {
       "command": "/Users/hosako/.pyvenv/bin/python3",

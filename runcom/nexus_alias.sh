@@ -870,7 +870,8 @@ $(sed -n "/^  loggers:/,\$p" ${_cfg_file} | grep -v '^  loggers:')" > "${_cfg_fi
         cd - &>/dev/null
         sleep 2
         tail -f /tmp/iq-server_$$.*
-        echo "IQ Server might be still running with PID ${_pid}"
+        echo "IQ Server might be still running" # Java PID is not same as _pid
+        type jps &>/dev/null && jps -l | grep -E 'insight-brain-service|nexus-iq-server'
     fi
     #if [ ${PIPESTATUS[0]} -ne 0 ]; then
     #    echo "WARN: May need 'export JAVA_HOME=${JAVA_HOME_17}' (${PIPESTATUS[0]})"
@@ -1412,7 +1413,7 @@ function recommend_zg_index() {
     fi
 }
 #alias goose-app='/Applications/Goose.app/Contents/MacOS/Goose . &>/tmp/goose_$$.out & echo "Goose started. Log: /tmp/goose_$$.out" >&2'
-alias claude-omlx='ANTHROPIC_BASE_URL="http://${REMOTE_AI_HOST}:8000" ANTHROPIC_AUTH_TOKEN="admin123" ANTHROPIC_DEFAULT_OPUS_MODEL="${OMLX_DEFAULT_MODEL}" ANTHROPIC_DEFAULT_SONNET_MODEL="${OMLX_DEFAULT_MODEL}" ANTHROPIC_DEFAULT_HAIKU_MODEL="${OMLX_DEFAULT_MODEL}" API_TIMEOUT_MS=3000000 CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC=1 CLAUDE_CODE_DISABLE_UNKNOWN_MODEL_WINDOW_ENFORCEMENT=1 claude'    # CLAUDE_CODE_MAX_CONTEXT_TOKENS=128000
+alias claude-omlx='ANTHROPIC_BASE_URL="http://${REMOTE_AI_HOST}:8000" ANTHROPIC_AUTH_TOKEN="admin123" ANTHROPIC_DEFAULT_OPUS_MODEL="${LOCAL_AI_MODEL}" ANTHROPIC_DEFAULT_SONNET_MODEL="${LOCAL_AI_MODEL}" ANTHROPIC_DEFAULT_HAIKU_MODEL="${LOCAL_AI_MODEL}" API_TIMEOUT_MS=3000000 CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC=1 CLAUDE_CODE_DISABLE_UNKNOWN_MODEL_WINDOW_ENFORCEMENT=1 claude'    # CLAUDE_CODE_MAX_CONTEXT_TOKENS=128000
 #alias claude-local='ANTHROPIC_AUTH_TOKEN=ollama ANTHROPIC_API_KEY="" ANTHROPIC_BASE_URL="http://localhost:11434" CLAUDE_CODE_MAX_CONTEXT_TOKENS=32768 claude --model gemma4:e4b-mlx'
 function claude-ticket() {
     local _prompt="${1}"
@@ -1429,10 +1430,10 @@ function claude-omlx-ticket() {
     if [ -z "${_prompt}" ]; then
         _prompt="$(_generatePrompt)"
     fi
-    echo "Running claude-omlx-ticket with ${OMLX_DEFAULT_MODEL} and *Low* effort first ..."
+    echo "Running claude-omlx-ticket with ${LOCAL_AI_MODEL} and *Low* effort first ..."
     sleep 1
     # --disallowedTools "LSP"   # forgot what this was for
-    claude-omlx --model "${OMLX_DEFAULT_MODEL}" --effort "low" "${_prompt}" || return $?
+    claude-omlx --model "${LOCAL_AI_MODEL}" --effort "low" "${_prompt}" || return $?
 }
 
 # Ollama generates .codex/model.json, which contains model names (also .codex/ollama-launch.config.toml)
@@ -1456,9 +1457,8 @@ function ai_cli() {
     if [ -z "${_prompt}" ]; then
         _prompt="$(_generatePrompt)"
     fi
-    local _ticket_number="${2}"
-    local _local_model="${3:-"${OMLX_DEFAULT_MODEL}"}"
-    [ -z "${_ticket_number}" ] && _ticket_number="$(guessTicketNo)"
+    local _local_model="${3:-"${LOCAL_AI_MODEL}"}"
+    local _ai_provider="${4:-"${LOCAL_AI_PROVIDER}"}"   # mirai or mirai-local
     local _ai_cmd=""
 
     #if type goose &>/dev/null; then # && curl -s -f --max-time 1 -o /dev/null "${AI_LOCAL_URL_BASE}"
@@ -1466,17 +1466,21 @@ function ai_cli() {
         # NOTE: require 'pi install npm:@rolemodel/pi-omlx' for autodiscovery of local AI model
         _ai_cmd="pi"
         if [ -n "${_local_model}" ]; then
+            if [ -n "${_ai_provider}" ]; then
+                _local_model="${_ai_provider%/}/${_local_model}"
+            fi
             _ai_cmd="${_ai_cmd} --model ${_local_model}"
         fi
 
-        if [ -n "${_ticket_number}" ] && [ -s "./${_ticket_number}.json" ]; then
+        # Wondered the below may increase the context usage?
+        #if [ -n "${_ticket_number}" ] && [ -s "./${_ticket_number}.json" ]; then
             #echo "Found ./${_ticket_number}.json, appending it to '@' ..." 1>&2
-            _ai_cmd="${_ai_cmd} @./${_ticket_number}.json"
-        fi
-        if [ -s "./RESPONSE.md" ]; then
+            #_ai_cmd="${_ai_cmd} @./${_ticket_number}.json"
+        #fi
+        #if [ -s "./RESPONSE.md" ]; then
             #echo "Found ./RESPONSE.md, appending it to '@' ..." 1>&2
-            _ai_cmd="${_ai_cmd} @./RESPONSE.md"
-        fi
+            #_ai_cmd="${_ai_cmd} @./RESPONSE.md"
+        #fi
         # Find the newest Log_tests_result.md file and append to the `pi` command with `@`
         #local _newest_md="$(find . -name "Log_tests_result.md" -size +0 -exec stat -f "%m %N" {} + | sort -n | tail -1 | cut -d' ' -f2-)"
         #if [ -s "${_newest_md}" ]; then

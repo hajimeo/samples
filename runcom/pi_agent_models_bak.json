@@ -1,0 +1,45 @@
+{
+  "providers": {
+    "anthropic": {
+      "baseUrl": "$ANTHROPIC_BASE_URL",
+      "apiKey": "$ANTHROPIC_AUTH_TOKEN",
+      "authHeader": true
+    },
+    "omlx": {
+      "baseUrl": "http://169.254.20.20:8000/v1",
+      "api": "openai-completions",
+      "apiKey": "admin123",
+      "autoDiscover": true
+    },
+    "mirai-local": {
+      "baseUrl": "http://127.0.0.1:8000",
+      "api": "openai-completions",
+      "apiKey": "non-empty-apikey",
+      "compat": {
+        "supportsDeveloperRole": false
+      },
+      "models": [
+        {
+          "id": "trymirai/Qwen3.5-9B-M",
+          "name": "Qwen 3.5 9B M (Mirai uzu local)",
+          "reasoning": true
+        }
+      ]
+    },
+    "mirai": {
+      "baseUrl": "http://169.254.20.20:7999",
+      "api": "openai-completions",
+      "apiKey": "non-empty-apikey",
+      "compat": {
+        "supportsDeveloperRole": false
+      },
+      "models": [
+        {
+          "id": "trymirai/Qwen3.8-27B-S",
+          "name": "Qwen 3.8 27B S (Mirai uzu)",
+          "reasoning": true
+        }
+      ]
+    }
+  }
+}

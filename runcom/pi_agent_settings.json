@@ -1,7 +1,7 @@
 {
   "defaultProvider": "omlx",
   "defaultModel": "Ornith-1.5-9B-MLX",
-  "lastChangelogVersion": "1.5.2",
+  "lastChangelogVersion": "1.6.0",
   "theme": "dark",
   "packages": [
     "git:github.com/coctostan/pi-superpowers",
@@ -9,6 +9,7 @@
     "npm:max-context",
     "npm:@luminascale/pi-zvec-grep",
     "npm:@rolemodel/pi-omlx",
-    "npm:@nilskluewer/pi-atlassian-mcp"
+    "npm:@nilskluewer/pi-atlassian-mcp",
+    "npm:pi-hide-providers"
   ]
 }

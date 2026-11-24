@@ -1,12 +1,9 @@
 {
   "providers": {
-    "omlx": {
-      "baseUrl": "http://169.254.20.20:8000/v1",
-      "api": "openai-completions",
-      "apiKey": "admin123",
-      "autoDiscover": true
+    "anthropic": {
+      "baseUrl": "https://llm.sonatype.com"
     },
-    "mirai-uzu": {
+    "mirai": {
       "baseUrl": "http://169.254.20.20:7999",
       "api": "openai-completions",
       "apiKey": "non-empty-apikey",
@@ -16,12 +13,27 @@
       "models": [
         {
           "id": "trymirai/Qwen3.5-9B-M",
-          "name": "Qwen 3.5 9B (Mirai uzu)",
+          "name": "Qwen 3.5 9B M",
           "reasoning": true
         },
         {
-          "id": "trymirai/Qwen3.8-27B-M",
-          "name": "Qwen 3.8 27B (Mirai uzu)",
+          "id": "trymirai/Qwen3.8-27B-S",
+          "name": "Qwen 3.8 27B S",
+          "reasoning": true
+        }
+      ]
+    },
+    "mirai-local": {
+      "baseUrl": "http://127.0.0.1:7999",
+      "api": "openai-completions",
+      "apiKey": "non-empty-apikey",
+      "compat": {
+        "supportsDeveloperRole": false
+      },
+      "models": [
+        {
+          "id": "trymirai/Qwen3.5-9B-M",
+          "name": "Qwen 3.5 9B M (local)",
           "reasoning": true
         }
       ]
