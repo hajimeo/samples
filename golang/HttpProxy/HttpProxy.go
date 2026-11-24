@@ -14,6 +14,10 @@
 	curl -v --proxy localhost:8080 http://search.osakos.com/index.php
 	curl -v --proxy localhost:8080 https://search.osakos.com/index.php
 
+# With proxy username/password (Basic auth):
+	httpproxy --user myuser --pass mypass
+	curl -v --proxy localhost:8080 --proxy-user myuser:mypass http://search.osakos.com/index.php
+
 # HTTP proxy but replacing certificate (NOTE: cert used by proxy needs to be trusted by the client or OS)::
 	# NOTE: If no --key/--crt, automatically uses self-signed CA
 	httpproxy --replCert --debug [--crt <path to pem certificate> --key <path to key>]
@@ -75,6 +79,8 @@ var CaCrtPath string
 var CaKeyPath string
 var CommonName string
 var CachePath string
+var AuthUser string
+var AuthPass string
 var Debug bool
 var Debug2 bool
 var READ_CHUNK_SIZE = 1024 // 1KB
@@ -192,6 +198,20 @@ func handleDefault(w http.ResponseWriter, req *http.Request) {
 	transfer(w, resp.Body, "")
 }
 
+func checkProxyAuth(r *http.Request) bool {
+	authHeader := r.Header.Get("Proxy-Authorization")
+	const prefix = "Basic "
+	if !strings.HasPrefix(authHeader, prefix) {
+		return false
+	}
+	decoded, err := base64.StdEncoding.DecodeString(authHeader[len(prefix):])
+	if err != nil {
+		return false
+	}
+	user, pass, found := strings.Cut(string(decoded), ":")
+	return found && user == AuthUser && pass == AuthPass
+}
+
 func copyHeader(dst, src http.Header) {
 	for k, vv := range src {
 		for _, v := range vv {
@@ -250,6 +270,14 @@ func handleRequest(w http.ResponseWriter, r *http.Request) {
 	start := time.Now()
 	// TODO: the URL.String should return the full URL, but doesn't work if HTTPS. Tried reqToUrlStr()
 	reqURLStr := r.URL.String()
+
+	if AuthUser != "" && AuthPass != "" && !checkProxyAuth(r) {
+		debug("Proxy auth failed for %s %s", r.Method, reqURLStr)
+		w.Header().Set("Proxy-Authenticate", `Basic realm="proxy"`)
+		http.Error(w, "Proxy Authentication Required", http.StatusProxyAuthRequired)
+		return
+	}
+
 	matched := true
 	if len(UrlRegex) > 0 {
 		matched = UrlRegexP.MatchString(reqURLStr)
@@ -855,6 +883,8 @@ func main() {
 	flag.BoolVar(&ReplCert, "replCert", false, "Replacing the certificate for https:// requests")
 	flag.BoolVar(&GenCert, "GenCert", false, "(Re)Generate a self-signed CA certificate")
 	flag.StringVar(&CachePath, "cache", "", "Cache directory path (default: OS temp dir)")
+	flag.StringVar(&AuthUser, "user", "", "Username for proxy authentication (requires --pass; if empty, no auth required)")
+	flag.StringVar(&AuthPass, "pass", "", "Password for proxy authentication (requires --user)")
 	flag.Int64Var(&DelaySec, "delay", -1, "Intentional delay in seconds for testing slowness")
 	flag.Int64Var(&BandwidthKb, "bandwidth", -1, "BandWidth Kbps for testing slowness (does not work with debug2)")
 	flag.StringVar(&UrlRegex, "urlregex", "", "Regex to match URLs to be delayed/throttled")

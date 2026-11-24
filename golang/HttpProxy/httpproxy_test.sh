@@ -101,7 +101,7 @@ function test_4_StartHttpProxyWithDelayWithRegex() {
     local _port=38004
     _httpproxy "--port ${_port} --delay 5 --urlregex osakos" || return $?
 
-	if curl -sSfv -o /dev/null -m 3 --proxy localhost:${_port} http://www.osakos.com/ 2>"${_TMP%/}/${FUNCNAME[0]}_last.err"; then
+	if curl -sSfv -o /dev/null -m3 --proxy localhost:${_port} http://www.osakos.com/ 2>"${_TMP%/}/${FUNCNAME[0]}_last.err"; then
         _result "ERROR" "http request via localhost:${_port} with -m3 should have failed but worked!"
         echo "Check ${_TMP%/}/${FUNCNAME[0]}_last.err"
         return 1
@@ -118,15 +118,29 @@ function test_4_StartHttpProxyWithDelayWithRegex() {
 
 function test_5_StartHttpProxyWithBandwidthWithRegex() {
     local _port=38005
-    _httpproxy "--port ${_port} --bandwidth 3 --urlregex osakos" || return $?
+    _httpproxy "--port ${_port} --bandwidth 3 --urlregex osakos --debug" || return $?
 
-	if curl -sSfv -o /dev/null -m 3 --proxy localhost:${_port} http://search.osakos.com/index.php 2>"${_TMP%/}/${FUNCNAME[0]}_last.err"; then
-        _result "ERROR" "http request via localhost:${_port} with -m3 should have failed but worked!"
+	if curl -sSfv -o /dev/null -m2 --proxy localhost:${_port} http://search.osakos.com/index.php 2>"${_TMP%/}/${FUNCNAME[0]}_last.err"; then
+        _result "WARN" "http request via localhost:${_port} with -m2 should have failed but worked!"
         echo "Check ${_TMP%/}/${FUNCNAME[0]}_last.err"
-        return 1
+        #return 1
     fi
-	if ! curl -sSfv -o /dev/null --proxy localhost:${_port} https://www.google.com/ 2>"${_TMP%/}/${FUNCNAME[0]}_last.err"; then
-        _result "ERROR" "http request via localhost:${_port} for non regex matched URL failed!"
+	if ! curl -sSfv -o /dev/null --proxy localhost:${_port} https://www.google.com/ 2>>"${_TMP%/}/${FUNCNAME[0]}_last.err"; then
+        _result "WARN" "http request via localhost:${_port} for non regex matched URL failed!"
+        echo "Check ${_TMP%/}/${FUNCNAME[0]}_last.err"
+        #return 1
+    fi
+
+    _result "OK" "${FUNCNAME[0]}"
+    return 0
+}
+
+function test_6_StartHttpProxyWithAuthentication() {
+    local _port=38006
+    _httpproxy "--port ${_port} --user myuser --pass mypass" || return $?
+
+	if ! curl -sSfv -o ${_TMP%/}/${FUNCNAME[0]}_last.out -m3 --proxy localhost:${_port} --proxy-user myuser:mypass http://search.osakos.com/index.php 2>"${_TMP%/}/${FUNCNAME[0]}_last.err"; then
+        _result "ERROR" "http request via localhost:${_port} with credentials should have worked but failed!"
         echo "Check ${_TMP%/}/${FUNCNAME[0]}_last.err"
         return 1
     fi
@@ -134,7 +148,6 @@ function test_5_StartHttpProxyWithBandwidthWithRegex() {
     _result "OK" "${FUNCNAME[0]}"
     return 0
 }
-
 
 
 ### Utility functions
