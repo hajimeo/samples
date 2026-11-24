@@ -24,14 +24,13 @@
 	# To use a CA signed self-certificate
 	httpproxy --replCert --debug --caCrt <path to root CA cert> --caKey <path to root CA key> [--commonName localhost --crt <path> --key <path>]
 	# Test (need -k as cert is replaced)
-	curl -v --proxy localhost:8080 -k https://search.osakos.com/index.php
-	keytool -J-Dhttps.proxyHost=localhost -J-Dhttps.proxyPort=8080 -printcert -rfc -sslserver search.osakos.com:443 # should show two certs
+	curl -sfkL -w "%{certs}" --proxytunnel --proxy localhost:8080 https://search.osakos.com/index.php
 
 # TODO: HTTPS proxy with replacing certificate (NOTE: cert used by proxy needs to be trusted by the client or OS):
 	# NOTE: If no --key/--crt, automatically uses self-signed CA
 	httpproxy --replCert --proto https --debug [--crt <path to pem certificate> --key <path to key>]
 	# Test (need --proxy-insecure and -k)
-	curl -v --proxy https://localhost:8080/ --proxy-insecure -k https://search.osakos.com/index.php
+	curl -sfkL -w "%{certs}" --proxytunnel --proxy https://localhost:8080/ --proxy-insecure https://search.osakos.com/index.php
 */
 
 package main
