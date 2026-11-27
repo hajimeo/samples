@@ -161,7 +161,7 @@ public class H2Console {
                     terminal.writer().print("\n  ");
                 }
             } catch (SQLException e) {
-                log("WARN: Skipping corrupted LOB (" + rowIdForLog(rs, columns, rowCount) + ")");
+                log("WARN: Skipping row: " + rowIdForLog(rs, columns, rowCount) + " due to " + e.getMessage());
                 continue;
             }
             // Not first row
