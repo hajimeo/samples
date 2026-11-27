@@ -168,8 +168,11 @@ function pyvTest() {
     local _dir="${1:-".venv"}"
     if [ ! -d "${_dir%/}" ]; then
         python3 -m venv "${_dir%/}" || return $?
+        echo "Created virtual environment in ${_dir%/}" >&2
+    else
+        echo "Using existing virtual environment in ${_dir%/}" >&2
     fi
-    cd "${_dir%/}" && source ./bin/activate
+    source ${_dir%/}/bin/activate
 }
 #alias pyv='pyenv activate mypyvenv'    # I felt pyenv is slow, so not using
 alias pyv='source $HOME/.pyvenv/bin/activate'
@@ -235,13 +238,47 @@ alias jenkins='${JAVA_HOME_17%/}/bin/java -Djava.util.logging.config.file=$HOME/
 alias mockserver='java -jar $HOME/Apps/mockserver-netty.jar'                                      #curl -o $HOME/Apps/mockserver-netty.jar -L https://search.maven.org/remotecontent?filepath=org/mock-server/mockserver-netty/5.11.1/mockserver-netty-5.11.1-jar-with-dependencies.jar
 alias jkCli='java -jar $HOME/Apps/jenkins-cli.jar -s http://localhost:8080/ -auth admin:admin123' #curl -o $HOME/Apps/jenkins-cli.jar -L http://localhost:8080/jnlpJars/jenkins-cli.jar
 [ -f $HOME/IdeaProjects/samples/misc/orient-console.jar ] && alias orient-console="${JAVA_HOME_8:-"/Library/Java/JavaVirtualMachines/zulu-8.jdk/Contents/Home"}/bin/java -jar $HOME/IdeaProjects/samples/misc/orient-console.jar"
-[ -f $HOME/IdeaProjects/samples/misc/h2-console.jar ] && alias h2-console="\$JAVA_HOME_17/bin/java -jar $HOME/IdeaProjects/samples/misc/h2-console.jar"
-[ -f $HOME/IdeaProjects/samples/misc/h2-console_v200.jar ] && alias h2-console_v200="\$JAVA_HOME_17/bin/java -jar $HOME/IdeaProjects/samples/misc/h2-console_v200.jar"
-[ -f $HOME/IdeaProjects/samples/misc/h2-console_v224.jar ] && alias h2-console_v224="\$JAVA_HOME_17/bin/java -jar $HOME/IdeaProjects/samples/misc/h2-console_v224.jar"
-# requires Java 11 or higher
-[ -f $HOME/IdeaProjects/samples/misc/h2-console_v232.jar ] && alias h2-console_v232="/opt/homebrew/opt/openjdk\@17/libexec/openjdk.jdk/Contents/Home/bin/java -jar $HOME/IdeaProjects/samples/misc/h2-console_v232.jar"
-[ -f $HOME/IdeaProjects/samples/misc/h2-console_v240.jar ] && alias h2-console_v240="/opt/homebrew/opt/openjdk\@17/libexec/openjdk.jdk/Contents/Home/bin/java -jar $HOME/IdeaProjects/samples/misc/h2-console_v240.jar"
 [ -f $HOME/IdeaProjects/samples/misc/pg-console.jar ] && alias pg-console="java -jar $HOME/IdeaProjects/samples/misc/pg-console.jar"
+function h2-console() {
+    local _ver="${1}"
+    if [ -s "./h2-console.jar" ]; then
+        local _real_jar="$(readlink -f "./h2-console.jar")"
+        echo "Warning: ./h2-console.jar (${_real_jar}) exits. Not swapping" >&2
+        sleep 2
+    else
+        local _jars_dir="$HOME/IdeaProjects/samples/misc"
+        local _sfx=""
+        if [[ "${_ver}" =~ 196$ ]]; then
+            _sfx=""
+        elif [[ "${_ver}" =~ 200$ ]]; then
+            _sfx="_v200"
+        elif [[ "${_ver}" =~ 224$ ]]; then
+            _sfx="_v224"
+        elif [[ "${_ver}" =~ 232$ ]]; then
+            _sfx="_v232"
+        elif [[ "${_ver}" =~ 240$ ]]; then
+            _sfx="_v240"
+        else
+            _ver=""
+        fi
+        if [ -s "${_jars_dir}/h2-console${_sfx}.jar" ]; then
+            _jar="${_jars_dir}/h2-console${_sfx}.jar"
+        else
+            echo "Error: ${_jars_dir}/h2-console${_sfx}.jar not found" >&2
+            return 1
+        fi
+        ln -svf "${_jar}" "./h2-console.jar"
+    fi
+    # If _ver is set, pass the arguments from 2nd arg to java command, otherwise just pass all.
+    local _ge=1
+    if [ -n "${_ver}" ]; then
+        shift
+        _ge=0
+    fi
+    if [ "$#" -ge ${_ge} ]; then
+        ${JAVA_HOME:-${JAVA_HOME_17}}/bin/java -jar ./h2-console.jar "$@"
+    fi
+}
 #[ -f $HOME/IdeaProjects/samples/misc/blobpath.jar ] && alias blobpathJ="java -jar $HOME/IdeaProjects/samples/misc/blobpath.jar"
 # JAVA_HOME_11 is set in bash_profile.sh
 alias matJ11='/Applications/mat.app/Contents/MacOS/MemoryAnalyzer -vm ${JAVA_HOME_11%/}/bin'
@@ -1104,7 +1141,7 @@ function gDrivePull() {
 
     echo "INFO: rclone-ing gDocs from remote to local..." >&2
     if ! rclone sync hajime-drive:"My Notes" ${gd_backup_dir%/}/gdocs_stared -P --drive-export-formats md,html,txt > /tmp/gDrivePull_rclone.out 2>&1; then
-        echo "ERROR: rclone failed. Check /tmp/gDrivePull_rclone.out for details." >&2
+        echo "ERROR: rclone failed. Check /tmp/gDrivePull_rclone.out for details (or 'rclone config reconnect hajime-drive:')" >&2
         return 1
     fi
 }
@@ -1712,11 +1749,14 @@ function startCommonUtils() {
                 echo "# how to stop 'killall Ollama && pkill ollama'" >&2
             fi
         elif type mirai &>/dev/null; then
-            local _mirai_model="trymirai/Qwen3.5-9B-M"
-            echo "# Starting mirai uzu with '${_mirai_model}' on 127.0.0.1:8000 ..." >&2; sleep 2
-            /opt/homebrew/bin/mirai server --model ${_mirai_model} --port 8000 &> /tmp/mirai_uzu.log &
-            sleep 2
-            tail -n 20 /tmp/mirai_uzu.log
+            # Using port 7777 as zg uses 7999 on my Mac
+            if ! curl -sf -m5 -o/dev/null http://127.0.0.1:7777/v1/models; then
+                local _mirai_model="trymirai/Qwen3.5-9B-M"
+                echo "# Starting mirai uzu with '${_mirai_model}' on 127.0.0.1:7777 ..." >&2; sleep 2
+                /opt/homebrew/bin/mirai server --model ${_mirai_model} --port 7777 &> /tmp/mirai_uzu.log &
+                sleep 2
+                tail -n 20 /tmp/mirai_uzu.log
+            fi
         fi
 
         # NOTE: If pandasai or jupyterlab-ai, no webUI required
