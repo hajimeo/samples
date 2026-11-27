@@ -321,8 +321,9 @@ function nxrmStart() {
         #find ${_jdk%/} -exec ls -ld {} \; 2>/dev/null | grep -E "[x\-]@ " | awk '{printf $9; printf "\n"}' | xargs -I {} xattr -lv {} | grep "com.apple.quarantine"
         local _any_quarantined="$(find "${_jdk%/}" -exec xattr -p com.apple.quarantine {} + 2>/dev/null | head -n 1)"
         if [ -n "${_any_quarantined}" ]; then
-            echo "# Found com.apple.quarantine attribute in ${_jdk}, removing ..."
-            xattr -dr com.apple.quarantine "${_jdk}"
+            if xattr -dr com.apple.quarantine "${_jdk}"; then
+                echo "# Found com.apple.quarantine attribute in ${_jdk}, un-quarantined."
+            fi
         fi
     fi
     return ${_rc}
@@ -421,7 +422,7 @@ function _updateNexusProps() {
     # From probably 3.88
     grep -qE '^#?nexus.reconcile.task.enabled' "${_cfg_file}" || echo "nexus.reconcile.task.enabled=true" >> "${_cfg_file}" # PR14446
     # From 3.93.0. Added this to avoid 429 'Too many authentication attempts'
-    grep -qE '^#?nexus.auth.ratelimit.enabled' "${_cfg_file}" || echo "nexus.auth.ratelimit.enabled=false" >> "${_cfg_file}"
+    #grep -qE '^#?nexus.auth.ratelimit.enabled' "${_cfg_file}" || echo "nexus.auth.ratelimit.enabled=false" >> "${_cfg_file}"
 
     # If no port specified, checking if the default port 8081 is available
     # If the port is specified and if it's not available, starting this Nexus should fail.
