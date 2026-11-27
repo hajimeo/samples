@@ -232,6 +232,7 @@ js_repl = false
 
 [tui]
 screen_reader_detection_done = true
+sidebar_width_percent = 53
 
 [tui.model_availability_nux]
 "gpt-5.5" = 1

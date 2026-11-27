@@ -3,6 +3,12 @@
     "anthropic": {
       "baseUrl": "https://llm.sonatype.com"
     },
+    "omlx": {
+      "baseUrl": "http://169.254.20.20:8000/v1",
+      "api": "openai-completions",
+      "apiKey": "admin123",
+      "autoDiscover": true
+    },
     "mirai": {
       "baseUrl": "http://169.254.20.20:7999",
       "api": "openai-completions",
@@ -24,7 +30,7 @@
       ]
     },
     "mirai-local": {
-      "baseUrl": "http://127.0.0.1:7999",
+      "baseUrl": "http://127.0.0.1:7777",
       "api": "openai-completions",
       "apiKey": "non-empty-apikey",
       "compat": {
