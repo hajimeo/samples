@@ -89,10 +89,7 @@ if [ "$(uname)" = "Darwin" ]; then
     # If homebrew was used to install Java, check /opt/homebrew/bin/java
     # Truststore location: $(/usr/libexec/java_home)/lib/security/cacerts or $(/usr/libexec/java_home)/jre/lib/security/cacerts
     # To verify: -Djavax.net.debug=ssl,keymanager
-    if [ -d "/Library/Java/JavaVirtualMachines/zulu-8.jdk/Contents/Home" ]; then
-        [ -z "${JAVA_HOME_8}" ] && export JAVA_HOME_8="/Library/Java/JavaVirtualMachines/zulu-8.jdk/Contents/Home"
-        [ -z "${JAVA_HOME}" ] && export JAVA_HOME="/Library/Java/JavaVirtualMachines/zulu-8.jdk/Contents/Home"
-    fi
+    # At this moment, prefer java 17 first
     if [ -d "/opt/homebrew/opt/openjdk@17/libexec/openjdk.jdk/Contents/Home" ]; then
         [ -z "${NEXUSTOOLS_JAVA17_HOME}" ] && export NEXUSTOOLS_JAVA17_HOME="/opt/homebrew/opt/openjdk@17/libexec/openjdk.jdk/Contents/Home"
         [ -z "${JAVA_HOME_17}" ] && export JAVA_HOME_17="/opt/homebrew/opt/openjdk@17/libexec/openjdk.jdk/Contents/Home"
@@ -103,6 +100,10 @@ if [ "$(uname)" = "Darwin" ]; then
     fi
     if [ -e "/Users/hosako/.sdkman/candidates/java/25.0.2-zulu" ]; then
         [ -z "${JAVA_HOME_25}" ] && export JAVA_HOME_25="/Users/hosako/.sdkman/candidates/java/25.0.2-zulu"
+    fi
+    if [ -d "/Library/Java/JavaVirtualMachines/zulu-8.jdk/Contents/Home" ]; then
+        [ -z "${JAVA_HOME_8}" ] && export JAVA_HOME_8="/Library/Java/JavaVirtualMachines/zulu-8.jdk/Contents/Home"
+        [ -z "${JAVA_HOME}" ] && export JAVA_HOME="/Library/Java/JavaVirtualMachines/zulu-8.jdk/Contents/Home"
     fi
 
     if [ -f /usr/libexec/java_home ]; then
